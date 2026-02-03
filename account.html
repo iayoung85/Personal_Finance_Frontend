@@ -7,7 +7,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
   <link rel="icon" type="image/png" href="IAY favicon.png">
   <link rel="stylesheet" href="account.css">
-  <script src="https://js.stripe.com/v3/"></script>
 </head>
 <body>
   <div class="app-container">
@@ -32,8 +31,6 @@
           <ul class="settings-nav">
             <li><a href="#profile" class="settings-link active" data-section="profile">Profile Details</a></li>
             <li><a href="#password" class="settings-link" data-section="password">Change Password</a></li>
-            <li><a href="#subscription" class="settings-link" data-section="subscription">Manage Subscription</a></li>
-            <li><a href="#tokens" class="settings-link" data-section="tokens">Plaid Token Wallet</a></li>
             <li><a href="#twofa" class="settings-link" data-section="twofa">Two-Factor Authentication</a></li>
             <li><a href="#deletion" class="settings-link" data-section="deletion">Delete Account</a></li>            
           </ul>
@@ -59,24 +56,6 @@
             <div id="password-content">Loading...</div>
           </div>
 
-          <!-- Manage Subscription Section -->
-          <div id="subscription" class="settings-panel hidden">
-            <div class="panel-header">
-              <h2>Manage Subscription</h2>
-              <p>View and adjust your subscription settings</p>
-            </div>
-            <div id="subscription-content">Loading...</div>
-          </div>
-
-          <!-- Token Wallet Section -->
-          <div id="tokens" class="settings-panel hidden">
-            <div class="panel-header">
-              <h2>Plaid Token Wallet</h2>
-              <p>View your available tokens and usage history</p>
-            </div>
-            <div id="tokens-content">Loading...</div>
-          </div>
-
           <!-- Two-Factor Authentication Section -->
           <div id="twofa" class="settings-panel hidden">
             <div class="panel-header">
@@ -97,16 +76,6 @@
         </section>
       </div>
 
-      <footer class="site-footer">
-        <nav>
-          <a href="contact.html">Contact Us</a>
-          <a href="privacy.html">Privacy Policy</a>
-          <a href="terms.html">Terms of Service</a>
-          <a href="about.html">About Us</a>
-          <a href="products.html">Products</a>
-          <a href="premium.html">Premium</a>
-        </nav>
-      </footer>
     </main>
   </div>
 

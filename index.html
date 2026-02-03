@@ -122,26 +122,11 @@
         <button class="logout-btn" onclick="logout()">Logout</button>
       </div>
       
-      <div id="approval-message" style="display:none; color:#e74c3c; margin:15px 0; padding:15px; background:#fdf2f2; border-radius:4px;">
-        ⚠️ Your account is not currently subscribed. Please subscribe under account settings to enable bank connections.
-      </div>
-
       <div id="dashboard-deletion-banner"></div>
       
       <div id="dashboard-message"></div>
       
       <div id="webhook-alerts-container" style="margin: 15px 0;"></div>
-
-      <div id="token-summary" style="display: flex; gap: 12px; margin: 12px 0 20px; align-items: center;">
-        <div style="flex: 0 1 auto; background: #f7faff; border: 1px solid #dbe7ff; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; min-width: 180px;">
-          <span style="color: #526491; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Transaction Tokens</span>
-          <span id="token-tx-count" style="font-weight: 700; color: #274690; font-size: 16px; margin-left: 8px;">–</span>
-        </div>
-        <div style="flex: 0 1 auto; background: #f7faff; border: 1px solid #dbe7ff; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; min-width: 180px;">
-          <span style="color: #526491; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Investment Tokens</span>
-          <span id="token-inv-count" style="font-weight: 700; color: #274690; font-size: 16px; margin-left: 8px;">–</span>
-        </div>
-      </div>
 
       <div class="current-connections" id="current-connections">
         <h2 style="margin-bottom: 4px;">Your Connected Banks</h2>
@@ -157,24 +142,11 @@
     </div>
   </div>
 
-  <div id="turnstile-container" class="turnstile-container" aria-hidden="true"></div>
-
-  <footer class="site-footer">
-    <nav>
-      <a href="contact.html">Contact Us</a>
-      <a href="privacy.html">Privacy Policy</a>
-      <a href="terms.html">Terms of Service</a>
-      <a href="about.html">About Us</a>
-      <a href="products.html">Products</a>
-      <a href="premium.html">Premium</a>
-    </nav>
-  </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.4.2/zxcvbn.js"></script>
   <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
   <script src="config.js"></script>
   <script src="index.js"></script>
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=turnstileReady" async defer></script>
 </body>
 </html>

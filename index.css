@@ -197,8 +197,3 @@ input:focus {
 .site-footer a:hover {
   text-decoration: underline;
 }
-
-.turnstile-container {
-  height: 0;
-  overflow: hidden;
-}
