@@ -1,0 +1,569 @@
+/* ============================================
+   GLOBAL STYLES & LAYOUT
+   ============================================ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: linear-gradient(135deg, #182742 0%, #3D1A2E 100%);
+  min-height: 100vh;
+  color: #333;
+}
+
+/* ============================================
+   APP CONTAINER & MAIN LAYOUT
+   ============================================ */
+.app-container {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  max-width: 1200px;
+  width: 100%;
+}
+
+/* ============================================
+   PAGE HEADER
+   ============================================ */
+.page-header {
+  background: white;
+  border-radius: 12px;
+  padding: 30px;
+  margin-bottom: 30px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.page-header h1 {
+  font-size: 32px;
+  color: #182742;
+  margin-bottom: 8px;
+}
+
+.page-subtitle {
+  color: #666;
+  font-size: 14px;
+  margin: 0;
+}
+
+/* ============================================
+   SETTINGS WRAPPER
+   ============================================ */
+.settings-wrapper {
+  display: flex;
+  gap: 30px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ============================================
+   SETTINGS MENU (Left Sidebar)
+   ============================================ */
+.settings-menu {
+  flex-shrink: 0;
+  width: 200px;
+}
+
+.settings-nav {
+  list-style: none;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.settings-link {
+  display: block;
+  padding: 14px 20px;
+  color: #666;
+  text-decoration: none;
+  transition: all 0.3s;
+  border-left: 3px solid transparent;
+  font-size: 14px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.settings-link:last-child {
+  border-bottom: none;
+}
+
+.settings-link:hover {
+  background: #f9f9f9;
+  color: #182742;
+}
+
+.settings-link.active {
+  background: #f0f0f0;
+  color: #182742;
+  border-left-color: #182742;
+  font-weight: 600;
+}
+
+/* ============================================
+   SETTINGS CONTENT (Main Area)
+   ============================================ */
+.settings-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-panel {
+  background: white;
+  border-radius: 12px;
+  padding: 30px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  display: none;
+}
+
+.settings-panel.active {
+  display: block;
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hidden {
+  display: none !important;
+}
+
+.panel-header {
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.panel-header h2 {
+  font-size: 24px;
+  color: #182742;
+  margin-bottom: 5px;
+}
+
+.panel-header p {
+  color: #666;
+  font-size: 14px;
+  margin: 0;
+}
+
+.site-footer {
+  margin-top: 30px;
+  text-align: center;
+  color: #f5f5f5;
+}
+
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.site-footer a {
+  color: #f5f5f5;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.site-footer a:hover {
+  text-decoration: underline;
+}
+
+/* ============================================
+   FORM STYLES
+   ============================================ */
+.form-group {
+  margin-bottom: 20px;
+}
+
+label {
+  display: block;
+  margin-bottom: 8px;
+  color: #333;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+textarea,
+select {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.3s;
+  font-family: inherit;
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: #182742;
+  box-shadow: 0 0 0 3px rgba(24, 39, 66, 0.1);
+}
+
+input[type="text"]:disabled,
+input[type="email"]:disabled {
+  background: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   BUTTON STYLES
+   ============================================ */
+button {
+  font-family: inherit;
+}
+
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: #182742;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #3D1A2E;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(24, 39, 66, 0.3);
+}
+
+.btn-secondary {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #e0e0e0;
+}
+
+.btn-danger {
+  background: #dc3545;
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #c82333;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   MESSAGE STYLES
+   ============================================ */
+.message {
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.message.error {
+  background: #fee;
+  color: #c33;
+  border: 1px solid #fcc;
+}
+
+.message.success {
+  background: #efe;
+  color: #3c3;
+  border: 1px solid #cfc;
+}
+
+.message.warning {
+  background: #ffeaa7;
+  color: #d68f00;
+  border: 1px solid #ffd93d;
+}
+
+.message.info {
+  background: #e3f2fd;
+  color: #1976d2;
+  border: 1px solid #bbdefb;
+}
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+
+/* Tablet: 480px - 768px */
+@media (max-width: 1024px) {
+  .settings-wrapper {
+    gap: 20px;
+  }
+
+  .settings-menu {
+    width: 160px;
+  }
+
+  .settings-link {
+    padding: 12px 15px;
+    font-size: 13px;
+  }
+
+  .page-header {
+    padding: 20px;
+  }
+
+  .page-header h1 {
+    font-size: 26px;
+  }
+
+  .settings-panel {
+    padding: 20px;
+  }
+}
+
+/* Mobile: < 768px */
+@media (max-width: 768px) {
+  .app-container {
+    padding: 15px;
+  }
+
+  .main-content {
+    padding: 0;
+  }
+
+  .page-header {
+    padding: 15px;
+    margin-bottom: 20px;
+  }
+
+  .page-header h1 {
+    font-size: 22px;
+  }
+
+  .page-subtitle {
+    font-size: 13px;
+  }
+
+  .settings-wrapper {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .settings-menu {
+    width: 100%;
+    margin-bottom: 20px;
+  }
+
+  .settings-nav {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .settings-link {
+    flex: 1;
+    min-width: 150px;
+    border: 1px solid #e0e0e0;
+    border-left: none;
+    border-bottom: none;
+    padding: 10px 12px;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .settings-link:nth-child(5n+1) {
+    border-left: 1px solid #e0e0e0;
+  }
+
+  .settings-link:nth-child(n+4) {
+    border-top: 1px solid #e0e0e0;
+  }
+
+  .settings-link.active {
+    border-left: 1px solid #182742;
+    background: #f0f0f0;
+  }
+
+  .settings-panel {
+    padding: 15px;
+    margin-bottom: 20px;
+  }
+
+  .panel-header {
+    margin-bottom: 15px;
+  }
+
+  .panel-header h2 {
+    font-size: 20px;
+  }
+
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  .btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px 16px;
+  }
+}
+
+/* Small phones: < 480px */
+@media (max-width: 480px) {
+  .main-content {
+    padding: 10px;
+  }
+
+  .page-header {
+    padding: 12px;
+    margin-bottom: 15px;
+  }
+
+  .page-header h1 {
+    font-size: 20px;
+  }
+
+  .settings-panel {
+    padding: 12px;
+    margin-bottom: 15px;
+  }
+
+  .panel-header {
+    margin-bottom: 12px;
+  }
+
+  .panel-header h2 {
+    font-size: 18px;
+  }
+
+  .form-group {
+    margin-bottom: 15px;
+  }
+
+  .settings-link {
+    min-width: 140px;
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+
+  .btn {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+.flex-group {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.flex-group.stacked {
+  flex-direction: column;
+}
+
+.text-muted {
+  color: #999;
+  font-size: 13px;
+}
+
+.text-error {
+  color: #dc3545;
+}
+
+.text-success {
+  color: #28a745;
+}
+
+.divider {
+  border-top: 1px solid #e0e0e0;
+  margin: 20px 0;
+}
+
+.card {
+  background: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 15px;
+  margin-bottom: 15px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.card-title {
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px 20px;
+  color: #999;
+}
+
+.loading::after {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #182742;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-left: 10px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

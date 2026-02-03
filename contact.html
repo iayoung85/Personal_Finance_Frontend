@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Us - IAY Financial</title>
+  <link rel="icon" type="image/png" href="IAY favicon.png">
+  <link rel="stylesheet" href="contact.css">
+</head>
+<body>
+  <div class="contact-container">
+    <img src="IAY consulting.png" alt="IAY Consulting" class="logo">
+    <h1>Contact Us</h1>
+    <p class="subtitle">Support, privacy, or data deletion requests.</p>
+
+    <form id="contact-form">
+      <div class="form-group">
+        <label for="contact-name">Name</label>
+        <input type="text" id="contact-name" autocomplete="name">
+      </div>
+
+      <div class="form-group">
+        <label for="contact-email">Email *</label>
+        <input type="email" id="contact-email" autocomplete="email" required>
+      </div>
+
+      <div class="form-group">
+        <label for="contact-type">Request Type</label>
+        <select id="contact-type">
+          <option value="support">Support</option>
+          <option value="privacy">Privacy</option>
+          <option value="data_deletion">Data Deletion</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="contact-message">Message *</label>
+        <textarea id="contact-message" rows="6" required></textarea>
+      </div>
+
+      <div id="turnstile-container"></div>
+
+      <button type="submit" class="btn">Submit</button>
+      <div id="contact-status" class="status" role="status" aria-live="polite"></div>
+    </form>
+  </div>
+
+  <footer class="site-footer">
+    <nav>
+      <a href="contact.html">Contact Us</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="terms.html">Terms of Service</a>
+      <a href="about.html">About Us</a>
+      <a href="products.html">Products</a>
+      <a href="premium.html">Premium</a>
+    </nav>
+  </footer>
+
+  <script src="config.js"></script>
+  <script src="contact.js"></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=turnstileReady" async defer></script>
+</body>
+</html>

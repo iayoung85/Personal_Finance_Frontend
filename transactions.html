@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transaction Viewer - Bank Transactions</title>
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="icon" type="image/png" href="IAY favicon.png">
+  <link rel="stylesheet" href="transactions.css">
+</head>
+<body>
+  <div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <a href="index.html" class="back-link">← Back to Dashboard</a>
+      <a href="investments.html" class="back-link" style="color: #28a745;">View Investments →</a>
+    </div>
+    
+    <h1>Transaction Viewer</h1>
+    
+    <!-- Configuration Panel -->
+    <div class="config-panel">
+      <div class="config-header" onclick="toggleConfig()">
+        <span>Configuration</span>
+        <span id="toggle-icon">▲</span>
+      </div>
+      <div class="config-content open" id="config-content">
+        
+        <div class="config-layout">
+          <!-- Left Column: Controls -->
+          <div class="config-left">
+            <!-- Bank & Account Selection -->
+            <div class="config-section">
+              <div style="display: flex; justify-content: flex-start; align-items: center; margin-bottom: 10px;">
+                <h3 style="margin: 0;">Select Accounts</h3>
+                <button onclick="selectAllAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 8px; margin-left: 8px;">Select All</button>
+                <button onclick="deselectAllAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 8px;">Deselect All</button>
+                <button onclick="refreshAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Refresh List</button> 
+              </div>
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: #666;">Only checking, savings, and credit card accounts are shown. Investment accounts are not currently supported.</p>
+              <div id="account-selector"></div>
+            </div>
+        
+            <!-- Date Range -->
+            <div class="config-section">
+              <h3>Date Range (up to 90 days of transaction data is available)</h3>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <input type="date" id="start-date">
+                <input type="date" id="end-date">
+                <button onclick="setEarliestToDate()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Earliest to Date</button>
+                <button onclick="setMonthToDate()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Month to Date</button>
+                <button onclick="setLastMonth()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Last Month</button>
+              </div>
+            </div>
+            
+            <!-- Timezone -->
+            <div class="config-section">
+              <h3>Timezone</h3>
+              <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <select id="timezone">
+                  <option value="America/New_York">Eastern Time (ET)</option>
+                  <option value="America/Chicago" selected>Central Time (CT)</option>
+                  <option value="America/Denver">Mountain Time (MT)</option>
+                  <option value="America/Los_Angeles">Pacific Time (PT)</option>
+                  <option value="UTC">UTC</option>
+                </select>
+                <label style="display: flex; align-items: center; gap: 6px; font-weight: 500;">
+                  <input type="checkbox" id="hide-transfers" checked>
+                  <span>Hide transfers</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Optional Fields -->
+            <div class="config-section">
+              <h3>Optional Fields</h3>
+              <div class="optional-fields-grid">
+                <label><input type="checkbox" class="field-checkbox" value="merchant_name"> Merchant Name</label>
+                <label><input type="checkbox" class="field-checkbox" value="category"> Category</label>
+                <label><input type="checkbox" class="field-checkbox" value="payment_channel"> Payment Channel</label>
+                <label><input type="checkbox" class="field-checkbox" value="pending"> Pending Status</label>
+                <label><input type="checkbox" class="field-checkbox" value="check_number"> Check Number</label>
+                <label><input type="checkbox" class="field-checkbox" value="original_description"> Original Description</label>
+                <label><input type="checkbox" class="field-checkbox" value="authorized_date"> Authorized Date</label>
+                <label><input type="checkbox" class="field-checkbox" value="authorized_datetime"> Authorized Time</label>
+              </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="config-section">
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <button onclick="syncTransactions()">Re-sync transactions with Plaid</button>
+                <button onclick="saveSettings()" class="secondary">Save Settings</button>
+                
+                <!-- Export Buttons (initially hidden until data loaded) -->
+                <div id="export-buttons" class="export-buttons hidden">
+                  <button onclick="exportJSON()" class="secondary">Export JSON</button>
+                  <button onclick="copyCSV()" class="secondary">Copy CSV</button>
+                  <button onclick="downloadCSV()" class="secondary">Download CSV</button>
+                </div>
+              </div>
+              <div id="status-message"></div>
+            </div>
+          </div>
+          
+          <!-- Right Column: Chart Visualization -->
+          <div class="config-right">
+            <div class="chart-header">
+              <h3 style="margin: 0 0 10px 0;">Expense Category Breakdown</h3>
+              <div class="chart-toggle-buttons">
+                <button id="chart-primary-btn" class="chart-toggle-btn active" onclick="switchChartView('primary')">Primary</button>
+                <button id="chart-detailed-btn" class="chart-toggle-btn" onclick="switchChartView('detailed')">Detailed</button>
+              </div>
+            </div>
+            <div class="chart-container">
+              <canvas id="category-chart"></canvas>
+              <div id="chart-empty-state" class="chart-empty-state">No transaction data to visualize</div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+    
+    <!-- Spending Insights Panel -->
+    <div id="insights-container" class="insights-panel">
+      <div class="insights-empty">Select accounts and date range to view insights</div>
+    </div>
+    
+    <!-- Transaction Table -->
+    <div id="table-container">
+      <div class="empty-state">
+        Configure your settings above and click "Sync Transactions" to get started.
+      </div>
+    </div>
+    
+  </div>
+
+  <footer class="site-footer">
+    <nav>
+      <a href="contact.html">Contact Us</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="terms.html">Terms of Service</a>
+      <a href="about.html">About Us</a>
+      <a href="products.html">Products</a>
+      <a href="premium.html">Premium</a>
+    </nav>
+  </footer>
+
+  <script src="config.js"></script>
+  <script src="transactions.js"></script>
+</body>
+</html>

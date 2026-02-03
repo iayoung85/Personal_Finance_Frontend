@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IAY Financial LLC</title>
+  <link rel="icon" type="image/png" href="IAY favicon.png">
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <div class="container">
+    <img src="IAY consulting.png" alt="IAY Consulting" class="logo">
+    
+    <!-- Login Form -->
+    <div id="login-view" class="hidden">
+      <h1>Welcome Back</h1>
+      <p class="subtitle">to IAY Financial LLC!</p>
+      <p class="subtitle">Login to manage your bank connections</p>
+      
+      <div id="login-message"></div>
+      
+      <form id="login-form">
+        <div class="form-group">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" required>
+        </div>
+        
+        <button type="submit" class="btn btn-primary">Login</button>
+        <div style="display: flex; justify-content: space-between; margin-top: 10px;">
+          <button type="button" class="btn-link" onclick="showRegister()">Don't have an account? Register</button>
+          <button type="button" class="btn-link" onclick="showForgotPassword()">Forgot Password?</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Forgot Password View -->
+    <div id="forgot-password-view" class="hidden">
+      <h1>Reset Password</h1>
+      <p class="subtitle">Enter your email to receive a reset link</p>
+      
+      <div id="forgot-message"></div>
+      
+      <form id="forgot-form">
+        <div class="form-group">
+          <label for="forgot-email">Email</label>
+          <input type="email" id="forgot-email" required>
+        </div>
+        
+        <button type="submit" class="btn btn-primary">Send Reset Link</button>
+        <button type="button" class="btn-link" onclick="showLogin()">Back to Login</button>
+      </form>
+    </div>
+
+    <!-- 2FA Login View -->
+    <div id="two-factor-view" class="hidden">
+      <h1>Two-Factor Authentication</h1>
+      <p class="subtitle">Enter the code from your authenticator app</p>
+      
+      <div id="two-factor-message"></div>
+      
+      <form id="two-factor-form">
+        <div class="form-group">
+          <label for="two-factor-code">Authentication Code</label>
+          <input type="text" id="two-factor-code" pattern="[0-9]*" inputmode="numeric" autocomplete="one-time-code" required placeholder="000000" style="text-align: center; letter-spacing: 5px; font-size: 1.2em;">
+        </div>
+        
+        <button type="submit" class="btn btn-primary">Verify</button>
+        <button type="button" class="btn-link" onclick="showLogin()">Back to Login</button>
+      </form>
+    </div>
+    
+    <!-- Register Form -->
+    <div id="register-view" class="hidden">
+      <h1>Create Account</h1>
+      <p class="subtitle">Get started with secure banking with IAY Financial LLC</p>
+      
+      <div id="register-message"></div>
+      
+      <form id="register-form">
+        <div class="form-group">
+          <label for="register-firstname">First Name</label>
+          <input type="text" id="register-firstname" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="register-lastname">Last Name</label>
+          <input type="text" id="register-lastname" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="register-email">Email</label>
+          <input type="email" id="register-email" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="register-password">Password (min 8 characters)</label>
+          <input type="password" id="register-password" minlength="8" required>
+        </div>
+        
+        <button type="submit" class="btn btn-primary">Create Account</button>
+        <button type="button" class="btn-link" onclick="showLogin()">Already have an account? Login</button>
+      </form>
+    </div>
+    
+    <!-- Dashboard (after login) -->
+    <div id="dashboard-view" class="hidden">
+      <h1>IAY Financial LLC</h1>
+      <h1>Bank Connections</h1>
+      <p class="subtitle">Connect and manage your accounts</p>
+      
+      <div class="user-info">
+        <p><strong>Email:</strong> <span id="user-email"></span></p>
+        <p><strong>Name:</strong> <span id="user-name"></span></p>
+        <button class="logout-btn" onclick="window.location.href='account.html'" style="margin-left: 10px; background: #6c757d;">Account Settings</button>
+        <button class="logout-btn" onclick="window.location.href='transactions.html'" style="margin-left: 10px; background: #28a745;">View Transactions</button>
+        <button class="logout-btn" onclick="window.location.href='investments.html'" style="margin-left: 10px; background: #17a2b8;">View Investments</button>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+      </div>
+      
+      <div id="approval-message" style="display:none; color:#e74c3c; margin:15px 0; padding:15px; background:#fdf2f2; border-radius:4px;">
+        ⚠️ Your account is not currently subscribed. Please subscribe under account settings to enable bank connections.
+      </div>
+
+      <div id="dashboard-deletion-banner"></div>
+      
+      <div id="dashboard-message"></div>
+      
+      <div id="webhook-alerts-container" style="margin: 15px 0;"></div>
+
+      <div id="token-summary" style="display: flex; gap: 12px; margin: 12px 0 20px; align-items: center;">
+        <div style="flex: 0 1 auto; background: #f7faff; border: 1px solid #dbe7ff; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; min-width: 180px;">
+          <span style="color: #526491; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Transaction Tokens</span>
+          <span id="token-tx-count" style="font-weight: 700; color: #274690; font-size: 16px; margin-left: 8px;">–</span>
+        </div>
+        <div style="flex: 0 1 auto; background: #f7faff; border: 1px solid #dbe7ff; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; min-width: 180px;">
+          <span style="color: #526491; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Investment Tokens</span>
+          <span id="token-inv-count" style="font-weight: 700; color: #274690; font-size: 16px; margin-left: 8px;">–</span>
+        </div>
+      </div>
+
+      <div class="current-connections" id="current-connections">
+        <h2 style="margin-bottom: 4px;">Your Connected Banks</h2>
+        <div id="connections-list">Loading connected banks...</div>
+      </div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button id="link-button" class="btn btn-primary">Connect New Bank using <span style="color: #4caf50; font-weight: 600;">Transaction Token</span></button>
+        <button id="link-investment-button" class="btn btn-primary">Connect New Bank using <span style="color: #20c9e0; font-weight: 600;">Investment Token</span></button>
+      </div>
+      <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
+        <strong>Note:</strong> Choose your initial connection type. After connecting, you can enable additional features (transactions for depository accounts or holdings for investments) from their respective views.
+      </p>
+    </div>
+  </div>
+
+  <div id="turnstile-container" class="turnstile-container" aria-hidden="true"></div>
+
+  <footer class="site-footer">
+    <nav>
+      <a href="contact.html">Contact Us</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="terms.html">Terms of Service</a>
+      <a href="about.html">About Us</a>
+      <a href="products.html">Products</a>
+      <a href="premium.html">Premium</a>
+    </nav>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.4.2/zxcvbn.js"></script>
+  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+  <script src="config.js"></script>
+  <script src="index.js"></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=turnstileReady" async defer></script>
+</body>
+</html>

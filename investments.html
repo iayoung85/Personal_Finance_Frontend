@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Investment Holdings Viewer - IAY Financial</title>
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+  <link rel="icon" type="image/png" href="IAY favicon.png">
+  <link rel="stylesheet" href="transactions.css">
+  <link rel="stylesheet" href="investments.css">
+</head>
+<body>
+  <div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <a href="index.html" class="back-link">← Back to Dashboard</a>
+      <a href="transactions.html" class="back-link" style="color: #28a745;">View Transactions →</a>
+    </div>
+    
+    <h1>Investment Holdings Viewer</h1>
+    
+    <!-- Configuration Panel -->
+    <div class="config-panel">
+      <div class="config-header" onclick="toggleConfig()">
+        <span>Configuration & Status</span>
+        <span id="toggle-icon">▲</span>
+      </div>
+      <div class="config-content open" id="config-content">
+        
+        <!-- Investment Account Selection -->
+        <div class="config-section">
+          <div style="display: flex; justify-content: flex-start; align-items: center; margin-bottom: 10px; gap: 8px; flex-wrap: wrap;">
+            <h3 style="margin: 0;">Select Investment Accounts</h3>
+            <button onclick="selectAllAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Select All</button>
+            <button onclick="deselectAllAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Deselect All</button>
+          </div>
+          <p style="margin: 0 0 10px 0; font-size: 14px; color: #666;">Only investment accounts are shown. Activate investments for a bank to include its accounts.</p>
+          <div id="account-selector"></div>
+        </div>
+        
+      </div>
+    </div>
+    
+    <!-- Action Bar (above table) -->
+    <div class="action-bar">
+      <button onclick="syncAllHoldings()">Sync All Holdings</button>
+      
+      <!-- Export Buttons -->
+      <div id="export-buttons" class="export-buttons">
+        <button onclick="exportJSON()" class="secondary">Export JSON</button>
+        <button onclick="copyCSV()" class="secondary">Copy CSV</button>
+        <button onclick="downloadCSV()" class="secondary">Download CSV</button>
+      </div>
+      <div id="status-message"></div>
+    </div>
+    
+    <!-- Holdings Table -->
+    <div id="table-container">
+      <div class="empty-state">
+        Loading investment holdings...
+      </div>
+    </div>
+    
+  </div>
+
+  <footer class="site-footer">
+    <nav>
+      <a href="contact.html">Contact Us</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="terms.html">Terms of Service</a>
+      <a href="about.html">About Us</a>
+      <a href="products.html">Products</a>
+      <a href="premium.html">Premium</a>
+    </nav>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+  <script src="config.js"></script>
+  <script src="investments.js"></script>
+</body>
+</html>
