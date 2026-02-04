@@ -667,15 +667,11 @@ function renderTransactionTable() {
   html += '<th>Bank/Account</th>';
   html += '<th>Description</th>';
   html += '<th>Amount</th>';
-  html += '<th>Manual Categorize</th>';
+  html += '<th>Category (Primary)</th>';
+  html += '<th>Category (Detailed)</th>';
   
   // Add optional headers
   if (optionalFields.includes('merchant_name')) html += '<th>Merchant</th>';
-   if (optionalFields.includes('category')) {
-     html += '<th>Category (Primary)</th>';
-     html += '<th>Category (Detailed)</th>';
-     html += '<th>Confidence</th>';
-   }
   if (optionalFields.includes('payment_channel')) html += '<th>Channel</th>';
   if (optionalFields.includes('pending')) html += '<th>Pending</th>';
   if (optionalFields.includes('check_number')) html += '<th>Check #</th>';
@@ -707,40 +703,58 @@ function renderTransactionTable() {
     html += `<td>${txn.name || ''}</td>`;
     html += `<td>${amount}</td>`;
 
+    // Category Primary and Detailed columns (always visible)
     const txnId = txn.transaction_id || txn.plaid_transaction_id || '';
-    const currentCategory = txn.user_category || (txn.personal_finance_category && txn.personal_finance_category.detailed) || 'Uncategorized';
-    const categoryOptions = buildCategoryOptions(currentCategory);
-    const manualCell = txnId ? `
-      <div class="manual-category-cell">
-        <select class="manual-category-select table-inline-select" data-txn-id="${txnId}" data-account-id="${txn.plaid_account_id || ''}">
-          ${categoryOptions}
+    const accountId = txn.plaid_account_id || '';
+    
+    // Parse current user_category to get primary and detailed
+    let currentParsed = { primary: '', detailed: '' };
+    if (txn.user_category) {
+      currentParsed = parseCategoryString(txn.user_category);
+    } else if (txn.personal_finance_category) {
+      // Fallback to Plaid's personal_finance_category if no user_category
+      const pfc = txn.personal_finance_category;
+      const displayNames = getCategoryDisplayNames(pfc);
+      currentParsed = {
+        primary: displayNames.primary,
+        detailed: displayNames.trimmed
+      };
+    }
+
+    // Build dropdown options for primary categories
+    const primaryOptions = buildPrimaryDropdownOptions(currentParsed.primary);
+    
+    // Build dropdown options for detailed categories (filtered by current primary)
+    const detailedOptions = buildDetailedDropdownOptions(currentParsed.primary, currentParsed.detailed);
+
+    // Create Primary category cell with dropdown and buttons
+    const primaryCell = txnId ? `
+      <div class="category-cell">
+        <div class="category-display">${escapeHtml(currentParsed.primary || 'Uncategorized')}</div>
+        <select class="category-dropdown category-primary" data-txn-id="${txnId}" data-account-id="${accountId}" data-type="primary">
+          ${primaryOptions}
         </select>
-        <button class="secondary manual-category-save" data-txn-id="${txnId}">Save</button>
+        <div class="category-buttons">
+          <button class="secondary category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
+          <button class="secondary category-rule" data-txn-id="${txnId}" data-account-id="${accountId}">Rule</button>
+        </div>
       </div>
     ` : '<span class="pill">N/A</span>';
-    html += `<td>${manualCell}</td>`;
+    html += `<td>${primaryCell}</td>`;
+
+    // Create Detailed category cell with dropdown
+    const detailedCell = txnId ? `
+      <div class="category-cell">
+        <div class="category-display">${escapeHtml(currentParsed.detailed || '—')}</div>
+        <select class="category-dropdown category-detailed" data-txn-id="${txnId}" data-account-id="${accountId}" data-primary="${escapeHtml(currentParsed.primary)}" data-type="detailed">
+          ${detailedOptions}
+        </select>
+      </div>
+    ` : '<span class="pill">N/A</span>';
+    html += `<td>${detailedCell}</td>`;
 
     // Add optional cells
     if (optionalFields.includes('merchant_name')) html += `<td>${txn.merchant_name || ''}</td>`;
-    if (optionalFields.includes('category')) {
-         // Use new personal_finance_category if available, otherwise fallback to legacy category
-        const pfc = txn.personal_finance_category;
-        if (pfc) {
-          const displayNames = getCategoryDisplayNames(pfc);
-           html += `<td>${displayNames.primary}</td>`;
-           html += `<td>${displayNames.trimmed}</td>`;
-           html += `<td>${displayNames.confidence}</td>`;
-         } else {
-           // Fallback to legacy category format
-           let cat = txn.category;
-           if (typeof cat === 'string' && cat.startsWith('{')) {
-             cat = cat.replace(/^{|}$/g, '').replace(/,/g, ', ');
-           } else if (Array.isArray(cat)) {
-             cat = cat.join(', ');
-           }
-           html += `<td colspan="3">${cat || ''}</td>`;
-         }
-    }
     if (optionalFields.includes('payment_channel')) html += `<td>${txn.payment_channel || ''}</td>`;
     if (optionalFields.includes('pending')) html += `<td>${txn.pending ? 'Yes' : 'No'}</td>`;
     if (optionalFields.includes('check_number')) html += `<td>${txn.check_number || ''}</td>`;
@@ -770,12 +784,146 @@ function renderTransactionTable() {
   container.innerHTML = html;
   document.getElementById('export-buttons').classList.remove('hidden');
   
+  // Attach event listeners for category dropdowns
+  attachCategoryDropdownListeners();
+  
   // Update chart visualization
   renderCategoryChart();
   
   // Update insights panel
   renderInsightsPanel();
 }
+
+/**
+ * Build primary category dropdown options from available categories.
+ */
+function buildPrimaryDropdownOptions(selected = '') {
+  const primaries = extractPrimaryCategories(availableCategories);
+  
+  // Always include "Uncategorized" as an option
+  const options = ['Uncategorized', ...primaries];
+  
+  return options
+    .map(cat => `<option value="${escapeHtml(cat)}" ${cat === selected ? 'selected' : ''}>${escapeHtml(cat)}</option>`)
+    .join('');
+}
+
+/**
+ * Build detailed category dropdown options based on selected primary.
+ */
+function buildDetailedDropdownOptions(selectedPrimary = '', selected = '') {
+  if (!selectedPrimary || selectedPrimary === 'Uncategorized') {
+    return '<option value="">— No detailed categories —</option>';
+  }
+  
+  const detailed = extractDetailedCategories(availableCategories, selectedPrimary);
+  
+  if (detailed.length === 0) {
+    return '<option value="">— No detailed categories —</option>';
+  }
+  
+  const options = ['', ...detailed]; // Include empty option
+  
+  return options
+    .map(cat => {
+      if (!cat) {
+        return `<option value="">—</option>`;
+      }
+      return `<option value="${escapeHtml(cat)}" ${cat === selected ? 'selected' : ''}>${escapeHtml(cat)}</option>`;
+    })
+    .join('');
+}
+
+/**
+ * Attach event listeners for category dropdown changes.
+ */
+function attachCategoryDropdownListeners() {
+  // When primary category changes, update detailed dropdown options
+  $(document).on('change', '.category-primary', function() {
+    const selectedPrimary = $(this).val();
+    const txnId = $(this).data('txn-id');
+    const detailedSelect = $(`.category-detailed[data-txn-id="${txnId}"]`);
+    
+    // Update data attribute
+    detailedSelect.data('primary', selectedPrimary);
+    
+    // Update detailed dropdown options
+    const detailedOptions = buildDetailedDropdownOptions(selectedPrimary, '');
+    detailedSelect.html(detailedOptions);
+  });
+
+  // Override button click handler
+  $(document).on('click', '.category-override', function() {
+    const txnId = $(this).data('txn-id');
+    const accountId = $(this).data('account-id');
+    const primarySelect = $(`.category-primary[data-txn-id="${txnId}"]`);
+    const detailedSelect = $(`.category-detailed[data-txn-id="${txnId}"]`);
+    
+    const selectedPrimary = primarySelect.val();
+    const selectedDetailed = detailedSelect.val();
+    
+    applyOverride(txnId, accountId, selectedPrimary, selectedDetailed);
+  });
+
+  // Rule button click handler
+  $(document).on('click', '.category-rule', function() {
+    const txnId = $(this).data('txn-id');
+    const accountId = $(this).data('account-id');
+    const primarySelect = $(`.category-primary[data-txn-id="${txnId}"]`);
+    const detailedSelect = $(`.category-detailed[data-txn-id="${txnId}"]`);
+    
+    const selectedPrimary = primarySelect.val();
+    const selectedDetailed = detailedSelect.val();
+    const txn = transactions.find(t => (t.transaction_id || t.plaid_transaction_id) === txnId);
+    
+    openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, accountId);
+  });
+}
+
+/**
+ * Apply an override to a single transaction.
+ * Combines primary and detailed into "Primary: Detailed" format.
+ * Phase 4 implementation.
+ */
+function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed) {
+  if (!selectedPrimary) {
+    showStatus('Please select a primary category', 'warning');
+    return;
+  }
+
+  const categoryString = buildCategoryString(selectedPrimary, selectedDetailed);
+  
+  console.log(`Applying override - TxnID: ${txnId}, AccountID: ${accountId}, Category: ${categoryString}`);
+  showStatus('Phase 4: Override implementation needed', 'info');
+  
+  // TODO: Phase 4 implementation
+  // - Call POST /api/categorization/transactions/{txnId}/categorize
+  // - Pass user_category as combined string
+  // - Refresh transaction table on success
+}
+
+/**
+ * Open modal to create a rule from transaction categorization.
+ * Phase 5 implementation.
+ */
+function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, accountId) {
+  if (!selectedPrimary) {
+    showStatus('Please select a primary category', 'warning');
+    return;
+  }
+
+  const categoryString = buildCategoryString(selectedPrimary, selectedDetailed);
+  
+  console.log(`Opening rule modal - TxnID: ${txnId}, Category: ${categoryString}`);
+  showStatus('Phase 5: Rule creation modal needed', 'info');
+  
+  // TODO: Phase 5 implementation
+  // - Show modal with rule configuration
+  // - Pre-populate merchant/name as match value
+  // - Allow user to configure match type, priority, etc.
+  // - Call POST /api/categorization/rules on save
+}
+
 
 function getSelectedAccounts() {
   const selected = [];

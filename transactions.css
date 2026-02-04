@@ -754,3 +754,62 @@ tr:hover {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   }
 }
+/* ============= CATEGORY CELL STYLES (Phase 2-3) ============= */
+
+.category-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.category-display {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  padding: 4px 0;
+  min-height: 18px;
+}
+
+.category-dropdown {
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  background: white;
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.category-dropdown:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+.category-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.category-override,
+.category-rule {
+  font-size: 11px;
+  padding: 3px 6px;
+  border: 1px solid #ddd;
+  background: white;
+  cursor: pointer;
+  border-radius: 3px;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.category-override:hover,
+.category-rule:hover {
+  background: #f0f0f0;
+  border-color: #999;
+}
+
+.category-override:active,
+.category-rule:active {
+  background: #e8e8e8;
+}
