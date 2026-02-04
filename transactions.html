@@ -16,7 +16,10 @@
   <div class="container">
     <div style="display: flex; justify-content: space-between; align-items: center;">
       <a href="index.html" class="back-link">← Back to Dashboard</a>
-      <a href="investments.html" class="back-link" style="color: #28a745;">View Investments →</a>
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <a href="categories.html" class="back-link" style="color: #6366f1;">Manage Categories →</a>
+        <a href="investments.html" class="back-link" style="color: #28a745;">View Investments →</a>
+      </div>
     </div>
     
     <h1>Transaction Viewer</h1>
@@ -140,127 +143,7 @@
         Configure your settings above and click "Sync Transactions" to get started.
       </div>
     </div>
-
-    <!-- Category Management -->
-    <div id="categorization-panel" class="categorization-panel">
-      <div class="panel-header">
-        <h2>Category Management</h2>
-        <span class="panel-note">Mappings → Rules → Overrides</span>
-      </div>
-
-      <div class="categorization-grid">
-        <div class="card" id="mapping-card">
-          <div class="card-header">
-            <h3>Category Mappings</h3>
-            <div class="card-actions">
-              <input id="mapping-filter" type="text" placeholder="Filter mappings...">
-              <button class="secondary" onclick="refreshCategorizationData()">Refresh</button>
-              <button onclick="saveCategoryMappings()">Save Mappings</button>
-            </div>
-          </div>
-          <div id="mappings-list" class="mapping-list"></div>
-          <div class="mapping-add">
-            <select id="mapping-plaid-select"></select>
-            <input id="mapping-user-label" type="text" placeholder="User category label">
-            <button class="secondary" onclick="addMappingRow()">Add Mapping</button>
-          </div>
-
-          <div class="taxonomy-panel">
-            <div class="taxonomy-header" onclick="toggleTaxonomy()">
-              <span>Plaid Taxonomy (seeded list)</span>
-              <span id="taxonomy-toggle">▲</span>
-            </div>
-            <div id="taxonomy-content" class="taxonomy-content open">
-              <input id="taxonomy-filter" type="text" placeholder="Search taxonomy...">
-              <div id="taxonomy-list" class="taxonomy-list"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card" id="custom-categories-card">
-          <div class="card-header">
-            <h3>Custom Categories</h3>
-          </div>
-          <div class="custom-add">
-            <input id="custom-category-input" type="text" placeholder="New custom category">
-            <button onclick="addCustomCategory()">Add</button>
-          </div>
-          <div id="custom-category-list" class="tag-list"></div>
-        </div>
-      </div>
-
-      <div class="card" id="rules-card">
-        <div class="card-header">
-          <h3>Rules</h3>
-        </div>
-        <div class="rule-form">
-          <input id="rule-name" type="text" placeholder="Rule name">
-          <select id="rule-match-type">
-            <option value="merchant_contains">Merchant contains</option>
-            <option value="name_contains">Name contains</option>
-            <option value="description_contains">Description contains</option>
-            <option value="category_equals">Category equals</option>
-          </select>
-          <input id="rule-match-value" type="text" placeholder="Match value">
-          <select id="rule-target-category"></select>
-          <input id="rule-priority" type="number" placeholder="Priority" value="0">
-          <label class="inline-checkbox"><input id="rule-case-sensitive" type="checkbox"> Case sensitive</label>
-          <label class="inline-checkbox"><input id="rule-active" type="checkbox" checked> Active</label>
-          <button id="rule-save-btn" onclick="saveRule()">Create Rule</button>
-          <button id="rule-cancel-btn" class="secondary hidden" onclick="cancelRuleEdit()">Cancel</button>
-        </div>
-        <div id="rules-table" class="rules-table"></div>
-      </div>
-
-      <div class="card" id="migrations-card">
-        <div class="card-header">
-          <h3>Category Migrations</h3>
-        </div>
-        <div class="migration-grid">
-          <div class="migration-box">
-            <h4>Rename</h4>
-            <input id="rename-old" type="text" placeholder="Old category">
-            <input id="rename-new" type="text" placeholder="New category">
-            <button class="secondary" onclick="confirmRename()">Rename</button>
-          </div>
-          <div class="migration-box">
-            <h4>Merge</h4>
-            <div id="merge-source-list" class="merge-list"></div>
-            <select id="merge-target"></select>
-            <button class="secondary" onclick="confirmMerge()">Merge</button>
-          </div>
-          <div class="migration-box">
-            <h4>Split</h4>
-            <select id="split-old"></select>
-            <div id="split-rows" class="split-rows"></div>
-            <button class="secondary" onclick="addSplitRow()">Add Split</button>
-            <button class="secondary" onclick="confirmSplit()">Split</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="card" id="audit-card">
-        <div class="card-header">
-          <h3>Audit Log</h3>
-          <button class="secondary" onclick="refreshMigrationLog()">Refresh</button>
-        </div>
-        <div id="audit-log" class="audit-log"></div>
-      </div>
-    </div>
-    
   </div>
-
-  <div id="modal-overlay" class="modal-overlay hidden">
-    <div class="modal">
-      <div class="modal-header">
-        <h3 id="modal-title"></h3>
-        <button class="modal-close" onclick="closeModal()">×</button>
-      </div>
-      <div id="modal-body" class="modal-body"></div>
-      <div id="modal-actions" class="modal-actions"></div>
-    </div>
-  </div>
-
 
   <script src="config.js"></script>
   <script src="transactions.js"></script>

@@ -3,13 +3,8 @@
 let accounts = [];
 let transactions = [];
 let synced = false;
-let categoryMappings = {};
-let customCategories = [];
 let availableCategories = [];
-let rules = [];
-let plaidTaxonomy = [];
-let migrationLog = [];
-let currentRuleEditId = null;
+let syncing = false;
 
 // Check authentication
 let token = localStorage.getItem('authToken');
@@ -129,8 +124,8 @@ $(document).ready(async function() {
   // Render dynamic period buttons after transactions are loaded
   renderDynamicPeriodButtons();
 
-  // Load categorization UI data
-  await loadCategorizationData();
+  // Load available categories for manual categorization dropdown
+  loadAvailableCategories();
 
   // Add event listener for optional fields
   $(document).on('change', '.field-checkbox', function() {
@@ -150,16 +145,6 @@ $(document).ready(async function() {
   // Add event listener for hiding transfers
   $(document).on('change', '#hide-transfers', function() {
     renderTransactionTable();
-  });
-
-  // Filter mappings
-  $(document).on('input', '#mapping-filter', function() {
-    renderMappingsList(this.value);
-  });
-
-  // Filter taxonomy list
-  $(document).on('input', '#taxonomy-filter', function() {
-    renderTaxonomyList(this.value);
   });
 
   // Manual categorize handler
@@ -740,19 +725,10 @@ function renderTransactionTable() {
          // Use new personal_finance_category if available, otherwise fallback to legacy category
         const pfc = txn.personal_finance_category;
         if (pfc) {
-          const primary = (pfc.primary || '').replace(/_/g, ' ').trim();
-          const detailedRaw = (pfc.detailed || '').replace(/_/g, ' ').trim();
-          // Remove the primary phrase if it prefixes detailed; otherwise drop first token
-          let detailed = detailedRaw;
-          if (primary && detailedRaw.toLowerCase().startsWith(primary.toLowerCase() + ' ')) {
-            detailed = detailedRaw.slice(primary.length).trim();
-          } else {
-            detailed = detailedRaw.replace(/^\S+\s*/, '').trim();
-          }
-          const confidence = (pfc.confidence_level || '').replace(/_/g, ' ');
-           html += `<td>${primary}</td>`;
-           html += `<td>${detailed}</td>`;
-           html += `<td>${confidence}</td>`;
+          const displayNames = getCategoryDisplayNames(pfc);
+           html += `<td>${displayNames.primary}</td>`;
+           html += `<td>${displayNames.trimmed}</td>`;
+           html += `<td>${displayNames.confidence}</td>`;
          } else {
            // Fallback to legacy category format
            let cat = txn.category;
@@ -849,7 +825,8 @@ function generateCSV() {
   
   // Add optional headers
   if (optionalFields.includes('merchant_name')) csv += ',Merchant';
-   if (optionalFields.includes('category')) csv += ',Category (Primary),Category (Detailed),Confidence';
+  if (optionalFields.includes('category')) csv += ',Category (Primary),Category (Detailed),Confidence';
+  if (optionalFields.includes('user_category')) csv += ',User Category';
   if (optionalFields.includes('payment_channel')) csv += ',Channel';
   if (optionalFields.includes('pending')) csv += ',Pending';
   if (optionalFields.includes('check_number')) csv += ',Check #';
@@ -901,6 +878,7 @@ function generateCSV() {
            csv += `,"${(cat || '').replace(/"/g, '""')}","",""`;
          }
     }
+    if (optionalFields.includes('user_category')) csv += `,"${(txn.user_category || 'Uncategorized').replace(/"/g, '""')}"`;
     if (optionalFields.includes('payment_channel')) csv += `,"${(txn.payment_channel || '').replace(/"/g, '""')}"`;
     if (optionalFields.includes('pending')) csv += `,${txn.pending ? 'Yes' : 'No'}`;
     if (optionalFields.includes('check_number')) csv += `,"${(txn.check_number || '').replace(/"/g, '""')}"`;
@@ -1412,21 +1390,9 @@ function aggregateCategoriesFromFilteredTransactions() {
         const primaryRaw = (pfc.primary || '').replace(/_/g, ' ').trim();
         const detailedRaw = (pfc.detailed || '').replace(/_/g, ' ').trim();
         
-        if (detailedRaw) {
-          // Remove primary prefix from detailed
-          if (primaryRaw && detailedRaw.toLowerCase().startsWith(primaryRaw.toLowerCase() + ' ')) {
-            // categoryKey = detailedRaw.slice(primaryRaw.length).trim();
-            categoryKey = detailedRaw
-          } else {
-            categoryKey = detailedRaw.replace(/^\S+\s*/, '').trim();
-          }
-          
-          if (!categoryKey) {
-            categoryKey = detailedRaw;
-          }
-        } else if (primaryRaw) {
-          categoryKey = primaryRaw;
-        }
+        // Use the helper function for consistent trimming
+        const displayNames = getCategoryDisplayNames(pfc);
+        categoryKey = displayNames.trimmed || displayNames.primary || 'Uncategorized';
       }
     } else if (txn.category) {
       // Fallback to legacy category
@@ -1554,659 +1520,144 @@ function renderCategoryChart() {
   });
 }
 
-// ============= CATEGORIZATION MANAGEMENT =============
+// ============= CATEGORIZATION (MANUAL ONLY) =============
 
-async function loadCategorizationData() {
+async function loadAvailableCategories() {
   try {
-    await window.BACKEND_URL_PROMISE;
-    const [categoriesRes, availableRes, rulesRes, logRes, taxonomyRes] = await Promise.all([
-      authenticatedFetch(`${BACKEND_URL}/api/categorization/categories`),
-      authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/available`),
-      authenticatedFetch(`${BACKEND_URL}/api/categorization/rules`),
-      authenticatedFetch(`${BACKEND_URL}/api/categorization/migration-log`),
-      authenticatedFetch(`${BACKEND_URL}/api/categorization/plaid-taxonomy`)
-    ]);
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/available`);
+    const data = await response.json();
+    if (response.ok) {
+      availableCategories = data.available_categories || [];
+    }
+  } catch (error) {
+    console.error('Failed to load available categories:', error);
+  }
+}
 
-    const categoriesData = await categoriesRes.json();
-    const availableData = await availableRes.json();
-    const rulesData = await rulesRes.json();
-    const logData = await logRes.json();
-    const taxonomyData = await taxonomyRes.json();
+async function applyManualCategory(txnId, accountId) {
+  const selectedCategory = document.getElementById('modal-category-select').value;
+  const saveRule = document.getElementById('modal-save-rule').checked;
 
-    categoryMappings = categoriesRes.ok ? (categoriesData.category_mappings || {}) : {};
-    customCategories = categoriesRes.ok ? (categoriesData.custom_categories || []) : [];
-    availableCategories = availableRes.ok ? (availableData.available_categories || []) : [];
-    rules = rulesRes.ok ? (rulesData.rules || []) : [];
-    migrationLog = logRes.ok ? (logData.migrations || []) : [];
-    plaidTaxonomy = taxonomyRes.ok ? (taxonomyData.categories || []) : [];
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/transactions/${encodeURIComponent(txnId)}/categorize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_category: selectedCategory, plaid_account_id: accountId })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      showStatus(data.error || 'Failed to categorize transaction', 'error');
+      return;
+    }
 
-    renderMappingsList();
-    renderCustomCategories();
-    renderTaxonomyList();
-    renderRulesTable();
-    renderRuleFormOptions();
-    renderMigrationSelectors();
-    renderMigrationLog();
-    renderMappingSelectOptions();
+    if (saveRule) {
+      await createRuleFromModal(selectedCategory);
+    }
 
-    // Refresh table to include latest categories
+    closeModal();
+    showStatus('Transaction categorized', 'success');
+    await loadAvailableCategories();
     renderTransactionTable();
-  } catch (error) {
-    console.error('loadCategorizationData error:', error);
-    showStatus(`Failed to load categorization data: ${error.message}`, 'error');
-  }
-}
-
-function refreshCategorizationData() {
-  return loadCategorizationData();
-}
-
-function renderMappingsList(filterText = '') {
-  const container = document.getElementById('mappings-list');
-  const filter = (filterText || '').toLowerCase().trim();
-  const entries = Object.entries(categoryMappings || {}).sort((a, b) => a[0].localeCompare(b[0]));
-
-  if (entries.length === 0) {
-    container.innerHTML = '<div class="empty-state">No mappings yet.</div>';
-    return;
-  }
-
-  const rows = entries
-    .filter(([plaidCat, userLabel]) => {
-      if (!filter) return true;
-      return plaidCat.toLowerCase().includes(filter) || (userLabel || '').toLowerCase().includes(filter);
-    })
-    .map(([plaidCat, userLabel]) => {
-      const displayKey = formatPlaidCategory(plaidCat);
-      return `
-        <div class="mapping-row" data-plaid-category="${escapeHtml(plaidCat)}">
-          <div class="mapping-key">${escapeHtml(displayKey)}</div>
-          <input class="mapping-value" type="text" value="${escapeHtml(userLabel || '')}" placeholder="User label">
-          <button class="secondary mapping-clear" onclick="clearMapping('${escapeHtml(plaidCat)}')">Clear</button>
-        </div>
-      `;
-    })
-    .join('');
-
-  container.innerHTML = rows || '<div class="empty-state">No mappings match your filter.</div>';
-}
-
-function renderMappingSelectOptions() {
-  const select = document.getElementById('mapping-plaid-select');
-  if (!select) return;
-  const options = plaidTaxonomy
-    .slice()
-    .sort((a, b) => a.detailed.localeCompare(b.detailed))
-    .map(cat => {
-      const label = `${formatPlaidCategory(cat.primary)} / ${formatPlaidCategory(cat.detailed)}`;
-      return `<option value="${escapeHtml(cat.detailed)}">${escapeHtml(label)}</option>`;
-    })
-    .join('');
-  select.innerHTML = options;
-}
-
-function renderTaxonomyList(filterText = '') {
-  const container = document.getElementById('taxonomy-list');
-  if (!container) return;
-  const filter = (filterText || '').toLowerCase().trim();
-  const rows = (plaidTaxonomy || [])
-    .filter(cat => {
-      if (!filter) return true;
-      return cat.primary.toLowerCase().includes(filter) || cat.detailed.toLowerCase().includes(filter);
-    })
-    .map(cat => {
-      const label = `${formatPlaidCategory(cat.primary)} / ${formatPlaidCategory(cat.detailed)}`;
-      return `<div class="taxonomy-row">${escapeHtml(label)}</div>`;
-    })
-    .join('');
-
-  container.innerHTML = rows || '<div class="empty-state">No taxonomy items found.</div>';
-}
-
-function toggleTaxonomy() {
-  const content = document.getElementById('taxonomy-content');
-  const toggle = document.getElementById('taxonomy-toggle');
-  content.classList.toggle('open');
-  toggle.textContent = content.classList.contains('open') ? '▲' : '▼';
-}
-
-function clearMapping(plaidCategory) {
-  const row = document.querySelector(`.mapping-row[data-plaid-category="${plaidCategory}"]`);
-  if (row) {
-    const input = row.querySelector('.mapping-value');
-    if (input) input.value = '';
-  }
-}
-
-async function saveCategoryMappings() {
-  try {
-    const mappingRows = document.querySelectorAll('.mapping-row');
-    const newMappings = {};
-    mappingRows.forEach(row => {
-      const key = row.getAttribute('data-plaid-category');
-      const value = row.querySelector('.mapping-value').value.trim();
-      if (key && value) {
-        newMappings[key] = value;
-      }
-    });
-
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/mappings`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category_mappings: newMappings })
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      showStatus(data.error || 'Failed to save mappings', 'error');
-      return;
-    }
-
-    showStatus('Mappings saved', 'success');
-    await loadCategorizationData();
     setTimeout(() => clearStatus(), 2000);
   } catch (error) {
-    showStatus(`Failed to save mappings: ${error.message}`, 'error');
+    showStatus(`Failed to categorize transaction: ${error.message}`, 'error');
   }
 }
 
-function addMappingRow() {
-  const plaidSelect = document.getElementById('mapping-plaid-select');
-  const userLabelInput = document.getElementById('mapping-user-label');
-  const plaidCat = (plaidSelect && plaidSelect.value) || '';
-  const userLabel = (userLabelInput && userLabelInput.value || '').trim();
+async function createRuleFromModal(targetCategory) {
+  const ruleName = document.getElementById('modal-rule-name').value.trim();
+  const matchType = document.getElementById('modal-rule-match-type').value;
+  const matchValue = document.getElementById('modal-rule-match-value').value.trim();
+  const caseSensitive = document.getElementById('modal-rule-case').checked;
+  const priority = parseInt(document.getElementById('modal-rule-priority').value || '0', 10);
 
-  if (!plaidCat || !userLabel) {
-    showStatus('Select a Plaid category and enter a user label', 'warning');
+  if (!ruleName || !matchValue) {
+    showStatus('Rule name and match value are required', 'warning');
     return;
   }
 
-  categoryMappings[plaidCat] = userLabel;
-  if (userLabelInput) userLabelInput.value = '';
-  renderMappingsList(document.getElementById('mapping-filter').value);
-}
-
-async function addCustomCategory() {
-  const input = document.getElementById('custom-category-input');
-  const categoryName = (input.value || '').trim();
-  if (!categoryName) {
-    showStatus('Enter a category name', 'warning');
-    return;
-  }
-
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/custom`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category_name: categoryName })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      showStatus(data.error || 'Failed to add category', 'error');
-      return;
-    }
-    input.value = '';
-    showStatus('Custom category added', 'success');
-    await loadCategorizationData();
-    setTimeout(() => clearStatus(), 2000);
-  } catch (error) {
-    showStatus(`Failed to add category: ${error.message}`, 'error');
-  }
-}
-
-function renderCustomCategories() {
-  const container = document.getElementById('custom-category-list');
-  if (!customCategories.length) {
-    container.innerHTML = '<div class="empty-state">No custom categories yet.</div>';
-    return;
-  }
-
-  container.innerHTML = customCategories
-    .map(cat => `
-      <div class="tag-item">
-        <span>${escapeHtml(cat)}</span>
-        <button class="secondary" onclick="confirmDeleteCategory('${escapeHtml(cat)}')">Delete</button>
-      </div>
-    `)
-    .join('');
-}
-
-function renderRuleFormOptions() {
-  const targetSelect = document.getElementById('rule-target-category');
-  if (!targetSelect) return;
-  const options = buildCategoryOptions();
-  targetSelect.innerHTML = options;
-
-  const mergeTarget = document.getElementById('merge-target');
-  if (mergeTarget) mergeTarget.innerHTML = options;
-  const splitOld = document.getElementById('split-old');
-  if (splitOld) splitOld.innerHTML = options;
-}
-
-function renderRulesTable() {
-  const container = document.getElementById('rules-table');
-  if (!rules.length) {
-    container.innerHTML = '<div class="empty-state">No rules created yet.</div>';
-    return;
-  }
-
-  const rows = rules
-    .slice()
-    .sort((a, b) => (b.priority || 0) - (a.priority || 0))
-    .map(rule => {
-      const match = rule.match_criteria || {};
-      const matchLabel = `${match.match_type || 'unknown'}: ${match.match_value || ''}`;
-      return `
-        <tr>
-          <td>${rule.priority || 0}</td>
-          <td>${escapeHtml(rule.rule_name || '')}</td>
-          <td>${escapeHtml(matchLabel)}</td>
-          <td>${escapeHtml(rule.target_category || '')}</td>
-          <td>${rule.is_active ? 'Yes' : 'No'}</td>
-          <td>
-            <div class="rules-actions">
-              <button class="secondary" onclick="editRule(${rule.id})">Edit</button>
-              <button class="secondary" onclick="adjustRulePriority(${rule.id}, 'up')">↑</button>
-              <button class="secondary" onclick="adjustRulePriority(${rule.id}, 'down')">↓</button>
-              <button class="secondary" onclick="confirmDeleteRule(${rule.id})">Delete</button>
-            </div>
-          </td>
-        </tr>
-      `;
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/rules`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      rule_name: ruleName,
+      match_criteria: {
+        match_type: matchType,
+        match_value: matchValue,
+        case_sensitive: caseSensitive
+      },
+      target_category: targetCategory,
+      priority
     })
-    .join('');
+  });
 
-  container.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Priority</th>
-          <th>Name</th>
-          <th>Match</th>
-          <th>Target</th>
-          <th>Active</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-  `;
+  const data = await response.json();
+  if (!response.ok) {
+    showStatus(data.error || 'Failed to create rule', 'error');
+  }
 }
 
-async function saveRule() {
-  const ruleName = document.getElementById('rule-name').value.trim();
-  const matchType = document.getElementById('rule-match-type').value;
-  const matchValue = document.getElementById('rule-match-value').value.trim();
-  const targetCategory = document.getElementById('rule-target-category').value;
-  const priority = parseInt(document.getElementById('rule-priority').value || '0', 10);
-  const caseSensitive = document.getElementById('rule-case-sensitive').checked;
-  const isActive = document.getElementById('rule-active').checked;
+function buildCategoryOptions(selected) {
+  const unique = new Set(availableCategories || []);
+  if (selected) unique.add(selected);
+  const list = Array.from(unique).sort((a, b) => a.localeCompare(b));
+  return list
+    .map(cat => `<option value="${escapeHtml(cat)}" ${cat === selected ? 'selected' : ''}>${escapeHtml(cat)}</option>`)
+    .join('');
+}
 
-  if (!ruleName || !matchType || !matchValue || !targetCategory) {
-    showStatus('Fill in rule name, match, and target category', 'warning');
-    return;
+/**
+ * Trim the primary category prefix from a detailed category.
+ * Example: "GENERAL_MERCHANDISE_SPORTING_GOODS" + "GENERAL_MERCHANDISE" → "SPORTING_GOODS"
+ */
+function trimCategoryPrefix(detailed, primary) {
+  if (!detailed || !primary) return detailed || '';
+  
+  // Remove primary prefix if detailed starts with it
+  if (detailed.toUpperCase().startsWith(primary.toUpperCase() + '_')) {
+    return detailed.substring(primary.length + 1);
   }
+  
+  return detailed;
+}
 
-  const payload = {
-    rule_name: ruleName,
-    match_criteria: {
-      match_type: matchType,
-      match_value: matchValue,
-      case_sensitive: caseSensitive
-    },
-    target_category: targetCategory,
-    priority: priority,
-    is_active: isActive
+/**
+ * Format a category string for display (replace underscores, title case).
+ */
+function formatCategoryDisplay(value) {
+  return (value || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/**
+ * Get formatted category display names from personal_finance_category object.
+ */
+function getCategoryDisplayNames(pfc) {
+  if (!pfc || !pfc.detailed) {
+    return { primary: '', trimmed: '', confidence: '' };
+  }
+  
+  const primary = pfc.primary || '';
+  const detailed = pfc.detailed || '';
+  const trimmed = trimCategoryPrefix(detailed, primary);
+  const confidence = (pfc.confidence_level || '').replace(/_/g, ' ');
+  
+  return {
+    primary: formatCategoryDisplay(primary),
+    trimmed: formatCategoryDisplay(trimmed),
+    confidence: confidence,
+    rawPrimary: primary,
+    rawDetailed: detailed,
+    rawTrimmed: trimmed
   };
-
-  try {
-    const isEditing = !!currentRuleEditId;
-    const url = isEditing
-      ? `${BACKEND_URL}/api/categorization/rules/${currentRuleEditId}`
-      : `${BACKEND_URL}/api/categorization/rules`;
-    const method = isEditing ? 'PUT' : 'POST';
-
-    const response = await authenticatedFetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      showStatus(data.error || 'Failed to save rule', 'error');
-      return;
-    }
-
-    showStatus(isEditing ? 'Rule updated' : 'Rule created', 'success');
-    cancelRuleEdit();
-    await loadCategorizationData();
-    setTimeout(() => clearStatus(), 2000);
-  } catch (error) {
-    showStatus(`Failed to save rule: ${error.message}`, 'error');
-  }
 }
 
-function editRule(ruleId) {
-  const rule = rules.find(r => r.id === ruleId);
-  if (!rule) return;
-
-  currentRuleEditId = ruleId;
-  document.getElementById('rule-name').value = rule.rule_name || '';
-  document.getElementById('rule-match-type').value = rule.match_criteria?.match_type || 'merchant_contains';
-  document.getElementById('rule-match-value').value = rule.match_criteria?.match_value || '';
-  document.getElementById('rule-target-category').value = rule.target_category || '';
-  document.getElementById('rule-priority').value = rule.priority || 0;
-  document.getElementById('rule-case-sensitive').checked = !!rule.match_criteria?.case_sensitive;
-  document.getElementById('rule-active').checked = !!rule.is_active;
-  document.getElementById('rule-save-btn').textContent = 'Update Rule';
-  document.getElementById('rule-cancel-btn').classList.remove('hidden');
-}
-
-function cancelRuleEdit() {
-  currentRuleEditId = null;
-  document.getElementById('rule-name').value = '';
-  document.getElementById('rule-match-value').value = '';
-  document.getElementById('rule-priority').value = 0;
-  document.getElementById('rule-case-sensitive').checked = false;
-  document.getElementById('rule-active').checked = true;
-  document.getElementById('rule-save-btn').textContent = 'Create Rule';
-  document.getElementById('rule-cancel-btn').classList.add('hidden');
-}
-
-async function adjustRulePriority(ruleId, direction) {
-  const rule = rules.find(r => r.id === ruleId);
-  if (!rule) return;
-  const delta = direction === 'up' ? 1 : -1;
-  const newPriority = (rule.priority || 0) + delta;
-
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/rules/${ruleId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ priority: newPriority })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      showStatus(data.error || 'Failed to update priority', 'error');
-      return;
-    }
-    await loadCategorizationData();
-  } catch (error) {
-    showStatus(`Failed to update priority: ${error.message}`, 'error');
-  }
-}
-
-function confirmDeleteRule(ruleId) {
-  openModal({
-    title: 'Delete Rule',
-    body: '<p>Delete this rule permanently?</p>',
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Delete', onClick: () => deleteRule(ruleId) }
-    ]
-  });
-}
-
-async function deleteRule(ruleId) {
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/rules/${ruleId}`, {
-      method: 'DELETE'
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      showStatus(data.error || 'Failed to delete rule', 'error');
-      return;
-    }
-    closeModal();
-    await loadCategorizationData();
-  } catch (error) {
-    showStatus(`Failed to delete rule: ${error.message}`, 'error');
-  }
-}
-
-function renderMigrationSelectors() {
-  const mergeList = document.getElementById('merge-source-list');
-  if (mergeList) {
-    mergeList.innerHTML = availableCategories
-      .map(cat => `
-        <label class="merge-item">
-          <input type="checkbox" value="${escapeHtml(cat)}">
-          <span>${escapeHtml(cat)}</span>
-        </label>
-      `)
-      .join('');
-  }
-  const splitRows = document.getElementById('split-rows');
-  if (splitRows && splitRows.children.length === 0) {
-    addSplitRow();
-  }
-}
-
-function addSplitRow() {
-  const container = document.getElementById('split-rows');
-  if (!container) return;
-  const row = document.createElement('div');
-  row.className = 'split-row';
-  row.innerHTML = `
-    <input type="text" placeholder="Plaid categories (comma separated)">
-    <input type="text" placeholder="Target category">
-    <button class="secondary" type="button">Remove</button>
-  `;
-  row.querySelector('button').addEventListener('click', () => row.remove());
-  container.appendChild(row);
-}
-
-function confirmRename() {
-  const oldName = document.getElementById('rename-old').value.trim();
-  const newName = document.getElementById('rename-new').value.trim();
-  if (!oldName || !newName) {
-    showStatus('Enter both old and new category names', 'warning');
-    return;
-  }
-  openModal({
-    title: 'Confirm Rename',
-    body: `<p>Rename <strong>${escapeHtml(oldName)}</strong> to <strong>${escapeHtml(newName)}</strong>?</p>`,
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Rename', onClick: () => renameCategory(oldName, newName) }
-    ]
-  });
-}
-
-async function renameCategory(oldName, newName) {
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/rename`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ old_name: oldName, new_name: newName })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      showStatus(data.error || 'Failed to rename category', 'error');
-      return;
-    }
-    closeModal();
-    await loadCategorizationData();
-  } catch (error) {
-    showStatus(`Failed to rename category: ${error.message}`, 'error');
-  }
-}
-
-function confirmMerge() {
-  const sourceChecks = document.querySelectorAll('#merge-source-list input[type="checkbox"]:checked');
-  const sourceCategories = Array.from(sourceChecks).map(c => c.value);
-  const targetCategory = document.getElementById('merge-target').value;
-
-  if (!sourceCategories.length || !targetCategory) {
-    showStatus('Select source categories and a target category', 'warning');
-    return;
-  }
-
-  openModal({
-    title: 'Confirm Merge',
-    body: `<p>Merge ${escapeHtml(sourceCategories.join(', '))} into <strong>${escapeHtml(targetCategory)}</strong>?</p>`,
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Merge', onClick: () => mergeCategories(sourceCategories, targetCategory) }
-    ]
-  });
-}
-
-async function mergeCategories(sourceCategories, targetCategory) {
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/merge`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source_categories: sourceCategories, target_category: targetCategory })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      showStatus(data.error || 'Failed to merge categories', 'error');
-      return;
-    }
-    closeModal();
-    await loadCategorizationData();
-  } catch (error) {
-    showStatus(`Failed to merge categories: ${error.message}`, 'error');
-  }
-}
-
-function confirmSplit() {
-  const oldCategory = document.getElementById('split-old').value;
-  const splitRows = document.querySelectorAll('#split-rows .split-row');
-  const splits = [];
-
-  splitRows.forEach(row => {
-    const plaidRaw = row.querySelector('input:nth-child(1)').value.trim();
-    const target = row.querySelector('input:nth-child(2)').value.trim();
-    if (!plaidRaw || !target) return;
-    const plaidCategories = plaidRaw.split(',').map(v => v.trim()).filter(Boolean);
-    if (plaidCategories.length) {
-      splits.push({ plaid_categories: plaidCategories, target });
-    }
-  });
-
-  if (!oldCategory || splits.length === 0) {
-    showStatus('Provide a category to split and at least one split row', 'warning');
-    return;
-  }
-
-  openModal({
-    title: 'Confirm Split',
-    body: `<p>Split <strong>${escapeHtml(oldCategory)}</strong> into ${splits.length} categories?</p>`,
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Split', onClick: () => splitCategory(oldCategory, splits) }
-    ]
-  });
-}
-
-async function splitCategory(oldCategory, splits) {
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/split`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ old_category: oldCategory, splits })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      showStatus(data.error || 'Failed to split category', 'error');
-      return;
-    }
-    closeModal();
-    await loadCategorizationData();
-  } catch (error) {
-    showStatus(`Failed to split category: ${error.message}`, 'error');
-  }
-}
-
-function confirmDeleteCategory(categoryName) {
-  openModal({
-    title: 'Delete Category',
-    body: `
-      <p>Archive or delete <strong>${escapeHtml(categoryName)}</strong>?</p>
-      <div style="margin-top: 8px;">
-        <label class="inline-checkbox"><input type="radio" name="delete-action" value="archive" checked> Archive (recommended)</label>
-        <label class="inline-checkbox"><input type="radio" name="delete-action" value="delete"> Delete permanently</label>
-      </div>
-    `,
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Confirm', onClick: () => deleteCategory(categoryName) }
-    ]
-  });
-}
-
-async function deleteCategory(categoryName) {
-  try {
-    const actionEl = document.querySelector('input[name="delete-action"]:checked');
-    const action = actionEl ? actionEl.value : 'archive';
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/${encodeURIComponent(categoryName)}?action=${action}`, {
-      method: 'DELETE'
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      showStatus(data.error || 'Failed to delete category', 'error');
-      return;
-    }
-    closeModal();
-    await loadCategorizationData();
-  } catch (error) {
-    showStatus(`Failed to delete category: ${error.message}`, 'error');
-  }
-}
-
-function renderMigrationLog() {
-  const container = document.getElementById('audit-log');
-  if (!migrationLog.length) {
-    container.innerHTML = '<div class="empty-state">No migrations recorded yet.</div>';
-    return;
-  }
-
-  const rows = migrationLog
-    .map(log => {
-      const when = new Date(log.created_at).toLocaleString();
-      const changes = JSON.stringify(log.changes || {});
-      const stats = log.stats ? JSON.stringify(log.stats) : '';
-      return `
-        <tr>
-          <td>${escapeHtml(when)}</td>
-          <td>${escapeHtml(log.migration_type || '')}</td>
-          <td>${escapeHtml(changes)}</td>
-          <td>${escapeHtml(stats)}</td>
-        </tr>
-      `;
-    })
-    .join('');
-
-  container.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Type</th>
-          <th>Changes</th>
-          <th>Stats</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-  `;
-}
-
-async function refreshMigrationLog() {
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/migration-log`);
-    const data = await response.json();
-    if (!response.ok) {
-      showStatus(data.error || 'Failed to refresh audit log', 'error');
-      return;
-    }
-    migrationLog = data.migrations || [];
-    renderMigrationLog();
-  } catch (error) {
-    showStatus(`Failed to refresh audit log: ${error.message}`, 'error');
-  }
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function openCategorizeModal(txn, selectedCategory, accountId, txnId) {
@@ -2279,7 +1730,8 @@ async function applyManualCategory(txnId, accountId) {
 
     closeModal();
     showStatus('Transaction categorized', 'success');
-    await loadCategorizationData();
+    await loadAvailableCategories();
+    renderTransactionTable();
     setTimeout(() => clearStatus(), 2000);
   } catch (error) {
     showStatus(`Failed to categorize transaction: ${error.message}`, 'error');
@@ -2321,6 +1773,24 @@ async function createRuleFromModal(targetCategory) {
 
 function openModal({ title, body, actions }) {
   const overlay = document.getElementById('modal-overlay');
+  if (!overlay) {
+    const newOverlay = document.createElement('div');
+    newOverlay.id = 'modal-overlay';
+    newOverlay.className = 'modal-overlay hidden';
+    newOverlay.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">
+          <h3 id="modal-title"></h3>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <div id="modal-body" class="modal-body"></div>
+        <div id="modal-actions" class="modal-actions"></div>
+      </div>
+    `;
+    document.body.appendChild(newOverlay);
+  }
+
+  const overlay2 = document.getElementById('modal-overlay');
   const titleEl = document.getElementById('modal-title');
   const bodyEl = document.getElementById('modal-body');
   const actionsEl = document.getElementById('modal-actions');
@@ -2337,32 +1807,10 @@ function openModal({ title, body, actions }) {
     actionsEl.appendChild(btn);
   });
 
-  overlay.classList.remove('hidden');
+  overlay2.classList.remove('hidden');
 }
 
 function closeModal() {
   const overlay = document.getElementById('modal-overlay');
-  overlay.classList.add('hidden');
-}
-
-function buildCategoryOptions(selected) {
-  const unique = new Set(availableCategories || []);
-  if (selected) unique.add(selected);
-  const list = Array.from(unique).sort((a, b) => a.localeCompare(b));
-  return list
-    .map(cat => `<option value="${escapeHtml(cat)}" ${cat === selected ? 'selected' : ''}>${escapeHtml(cat)}</option>`)
-    .join('');
-}
-
-function formatPlaidCategory(value) {
-  return (value || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-}
-
-function escapeHtml(str) {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  if (overlay) overlay.classList.add('hidden');
 }
