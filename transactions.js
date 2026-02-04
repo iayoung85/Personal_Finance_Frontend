@@ -4,6 +4,7 @@ let accounts = [];
 let transactions = [];
 let synced = false;
 let availableCategories = [];
+let plaidTaxonomy = []; // Plaid PFCv2 category taxonomy for parsing
 let syncing = false;
 
 // Check authentication
@@ -1597,6 +1598,163 @@ async function createRuleFromModal(targetCategory) {
   }
 }
 
+// ===============================
+// CATEGORY PARSING & FORMATTING (PHASE 1)
+// ===============================
+
+/**
+ * Parse a category string into primary and detailed components.
+ * Handles multiple formats:
+ * 1. Colon-separated: "Getting Around: Bikes and Scooters" → {primary: "Getting Around", detailed: "Bikes and Scooters"}
+ * 2. Underscore-separated: "TRANSPORTATION_BIKES_AND_SCOOTERS" → {primary: "Transportation", detailed: "Bikes And Scooters"}
+ * 3. Custom categories without separator: "bike stuff" → {primary: "bike stuff", detailed: ""}
+ */
+function parseCategoryString(categoryStr) {
+  if (!categoryStr || typeof categoryStr !== 'string') {
+    return { primary: '', detailed: '', full: '' };
+  }
+
+  const trimmed = categoryStr.trim();
+  
+  // Check for colon-separated format (new format)
+  if (trimmed.includes(':')) {
+    const parts = trimmed.split(':').map(p => p.trim());
+    return {
+      primary: parts[0] || '',
+      detailed: parts[1] || '',
+      full: trimmed
+    };
+  }
+  
+  // Check for underscore-separated format (legacy Plaid format)
+  if (trimmed.includes('_')) {
+    // Try to match against plaid taxonomy to identify primary
+    const parsed = parsePlaidCategoryString(trimmed);
+    if (parsed.primary) {
+      return parsed;
+    }
+  }
+  
+  // Custom category without separator - treat whole thing as primary
+  return {
+    primary: trimmed,
+    detailed: '',
+    full: trimmed
+  };
+}
+
+/**
+ * Parse a Plaid underscore-separated category using taxonomy lookup.
+ * Example: "TRANSPORTATION_BIKES_AND_SCOOTERS" → {primary: "Transportation", detailed: "Bikes And Scooters"}
+ */
+function parsePlaidCategoryString(categoryStr) {
+  if (!categoryStr) {
+    return { primary: '', detailed: '', full: categoryStr };
+  }
+  
+  // Try to find matching entry in plaid taxonomy
+  const matchingTaxonomy = plaidTaxonomy.find(t => t.detailed === categoryStr);
+  
+  if (matchingTaxonomy) {
+    const primary = matchingTaxonomy.primary || '';
+    const detailed = categoryStr;
+    const trimmedDetailed = trimCategoryPrefix(detailed, primary);
+    
+    return {
+      primary: formatCategoryDisplay(primary),
+      detailed: formatCategoryDisplay(trimmedDetailed),
+      full: categoryStr,
+      rawPrimary: primary,
+      rawDetailed: detailed
+    };
+  }
+  
+  // Fallback: try to split intelligently by finding common primary patterns
+  const commonPrimaries = [
+    'BANK_FEES', 'ENTERTAINMENT', 'FOOD_AND_DRINK', 'GENERAL_MERCHANDISE',
+    'GENERAL_SERVICES', 'GOVERNMENT_AND_NON_PROFIT', 'HOME_IMPROVEMENT',
+    'INCOME', 'LOAN_DISBURSEMENTS', 'LOAN_PAYMENTS', 'MEDICAL',
+    'PERSONAL_CARE', 'RENT_AND_UTILITIES', 'TRANSFER_IN', 'TRANSFER_OUT',
+    'TRANSPORTATION', 'TRAVEL'
+  ];
+  
+  for (const primaryPattern of commonPrimaries) {
+    if (categoryStr.startsWith(primaryPattern + '_')) {
+      const detailed = categoryStr.substring(primaryPattern.length + 1);
+      return {
+        primary: formatCategoryDisplay(primaryPattern),
+        detailed: formatCategoryDisplay(detailed),
+        full: categoryStr,
+        rawPrimary: primaryPattern,
+        rawDetailed: categoryStr
+      };
+    } else if (categoryStr === primaryPattern) {
+      return {
+        primary: formatCategoryDisplay(primaryPattern),
+        detailed: '',
+        full: categoryStr,
+        rawPrimary: primaryPattern,
+        rawDetailed: categoryStr
+      };
+    }
+  }
+  
+  // Last resort: treat whole thing as primary
+  return {
+    primary: formatCategoryDisplay(categoryStr),
+    detailed: '',
+    full: categoryStr,
+    rawPrimary: categoryStr,
+    rawDetailed: categoryStr
+  };
+}
+
+/**
+ * Build a category string from primary and detailed components.
+ * Returns format: "Primary: Detailed" or just "Primary" if no detailed.
+ */
+function buildCategoryString(primary, detailed) {
+  if (!primary) return '';
+  if (!detailed) return primary;
+  return `${primary}: ${detailed}`;
+}
+
+/**
+ * Extract unique primary categories from available categories list.
+ * Returns sorted array of primary category names.
+ */
+function extractPrimaryCategories(categories) {
+  const primaries = new Set();
+  
+  (categories || []).forEach(cat => {
+    const parsed = parseCategoryString(cat);
+    if (parsed.primary) {
+      primaries.add(parsed.primary);
+    }
+  });
+  
+  return Array.from(primaries).sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Extract detailed categories for a specific primary category.
+ * Returns sorted array of detailed category names.
+ */
+function extractDetailedCategories(categories, primaryCategory) {
+  if (!primaryCategory) return [];
+  
+  const detailed = new Set();
+  
+  (categories || []).forEach(cat => {
+    const parsed = parseCategoryString(cat);
+    if (parsed.primary === primaryCategory && parsed.detailed) {
+      detailed.add(parsed.detailed);
+    }
+  });
+  
+  return Array.from(detailed).sort((a, b) => a.localeCompare(b));
+}
+
 function buildCategoryOptions(selected) {
   const unique = new Set(availableCategories || []);
   if (selected) unique.add(selected);
@@ -1813,4 +1971,95 @@ function openModal({ title, body, actions }) {
 function closeModal() {
   const overlay = document.getElementById('modal-overlay');
   if (overlay) overlay.classList.add('hidden');
+}
+
+// ===============================
+// CATEGORY DATA LOADING
+// ===============================
+
+/**
+ * Load available categories and Plaid taxonomy for categorization features.
+ */
+async function loadAvailableCategories() {
+  try {
+    const [categoriesRes, taxonomyRes] = await Promise.all([
+      authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/available`),
+      authenticatedFetch(`${BACKEND_URL}/api/categorization/plaid-taxonomy`)
+    ]);
+
+    if (categoriesRes.ok) {
+      const data = await categoriesRes.json();
+      availableCategories = data.available_categories || [];
+    } else {
+      console.error('Failed to load available categories');
+      availableCategories = [];
+    }
+
+    if (taxonomyRes.ok) {
+      const data = await taxonomyRes.json();
+      plaidTaxonomy = data.categories || [];
+    } else {
+      console.error('Failed to load Plaid taxonomy');
+      plaidTaxonomy = [];
+    }
+    
+    console.log(`Loaded ${availableCategories.length} available categories and ${plaidTaxonomy.length} taxonomy entries`);
+  } catch (error) {
+    console.error('Error loading category data:', error);
+    availableCategories = [];
+    plaidTaxonomy = [];
+  }
+}
+
+/**
+ * TEST FUNCTION: Run category parsing tests.
+ * Call this from browser console: testCategoryParsing()
+ */
+function testCategoryParsing() {
+  console.log('=== Testing Category Parsing Functions ===\n');
+  
+  const testCases = [
+    'Getting Around: Bikes and Scooters',
+    'Food And Drink: Fast Food',
+    'TRANSPORTATION_BIKES_AND_SCOOTERS',
+    'TRANSFER_IN_WIRE',
+    'FOOD_AND_DRINK_FAST_FOOD',
+    'bike stuff',
+    'INCOME'
+  ];
+  
+  testCases.forEach(testCase => {
+    const parsed = parseCategoryString(testCase);
+    console.log(`Input: "${testCase}"`);
+    console.log(`  Primary: "${parsed.primary}"`);
+    console.log(`  Detailed: "${parsed.detailed}"`);
+    console.log(`  Full: "${parsed.full}"`);
+    
+    if (parsed.primary && parsed.detailed) {
+      const rebuilt = buildCategoryString(parsed.primary, parsed.detailed);
+      console.log(`  Rebuilt: "${rebuilt}"`);
+    }
+    console.log('');
+  });
+  
+  console.log('=== Testing Category Extraction ===\n');
+  const mockCategories = [
+    'Food And Drink: Fast Food',
+    'Food And Drink: Restaurant',
+    'Food And Drink: Groceries',
+    'Transportation: Gas',
+    'Transportation: Parking',
+    'bike stuff'
+  ];
+  
+  const primaries = extractPrimaryCategories(mockCategories);
+  console.log('Extracted primaries:', primaries);
+  
+  const foodDetails = extractDetailedCategories(mockCategories, 'Food And Drink');
+  console.log('Food And Drink detailed categories:', foodDetails);
+  
+  const transportDetails = extractDetailedCategories(mockCategories, 'Transportation');
+  console.log('Transportation detailed categories:', transportDetails);
+  
+  console.log('\n=== Tests Complete ===');
 }
