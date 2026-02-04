@@ -885,7 +885,7 @@ function attachCategoryDropdownListeners() {
  * Combines primary and detailed into "Primary: Detailed" format.
  * Phase 4 implementation.
  */
-function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed) {
+async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed) {
   if (!selectedPrimary) {
     showStatus('Please select a primary category', 'warning');
     return;
@@ -893,14 +893,38 @@ function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed) {
 
   const categoryString = buildCategoryString(selectedPrimary, selectedDetailed);
   
-  console.log(`Applying override - TxnID: ${txnId}, AccountID: ${accountId}, Category: ${categoryString}`);
-  showStatus('Phase 4: Override implementation needed', 'info');
-  
-  // TODO: Phase 4 implementation
-  // - Call POST /api/categorization/transactions/{txnId}/categorize
-  // - Pass user_category as combined string
-  // - Refresh transaction table on success
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/transactions/${encodeURIComponent(txnId)}/categorize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_category: categoryString,
+        plaid_account_id: accountId
+      })
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      showStatus(data.error || 'Failed to apply override', 'error');
+      return;
+    }
+
+    showStatus(`Override applied: ${categoryString}. Recategorizing transactions...`, 'success');
+    
+    // Trigger recategorization to update encrypted_transactions table
+    await recategorizeTransactions();
+    
+    // Reload transactions from server to get updated categories
+    await autoSyncAndLoadTransactions();
+    
+    showStatus(`Override applied and transactions recategorized`, 'success');
+    setTimeout(() => clearStatus(), 3000);
+  } catch (error) {
+    showStatus(`Failed to apply override: ${error.message}`, 'error');
+  }
 }
+
 
 /**
  * Open modal to create a rule from transaction categorization.
@@ -913,16 +937,127 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
   }
 
   const categoryString = buildCategoryString(selectedPrimary, selectedDetailed);
-  
-  console.log(`Opening rule modal - TxnID: ${txnId}, Category: ${categoryString}`);
-  showStatus('Phase 5: Rule creation modal needed', 'info');
-  
-  // TODO: Phase 5 implementation
-  // - Show modal with rule configuration
-  // - Pre-populate merchant/name as match value
-  // - Allow user to configure match type, priority, etc.
-  // - Call POST /api/categorization/rules on save
+  const merchant = txn?.merchant_name || txn?.name || '';
+  const defaultRuleName = `${selectedPrimary}${selectedDetailed ? ' - ' + selectedDetailed : ''} (${merchant})`.trim();
+  const defaultMatchValue = merchant || txn?.name || '';
+
+  // Build rule configuration form
+  const formHtml = `
+    <div style="display: grid; gap: 12px;">
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 4px;">Rule Name</label>
+        <input id="rule-modal-name" type="text" placeholder="Rule name" value="${escapeHtml(defaultRuleName)}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
+      </div>
+      
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 4px;">Match Type</label>
+        <select id="rule-modal-match-type" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
+          <option value="merchant_contains">Merchant contains</option>
+          <option value="name_contains">Name contains</option>
+          <option value="amount_range">Amount range</option>
+          <option value="regex">Regular expression (advanced)</option>
+        </select>
+      </div>
+      
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 4px;">Match Value</label>
+        <input id="rule-modal-match-value" type="text" placeholder="Value to match" value="${escapeHtml(defaultMatchValue)}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
+        <small style="color: #666; margin-top: 4px; display: block;">For "merchant contains" or "name contains", enter text to search for.</small>
+      </div>
+      
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 4px;">Priority</label>
+        <input id="rule-modal-priority" type="number" placeholder="0" value="0" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
+        <small style="color: #666; margin-top: 4px; display: block;">Higher priority rules are applied first. Default is 0.</small>
+      </div>
+      
+      <label style="display: flex; align-items: center; gap: 6px;">
+        <input id="rule-modal-case-sensitive" type="checkbox">
+        <span style="font-weight: 500;">Case sensitive</span>
+      </label>
+      
+      <label style="display: flex; align-items: center; gap: 6px;">
+        <input id="rule-modal-active" type="checkbox" checked>
+        <span style="font-weight: 500;">Active</span>
+      </label>
+      
+      <div style="background: #f5f5f5; padding: 10px; border-radius: 3px; border-left: 3px solid #6366f1;">
+        <strong>Category:</strong> ${escapeHtml(categoryString)}
+      </div>
+    </div>
+  `;
+
+  openModal({
+    title: 'Create Categorization Rule',
+    body: formHtml,
+    actions: [
+      { label: 'Cancel', className: 'secondary', onClick: closeModal },
+      { label: 'Create Rule', onClick: () => submitCategoryRule(categoryString, txnId) }
+    ]
+  });
 }
+
+/**
+ * Submit the rule creation form and call the API.
+ */
+async function submitCategoryRule(targetCategory, txnId) {
+  const ruleName = document.getElementById('rule-modal-name').value.trim();
+  const matchType = document.getElementById('rule-modal-match-type').value;
+  const matchValue = document.getElementById('rule-modal-match-value').value.trim();
+  const priority = parseInt(document.getElementById('rule-modal-priority').value || '0', 10);
+  const caseSensitive = document.getElementById('rule-modal-case-sensitive').checked;
+  const isActive = document.getElementById('rule-modal-active').checked;
+
+  if (!ruleName) {
+    showStatus('Rule name is required', 'warning');
+    return;
+  }
+
+  if (!matchValue) {
+    showStatus('Match value is required', 'warning');
+    return;
+  }
+
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/rules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rule_name: ruleName,
+        match_criteria: {
+          match_type: matchType,
+          match_value: matchValue,
+          case_sensitive: caseSensitive
+        },
+        target_category: targetCategory,
+        priority: priority,
+        is_active: isActive
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      showStatus(data.error || 'Failed to create rule', 'error');
+      return;
+    }
+
+    closeModal();
+    showStatus(`Rule created: "${ruleName}". Recategorizing transactions...`, 'success');
+    
+    // Trigger recategorization to apply new rule to all matching transactions
+    await recategorizeTransactions();
+    
+    // Reload transactions from server to get updated categories
+    await autoSyncAndLoadTransactions();
+    
+    showStatus(`Rule created and transactions recategorized`, 'success');
+    setTimeout(() => clearStatus(), 3000);
+  } catch (error) {
+    showStatus(`Failed to create rule: ${error.message}`, 'error');
+  }
+}
+
 
 
 function getSelectedAccounts() {
@@ -2156,6 +2291,32 @@ async function loadAvailableCategories() {
     console.error('Error loading category data:', error);
     availableCategories = [];
     plaidTaxonomy = [];
+  }
+}
+
+/**
+ * Trigger backend recategorization of all transactions.
+ * This updates the encrypted_transactions table with computed user_category values.
+ * Called after creating overrides or rules to persist changes.
+ */
+async function recategorizeTransactions() {
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/transactions/recategorize`, {
+      method: 'POST'
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      console.error('Recategorization failed:', data.error);
+      throw new Error(data.error || 'Recategorization failed');
+    }
+
+    const data = await response.json();
+    console.log('Recategorization complete:', data);
+    return data;
+  } catch (error) {
+    console.error('Error recategorizing transactions:', error);
+    throw error;
   }
 }
 

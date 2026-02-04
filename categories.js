@@ -113,6 +113,9 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // Load categorization data
   await loadCategorizationData();
+  
+  // Check for broken rules on load
+  await checkBrokenRules(true);
 
   // Filter mappings
   document.addEventListener('input', function(e) {
@@ -362,7 +365,8 @@ function renderCustomCategories() {
   container.innerHTML = customCategories
     .map(cat => `
       <div class="tag-item">
-        <span>${escapeHtml(cat)}</span>
+        <span class="category-label" data-category="${escapeHtml(cat)}">${escapeHtml(cat)}</span>
+        <button class="secondary" onclick="deleteOverridesForCategory('${escapeHtml(cat)}')">Delete Overrides</button>
         <button class="secondary" onclick="confirmDeleteCategory('${escapeHtml(cat)}')">Delete</button>
       </div>
     `)
@@ -613,6 +617,22 @@ function confirmRename() {
 
 async function renameCategory(oldName, newName) {
   try {
+    // Check if this is a primary category rename that affects detailed categories
+    const isPrimaryRename = await checkPrimaryRename(oldName, newName);
+    
+    if (isPrimaryRename) {
+      const affectedCategories = isPrimaryRename.affectedCategories;
+      const confirmMessage = 
+        `Rename \"${oldName}\" to \"${newName}\"?\n\n` +
+        `This will also update ${affectedCategories.length} detailed categor${affectedCategories.length > 1 ? 'ies' : 'y'}:\n` +
+        affectedCategories.slice(0, 5).map(c => `  • ${c.old} → ${c.new}`).join('\n') +
+        (affectedCategories.length > 5 ? `\n  ... and ${affectedCategories.length - 5} more` : '');
+      
+      if (!confirm(confirmMessage)) {
+        return;
+      }
+    }
+    
     const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/rename`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -624,10 +644,62 @@ async function renameCategory(oldName, newName) {
       return;
     }
     closeModal();
+    showStatus('Category renamed successfully', 'success');
     await loadCategorizationData();
+    setTimeout(() => clearStatus(), 2000);
   } catch (error) {
     showStatus(`Failed to rename category: ${error.message}`, 'error');
   }
+}
+
+/**
+ * Check if renaming a category affects other detailed categories
+ * Example: \"Food And Drink\" -> \"Dining\" should remap \"Food And Drink: Fast Food\" to \"Dining: Fast Food\"
+ */
+async function checkPrimaryRename(oldName, newName) {
+  // Parse both old and new names to check if they're primaries
+  const oldParts = parseCategoryName(oldName);
+  const newParts = parseCategoryName(newName);
+  
+  // Only proceed if old name is a primary (no colon) and new name is also a primary
+  if (oldParts.detailed || newParts.detailed) {
+    return null;
+  }
+  
+  // Find all categories that use this primary
+  const affectedCategories = [];
+  for (const cat of availableCategories) {
+    const parts = parseCategoryName(cat);
+    if (parts.primary === oldName && parts.detailed) {
+      const newCategoryName = `${newName}: ${parts.detailed}`;
+      affectedCategories.push({ old: cat, new: newCategoryName });
+    }
+  }
+  
+  if (affectedCategories.length > 0) {
+    return { affectedCategories };
+  }
+  
+  return null;
+}
+
+/**
+ * Parse a category name into primary and detailed parts
+ * Example: \"Food And Drink: Fast Food\" -> { primary: \"Food And Drink\", detailed: \"Fast Food\" }
+ * Example: \"Food And Drink\" -> { primary: \"Food And Drink\", detailed: null }
+ */
+function parseCategoryName(categoryName) {
+  if (!categoryName) return { primary: null, detailed: null };
+  
+  const colonIndex = categoryName.indexOf(':');
+  if (colonIndex === -1) {
+    return { primary: categoryName.trim(), detailed: null };
+  }
+  
+  return {
+    primary: categoryName.substring(0, colonIndex).trim(),
+    detailed: categoryName.substring(colonIndex + 1).trim()
+  };
 }
 
 function confirmMerge() {
@@ -718,14 +790,59 @@ async function splitCategory(oldCategory, splits) {
   }
 }
 
-function confirmDeleteCategory(categoryName) {
+async function confirmDeleteCategory(categoryName) {
+  // First, check if there are any rules or overrides using this category
+  let affectedRules = [];
+  let affectedOverrides = 0;
+  
+  // Check rules
+  affectedRules = rules.filter(r => r.target_category === categoryName);
+  
+  // Check overrides via API
+  try {
+    const overrideResponse = await authenticatedFetch(
+      `${BACKEND_URL}/api/categorization/transaction-overrides?category_name=${encodeURIComponent(categoryName)}`
+    );
+    if (overrideResponse.ok) {
+      const overrideData = await overrideResponse.json();
+      affectedOverrides = overrideData.count || 0;
+    }
+  } catch (error) {
+    console.error('Error checking overrides:', error);
+  }
+  
+  const warningText = affectedRules.length > 0 || affectedOverrides > 0
+    ? `<div style="background: #fff3cd; padding: 12px; border-radius: 4px; margin-bottom: 12px; color: #856404;">
+         <strong>⚠️ Warning:</strong> This category has:
+         ${affectedRules.length > 0 ? `<br>• ${affectedRules.length} rule${affectedRules.length > 1 ? 's' : ''}` : ''}
+         ${affectedOverrides > 0 ? `<br>• ${affectedOverrides} manual override${affectedOverrides > 1 ? 's' : ''}` : ''}
+       </div>`
+    : '';
+  
   openModal({
     title: 'Delete Category',
     body: `
-      <p>Archive or delete <strong>${escapeHtml(categoryName)}</strong>?</p>
-      <div style="margin-top: 8px;">
-        <label class="inline-checkbox"><input type="radio" name="delete-action" value="archive" checked> Archive (recommended)</label>
-        <label class="inline-checkbox"><input type="radio" name="delete-action" value="delete"> Delete permanently</label>
+      ${warningText}
+      <p>What would you like to do with <strong>${escapeHtml(categoryName)}</strong>?</p>
+      <div style="margin-top: 12px;">
+        <label class="inline-checkbox" style="display: block; margin-bottom: 8px;">
+          <input type="radio" name="delete-action" value="archive" checked> 
+          <strong>Archive</strong> - Disable safely (recommended)
+        </label>
+        <label class="inline-checkbox" style="display: block; margin-bottom: 8px;">
+          <input type="radio" name="delete-action" value="reassign"> 
+          <strong>Reassign</strong> - Move rules/overrides to another category
+        </label>
+        <label class="inline-checkbox" style="display: block;">
+          <input type="radio" name="delete-action" value="delete"> 
+          <strong>Delete</strong> - Remove completely (custom categories only)
+        </label>
+      </div>
+      <div id="reassign-target-container" style="margin-top: 12px; display: none;">
+        <label style="display: block; margin-bottom: 4px; font-weight: 500;">Reassign to:</label>
+        <select id="reassign-target-category" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+          ${buildCategoryOptions()}
+        </select>
       </div>
     `,
     actions: [
@@ -733,22 +850,62 @@ function confirmDeleteCategory(categoryName) {
       { label: 'Confirm', onClick: () => deleteCategory(categoryName) }
     ]
   });
+  
+  // Add listener to show/hide reassign target
+  const radioButtons = document.querySelectorAll('input[name="delete-action"]');
+  const reassignContainer = document.getElementById('reassign-target-container');
+  radioButtons.forEach(radio => {
+    radio.addEventListener('change', () => {
+      if (radio.value === 'reassign') {
+        reassignContainer.style.display = 'block';
+      } else {
+        reassignContainer.style.display = 'none';
+      }
+    });
+  });
 }
 
 async function deleteCategory(categoryName) {
   try {
     const actionEl = document.querySelector('input[name="delete-action"]:checked');
     const action = actionEl ? actionEl.value : 'archive';
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/${encodeURIComponent(categoryName)}?action=${action}`, {
+    
+    let url = `${BACKEND_URL}/api/categorization/categories/${encodeURIComponent(categoryName)}?action=${action}`;
+    
+    // If reassigning, add target category
+    if (action === 'reassign') {
+      const targetSelect = document.getElementById('reassign-target-category');
+      const targetCategory = targetSelect ? targetSelect.value : '';
+      if (!targetCategory) {
+        showStatus('Please select a target category for reassignment', 'warning');
+        return;
+      }
+      url += `&reassign_to=${encodeURIComponent(targetCategory)}`;
+    }
+    
+    const response = await authenticatedFetch(url, {
       method: 'DELETE'
     });
     const data = await response.json();
+    
     if (!response.ok) {
       showStatus(data.error || 'Failed to delete category', 'error');
       return;
     }
+    
     closeModal();
+    
+    // Show success message with stats
+    const actionLabel = action === 'archive' ? 'archived' : action === 'reassign' ? 'reassigned' : 'deleted';
+    showStatus(
+      `Category ${actionLabel}` +
+      (data.rules_affected > 0 ? ` (${data.rules_affected} rules affected)` : '') +
+      (data.overrides_affected > 0 ? ` (${data.overrides_affected} overrides affected)` : ''),
+      'success'
+    );
+    
     await loadCategorizationData();
+    setTimeout(() => clearStatus(), 3000);
   } catch (error) {
     showStatus(`Failed to delete category: ${error.message}`, 'error');
   }
@@ -899,4 +1056,216 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// ============= BROKEN RULES VALIDATION =============
+
+async function checkBrokenRules(showIfValid = false) {
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/validation/broken-rules`);
+    const data = await response.json();
+    
+    if (!response.ok) {
+      console.error('Failed to check broken rules:', data);
+      return null;
+    }
+    
+    if (data.has_broken_rules) {
+      showBrokenRulesModal(data.broken_rules);
+    } else if (showIfValid) {
+      // Show success briefly
+      showStatus('✓ All rules are valid', 'success');
+      setTimeout(() => clearStatus(), 3000);
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error checking broken rules:', error);
+    return null;
+  }
+}
+
+function showBrokenRulesModal(brokenRules) {
+  const rulesList = brokenRules.map(rule => {
+    return `
+      <div class="broken-rule-item" style="margin-bottom: 16px; padding: 12px; background: #fff3cd; border-radius: 4px;">
+        <div style="font-weight: 600; color: #856404; margin-bottom: 4px;">
+          Rule: ${escapeHtml(rule.rule_name)}
+        </div>
+        <div style="color: #856404; margin-bottom: 8px; font-size: 14px;">
+          Invalid target: "${escapeHtml(rule.target_category)}"
+        </div>
+        <div style="margin-top: 8px;">
+          <label style="display: block; margin-bottom: 4px; font-size: 14px; font-weight: 500;">Fix by selecting valid category:</label>
+          <select class="broken-rule-fix-select" data-rule-id="${rule.id}" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+            <option value="">-- Select category --</option>
+            ${rule.valid_categories.map(cat => `<option value="${escapeHtml(cat)}">${escapeHtml(cat)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  openModal({
+    title: `⚠️ ${brokenRules.length} Broken Rule${brokenRules.length > 1 ? 's' : ''} Found`,
+    body: `
+      <div style="margin-bottom: 16px; color: #856404; font-size: 14px;">
+        These rules reference categories that no longer exist. Please fix them before recategorizing transactions.
+      </div>
+      ${rulesList}
+    `,
+    actions: [
+      { label: 'Cancel', className: 'secondary', onClick: closeModal },
+      { label: 'Fix All Rules', onClick: () => fixAllBrokenRules(brokenRules) }
+    ]
+  });
+}
+
+async function fixAllBrokenRules(brokenRules) {
+  const selects = document.querySelectorAll('.broken-rule-fix-select');
+  const fixes = [];
+  
+  for (const select of selects) {
+    const ruleId = parseInt(select.getAttribute('data-rule-id'));
+    const newCategory = select.value;
+    if (!newCategory) {
+      showStatus('Please select a category for all broken rules', 'warning');
+      return;
+    }
+    fixes.push({ ruleId, newCategory });
+  }
+  
+  // Update each rule
+  for (const fix of fixes) {
+    try {
+      const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/rules/${fix.ruleId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_category: fix.newCategory })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        showStatus(`Failed to fix rule ${fix.ruleId}: ${data.error}`, 'error');
+        return;
+      }
+    } catch (error) {
+      showStatus(`Error fixing rule ${fix.ruleId}: ${error.message}`, 'error');
+      return;
+    }
+  }
+  
+  closeModal();
+  showStatus(`✓ Fixed ${fixes.length} rule${fixes.length > 1 ? 's' : ''}`, 'success');
+  await loadCategorizationData();
+  setTimeout(() => clearStatus(), 2000);
+}
+
+// ============= RECATEGORIZE ALL TRANSACTIONS =============
+
+async function recategorizeAllTransactions() {
+  // Step 1: Check for broken rules
+  const validation = await checkBrokenRules(false);
+  
+  if (validation && validation.has_broken_rules) {
+    showStatus(
+      `Cannot recategorize: ${validation.broken_rules_count} broken rule${validation.broken_rules_count > 1 ? 's' : ''} exist. Please fix them first.`,
+      'error'
+    );
+    showBrokenRulesModal(validation.broken_rules);
+    return;
+  }
+  
+  // Step 2: Confirm with user
+  if (!confirm(
+    'Recategorize all historical transactions?\n\n' +
+    'This will re-run the categorization pipeline (mappings → rules → overrides) on all transactions. This may take a moment.'
+  )) {
+    return;
+  }
+  
+  // Step 3: Show progress
+  showStatus('Recategorizing transactions...', 'info');
+  
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/categorization/transactions/recategorize`,
+      { method: 'POST' }
+    );
+    const data = await response.json();
+    
+    if (!response.ok) {
+      if (data.broken_rules) {
+        showBrokenRulesModal(data.broken_rules);
+      } else {
+        showStatus(data.error || 'Failed to recategorize', 'error');
+      }
+      return;
+    }
+    
+    // Step 4: Show results
+    showStatus(
+      `✓ Recategorization complete: ${data.transactions_updated} transaction${data.transactions_updated !== 1 ? 's' : ''} updated` +
+      (data.decryption_errors > 0 ? ` (${data.decryption_errors} errors)` : ''),
+      'success'
+    );
+    
+    setTimeout(() => clearStatus(), 5000);
+  } catch (error) {
+    showStatus(`Recategorization failed: ${error.message}`, 'error');
+  }
+}
+
+// ============= OVERRIDE MANAGEMENT =============
+
+async function deleteOverridesForCategory(categoryName) {
+  if (!confirm(
+    `Delete all manual overrides for "${categoryName}"?\n\n` +
+    'This will remove all manual categorizations for this category. This cannot be undone.'
+  )) {
+    return;
+  }
+  
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/categorization/transaction-overrides?category_name=${encodeURIComponent(categoryName)}`,
+      { method: 'DELETE' }
+    );
+    const data = await response.json();
+    
+    if (response.ok) {
+      showStatus(`${data.deleted_count} override${data.deleted_count !== 1 ? 's' : ''} deleted`, 'success');
+      setTimeout(() => clearStatus(), 3000);
+    } else {
+      showStatus(data.error || 'Failed to delete overrides', 'error');
+    }
+  } catch (error) {
+    showStatus(`Failed to delete overrides: ${error.message}`, 'error');
+  }
+}
+
+async function deleteAllOverrides() {
+  if (!confirm(
+    'Delete ALL manual categorization overrides?\n\n' +
+    'This will remove all manual categorizations across all transactions. This cannot be undone.'
+  )) {
+    return;
+  }
+  
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/categorization/transaction-overrides`,
+      { method: 'DELETE' }
+    );
+    const data = await response.json();
+    
+    if (response.ok) {
+      showStatus(`Deleted all ${data.deleted_count} override${data.deleted_count !== 1 ? 's' : ''}`, 'success');
+      setTimeout(() => clearStatus(), 3000);
+    } else {
+      showStatus(data.error || 'Failed to delete overrides', 'error');
+    }
+  } catch (error) {
+    showStatus(`Failed to delete overrides: ${error.message}`, 'error');
+  }
 }
