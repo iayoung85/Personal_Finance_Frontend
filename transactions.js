@@ -2,18 +2,7 @@
 
 let accounts = [];
 let transactions = [];
-let categoryHistory = null; // Historical category data for insights
 let synced = false;
-
-// Local cache keys/durations
-const TRANSACTIONS_CACHE_KEY = 'transactionsCache';
-const TRANSACTIONS_CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours
-const ACCOUNTS_CACHE_KEY = 'transactionsAccountsCache';
-const ACCOUNTS_CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours
-const SETTINGS_CACHE_KEY = 'transactionsViewerSettingsCache';
-const SETTINGS_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
-const CATEGORY_HISTORY_CACHE_KEY = 'categoryHistoryCache';
-const CATEGORY_HISTORY_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 // Check authentication
 let token = localStorage.getItem('authToken');
@@ -78,136 +67,6 @@ async function authenticatedFetch(url, options = {}) {
   return response;
 }
 
-// Cache helpers
-function getCachedTransactions() {
-  try {
-    const cached = localStorage.getItem(TRANSACTIONS_CACHE_KEY);
-    if (!cached) return null;
-    const { timestamp, data } = JSON.parse(cached);
-    if (!data) return null;
-    if (Date.now() - timestamp < TRANSACTIONS_CACHE_DURATION) {
-      return data;
-    }
-    localStorage.removeItem(TRANSACTIONS_CACHE_KEY);
-  } catch (e) {
-    console.error('transactions cache read error:', e);
-    localStorage.removeItem(TRANSACTIONS_CACHE_KEY);
-  }
-  return null;
-}
-
-function setCachedTransactions(data) {
-  try {
-    localStorage.setItem(TRANSACTIONS_CACHE_KEY, JSON.stringify({
-      timestamp: Date.now(),
-      data
-    }));
-  } catch (e) {
-    console.error('transactions cache write error:', e);
-  }
-}
-
-function clearTransactionsCache() {
-  localStorage.removeItem(TRANSACTIONS_CACHE_KEY);
-}
-
-function getCachedAccounts() {
-  try {
-    const cached = localStorage.getItem(ACCOUNTS_CACHE_KEY);
-    if (!cached) return null;
-    const { timestamp, data } = JSON.parse(cached);
-    if (!data) return null;
-    if (Date.now() - timestamp < ACCOUNTS_CACHE_DURATION) {
-      return data;
-    }
-    localStorage.removeItem(ACCOUNTS_CACHE_KEY);
-  } catch (e) {
-    console.error('accounts cache read error:', e);
-    localStorage.removeItem(ACCOUNTS_CACHE_KEY);
-  }
-  return null;
-}
-
-function setCachedAccounts(data) {
-  try {
-    localStorage.setItem(ACCOUNTS_CACHE_KEY, JSON.stringify({
-      timestamp: Date.now(),
-      data
-    }));
-  } catch (e) {
-    console.error('accounts cache write error:', e);
-  }
-}
-
-function clearAccountsCache() {
-  localStorage.removeItem(ACCOUNTS_CACHE_KEY);
-}
-
-function getCachedSettings() {
-  try {
-    const cached = localStorage.getItem(SETTINGS_CACHE_KEY);
-    if (!cached) return null;
-    const { timestamp, data } = JSON.parse(cached);
-    if (!data) return null;
-    if (Date.now() - timestamp < SETTINGS_CACHE_DURATION) {
-      return data;
-    }
-    localStorage.removeItem(SETTINGS_CACHE_KEY);
-  } catch (e) {
-    console.error('settings cache read error:', e);
-    localStorage.removeItem(SETTINGS_CACHE_KEY);
-  }
-  return null;
-}
-
-function setCachedSettings(data) {
-  try {
-    localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify({
-      timestamp: Date.now(),
-      data
-    }));
-  } catch (e) {
-    console.error('settings cache write error:', e);
-  }
-}
-
-function clearSettingsCache() {
-  localStorage.removeItem(SETTINGS_CACHE_KEY);
-}
-
-function getCachedCategoryHistory() {
-  try {
-    const cached = localStorage.getItem(CATEGORY_HISTORY_CACHE_KEY);
-    if (!cached) return null;
-    const { timestamp, data } = JSON.parse(cached);
-    if (!data) return null;
-    if (Date.now() - timestamp < CATEGORY_HISTORY_CACHE_DURATION) {
-      return data;
-    }
-    localStorage.removeItem(CATEGORY_HISTORY_CACHE_KEY);
-  } catch (e) {
-    console.error('category history cache read error:', e);
-    localStorage.removeItem(CATEGORY_HISTORY_CACHE_KEY);
-  }
-  return null;
-}
-
-function setCachedCategoryHistory(data) {
-  try {
-    localStorage.setItem(CATEGORY_HISTORY_CACHE_KEY, JSON.stringify({
-      timestamp: Date.now(),
-      data
-    }));
-  } catch (e) {
-    console.error('category history cache write error:', e);
-  }
-}
-
-function clearCategoryHistoryCache() {
-  localStorage.removeItem(CATEGORY_HISTORY_CACHE_KEY);
-}
-
-
 function resetIdleTimeout() {
   // Clear existing timeout
   if (idleTimeout) {
@@ -260,8 +119,8 @@ $(document).ready(async function() {
   // Sync transactions with Plaid on page load (after accounts are loaded/selected)
   await autoSyncAndLoadTransactions();
 
-  // Load category history for insights (non-blocking, loads in parallel)
-  loadCategoryHistory();
+  // Render dynamic period buttons after transactions are loaded
+  renderDynamicPeriodButtons();
 
   // Add event listener for optional fields
   $(document).on('change', '.field-checkbox', function() {
@@ -350,11 +209,7 @@ function setDefaultDates() {
 
 function setEarliestToDate() {
   const end = new Date();
-  const start = new Date();
-  const today = new Date();
   
-  today.setHours(0, 0, 0, 0);
-  start.setDate(today.getDate() - 90);
   // Helper to format date as YYYY-MM-DD in local time
   const formatDate = (date) => {
     const year = date.getFullYear();
@@ -362,6 +217,26 @@ function setEarliestToDate() {
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
+  
+  // Find the earliest transaction date from synced data
+  let earliestDate = null;
+  if (transactions && transactions.length > 0) {
+    earliestDate = transactions.reduce((earliest, txn) => {
+      if (!earliest || txn.date < earliest) {
+        return txn.date;
+      }
+      return earliest;
+    }, null);
+  }
+  
+  // If we found an earliest date, use it; otherwise fall back to 90 days ago
+  let start;
+  if (earliestDate) {
+    start = new Date(earliestDate);
+  } else {
+    start = new Date();
+    start.setDate(start.getDate() - 90);
+  }
   
   document.getElementById('start-date').value = formatDate(start);
   document.getElementById('end-date').value = formatDate(end);
@@ -415,7 +290,6 @@ function toggleConfig() {
 
 async function refreshAccounts() {
   try {
-    clearAccountsCache();
     showStatus('Syncing accounts from Plaid...', 'info');
     const response = await fetch(`${BACKEND_URL}/api/connections/accounts`, {
       headers: {
@@ -460,19 +334,8 @@ function deselectAllAccounts() {
   renderTransactionTable();
 }
 
-async function loadAccounts(skipCache = false) {
+async function loadAccounts() {
   try {
-    if (!skipCache) {
-      const cached = getCachedAccounts();
-      if (cached) {
-        accounts = cached;
-        renderAccountSelector();
-        showStatus('Loaded accounts from cache', 'info');
-        setTimeout(() => clearStatus(), 1500);
-        return;
-      }
-    }
-
     showStatus('Loading accounts...', 'info');
     
     // Use new endpoint that gets all accounts including disconnected ones
@@ -493,7 +356,6 @@ async function loadAccounts(skipCache = false) {
     accounts = data.accounts || [];
     // Filter out investment accounts as they are not supported
     accounts = accounts.filter(acc => acc.account_type !== 'investment');
-    setCachedAccounts(accounts);
     
     renderAccountSelector();
     
@@ -611,7 +473,6 @@ async function activateBank(itemId) {
         await performSync(accountIds, formatDate(start), formatDate(end), true);
         
         // Refresh accounts to update status (force network)
-        clearAccountsCache();
         await loadAccounts(true);
         showStatus('Activated successfully', 'success');
 
@@ -658,7 +519,6 @@ async function syncTransactions() {
   // This function is called when user manually clicks a sync button (if we keep one)
   // For now, syncing happens automatically on page load via autoSyncAndLoadTransactions()
   // Force network path on manual sync
-  clearTransactionsCache();
   await autoSyncAndLoadTransactions(true);
 }
 
@@ -678,29 +538,7 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
     return;
   }
   
-  // Validate date range
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-  
-  if (daysDiff < 1 || daysDiff > 90) {
-    showStatus('Date range must be between 1 and 90 days', 'error');
-    return;
-  }
-  
   try {
-    // If we have fresh cached transactions and not forcing network, use cache and skip backend calls
-    if (!forceNetwork) {
-      const cached = getCachedTransactions();
-      if (cached) {
-        transactions = cached;
-        renderTransactionTable();
-        showStatus(`Loaded ${transactions.length} transactions from cache`, 'info');
-        setTimeout(() => clearStatus(), 1500);
-        return;
-      }
-    }
-
     showStatus('Syncing transactions from Plaid...', 'info');
     
     const syncData = await performSync(selectedAccounts, startDate, endDate);
@@ -713,7 +551,6 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
     
   } catch (error) {
     showStatus(`Sync failed: ${error.message}`, 'error');
-    // Still try to load cached transactions so the user sees something
     await fetchAllTransactions(false);
   }
 }
@@ -721,17 +558,6 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
 async function fetchAllTransactions(forceNetwork = false) {
   // Fetch all transactions for the user (backend returns all, frontend filters)
   try {
-    if (!forceNetwork) {
-      const cached = getCachedTransactions();
-      if (cached) {
-        transactions = cached;
-        renderTransactionTable();
-        showStatus(`Loaded ${transactions.length} total transactions (cached)`, 'success');
-        setTimeout(() => clearStatus(), 1500);
-        return;
-      }
-    }
-
     showStatus('Loading all transactions...', 'info');
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transactions`, {
@@ -747,8 +573,8 @@ async function fetchAllTransactions(forceNetwork = false) {
     }
     
     transactions = data.transactions || [];
-    setCachedTransactions(transactions);
     renderTransactionTable();
+    renderDynamicPeriodButtons(); // Update period buttons when transactions change
     showStatus(`Loaded ${transactions.length} total transactions (filters applied on frontend)`, 'success');
     setTimeout(() => clearStatus(), 2000);
     
@@ -1060,6 +886,130 @@ function getDateRange() {
   return `${start}_to_${end}`;
 }
 
+// ===============================
+// DYNAMIC PERIOD BUTTONS
+// ===============================
+
+function renderDynamicPeriodButtons() {
+  const container = document.getElementById('dynamic-period-buttons');
+  if (!container) return;
+  
+  if (!transactions || transactions.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+  
+  // Find earliest and latest transaction dates
+  let earliest = null;
+  let latest = null;
+  
+  transactions.forEach(txn => {
+    if (!earliest || txn.date < earliest) earliest = txn.date;
+    if (!latest || txn.date > latest) latest = txn.date;
+  });
+  
+  if (!earliest || !latest) {
+    container.innerHTML = '';
+    return;
+  }
+  
+  const earliestDate = new Date(earliest);
+  const latestDate = new Date(latest);
+  
+  // Calculate span in days
+  const daysDiff = Math.ceil((latestDate - earliestDate) / (1000 * 60 * 60 * 24));
+  
+  // If span is 2+ years, show year buttons; otherwise show month buttons
+  if (daysDiff >= 730) {
+    renderYearButtons(container, earliestDate, latestDate);
+  } else {
+    renderMonthButtons(container, earliestDate, latestDate);
+  }
+}
+
+function renderYearButtons(container, earliestDate, latestDate) {
+  const startYear = earliestDate.getFullYear();
+  const endYear = latestDate.getFullYear();
+  
+  let html = '<span style="font-size: 14px; font-weight: 500; color: #666;">Quick Select:</span>';
+  
+  for (let year = startYear; year <= endYear; year++) {
+    html += `<button onclick="setPeriodYear(${year})" class="secondary" style="padding: 4px 10px; font-size: 12px;">${year}</button>`;
+  }
+  
+  container.innerHTML = html;
+}
+
+function renderMonthButtons(container, earliestDate, latestDate) {
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  
+  let html = '<span style="font-size: 14px; font-weight: 500; color: #666;">Quick Select:</span>';
+  
+  // Build list of year-month combinations
+  const months = [];
+  let current = new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1);
+  const end = new Date(latestDate.getFullYear(), latestDate.getMonth(), 1);
+  
+  while (current <= end) {
+    months.push({
+      year: current.getFullYear(),
+      month: current.getMonth(),
+      label: monthNames[current.getMonth()]
+    });
+    current.setMonth(current.getMonth() + 1);
+  }
+  
+  // If multiple years, show year prefix for clarity
+  const multiYear = months.length > 0 && months[0].year !== months[months.length - 1].year;
+  
+  months.forEach(m => {
+    const label = multiYear ? `${m.label} '${String(m.year).slice(-2)}` : m.label;
+    html += `<button onclick="setPeriodMonth(${m.year}, ${m.month})" class="secondary" style="padding: 4px 10px; font-size: 12px;">${label}</button>`;
+  });
+  
+  container.innerHTML = html;
+}
+
+function setPeriodYear(year) {
+  const formatDate = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+  
+  const start = new Date(year, 0, 1); // January 1st
+  const end = new Date(year, 11, 31); // December 31st
+  const today = new Date();
+  
+  // Don't go beyond today
+  const actualEnd = end > today ? today : end;
+  
+  document.getElementById('start-date').value = formatDate(start);
+  document.getElementById('end-date').value = formatDate(actualEnd);
+  renderTransactionTable();
+}
+
+function setPeriodMonth(year, month) {
+  const formatDate = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+  
+  const start = new Date(year, month, 1); // First day of month
+  const end = new Date(year, month + 1, 0); // Last day of month
+  const today = new Date();
+  
+  // Don't go beyond today
+  const actualEnd = end > today ? today : end;
+  
+  document.getElementById('start-date').value = formatDate(start);
+  document.getElementById('end-date').value = formatDate(actualEnd);
+  renderTransactionTable();
+}
+
 function showStatus(message, type) {
   const statusDiv = document.getElementById('status-message');
   statusDiv.className = `status-message ${type}`;
@@ -1100,7 +1050,6 @@ async function promptRename(accountId, currentCustomName) {
     setTimeout(() => clearStatus(), 2000);
     
     // Refresh accounts list
-    clearAccountsCache();
     await loadAccounts(true);
     
   } catch (error) {
@@ -1140,9 +1089,6 @@ async function saveSettings() {
       throw new Error(data.error || 'Failed to save settings');
     }
     
-    clearSettingsCache();
-    setCachedSettings(settings);
-    
     showStatus('Settings saved successfully', 'success');
     setTimeout(() => clearStatus(), 2000);
     
@@ -1152,16 +1098,8 @@ async function saveSettings() {
   }
 }
 
-async function loadSettings(skipCache = false) {
+async function loadSettings() {
   try {
-    if (!skipCache) {
-      const cachedSettings = getCachedSettings();
-      if (cachedSettings) {
-        applySettings(cachedSettings);
-        return;
-      }
-    }
-    
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transaction_viewer_settings`, {
       method: 'GET'
     });
@@ -1171,7 +1109,6 @@ async function loadSettings(skipCache = false) {
     }
     
     const settings = await response.json();
-    setCachedSettings(settings);
     applySettings(settings);
     
   } catch (error) {
@@ -1201,36 +1138,6 @@ function applySettings(settings) {
 // ===============================
 // CATEGORY HISTORY & INSIGHTS
 // ===============================
-
-async function loadCategoryHistory() {
-  try {
-    // Check cache first
-    const cached = getCachedCategoryHistory();
-    if (cached) {
-      categoryHistory = cached;
-      console.log('Category history loaded from cache');
-      return;
-    }
-
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/category-history`, {
-      method: 'GET'
-    });
-
-    if (!response.ok) {
-      console.warn('Failed to load category history');
-      return;
-    }
-
-    const data = await response.json();
-    if (data.success && data.data) {
-      categoryHistory = data;
-      setCachedCategoryHistory(data);
-      console.log('Category history loaded successfully');
-    }
-  } catch (error) {
-    console.error('Error loading category history:', error);
-  }
-}
 
 function generateSpendingInsights() {
   // Generate statistical insights based on filtered transactions and historical data
@@ -1339,30 +1246,6 @@ function generateSpendingInsights() {
       label: 'Largest Purchase',
       value: `${formatted} at ${currentStats.largestTransaction.merchant}`
     });
-  }
-
-  // Insight 5: Period-over-period comparison (if history available)
-  if (categoryHistory && categoryHistory.data && categoryHistory.data.length >= 2) {
-    const latestPeriod = categoryHistory.summary.latest_period;
-    if (latestPeriod && topCategories.length > 0) {
-      const topCat = topCategories[0];
-      const historicalAmount = latestPeriod.categories[topCat.name] || 0;
-      
-      if (historicalAmount > 0) {
-        const change = ((topCat.total - historicalAmount) / historicalAmount) * 100;
-        const direction = change > 0 ? '📈' : '📉';
-        const arrow = change > 0 ? 'up' : 'down';
-        
-        if (Math.abs(change) > 25) { // Only show if change is >25%
-          insights.push({
-            icon: direction,
-            label: 'Unusual Activity',
-            value: `${topCat.name} ${arrow} ${Math.abs(change).toFixed(0)}% vs previous period`,
-            highlight: true
-          });
-        }
-      }
-    }
   }
 
   return insights;

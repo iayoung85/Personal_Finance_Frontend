@@ -29,7 +29,7 @@ function detectBackendUrl() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3000);
         
-        fetch(`${url}/api/auth/health`, { signal: controller.signal }).then(r => {
+        fetch(`${url}/api/auth/health`, { signal: controller.signal, cache: 'no-cache' }).then(r => {
           clearTimeout(timeoutId);
           if (r.ok) {
             resolve(url);
@@ -51,7 +51,7 @@ function detectBackendUrl() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000);
     
-    return fetch(`${origin}/api/auth/health`, { signal: controller.signal })
+    return fetch(`${origin}/api/auth/health`, { signal: controller.signal, cache: 'no-cache' })
       .then(r => {
         clearTimeout(timeoutId);
         if (r.ok) return origin;

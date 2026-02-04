@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Transaction Viewer - Bank Transactions</title>
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -50,6 +53,10 @@
                 <button onclick="setEarliestToDate()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Earliest to Date</button>
                 <button onclick="setMonthToDate()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Month to Date</button>
                 <button onclick="setLastMonth()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Last Month</button>
+              </div>
+              <!-- Dynamic Period Buttons -->
+              <div id="dynamic-period-buttons" style="display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+                <!-- Buttons will be generated dynamically based on transaction data -->
               </div>
             </div>
             

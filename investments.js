@@ -8,15 +8,6 @@ let currentUser = null;
 let authToken = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
 
-const CACHE_KEY = 'investmentHoldingsCache';
-const CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
-
-const ACCOUNTS_CACHE_KEY = 'investmentAccountsCache';
-const ACCOUNTS_CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
-
-const ACCOUNTS_STATUS_CACHE_KEY = 'investmentAccountsStatusCache';
-const ACCOUNTS_STATUS_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
-
 // Auth Check
 if (!authToken) {
   window.location.href = 'index.html';
@@ -114,21 +105,11 @@ async function loadAccounts() {
   const container = $('#account-selector');
   container.html('<div class="status-message info">Loading accounts...</div>');
   try {
-    // Check cache first
-    const cached = getCachedAccounts();
-    if (cached) {
-      investmentAccounts = cached;
-      renderAccountSelector();
-      selectAllAccounts();
-      return;
-    }
-
     const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/accounts/all`);
     const data = await response.json();
     if (data.error) throw new Error(data.error);
 
     investmentAccounts = data.accounts || [];
-    setCachedAccounts(investmentAccounts);
     renderAccountSelector();
     // Auto-select all active/available accounts
     selectAllAccounts();
@@ -225,18 +206,9 @@ function deselectAllAccounts() {
 
 async function loadAccountStatus() {
   try {
-    // Check cache first
-    const cached = getCachedAccountStatus();
-    if (cached) {
-      accountStatus = cached;
-      renderAccountStatus();
-      return;
-    }
-
     const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/accounts_status`);
     const data = await response.json();
     accountStatus = data.items;
-    setCachedAccountStatus(accountStatus);
     renderAccountStatus();
   } catch (error) {
     console.error('Error loading account status:', error);
@@ -246,146 +218,14 @@ async function loadAccountStatus() {
   }
 }
 
-function getCachedHoldings() {
-  try {
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (!cached) return null;
-    
-    const { timestamp, data } = JSON.parse(cached);
-    const age = Date.now() - timestamp;
-    
-    if (age < CACHE_DURATION) {
-      return data;
-    }
-    
-    // Cache expired
-    localStorage.removeItem(CACHE_KEY);
-    return null;
-  } catch (e) {
-    console.error('Error reading cache:', e);
-    localStorage.removeItem(CACHE_KEY);
-    return null;
-  }
-}
-
-function setCachedHoldings(data) {
-  try {
-    const cacheObj = {
-      timestamp: Date.now(),
-      data: data
-    };
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cacheObj));
-  } catch (e) {
-    console.error('Error setting cache:', e);
-  }
-}
-
-function clearHoldingsCache() {
-  localStorage.removeItem(CACHE_KEY);
-}
-
-function getCachedAccounts() {
-  try {
-    const cached = localStorage.getItem(ACCOUNTS_CACHE_KEY);
-    if (!cached) return null;
-    
-    const { timestamp, data } = JSON.parse(cached);
-    const age = Date.now() - timestamp;
-    
-    if (age < ACCOUNTS_CACHE_DURATION) {
-      return data;
-    }
-    
-    localStorage.removeItem(ACCOUNTS_CACHE_KEY);
-    return null;
-  } catch (e) {
-    console.error('Error reading accounts cache:', e);
-    localStorage.removeItem(ACCOUNTS_CACHE_KEY);
-    return null;
-  }
-}
-
-function setCachedAccounts(data) {
-  try {
-    const cacheObj = {
-      timestamp: Date.now(),
-      data: data
-    };
-    localStorage.setItem(ACCOUNTS_CACHE_KEY, JSON.stringify(cacheObj));
-  } catch (e) {
-    console.error('Error setting accounts cache:', e);
-  }
-}
-
-function clearAccountsCache() {
-  localStorage.removeItem(ACCOUNTS_CACHE_KEY);
-}
-
-function getCachedAccountStatus() {
-  try {
-    const cached = localStorage.getItem(ACCOUNTS_STATUS_CACHE_KEY);
-    if (!cached) return null;
-    
-    const { timestamp, data } = JSON.parse(cached);
-    const age = Date.now() - timestamp;
-    
-    if (age < ACCOUNTS_STATUS_CACHE_DURATION) {
-      return data;
-    }
-    
-    localStorage.removeItem(ACCOUNTS_STATUS_CACHE_KEY);
-    return null;
-  } catch (e) {
-    console.error('Error reading account status cache:', e);
-    localStorage.removeItem(ACCOUNTS_STATUS_CACHE_KEY);
-    return null;
-  }
-}
-
-function setCachedAccountStatus(data) {
-  try {
-    const cacheObj = {
-      timestamp: Date.now(),
-      data: data
-    };
-    localStorage.setItem(ACCOUNTS_STATUS_CACHE_KEY, JSON.stringify(cacheObj));
-  } catch (e) {
-    console.error('Error setting account status cache:', e);
-  }
-}
-
-function clearAccountStatusCache() {
-  localStorage.removeItem(ACCOUNTS_STATUS_CACHE_KEY);
-}
-
-function clearAllCaches() {
-  clearHoldingsCache();
-  clearAccountsCache();
-  clearAccountStatusCache();
-}
-
 async function loadHoldings(skipCache = false) {
   $('#table-container').html('<div class="empty-state">Loading holdings...</div>');
   try {
-    // Try cache first unless explicitly skipped
-    if (!skipCache) {
-      const cached = getCachedHoldings();
-      if (cached) {
-        holdingsData = cached.items || [];
-        securitiesData = cached.securities || [];
-        renderTable();
-        return;
-      }
-    }
-    
     // Fetch from backend
     const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/holdings`);
     const data = await response.json();
     holdingsData = data.items || [];
     securitiesData = data.securities || [];
-    
-    // Cache the response
-    setCachedHoldings(data);
     
     renderTable();
   } catch (error) {
@@ -415,11 +255,10 @@ async function syncItem(itemId, activate = false) {
     const responseData = await response.json();
     
     if (response.ok) {
-      // Clear all caches and refresh all data
-      clearAllCaches();
+      // Refresh all data
       await loadAccounts(); 
       await loadAccountStatus(); 
-      await loadHoldings(true); // Skip cache
+      await loadHoldings(true);
       showMessage(activate ? 'Activated successfully' : 'Synced successfully', 'success');
     } else {
       alert('Sync failed: ' + responseData.error);
@@ -461,9 +300,8 @@ async function syncAllHoldings() {
     }
   }
   
-  // Clear all caches and reload
-  clearAllCaches();
-  await loadHoldings(true); // Skip cache
+  // Reload data
+  await loadHoldings(true);
   showMessage(`Synced ${successCount}/${activeItems.length} accounts`, 'success');
 }
 

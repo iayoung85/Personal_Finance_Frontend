@@ -99,7 +99,8 @@ async function refreshAccessToken() {
     const response = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken })
+      body: JSON.stringify({ refresh_token: refreshToken }),
+      cache: 'no-cache'
     });
     if (!response.ok) return false;
     const data = await response.json();
@@ -120,12 +121,12 @@ async function authenticatedFetch(url, options = {}) {
     'Authorization': `Bearer ${authToken}`,
     ...options.headers
   };
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, { ...options, headers, cache: 'no-cache' });
   if (response.status === 401) {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       headers['Authorization'] = `Bearer ${authToken}`;
-      return fetch(url, { ...options, headers });
+      return fetch(url, { ...options, headers, cache: 'no-cache' });
     }
   }
   return response;
@@ -293,7 +294,8 @@ $('#login-form').on('submit', async function(e) {
     const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password }),
+      cache: 'no-cache'
     });
 
     const data = await response.json();
@@ -339,7 +341,8 @@ $('#two-factor-form').on('submit', async function(e) {
         email: tempLoginCreds.email,
         password: tempLoginCreds.password,
         totp_code: code
-      })
+      }),
+      cache: 'no-cache'
     });
 
     const data = await response.json();
@@ -372,7 +375,8 @@ $('#forgot-form').on('submit', async function(e) {
     const response = await fetch(`${BACKEND_URL}/api/auth/forgot_password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, frontend_url: frontendUrl })
+      body: JSON.stringify({ email, frontend_url: frontendUrl }),
+      cache: 'no-cache'
     });
 
     const data = await response.json();
@@ -402,7 +406,9 @@ $('#register-form').on('submit', async function(e) {
   const frontendUrl = window.location.origin;
 
   try {
-    const statusResp = await fetch(`${BACKEND_URL}/api/auth/registration-status`);
+    const statusResp = await fetch(`${BACKEND_URL}/api/auth/registration-status`, {
+      cache: 'no-cache'
+    });
     const statusData = await statusResp.json();
     if (!statusResp.ok || !statusData.enabled) {
       showMessage('register-message', 'Registration is currently disabled.', 'error');
@@ -418,7 +424,8 @@ $('#register-form').on('submit', async function(e) {
         first_name: firstName,
         last_name: lastName,
         frontend_url: frontendUrl
-      })
+      }),
+      cache: 'no-cache'
     });
 
     const data = await response.json();
@@ -448,8 +455,18 @@ $('#link-button').on('click', async function() {
       token: linkToken,
       onSuccess: async (public_token) => {
         try {
-          await exchangePublicToken(public_token);
+          const result = await exchangePublicToken(public_token);
           showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
+          
+          // Clear transactions page caches
+          localStorage.removeItem('transactionsCache');
+          localStorage.removeItem('transactionsAccountsCache');
+          
+          // Set flag for investments page to auto-sync new items (if investments were included)
+          if (result.billed_products && result.billed_products.includes('investments')) {
+            sessionStorage.setItem('newInvestmentItems', JSON.stringify([result.item_id]));
+          }
+          
           loadConnectedBanks();
         } catch (error) {
           showMessage('dashboard-message', 'Error: ' + error.message, 'error');
@@ -475,8 +492,18 @@ $('#link-investment-button').on('click', async function() {
       token: linkToken,
       onSuccess: async (public_token) => {
         try {
-          await exchangePublicToken(public_token);
+          const result = await exchangePublicToken(public_token);
           showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
+          
+          // Clear transactions page caches
+          localStorage.removeItem('transactionsCache');
+          localStorage.removeItem('transactionsAccountsCache');
+          
+          // Set flag for investments page to auto-sync new items
+          if (result.item_id) {
+            sessionStorage.setItem('newInvestmentItems', JSON.stringify([result.item_id]));
+          }
+          
           loadConnectedBanks();
         } catch (error) {
           showMessage('dashboard-message', 'Error: ' + error.message, 'error');
