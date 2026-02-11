@@ -7,6 +7,10 @@ let rules = [];
 let plaidTaxonomy = [];
 let migrationLog = [];
 let currentRuleEditId = null;
+let selectedPrimaryCategories = new Set(['__all__']);
+let primaryCategoryMappings = {};
+let lastSelectedPrimaryIndex = null;
+let selectedDetailedPrimaryFilter = '__all__';
 
 // Check authentication
 let token = localStorage.getItem('authToken');
@@ -122,9 +126,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (e.target.id === 'mapping-filter') {
       renderMappingsList(e.target.value);
     }
-    if (e.target.id === 'taxonomy-filter') {
-      renderTaxonomyList(e.target.value);
-    }
   });
 });
 
@@ -178,18 +179,162 @@ async function loadCategorizationData() {
     migrationLog = logRes.ok ? (logData.migrations || []) : [];
     plaidTaxonomy = taxonomyRes.ok ? (taxonomyData.categories || []) : [];
 
+    // Ensure all Plaid categories are in categoryMappings, defaulting to original formatted name
+    plaidTaxonomy.forEach(cat => {
+      if (!(cat.detailed in categoryMappings)) {
+        const displayNames = getCategoryDisplayNames(cat);
+        categoryMappings[cat.detailed] = displayNames.full || formatPlaidCategory(cat.detailed);
+      }
+    });
+
     renderMappingsList();
+    derivePrimaryMappingsFromDetailedMappings();
+    renderPrimaryMappingsList();
     renderCustomCategories();
-    renderTaxonomyList();
     renderRulesTable();
     renderRuleFormOptions();
     renderMigrationSelectors();
     renderMigrationLog();
-    renderMappingSelectOptions();
+    renderDetailedMappingFilterOptions();
+    renderAvailableCategoriesPreview();
   } catch (error) {
     console.error('loadCategorizationData error:', error);
     showStatus(`Failed to load categorization data: ${error.message}`, 'error');
   }
+}
+
+function renderAvailableCategoriesPreview() {
+  const primaryList = document.getElementById('primary-category-list');
+  const detailedList = document.getElementById('detailed-category-list');
+  const primaryCount = document.getElementById('primary-selected-count');
+  const detailedCount = document.getElementById('detailed-count');
+
+  if (!primaryList || !detailedList) return;
+
+  const primarySet = new Set();
+  (availableCategories || []).forEach(cat => {
+    const parts = parseCategoryName(cat);
+    if (parts.primary) primarySet.add(parts.primary);
+  });
+
+  const primaryOptions = Array.from(primarySet).sort((a, b) => a.localeCompare(b));
+
+  if (!primaryOptions.length) {
+    primaryList.innerHTML = '<div class="empty-state">No categories available.</div>';
+    detailedList.innerHTML = '<div class="empty-state">No categories available.</div>';
+    if (primaryCount) primaryCount.textContent = '';
+    if (detailedCount) detailedCount.textContent = '';
+    return;
+  }
+
+  if (!selectedPrimaryCategories || selectedPrimaryCategories.size === 0) {
+    selectedPrimaryCategories = new Set(['__all__']);
+  }
+
+  const primaryItems = [
+    { key: '__all__', label: 'All' },
+    ...primaryOptions.map(primary => ({ key: primary, label: primary }))
+  ];
+
+  const rows = primaryItems
+    .map((item, index) => {
+      const isSelected = selectedPrimaryCategories.has(item.key);
+      return `
+        <div class="preview-item ${isSelected ? 'selected' : ''}" data-primary="${escapeHtml(item.key)}" data-index="${index}">
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <span>${escapeHtml(item.label)}</span>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              ${item.key === '__all__' ? '<span class="pill">All</span>' : `<button class="secondary" style="padding: 3px 8px; font-size: 11px; white-space: nowrap;" onclick="startAddDetailsForPrimary('${escapeHtml(item.key)}'); event.stopPropagation();">+ Add Custom Detailed Cat</button>`}
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  primaryList.innerHTML = rows;
+
+  primaryList.querySelectorAll('.preview-item').forEach(item => {
+    item.addEventListener('click', event => {
+      const key = item.getAttribute('data-primary');
+      const index = parseInt(item.getAttribute('data-index') || '0', 10);
+      if (!key) return;
+
+      const isCtrl = event.ctrlKey || event.metaKey;
+      const isShift = event.shiftKey;
+
+      if (key === '__all__') {
+        selectedPrimaryCategories = new Set(['__all__']);
+        lastSelectedPrimaryIndex = index;
+        renderAvailableCategoriesPreview();
+        return;
+      }
+
+      if (isShift && lastSelectedPrimaryIndex !== null) {
+        const start = Math.min(lastSelectedPrimaryIndex, index);
+        const end = Math.max(lastSelectedPrimaryIndex, index);
+        const rangeKeys = primaryItems
+          .slice(start, end + 1)
+          .map(item => item.key)
+          .filter(itemKey => itemKey !== '__all__');
+
+        if (isCtrl) {
+          selectedPrimaryCategories.delete('__all__');
+          rangeKeys.forEach(k => selectedPrimaryCategories.add(k));
+        } else {
+          selectedPrimaryCategories = new Set(rangeKeys);
+        }
+      } else if (isCtrl) {
+        if (selectedPrimaryCategories.has('__all__')) {
+          selectedPrimaryCategories.delete('__all__');
+        }
+        if (selectedPrimaryCategories.has(key)) {
+          selectedPrimaryCategories.delete(key);
+        } else {
+          selectedPrimaryCategories.add(key);
+        }
+      } else {
+        selectedPrimaryCategories = new Set([key]);
+      }
+
+      if (selectedPrimaryCategories.size === 0) {
+        selectedPrimaryCategories.add('__all__');
+      }
+
+      lastSelectedPrimaryIndex = index;
+      renderAvailableCategoriesPreview();
+    });
+  });
+
+  const selectedCount = selectedPrimaryCategories.has('__all__')
+    ? primaryOptions.length
+    : selectedPrimaryCategories.size;
+
+  if (primaryCount) {
+    primaryCount.textContent = `${selectedCount} selected`;
+  }
+
+  const detailedRows = buildDetailedPreviewRows(primaryOptions);
+  detailedList.innerHTML = detailedRows.html;
+  if (detailedCount) detailedCount.textContent = `${detailedRows.count} total`;
+}
+
+function buildDetailedPreviewRows(primaryOptions) {
+  const list = availableCategories || [];
+  const filtered = selectedPrimaryCategories.has('__all__')
+    ? list
+    : list.filter(cat => selectedPrimaryCategories.has(parseCategoryName(cat).primary));
+
+  const sorted = filtered.slice().sort((a, b) => a.localeCompare(b));
+  if (!sorted.length) {
+    return { html: '<div class="empty-state">No detailed categories match your selection.</div>', count: 0 };
+  }
+
+  const html = sorted
+    .map(cat => `<div class="preview-item disabled"><span>${escapeHtml(cat)}</span></div>`)
+    .join('');
+
+  return { html, count: sorted.length };
 }
 
 function refreshCategorizationData() {
@@ -211,16 +356,24 @@ function renderMappingsList(filterText = '') {
       if (!filter) return true;
       return plaidCat.toLowerCase().includes(filter) || (userLabel || '').toLowerCase().includes(filter);
     })
+    .filter(([plaidCat]) => {
+      if (selectedDetailedPrimaryFilter === '__all__') return true;
+      const taxonomyEntry = plaidTaxonomy.find(t => t.detailed === plaidCat);
+      const primaryDisplay = getPrimaryDisplayForDetailed(plaidCat, taxonomyEntry);
+      return primaryDisplay === selectedDetailedPrimaryFilter;
+    })
     .map(([plaidCat, userLabel]) => {
       // Find the category in taxonomy to get primary for trimming
       const taxonomyEntry = plaidTaxonomy.find(t => t.detailed === plaidCat);
       const displayNames = getCategoryDisplayNames(taxonomyEntry || { detailed: plaidCat });
       const displayKey = displayNames.full || formatPlaidCategory(plaidCat);
       
+      const options = buildDetailedOptionsForCategory(plaidCat, userLabel);
+      
       return `
         <div class="mapping-row" data-plaid-category="${escapeHtml(plaidCat)}">
           <div class="mapping-key" title="${escapeHtml(plaidCat)}">${escapeHtml(displayKey)}</div>
-          <input class="mapping-value" type="text" value="${escapeHtml(userLabel || '')}" placeholder="User label">
+          <select class="mapping-value" data-plaid-category="${escapeHtml(plaidCat)}">${options}</select>
           <button class="secondary mapping-clear" onclick="clearMapping('${escapeHtml(plaidCat)}')">Clear</button>
         </div>
       `;
@@ -228,66 +381,119 @@ function renderMappingsList(filterText = '') {
     .join('');
 
   container.innerHTML = rows || '<div class="empty-state">No mappings match your filter.</div>';
+
+  container.querySelectorAll('.mapping-value').forEach(select => {
+    select.addEventListener('change', event => {
+      const plaidCat = event.target.getAttribute('data-plaid-category');
+      if (!plaidCat) return;
+      const value = event.target.value;
+      const taxonomyEntry = plaidTaxonomy.find(t => t.detailed === plaidCat);
+      const displayNames = getCategoryDisplayNames(taxonomyEntry || { detailed: plaidCat });
+      const originalDisplay = displayNames.full || formatPlaidCategory(plaidCat);
+      if (value === plaidCat) {
+        categoryMappings[plaidCat] = originalDisplay;
+      } else {
+        categoryMappings[plaidCat] = value;
+      }
+    });
+  });
 }
 
-function renderMappingSelectOptions() {
-  const select = document.getElementById('mapping-plaid-select');
-  if (!select) return;
-  const options = plaidTaxonomy
-    .slice()
-    .sort((a, b) => a.detailed.localeCompare(b.detailed))
-    .map(cat => {
-      const displayNames = getCategoryDisplayNames(cat);
-      const label = displayNames.full || formatPlaidCategory(cat.detailed);
-      return `<option value="${escapeHtml(cat.detailed)}">${escapeHtml(label)}</option>`;
-    })
-    .join('');
-  select.innerHTML = options;
-}
-
-function renderTaxonomyList(filterText = '') {
-  const container = document.getElementById('taxonomy-list');
+function renderPrimaryMappingsList() {
+  const container = document.getElementById('primary-mappings-list');
   if (!container) return;
-  const filter = (filterText || '').toLowerCase().trim();
-  const rows = (plaidTaxonomy || [])
-    .filter(cat => {
-      if (!filter) return true;
-      return cat.primary.toLowerCase().includes(filter) || cat.detailed.toLowerCase().includes(filter);
-    })
-    .map(cat => {
-      const displayNames = getCategoryDisplayNames(cat);
-      const label = displayNames.full || `${formatPlaidCategory(cat.primary)} / ${formatPlaidCategory(cat.detailed)}`;
-      return `<div class="taxonomy-row">${escapeHtml(label)}</div>`;
+
+  const plaidPrimaries = getPlaidPrimaryDisplayList();
+  if (!plaidPrimaries.length) {
+    container.innerHTML = '<div class="empty-state">No primary categories found.</div>';
+    return;
+  }
+
+  const targetOptions = buildPrimaryCategoryOptions();
+
+  container.innerHTML = plaidPrimaries
+    .map(primary => {
+      const selected = primaryCategoryMappings[primary] || '';
+      return `
+        <div class="mapping-row" data-plaid-primary="${escapeHtml(primary)}">
+          <div class="mapping-key">${escapeHtml(primary)}</div>
+          <select class="mapping-value" data-plaid-primary="${escapeHtml(primary)}">
+            ${targetOptions(primary, selected)}
+          </select>
+          <button class="secondary mapping-clear" onclick="clearPrimaryMapping('${escapeHtml(primary)}')">Clear</button>
+        </div>
+      `;
     })
     .join('');
 
-  container.innerHTML = rows || '<div class="empty-state">No taxonomy items found.</div>';
+  container.querySelectorAll('.mapping-value').forEach(select => {
+    select.addEventListener('change', event => {
+      const plaidPrimary = event.target.getAttribute('data-plaid-primary');
+      if (!plaidPrimary) return;
+      const value = (event.target.value || '').trim();
+      if (value) {
+        primaryCategoryMappings[plaidPrimary] = value;
+      } else {
+        delete primaryCategoryMappings[plaidPrimary];
+      }
+      applyPrimaryMapping(plaidPrimary, value);
+      renderMappingsList(document.getElementById('mapping-filter').value);
+    });
+  });
 }
 
-function toggleTaxonomy() {
-  const content = document.getElementById('taxonomy-content');
-  const toggle = document.getElementById('taxonomy-toggle');
-  content.classList.toggle('open');
-  toggle.textContent = content.classList.contains('open') ? '▲' : '▼';
+function renderDetailedMappingFilterOptions() {
+  const select = document.getElementById('detailed-mapping-primary-filter');
+  if (!select) return;
+
+  const primaries = getPlaidPrimaryDisplayList();
+  const options = ['__all__', ...primaries];
+
+  if (!options.includes(selectedDetailedPrimaryFilter)) {
+    selectedDetailedPrimaryFilter = '__all__';
+  }
+
+  select.innerHTML = options
+    .map(primary => {
+      const label = primary === '__all__' ? 'All primaries' : primary;
+      return `<option value="${escapeHtml(primary)}" ${primary === selectedDetailedPrimaryFilter ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    })
+    .join('');
+
+  select.addEventListener('change', () => {
+    selectedDetailedPrimaryFilter = select.value || '__all__';
+    renderMappingsList(document.getElementById('mapping-filter').value);
+  });
 }
 
 function clearMapping(plaidCategory) {
   const row = document.querySelector(`.mapping-row[data-plaid-category="${plaidCategory}"]`);
   if (row) {
-    const input = row.querySelector('.mapping-value');
-    if (input) input.value = '';
+    const select = row.querySelector('.mapping-value');
+    if (select) select.value = plaidCategory;
   }
+  const taxonomyEntry = plaidTaxonomy.find(t => t.detailed === plaidCategory);
+  const displayNames = getCategoryDisplayNames(taxonomyEntry || { detailed: plaidCategory });
+  categoryMappings[plaidCategory] = displayNames.full || formatPlaidCategory(plaidCategory);
+}
+
+function clearPrimaryMapping(plaidPrimary) {
+  delete primaryCategoryMappings[plaidPrimary];
+  applyPrimaryMapping(plaidPrimary, '');
+  renderPrimaryMappingsList();
+  renderMappingsList(document.getElementById('mapping-filter').value);
 }
 
 async function saveCategoryMappings() {
   try {
-    const mappingRows = document.querySelectorAll('.mapping-row');
+    const previousMappings = await fetchServerPrimaryMappings();
+    // Use the in-memory categoryMappings object instead of querying the DOM
+    // This ensures we save ALL mappings, not just the currently visible ones
     const newMappings = {};
-    mappingRows.forEach(row => {
-      const key = row.getAttribute('data-plaid-category');
-      const value = row.querySelector('.mapping-value').value.trim();
-      if (key && value) {
-        newMappings[key] = value;
+    Object.entries(categoryMappings || {}).forEach(([key, value]) => {
+      const trimmedValue = (value || '').trim();
+      if (trimmedValue) {
+        newMappings[key] = trimmedValue;
       }
     });
 
@@ -304,6 +510,7 @@ async function saveCategoryMappings() {
     }
 
     showStatus('Mappings saved', 'success');
+    await reconcileCustomCategoriesForPrimaryMappings(previousMappings, primaryCategoryMappings);
     await loadCategorizationData();
     setTimeout(() => clearStatus(), 2000);
   } catch (error) {
@@ -311,66 +518,383 @@ async function saveCategoryMappings() {
   }
 }
 
-function addMappingRow() {
-  const plaidSelect = document.getElementById('mapping-plaid-select');
-  const userLabelInput = document.getElementById('mapping-user-label');
-  const plaidCat = (plaidSelect && plaidSelect.value) || '';
-  const userLabel = (userLabelInput && userLabelInput.value || '').trim();
+async function fetchServerPrimaryMappings() {
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories`);
+    const data = await response.json();
+    if (!response.ok) {
+      return {};
+    }
+    const mappings = data.category_mappings || {};
+    return derivePrimaryMappingsFromMappings(mappings);
+  } catch (error) {
+    console.warn('Failed to fetch previous mappings:', error);
+    return {};
+  }
+}
 
-  if (!plaidCat || !userLabel) {
-    showStatus('Select a Plaid category and enter a user label', 'warning');
+async function reconcileCustomCategoriesForPrimaryMappings(previousMappings, currentMappings) {
+  const previous = previousMappings || {};
+  const current = currentMappings || {};
+
+  const toRemove = [];
+  Object.entries(previous).forEach(([plaidPrimaryDisplay, prevTarget]) => {
+    const currentTarget = current[plaidPrimaryDisplay];
+    if (!currentTarget || currentTarget !== prevTarget) {
+      toRemove.push([plaidPrimaryDisplay, prevTarget]);
+    }
+  });
+
+  for (const [plaidPrimaryDisplay, prevTarget] of toRemove) {
+    await deleteCustomDetailedCategoriesForPrimaryMapping(plaidPrimaryDisplay, prevTarget);
+  }
+
+  const entries = Object.entries(current);
+  for (const [plaidPrimaryDisplay, targetPrimaryDisplay] of entries) {
+    await ensureCustomDetailedCategoriesForPrimaryMapping(plaidPrimaryDisplay, targetPrimaryDisplay);
+  }
+}
+
+
+function addDetailedCategoryField(value = '') {
+  const container = document.getElementById('detailed-categories-list');
+  if (!container) return;
+
+  const fieldId = `detailed-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const fieldDiv = document.createElement('div');
+  fieldDiv.className = 'detailed-field-row';
+  fieldDiv.innerHTML = `
+    <input type="text" id="${fieldId}" placeholder="e.g., Lawn Care" value="${escapeHtml(value)}">
+    <button type="button" class="secondary remove-detailed-btn" onclick="removeDetailedCategoryField('${fieldId}')">×</button>
+  `;
+  container.appendChild(fieldDiv);
+  return fieldDiv.querySelector('input');
+}
+
+function removeDetailedCategoryField(fieldId) {
+  const field = document.getElementById(fieldId);
+  if (field && field.parentElement) {
+    field.parentElement.remove();
+  }
+}
+
+function getDetailedCategoryValues() {
+  const container = document.getElementById('detailed-categories-list');
+  if (!container) return [];
+  
+  const inputs = container.querySelectorAll('input[type="text"]');
+  return Array.from(inputs)
+    .map(input => (input.value || '').trim())
+    .filter(Boolean);
+}
+
+function clearDetailedCategoryFields() {
+  const container = document.getElementById('detailed-categories-list');
+  if (container) {
+    container.innerHTML = '';
+  }
+}
+
+function startAddDetailsForCategory(categoryName) {
+  const parts = parseCategoryName(categoryName);
+  if (!parts.primary) return;
+
+  const primaryInput = document.getElementById('custom-primary-input');
+  if (primaryInput) {
+    primaryInput.value = parts.primary;
+    primaryInput.readOnly = true; // Prevent editing when coming from a category
+  }
+
+  clearDetailedCategoryFields();
+  const newInput = addDetailedCategoryField();
+  if (newInput) {
+    newInput.focus();
+  } else if (primaryInput) {
+    primaryInput.focus();
+  }
+
+  const card = document.getElementById('custom-categories-card');
+  if (card && card.scrollIntoView) {
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function startAddDetailsForPrimary(primaryName) {
+  // Called from the Category Output Preview when user clicks "+ Add Details" on a primary
+  // primaryName is the display format (e.g., "Food And Drink")
+  
+  const primaryInput = document.getElementById('custom-primary-input');
+  if (primaryInput) {
+    primaryInput.value = primaryName;
+    primaryInput.readOnly = true; // Prevent editing when coming from preview
+  }
+
+  clearDetailedCategoryFields();
+  const newInput = addDetailedCategoryField();
+  if (newInput) {
+    newInput.focus();
+  } else if (primaryInput) {
+    primaryInput.focus();
+  }
+
+  const card = document.getElementById('custom-categories-card');
+  if (card && card.scrollIntoView) {
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+async function addCustomCategoryGroup() {
+  const primaryInput = document.getElementById('custom-primary-input');
+  const primary = (primaryInput?.value || '').trim();
+  
+  if (!primary) {
+    showStatus('Enter a primary category', 'warning');
+    return;
+  }
+  if (primary.includes(':')) {
+    showStatus('Primary category should not include ":"', 'warning');
     return;
   }
 
-  categoryMappings[plaidCat] = userLabel;
-  if (userLabelInput) userLabelInput.value = '';
-  renderMappingsList(document.getElementById('mapping-filter').value);
+  const detailedValues = getDetailedCategoryValues();
+  const categoriesToAdd = detailedValues.length
+    ? detailedValues.map(detail => `${primary}: ${detail}`)
+    : [primary];
+  const uniqueCategories = Array.from(new Set(categoriesToAdd));
+
+  let successCount = 0;
+  const errors = [];
+
+  if (detailedValues.length && (customCategories || []).includes(primary)) {
+    await deleteCategory(primary, 'delete');
+  }
+
+  for (const categoryName of uniqueCategories) {
+    try {
+      const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/custom`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category_name: categoryName })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        errors.push(data.error || `Failed to add ${categoryName}`);
+        continue;
+      }
+      successCount += 1;
+    } catch (error) {
+      errors.push(error.message || `Failed to add ${categoryName}`);
+    }
+  }
+
+  if (successCount > 0) {
+    if (primaryInput) {
+      primaryInput.value = '';
+      primaryInput.readOnly = false; // Reset readonly state
+    }
+    clearDetailedCategoryFields();
+    const message = errors.length
+      ? `Added ${successCount} categories. ${errors.length} failed.`
+      : `Added ${successCount} ${successCount === 1 ? 'category' : 'categories'}.`;
+    showStatus(message, errors.length ? 'warning' : 'success');
+    await loadCategorizationData();
+    setTimeout(() => clearStatus(), 2500);
+  } else {
+    showStatus(errors[0] || 'Failed to add categories', 'error');
+  }
 }
 
 async function addCustomCategory() {
-  const input = document.getElementById('custom-category-input');
-  const categoryName = (input.value || '').trim();
-  if (!categoryName) {
-    showStatus('Enter a category name', 'warning');
-    return;
-  }
-
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/custom`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category_name: categoryName })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      showStatus(data.error || 'Failed to add category', 'error');
-      return;
-    }
-    input.value = '';
-    showStatus('Custom category added', 'success');
-    await loadCategorizationData();
-    setTimeout(() => clearStatus(), 2000);
-  } catch (error) {
-    showStatus(`Failed to add category: ${error.message}`, 'error');
-  }
+  return addCustomCategoryGroup();
 }
+
+let selectedCustomPrimaryCategories = new Set();
+let lastSelectedCustomPrimaryIndex = null;
 
 function renderCustomCategories() {
   const container = document.getElementById('custom-category-list');
   if (!customCategories.length) {
-    container.innerHTML = '<div class="empty-state">No custom categories yet.</div>';
+    const primaryContainer = document.getElementById('custom-primary-category-list');
+    const detailedContainer = document.getElementById('custom-detailed-category-list');
+    const primaryCount = document.getElementById('custom-primary-selected-count');
+    const detailedCount = document.getElementById('custom-detailed-count');
+    
+    if (primaryContainer) primaryContainer.innerHTML = '<div class="empty-state">No custom categories yet.</div>';
+    if (detailedContainer) detailedContainer.innerHTML = '<div class="empty-state">No custom categories yet.</div>';
+    if (primaryCount) primaryCount.textContent = '';
+    if (detailedCount) detailedCount.textContent = '';
     return;
   }
 
-  container.innerHTML = customCategories
-    .map(cat => `
-      <div class="tag-item">
-        <span class="category-label" data-category="${escapeHtml(cat)}">${escapeHtml(cat)}</span>
-        <button class="secondary" onclick="deleteOverridesForCategory('${escapeHtml(cat)}')">Delete Overrides</button>
-        <button class="secondary" onclick="confirmDeleteCategory('${escapeHtml(cat)}')">Delete</button>
-      </div>
-    `)
+  renderCustomCategoryFiltered();
+}
+
+function renderCustomCategoryFiltered() {
+  const primaryContainer = document.getElementById('custom-primary-category-list');
+  const detailedContainer = document.getElementById('custom-detailed-category-list');
+  const primaryCount = document.getElementById('custom-primary-selected-count');
+  const detailedCount = document.getElementById('custom-detailed-count');
+
+  if (!primaryContainer || !detailedContainer) return;
+
+  // Group custom categories by primary
+  const primaryMap = {};
+  (customCategories || []).forEach(cat => {
+    const parts = parseCategoryName(cat);
+    if (!primaryMap[parts.primary]) {
+      primaryMap[parts.primary] = [];
+    }
+    if (parts.detailed) {
+      primaryMap[parts.primary].push(parts.detailed);
+    }
+  });
+
+  const primaryOptions = Object.keys(primaryMap).sort((a, b) => a.localeCompare(b));
+
+  if (!primaryOptions.length) {
+    primaryContainer.innerHTML = '<div class="empty-state">No custom categories yet.</div>';
+    detailedContainer.innerHTML = '<div class="empty-state">No custom categories yet.</div>';
+    if (primaryCount) primaryCount.textContent = '';
+    if (detailedCount) detailedCount.textContent = '';
+    return;
+  }
+
+  // Initialize selection if empty
+  if (!selectedCustomPrimaryCategories || selectedCustomPrimaryCategories.size === 0) {
+    selectedCustomPrimaryCategories = new Set([primaryOptions[0]]);
+  }
+
+  const primaryItems = primaryOptions.map((primary, index) => ({
+    key: primary,
+    label: primary,
+    index
+  }));
+
+  const rows = primaryItems
+    .map((item) => {
+      const isSelected = selectedCustomPrimaryCategories.has(item.key);
+      return `
+        <div class="preview-item ${isSelected ? 'selected' : ''}" data-primary="${escapeHtml(item.key)}" data-index="${item.index}">
+          <span>${escapeHtml(item.label)}</span>
+        </div>
+      `;
+    })
     .join('');
+
+  primaryContainer.innerHTML = rows;
+
+  primaryContainer.querySelectorAll('.preview-item').forEach(item => {
+    item.addEventListener('click', event => {
+      const key = item.getAttribute('data-primary');
+      const index = parseInt(item.getAttribute('data-index') || '0', 10);
+      if (!key) return;
+
+      const isCtrl = event.ctrlKey || event.metaKey;
+      const isShift = event.shiftKey;
+
+      if (isShift && lastSelectedCustomPrimaryIndex !== null) {
+        const start = Math.min(lastSelectedCustomPrimaryIndex, index);
+        const end = Math.max(lastSelectedCustomPrimaryIndex, index);
+        const rangeKeys = primaryItems
+          .slice(start, end + 1)
+          .map(item => item.key);
+
+        if (isCtrl) {
+          rangeKeys.forEach(k => selectedCustomPrimaryCategories.add(k));
+        } else {
+          selectedCustomPrimaryCategories = new Set(rangeKeys);
+        }
+      } else if (isCtrl) {
+        if (selectedCustomPrimaryCategories.has(key)) {
+          selectedCustomPrimaryCategories.delete(key);
+        } else {
+          selectedCustomPrimaryCategories.add(key);
+        }
+      } else {
+        selectedCustomPrimaryCategories = new Set([key]);
+      }
+
+      if (selectedCustomPrimaryCategories.size === 0) {
+        selectedCustomPrimaryCategories = new Set([primaryOptions[0]]);
+      }
+
+      lastSelectedCustomPrimaryIndex = index;
+      renderCustomCategoryFiltered();
+    });
+  });
+
+  // Display detailed categories with action buttons
+  const detailedRows = buildCustomDetailedPreviewRows(primaryMap, primaryOptions);
+  detailedContainer.innerHTML = detailedRows.html;
+  
+  if (primaryCount) {
+    primaryCount.textContent = `${primaryOptions.length} total`;
+  }
+  if (detailedCount) {
+    detailedCount.textContent = `${detailedRows.count} total`;
+  }
+}
+
+function buildCustomDetailedPreviewRows(primaryMap, primaryOptions) {
+  const rows = [];
+
+  // Iterate through selected primaries in order
+  Array.from(selectedCustomPrimaryCategories).forEach(selectedPrimary => {
+    if (!primaryMap[selectedPrimary]) return;
+
+    const detailedList = primaryMap[selectedPrimary];
+    const primary = selectedPrimary;
+
+    // Add primary category row with buttons
+    rows.push(`
+      <div class="custom-category-row" style="background: #f8f9fa; padding: 8px 12px; margin: 8px 0; border-radius: 4px; border-left: 3px solid #007bff;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-weight: 600;">${escapeHtml(primary)}</span>
+          <div style="display: flex; gap: 6px;">
+            <button class="secondary" style="padding: 4px 8px; font-size: 12px;" onclick="startAddDetailsForCategory('${escapeHtml(primary)}')">+ Add Detailed</button>
+            <button class="secondary" style="padding: 4px 8px; font-size: 12px;" onclick="openReassignPrimaryModal('${escapeHtml(primary)}')">Reassign</button>
+            <button class="danger" style="padding: 4px 8px; font-size: 12px;" onclick="confirmDeletePrimaryCategory('${escapeHtml(primary)}')">Delete All</button>
+          </div>
+        </div>
+      </div>
+    `);
+
+    // Add detailed categories
+    if (detailedList && detailedList.length > 0) {
+      detailedList.forEach(detailed => {
+        const fullCategoryName = `${primary}: ${detailed}`;
+        rows.push(`
+          <div class="custom-detailed-row" style="padding: 6px 12px 6px 24px; margin: 4px 0; background: #fff; border-radius: 3px; display: flex; justify-content: space-between; align-items: center;">
+            <span>${escapeHtml(detailed)}</span>
+            <div style="display: flex; gap: 6px;">
+              <button class="secondary" style="padding: 3px 8px; font-size: 11px;" onclick="openArchiveDetailedModal('${escapeHtml(fullCategoryName)}')">Archive</button>
+              <button class="danger" style="padding: 3px 8px; font-size: 11px;" onclick="confirmDeleteDetailedCategory('${escapeHtml(fullCategoryName)}')">Delete</button>
+            </div>
+          </div>
+        `);
+      });
+    } else {
+      rows.push(`
+        <div style="padding: 6px 12px 6px 24px; margin: 4px 0; color: #999; font-size: 13px; font-style: italic;">
+          No detailed categories
+        </div>
+      `);
+    }
+  });
+
+  if (rows.length === 0) {
+    return { html: '<div class="empty-state">No custom categories match your selection.</div>', count: 0 };
+  }
+
+  // Count total detailed categories
+  let totalDetailed = 0;
+  Array.from(selectedCustomPrimaryCategories).forEach(primary => {
+    if (primaryMap[primary]) {
+      totalDetailed += primaryMap[primary].length;
+    }
+  });
+
+  return { html: rows.join(''), count: totalDetailed };
 }
 
 function renderRuleFormOptions() {
@@ -865,17 +1389,248 @@ async function confirmDeleteCategory(categoryName) {
   });
 }
 
-async function deleteCategory(categoryName) {
+function deleteCategoryInlineAction(categoryName, action) {
+  deleteCategory(categoryName, action);
+}
+
+function openReassignCategoryModal(categoryName) {
+  openModal({
+    title: 'Reassign Category',
+    body: `
+      <p>Move all rules and overrides from <strong>${escapeHtml(categoryName)}</strong> to:</p>
+      <div style="margin-top: 12px;">
+        <select id="reassign-target-category" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+          ${buildCategoryOptions()}
+        </select>
+      </div>
+    `,
+    actions: [
+      { label: 'Cancel', className: 'secondary', onClick: closeModal },
+      { label: 'Reassign', onClick: () => confirmReassignCategory(categoryName) }
+    ]
+  });
+}
+
+function openReassignPrimaryModal(primaryName) {
+  const otherPrimaries = Array.from(selectedCustomPrimaryCategories)
+    .filter(p => p !== primaryName)
+    .concat(
+      Object.keys({}).filter(p => p !== primaryName) // Include all primaries from customCategories
+    );
+  
+  const allPrimaries = new Set();
+  (customCategories || []).forEach(cat => {
+    const parts = parseCategoryName(cat);
+    if (parts.primary && parts.primary !== primaryName) {
+      allPrimaries.add(parts.primary);
+    }
+  });
+  
+  const targetOptions = Array.from(allPrimaries)
+    .sort((a, b) => a.localeCompare(b))
+    .map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
+    .join('');
+  
+  if (!targetOptions) {
+    showStatus('No other custom primary categories to reassign to. Please create another one first.', 'warning');
+    return;
+  }
+  
+  openModal({
+    title: 'Reassign Primary Category',
+    body: `
+      <p>Move all detailed categories from <strong>${escapeHtml(primaryName)}</strong> to which primary?</p>
+      <div style="margin-top: 12px;">
+        <select id="reassign-primary-target" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+          ${targetOptions}
+        </select>
+      </div>
+    `,
+    actions: [
+      { label: 'Cancel', className: 'secondary', onClick: closeModal },
+      { label: 'Reassign', onClick: () => confirmReassignPrimary(primaryName) }
+    ]
+  });
+}
+
+async function confirmReassignPrimary(primaryName) {
+  const targetSelect = document.getElementById('reassign-primary-target');
+  const targetPrimary = targetSelect ? targetSelect.value : '';
+  
+  if (!targetPrimary) {
+    showStatus('Please select a target primary category', 'warning');
+    return;
+  }
+  
+  // Get all categories under the source primary
+  const categoriesToMove = (customCategories || [])
+    .filter(cat => {
+      const parts = parseCategoryName(cat);
+      return parts.primary === primaryName;
+    });
+  
+  if (!categoriesToMove.length) {
+    showStatus('No categories to move', 'warning');
+    return;
+  }
+  
+  // Check what detailed categories already exist under target
+  const existingUnderTarget = new Set(
+    (customCategories || [])
+      .filter(cat => {
+        const parts = parseCategoryName(cat);
+        return parts.primary === targetPrimary && parts.detailed;
+      })
+      .map(cat => parseCategoryName(cat).detailed)
+  );
+  
   try {
-    const actionEl = document.querySelector('input[name="delete-action"]:checked');
-    const action = actionEl ? actionEl.value : 'archive';
+    showStatus('Reassigning categories...', 'info');
+    
+    for (const oldCategoryName of categoriesToMove) {
+      const oldParts = parseCategoryName(oldCategoryName);
+      let newCategoryName;
+      
+      if (oldParts.detailed) {
+        // Check for duplicates
+        if (existingUnderTarget.has(oldParts.detailed)) {
+          console.log(`Skipping ${oldCategoryName}: ${oldParts.detailed} already exists under ${targetPrimary}`);
+          // Delete the old one
+          await authenticatedFetch(
+            `${BACKEND_URL}/api/categorization/categories/${encodeURIComponent(oldCategoryName)}?action=delete`,
+            { method: 'DELETE' }
+          );
+          customCategories = customCategories.filter(cat => cat !== oldCategoryName);
+          continue;
+        }
+        newCategoryName = `${targetPrimary}: ${oldParts.detailed}`;
+      } else {
+        newCategoryName = targetPrimary;
+      }
+      
+      // Rename the category
+      const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ old_name: oldCategoryName, new_name: newCategoryName })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        showStatus(`Failed to reassign ${oldCategoryName}: ${data.error}`, 'error');
+        return;
+      }
+      
+      existingUnderTarget.add(oldParts.detailed || '');
+    }
+    
+    closeModal();
+    showStatus(`Reassigned all categories from ${primaryName} to ${targetPrimary}`, 'success');
+    await loadCategorizationData();
+    setTimeout(() => clearStatus(), 2000);
+  } catch (error) {
+    showStatus(`Failed to reassign categories: ${error.message}`, 'error');
+  }
+}
+
+function openArchiveDetailedModal(categoryName) {
+  openModal({
+    title: 'Archive Category',
+    body: `
+      <p>Archive <strong>${escapeHtml(categoryName)}</strong>? It will no longer appear in dropdowns but won't be deleted.</p>
+    `,
+    actions: [
+      { label: 'Cancel', className: 'secondary', onClick: closeModal },
+      { label: 'Archive', onClick: () => deleteCategory(categoryName, 'archive') }
+    ]
+  });
+}
+
+function confirmDeletePrimaryCategory(primaryName) {
+  // Get all categories under this primary
+  const categoriesToDelete = (customCategories || [])
+    .filter(cat => {
+      const parts = parseCategoryName(cat);
+      return parts.primary === primaryName;
+    });
+  
+  openModal({
+    title: 'Delete Primary Category',
+    body: `
+      <div style="background: #fff3cd; padding: 12px; border-radius: 4px; margin-bottom: 12px; color: #856404;">
+        <strong>⚠️ Warning:</strong> This will delete <strong>${categoriesToDelete.length}</strong> category(ies):
+        <ul style="margin: 8px 0 0 20px; padding: 0;">
+          ${categoriesToDelete.slice(0, 5).map(c => `<li>${escapeHtml(c)}</li>`).join('')}
+          ${categoriesToDelete.length > 5 ? `<li>... and ${categoriesToDelete.length - 5} more</li>` : ''}
+        </ul>
+      </div>
+      <p>This cannot be undone. Are you sure?</p>
+    `,
+    actions: [
+      { label: 'Cancel', className: 'secondary', onClick: closeModal },
+      { label: 'Delete All', onClick: () => deleteAllUnderPrimary(primaryName, categoriesToDelete) }
+    ]
+  });
+}
+
+async function deleteAllUnderPrimary(primaryName, categoriesToDelete) {
+  try {
+    showStatus('Deleting categories...', 'info');
+    
+    for (const categoryName of categoriesToDelete) {
+      const response = await authenticatedFetch(
+        `${BACKEND_URL}/api/categorization/categories/${encodeURIComponent(categoryName)}?action=delete`,
+        { method: 'DELETE' }
+      );
+      
+      if (!response.ok) {
+        const data = await response.json();
+        showStatus(`Failed to delete ${categoryName}: ${data.error}`, 'error');
+        return;
+      }
+    }
+    
+    closeModal();
+    showStatus(`Deleted ${categoriesToDelete.length} category(ies) under ${primaryName}`, 'success');
+    await loadCategorizationData();
+    setTimeout(() => clearStatus(), 2000);
+  } catch (error) {
+    showStatus(`Failed to delete categories: ${error.message}`, 'error');
+  }
+}
+
+function confirmDeleteDetailedCategory(categoryName) {
+  openModal({
+    title: 'Delete Category',
+    body: `<p>Delete <strong>${escapeHtml(categoryName)}</strong> permanently?</p>`,
+    actions: [
+      { label: 'Cancel', className: 'secondary', onClick: closeModal },
+      { label: 'Delete', onClick: () => deleteCategory(categoryName, 'delete') }
+    ]
+  });
+}
+
+function confirmReassignCategory(categoryName) {
+  const targetSelect = document.getElementById('reassign-target-category');
+  const targetCategory = targetSelect ? targetSelect.value : '';
+  if (!targetCategory) {
+    showStatus('Please select a target category for reassignment', 'warning');
+    return;
+  }
+  deleteCategory(categoryName, 'reassign', targetCategory);
+}
+
+async function deleteCategory(categoryName, actionOverride = null, reassignTargetOverride = null) {
+  try {
+    const actionEl = !actionOverride ? document.querySelector('input[name="delete-action"]:checked') : null;
+    const action = actionOverride || (actionEl ? actionEl.value : 'archive');
     
     let url = `${BACKEND_URL}/api/categorization/categories/${encodeURIComponent(categoryName)}?action=${action}`;
     
     // If reassigning, add target category
     if (action === 'reassign') {
-      const targetSelect = document.getElementById('reassign-target-category');
-      const targetCategory = targetSelect ? targetSelect.value : '';
+      const targetSelect = !reassignTargetOverride ? document.getElementById('reassign-target-category') : null;
+      const targetCategory = reassignTargetOverride || (targetSelect ? targetSelect.value : '');
       if (!targetCategory) {
         showStatus('Please select a target category for reassignment', 'warning');
         return;
@@ -999,6 +1754,225 @@ function buildCategoryOptions(selected) {
     .join('');
 }
 
+function buildDetailedCategoryOptions() {
+  const unique = new Set(availableCategories || []);
+  return selected => {
+    if (selected) unique.add(selected);
+    const list = Array.from(unique).sort((a, b) => a.localeCompare(b));
+    return `<option value="">-- Select category --</option>` +
+      list
+        .map(cat => `<option value="${escapeHtml(cat)}" ${cat === selected ? 'selected' : ''}>${escapeHtml(cat)}</option>`)
+        .join('');
+  };
+}
+
+function buildDetailedOptionsForCategory(plaidCat, selected) {
+  const unique = new Set(availableCategories || []);
+  if (selected && selected !== plaidCat) unique.add(selected);
+  const list = Array.from(unique).sort((a, b) => a.localeCompare(b));
+  
+  const taxonomyEntry = plaidTaxonomy.find(t => t.detailed === plaidCat);
+  const displayNames = getCategoryDisplayNames(taxonomyEntry || { detailed: plaidCat });
+  const originalDisplay = displayNames.full || formatPlaidCategory(plaidCat);
+  
+  let options = `<option value="${escapeHtml(plaidCat)}" ${selected === originalDisplay ? 'selected' : ''}>Use original (${escapeHtml(originalDisplay)})</option>`;
+  options += list.map(cat => `<option value="${escapeHtml(cat)}" ${cat === selected ? 'selected' : ''}>${escapeHtml(cat)}</option>`).join('');
+  return options;
+}
+
+function buildPrimaryCategoryOptions() {
+  const primaries = extractAvailablePrimaryCategories();
+  return (originalPrimary, selected) => {
+    const options = [`<option value="">Use original (${escapeHtml(originalPrimary)})</option>`]
+      .concat(primaries.map(cat => `<option value="${escapeHtml(cat)}" ${cat === selected ? 'selected' : ''}>${escapeHtml(cat)}</option>`));
+    return options.join('');
+  };
+}
+
+function extractAvailablePrimaryCategories() {
+  const primaries = new Set();
+  (availableCategories || []).forEach(cat => {
+    const parts = parseCategoryName(cat);
+    if (parts.primary) primaries.add(parts.primary);
+  });
+  return Array.from(primaries).sort((a, b) => a.localeCompare(b));
+}
+
+function getPlaidPrimaryDisplayList() {
+  const primaries = new Set();
+  (plaidTaxonomy || []).forEach(cat => {
+    const display = formatPlaidCategory(cat.primary || '');
+    if (display) primaries.add(display);
+  });
+  return Array.from(primaries).sort((a, b) => a.localeCompare(b));
+}
+
+function getPrimaryDisplayForDetailed(plaidDetailed, taxonomyEntry) {
+  if (taxonomyEntry && taxonomyEntry.primary) {
+    return formatPlaidCategory(taxonomyEntry.primary);
+  }
+  if (!plaidDetailed) return '';
+  const primaryRaw = plaidDetailed.split('_')[0] || plaidDetailed;
+  return formatPlaidCategory(primaryRaw);
+}
+
+function derivePrimaryMappingsFromDetailedMappings() {
+  const primaryBuckets = {};
+
+  (plaidTaxonomy || []).forEach(cat => {
+    const displayPrimary = formatPlaidCategory(cat.primary || '');
+    if (!displayPrimary) return;
+    const mapped = categoryMappings[cat.detailed];
+    if (!mapped) return;
+    const parsed = parseCategoryName(mapped);
+    if (!parsed.primary) return;
+    if (!primaryBuckets[displayPrimary]) primaryBuckets[displayPrimary] = new Set();
+    primaryBuckets[displayPrimary].add(parsed.primary);
+  });
+
+  primaryCategoryMappings = {};
+  Object.keys(primaryBuckets).forEach(primary => {
+    const values = Array.from(primaryBuckets[primary]);
+    if (values.length === 1 && values[0] && values[0] !== primary) {
+      primaryCategoryMappings[primary] = values[0];
+    }
+  });
+}
+
+function derivePrimaryMappingsFromMappings(mappings) {
+  const primaryBuckets = {};
+
+  (plaidTaxonomy || []).forEach(cat => {
+    const displayPrimary = formatPlaidCategory(cat.primary || '');
+    if (!displayPrimary) return;
+    const mapped = mappings ? mappings[cat.detailed] : null;
+    if (!mapped) return;
+    const parsed = parseCategoryName(mapped);
+    if (!parsed.primary) return;
+    if (!primaryBuckets[displayPrimary]) primaryBuckets[displayPrimary] = new Set();
+    primaryBuckets[displayPrimary].add(parsed.primary);
+  });
+
+  const derived = {};
+  Object.keys(primaryBuckets).forEach(primary => {
+    const values = Array.from(primaryBuckets[primary]);
+    if (values.length === 1 && values[0] && values[0] !== primary) {
+      derived[primary] = values[0];
+    }
+  });
+
+  return derived;
+}
+
+function applyPrimaryMapping(plaidPrimaryDisplay, targetPrimaryDisplay) {
+  const targetPrimary = targetPrimaryDisplay || plaidPrimaryDisplay;
+
+  (plaidTaxonomy || [])
+    .filter(cat => formatPlaidCategory(cat.primary || '') === plaidPrimaryDisplay)
+    .forEach(cat => {
+      const displayNames = getCategoryDisplayNames(cat);
+      const detailed = displayNames.trimmed || '';
+      const newLabel = detailed ? `${targetPrimary}: ${detailed}` : targetPrimary;
+      categoryMappings[cat.detailed] = newLabel;
+    });
+
+}
+
+function isCustomPrimary(primaryDisplay) {
+  return (customCategories || []).some(cat => parseCategoryName(cat).primary === primaryDisplay);
+}
+
+async function ensureCustomDetailedCategoriesForPrimaryMapping(plaidPrimaryDisplay, targetPrimaryDisplay) {
+  if (!targetPrimaryDisplay || targetPrimaryDisplay === plaidPrimaryDisplay) return;
+  if (!isCustomPrimary(targetPrimaryDisplay)) return;
+
+  const existing = new Set(customCategories || []);
+  const toCreate = [];
+
+  (plaidTaxonomy || [])
+    .filter(cat => formatPlaidCategory(cat.primary || '') === plaidPrimaryDisplay)
+    .forEach(cat => {
+      const displayNames = getCategoryDisplayNames(cat);
+      const detailed = displayNames.trimmed || '';
+      if (!detailed) return;
+      const label = `${targetPrimaryDisplay}: ${detailed}`;
+      if (!existing.has(label)) {
+        existing.add(label);
+        toCreate.push(label);
+      }
+    });
+
+  if (!toCreate.length) return;
+
+  for (const categoryName of toCreate) {
+    try {
+      const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/custom`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category_name: categoryName })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        console.warn('Failed to add custom category:', data.error || categoryName);
+        continue;
+      }
+      customCategories.push(categoryName);
+      if (!availableCategories.includes(categoryName)) {
+        availableCategories.push(categoryName);
+      }
+    } catch (error) {
+      console.warn('Failed to add custom category:', error);
+    }
+  }
+
+  renderCustomCategories();
+  renderRuleFormOptions();
+}
+
+async function deleteCustomDetailedCategoriesForPrimaryMapping(plaidPrimaryDisplay, targetPrimaryDisplay) {
+  if (!targetPrimaryDisplay || targetPrimaryDisplay === plaidPrimaryDisplay) return;
+  if (!isCustomPrimary(targetPrimaryDisplay)) return;
+
+  const existing = new Set(customCategories || []);
+  const toDelete = [];
+
+  (plaidTaxonomy || [])
+    .filter(cat => formatPlaidCategory(cat.primary || '') === plaidPrimaryDisplay)
+    .forEach(cat => {
+      const displayNames = getCategoryDisplayNames(cat);
+      const detailed = displayNames.trimmed || '';
+      if (!detailed) return;
+      const label = `${targetPrimaryDisplay}: ${detailed}`;
+      if (existing.has(label)) {
+        toDelete.push(label);
+      }
+    });
+
+  if (!toDelete.length) return;
+
+  for (const categoryName of toDelete) {
+    try {
+      const response = await authenticatedFetch(
+        `${BACKEND_URL}/api/categorization/categories/${encodeURIComponent(categoryName)}?action=delete`,
+        { method: 'DELETE' }
+      );
+      if (!response.ok) {
+        const data = await response.json();
+        console.warn('Failed to delete custom category:', data.error || categoryName);
+        continue;
+      }
+      customCategories = customCategories.filter(cat => cat !== categoryName);
+      availableCategories = availableCategories.filter(cat => cat !== categoryName);
+    } catch (error) {
+      console.warn('Failed to delete custom category:', error);
+    }
+  }
+
+  renderCustomCategories();
+  renderRuleFormOptions();
+}
+
+
 function formatPlaidCategory(value) {
   return (value || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
 }
@@ -1025,7 +1999,7 @@ function trimCategoryPrefix(detailed, primary) {
 /**
  * Get a formatted display name for a category with both primary and trimmed detailed.
  * Example: { primary: "FOOD_AND_DRINK", detailed: "FOOD_AND_DRINK_FAST_FOOD" }
- *   → { primary: "Food And Drink", trimmed: "Fast Food", full: "Food And Drink / Fast Food" }
+ *   → { primary: "Food And Drink", trimmed: "Fast Food", full: "Food And Drink: Fast Food" }
  * 
  * @param {Object} category - Object with 'primary' and 'detailed' fields
  * @returns {Object} Formatted display names
@@ -1042,7 +2016,7 @@ function getCategoryDisplayNames(category) {
   return {
     primary: formatPlaidCategory(primary),
     trimmed: formatPlaidCategory(trimmed),
-    full: formatPlaidCategory(primary) + (trimmed ? ' / ' + formatPlaidCategory(trimmed) : ''),
+    full: formatPlaidCategory(primary) + (trimmed ? ': ' + formatPlaidCategory(trimmed) : ''),
     rawPrimary: primary,
     rawDetailed: detailed,
     rawTrimmed: trimmed

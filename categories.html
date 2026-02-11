@@ -20,6 +20,29 @@
     <h1>Category Management</h1>
     <p style="color: #666; margin-top: -8px;">Configure mappings, rules, and category migrations</p>
 
+    <div class="card category-preview">
+      <div class="card-header">
+        <h3>Category Output Preview</h3>
+        <span class="panel-note">Instantly see the final categories users will get.</span>
+      </div>
+      <div class="preview-grid">
+        <div class="preview-pane">
+          <div class="preview-header">
+            <span>Primary categories</span>
+            <span id="primary-selected-count" class="preview-count"></span>
+          </div>
+          <div id="primary-category-list" class="preview-list"></div>
+        </div>
+        <div class="preview-pane">
+          <div class="preview-header">
+            <span>Detailed categories</span>
+            <span id="detailed-count" class="preview-count"></span>
+          </div>
+          <div id="detailed-category-list" class="preview-list"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Action Buttons -->
     <div style="display: flex; gap: 12px; margin: 20px 0; flex-wrap: wrap;">
       <button onclick="checkBrokenRules(true)" class="secondary" style="padding: 10px 20px;">
@@ -40,6 +63,47 @@
         <span class="panel-note">Manage your category taxonomy and rules</span>
       </div>
 
+      <div class="card" id="custom-categories-card">
+        <div class="card-header">
+          <h3>Custom Categories</h3>
+          <span class="panel-note">Step 1: Define your custom categories first</span>
+        </div>
+        <div class="custom-category-form">
+          <div class="custom-field">
+            <label for="custom-primary-input">Create New Primary category</label>
+            <input id="custom-primary-input" type="text" placeholder="e.g., Home Services">
+          </div>
+          <div class="custom-field detailed-categories-container">
+            <div class="detailed-categories-header">
+              <label>Detailed categories (optional)</label>
+              <button type="button" class="secondary add-detailed-btn" onclick="addDetailedCategoryField()">+ Add Detailed</button>
+            </div>
+            <div id="detailed-categories-list" class="detailed-categories-list">
+              <!-- Dynamic detailed category inputs will be added here -->
+            </div>
+          </div>
+          <button type="button" onclick="addCustomCategoryGroup()">Add Categories</button>
+        </div>
+        
+        <!-- Custom Categories Filter View -->
+        <div class="preview-grid" style="margin-top: 20px;">
+          <div class="preview-pane">
+            <div class="preview-header">
+              <span>Primary categories</span>
+              <span id="custom-primary-selected-count" class="preview-count"></span>
+            </div>
+            <div id="custom-primary-category-list" class="preview-list"></div>
+          </div>
+          <div class="preview-pane">
+            <div class="preview-header">
+              <span>Detailed categories</span>
+              <span id="custom-detailed-count" class="preview-count"></span>
+            </div>
+            <div id="custom-detailed-category-list" class="preview-list"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="categorization-grid">
         <div class="card" id="mapping-card">
           <div class="card-header">
@@ -50,34 +114,26 @@
               <button onclick="saveCategoryMappings()">Save Mappings</button>
             </div>
           </div>
-          <div id="mappings-list" class="mapping-list"></div>
-          <div class="mapping-add">
-            <select id="mapping-plaid-select"></select>
-            <input id="mapping-user-label" type="text" placeholder="User category label">
-            <button class="secondary" onclick="addMappingRow()">Add Mapping</button>
+          <div class="mapping-split-grid">
+            <div class="mapping-panel">
+              <div class="mapping-panel-header">
+                <h4>Primary Category Mappings</h4>
+                <span class="panel-note">Remap a primary once and all detailed categories follow.</span>
+              </div>
+              <div id="primary-mappings-list" class="mapping-list"></div>
+            </div>
+            <div class="mapping-panel">
+              <div class="mapping-panel-header">
+                <div class="mapping-panel-title">
+                  <h4>Detailed Category Mappings</h4>
+                  <select id="detailed-mapping-primary-filter"></select>
+                </div>
+                <span class="panel-note">Override any specific detailed category.</span>
+              </div>
+              <div id="mappings-list" class="mapping-list"></div>
+            </div>
           </div>
 
-          <div class="taxonomy-panel">
-            <div class="taxonomy-header" onclick="toggleTaxonomy()">
-              <span>Plaid Taxonomy (seeded list)</span>
-              <span id="taxonomy-toggle">▲</span>
-            </div>
-            <div id="taxonomy-content" class="taxonomy-content open">
-              <input id="taxonomy-filter" type="text" placeholder="Search taxonomy...">
-              <div id="taxonomy-list" class="taxonomy-list"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card" id="custom-categories-card">
-          <div class="card-header">
-            <h3>Custom Categories</h3>
-          </div>
-          <div class="custom-add">
-            <input id="custom-category-input" type="text" placeholder="New custom category">
-            <button onclick="addCustomCategory()">Add</button>
-          </div>
-          <div id="custom-category-list" class="tag-list"></div>
         </div>
       </div>
 
