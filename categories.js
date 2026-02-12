@@ -117,6 +117,11 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // Load categorization data
   await loadCategorizationData();
+
+  // Ensure at least one detailed category input is present
+  if (getDetailedCategoryValues().length === 0) {
+    addDetailedCategoryField();
+  }
   
   // Check for broken rules on load
   await checkBrokenRules(true);
@@ -657,9 +662,11 @@ async function addCustomCategoryGroup() {
   }
 
   const detailedValues = getDetailedCategoryValues();
-  const categoriesToAdd = detailedValues.length
-    ? detailedValues.map(detail => `${primary}: ${detail}`)
-    : [primary];
+  if (!detailedValues.length) {
+    showStatus('Add at least one detailed category', 'warning');
+    return;
+  }
+  const categoriesToAdd = detailedValues.map(detail => `${primary}: ${detail}`);
   const uniqueCategories = Array.from(new Set(categoriesToAdd));
 
   let successCount = 0;
@@ -693,6 +700,7 @@ async function addCustomCategoryGroup() {
       primaryInput.readOnly = false; // Reset readonly state
     }
     clearDetailedCategoryFields();
+    addDetailedCategoryField();
     const message = errors.length
       ? `Added ${successCount} categories. ${errors.length} failed.`
       : `Added ${successCount} ${successCount === 1 ? 'category' : 'categories'}.`;
@@ -852,8 +860,8 @@ function buildCustomDetailedPreviewRows(primaryMap, primaryOptions) {
           <span style="font-weight: 600;">${escapeHtml(primary)}</span>
           <div style="display: flex; gap: 6px;">
             <button class="secondary" style="padding: 4px 8px; font-size: 12px;" onclick="startAddDetailsForCategory('${escapeHtml(primary)}')">+ Add Detailed</button>
-            <button class="secondary" style="padding: 4px 8px; font-size: 12px;" onclick="openReassignPrimaryModal('${escapeHtml(primary)}')">Reassign</button>
-            <button class="danger" style="padding: 4px 8px; font-size: 12px;" onclick="confirmDeletePrimaryCategory('${escapeHtml(primary)}')">Delete All</button>
+            <button class="secondary" style="padding: 4px 8px; font-size: 12px;" onclick="openReassignPrimaryModal('${escapeHtml(primary)}')" title="Move all detailed categories under this primary to another primary. All rules and overrides will follow.">Reassign</button>
+            <button class="secondary" style="padding: 4px 8px; font-size: 12px;" onclick="openArchivePrimaryModal('${escapeHtml(primary)}')" title="Archive this primary category and move its rules/overrides to Archived">Archive</button>
           </div>
         </div>
       </div>
@@ -867,8 +875,8 @@ function buildCustomDetailedPreviewRows(primaryMap, primaryOptions) {
           <div class="custom-detailed-row" style="padding: 6px 12px 6px 24px; margin: 4px 0; background: #fff; border-radius: 3px; display: flex; justify-content: space-between; align-items: center;">
             <span>${escapeHtml(detailed)}</span>
             <div style="display: flex; gap: 6px;">
+              <button class="secondary" style="padding: 3px 8px; font-size: 11px;" onclick="openReassignDetailedModal('${escapeHtml(fullCategoryName)}')" title="Move this category to a different primary or consolidate with another detailed category. All rules and overrides will follow.">Reassign</button>
               <button class="secondary" style="padding: 3px 8px; font-size: 11px;" onclick="openArchiveDetailedModal('${escapeHtml(fullCategoryName)}')">Archive</button>
-              <button class="danger" style="padding: 3px 8px; font-size: 11px;" onclick="confirmDeleteDetailedCategory('${escapeHtml(fullCategoryName)}')">Delete</button>
             </div>
           </div>
         `);
@@ -1411,46 +1419,61 @@ function openReassignCategoryModal(categoryName) {
   });
 }
 
-function openReassignPrimaryModal(primaryName) {
-  const otherPrimaries = Array.from(selectedCustomPrimaryCategories)
-    .filter(p => p !== primaryName)
-    .concat(
-      Object.keys({}).filter(p => p !== primaryName) // Include all primaries from customCategories
-    );
-  
-  const allPrimaries = new Set();
-  (customCategories || []).forEach(cat => {
-    const parts = parseCategoryName(cat);
-    if (parts.primary && parts.primary !== primaryName) {
-      allPrimaries.add(parts.primary);
+async function openReassignPrimaryModal(primaryName) {
+  try {
+    showStatus('Loading available primary categories...', 'info');
+    
+    // Fetch all available primaries from the API
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/available`);
+    const data = await response.json();
+    const allAvailablePrimaries = data.available_categories || [];
+    
+    // Extract unique primary categories (everything before the colon, or the whole name if no colon)
+    const primarySet = new Set();
+    allAvailablePrimaries.forEach(cat => {
+      const parts = parseCategoryName(cat);
+      if (parts.primary && parts.primary !== primaryName) {
+        primarySet.add(parts.primary);
+      }
+    });
+    
+    // Also include any custom primary categories not in the available list
+    (customCategories || []).forEach(cat => {
+      const parts = parseCategoryName(cat);
+      if (parts.primary && parts.primary !== primaryName) {
+        primarySet.add(parts.primary);
+      }
+    });
+    
+    const targetOptions = Array.from(primarySet)
+      .sort((a, b) => a.localeCompare(b))
+      .map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
+      .join('');
+    
+    if (!targetOptions) {
+      showStatus('No other primary categories available to reassign to.', 'warning');
+      return;
     }
-  });
-  
-  const targetOptions = Array.from(allPrimaries)
-    .sort((a, b) => a.localeCompare(b))
-    .map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`)
-    .join('');
-  
-  if (!targetOptions) {
-    showStatus('No other custom primary categories to reassign to. Please create another one first.', 'warning');
-    return;
+    
+    clearStatus();
+    openModal({
+      title: 'Reassign Primary Category',
+      body: `
+        <p>Move all detailed categories from <strong>${escapeHtml(primaryName)}</strong> to which primary?</p>
+        <div style="margin-top: 12px;">
+          <select id="reassign-primary-target" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+            ${targetOptions}
+          </select>
+        </div>
+      `,
+      actions: [
+        { label: 'Cancel', className: 'secondary', onClick: closeModal },
+        { label: 'Reassign', onClick: () => confirmReassignPrimary(primaryName) }
+      ]
+    });
+  } catch (error) {
+    showStatus(`Failed to load primary categories: ${error.message}`, 'error');
   }
-  
-  openModal({
-    title: 'Reassign Primary Category',
-    body: `
-      <p>Move all detailed categories from <strong>${escapeHtml(primaryName)}</strong> to which primary?</p>
-      <div style="margin-top: 12px;">
-        <select id="reassign-primary-target" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
-          ${targetOptions}
-        </select>
-      </div>
-    `,
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Reassign', onClick: () => confirmReassignPrimary(primaryName) }
-    ]
-  });
 }
 
 async function confirmReassignPrimary(primaryName) {
@@ -1462,74 +1485,334 @@ async function confirmReassignPrimary(primaryName) {
     return;
   }
   
-  // Get all categories under the source primary
-  const categoriesToMove = (customCategories || [])
-    .filter(cat => {
-      const parts = parseCategoryName(cat);
-      return parts.primary === primaryName;
-    });
-  
-  if (!categoriesToMove.length) {
-    showStatus('No categories to move', 'warning');
-    return;
-  }
-  
-  // Check what detailed categories already exist under target
-  const existingUnderTarget = new Set(
-    (customCategories || [])
-      .filter(cat => {
-        const parts = parseCategoryName(cat);
-        return parts.primary === targetPrimary && parts.detailed;
-      })
-      .map(cat => parseCategoryName(cat).detailed)
-  );
-  
   try {
-    showStatus('Reassigning categories...', 'info');
+    showStatus('Reassigning primary category...', 'info');
     
-    for (const oldCategoryName of categoriesToMove) {
-      const oldParts = parseCategoryName(oldCategoryName);
-      let newCategoryName;
-      
-      if (oldParts.detailed) {
-        // Check for duplicates
-        if (existingUnderTarget.has(oldParts.detailed)) {
-          console.log(`Skipping ${oldCategoryName}: ${oldParts.detailed} already exists under ${targetPrimary}`);
-          // Delete the old one
-          await authenticatedFetch(
-            `${BACKEND_URL}/api/categorization/categories/${encodeURIComponent(oldCategoryName)}?action=delete`,
-            { method: 'DELETE' }
-          );
-          customCategories = customCategories.filter(cat => cat !== oldCategoryName);
-          continue;
-        }
-        newCategoryName = `${targetPrimary}: ${oldParts.detailed}`;
-      } else {
-        newCategoryName = targetPrimary;
-      }
-      
-      // Rename the category
-      const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/rename`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ old_name: oldCategoryName, new_name: newCategoryName })
-      });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        showStatus(`Failed to reassign ${oldCategoryName}: ${data.error}`, 'error');
-        return;
-      }
-      
-      existingUnderTarget.add(oldParts.detailed || '');
+    // Call the new backend endpoint
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/reassign-primary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_primary: primaryName,
+        target_primary: targetPrimary
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      showStatus(`Failed to reassign primary: ${data.error || 'Unknown error'}`, 'error');
+      return;
     }
     
     closeModal();
-    showStatus(`Reassigned all categories from ${primaryName} to ${targetPrimary}`, 'success');
+    
+    // Show detailed success message
+    let successMsg = `Successfully reassigned all categories from ${primaryName} to ${targetPrimary}`;
+    if (data.rules_affected > 0) {
+      successMsg += ` (${data.rules_affected} rule${data.rules_affected !== 1 ? 's' : ''} updated)`;
+    }
+    if (data.overrides_affected > 0) {
+      successMsg += ` (${data.overrides_affected} override${data.overrides_affected !== 1 ? 's' : ''} updated)`;
+    }
+    
+    showStatus(successMsg, 'success');
+    
+    // Reload data
     await loadCategorizationData();
-    setTimeout(() => clearStatus(), 2000);
+    setTimeout(() => clearStatus(), 3000);
   } catch (error) {
     showStatus(`Failed to reassign categories: ${error.message}`, 'error');
+  }
+}
+
+async function openReassignDetailedModal(categoryName) {
+  try {
+    const parts = parseCategoryName(categoryName);
+    const sourcePrimary = parts.primary;
+    
+    // Fetch all available primaries
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/available`);
+    const data = await response.json();
+    const allAvailablePrimaries = data.available_categories || [];
+    
+    // Extract unique primary categories
+    const primarySet = new Set();
+    allAvailablePrimaries.forEach(cat => {
+      const p = parseCategoryName(cat);
+      if (p.primary) {
+        primarySet.add(p.primary);
+      }
+    });
+    
+    // Also include custom primaries
+    (customCategories || []).forEach(cat => {
+      const p = parseCategoryName(cat);
+      if (p.primary) {
+        primarySet.add(p.primary);
+      }
+    });
+    
+    const allPrimaries = Array.from(primarySet).sort((a, b) => a.localeCompare(b));
+    
+    // Build helper function to get all detailed categories for a primary (both custom and available/Plaid)
+    const getDetailedCategoriesForPrimary = (primary) => {
+      const detailedSet = new Set();
+      
+      // Add custom categories for this primary
+      (customCategories || [])
+        .filter(cat => cat !== categoryName)
+        .forEach(cat => {
+          const p = parseCategoryName(cat);
+          if (p.primary === primary && p.detailed) {
+            detailedSet.add(p.detailed);
+          }
+        });
+      
+      // Add available/Plaid categories for this primary
+      allAvailablePrimaries.forEach(cat => {
+        const p = parseCategoryName(cat);
+        if (p.primary === primary && p.detailed) {
+          detailedSet.add(p.detailed);
+        }
+      });
+      
+      return Array.from(detailedSet).sort((a, b) => a.localeCompare(b));
+    };
+    
+    // Get detailed categories for same primary (including both custom and Plaid)
+    const samePrimaryDetailed = getDetailedCategoriesForPrimary(sourcePrimary);
+    
+    // Build initial detailed options (same primary only - includes both custom and Plaid)
+    const samePrimaryOptions = samePrimaryDetailed
+      .map(d => `<option value="${sourcePrimary}|${escapeHtml(d)}">${escapeHtml(d)}</option>`)
+      .join('');
+    
+    // Helper function to get all detailed categories for a primary (both custom and available/Plaid)
+    // (Already defined above, but keeping reference for clarity)
+    
+    // Build initial all detailed options (showing all available categories regardless of primary)
+    const buildAllDetailedOptions = () => {
+      const options = [];
+      allPrimaries.forEach(primary => {
+        const detailedList = getDetailedCategoriesForPrimary(primary);
+        detailedList.forEach(detailed => {
+          options.push(`<option value="${escapeHtml(primary)}|${escapeHtml(detailed)}">${escapeHtml(primary)}: ${escapeHtml(detailed)}</option>`);
+        });
+      });
+      return options.join('');
+    };
+    
+    const initialAllDetailedOptions = buildAllDetailedOptions();
+    
+    openModal({
+      title: 'Reassign Detailed Category',
+      body: `
+        <p>Move <strong>${escapeHtml(categoryName)}</strong> to where?</p>
+        
+        <div style="margin-top: 16px;">
+          <label class="inline-checkbox" style="display: block; margin-bottom: 12px;">
+            <input type="radio" name="reassign-scope" value="same-primary" checked onchange="updateReassignOptions()"> 
+            Move within <strong>${escapeHtml(sourcePrimary)}</strong> (consolidate with existing)
+          </label>
+          <label class="inline-checkbox" style="display: block; margin-bottom: 12px;">
+            <input type="radio" name="reassign-scope" value="different-primary" onchange="updateReassignOptions()"> 
+            Move to a different primary
+          </label>
+        </div>
+        
+        <div style="margin-top: 12px;">
+          <label style="display: block; margin-bottom: 4px; font-weight: 500;">Target category:</label>
+          <select id="reassign-detailed-target" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+            ${samePrimaryOptions}
+          </select>
+          <div id="cross-primary-options" style="display: none; margin-top: 12px;">
+            <p style="font-size: 12px; color: #666; margin-bottom: 4px;">Select available detailed categories or create new one:</p>
+            <select id="reassign-detailed-target-all" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+              <option value="">-- Use same detailed name: ${escapeHtml(parts.detailed || '(primary only)')} --</option>
+              ${initialAllDetailedOptions}
+            </select>
+            <input type="text" id="reassign-detailed-new-name" placeholder="Or enter new detailed name..." style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; margin-top: 8px;">
+            <p style="font-size: 11px; color: #999; margin-top: 4px;">Select a target primary below. Leave dropdown as default to keep the detailed name "${escapeHtml(parts.detailed || 'primary')}"</p>
+            <select id="reassign-target-primary" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; margin-top: 8px;">
+              <option value="">-- Select target primary --</option>
+              ${allPrimaries.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      `,
+      actions: [
+        { label: 'Cancel', className: 'secondary', onClick: closeModal },
+        { label: 'Reassign', onClick: () => confirmReassignDetailed(categoryName) }
+      ]
+    });
+    
+    // Store helper function and data for dynamic updates
+    window.reassignDetailedOptions = {
+      samePrimaryDetailed: samePrimaryDetailed,
+      sourcePrimary: sourcePrimary,
+      categoryName: categoryName,
+      allAvailablePrimaries: allAvailablePrimaries,
+      customCategories: customCategories,
+      getDetailedCategoriesForPrimary: getDetailedCategoriesForPrimary,
+      allPrimaries: allPrimaries
+    };
+    
+    // Add listener to update detailed dropdown when primary changes
+    const targetPrimarySelect = document.getElementById('reassign-target-primary');
+    if (targetPrimarySelect) {
+      targetPrimarySelect.addEventListener('change', updateDetailedCategoriesForPrimary);
+    }
+  } catch (error) {
+    showStatus(`Failed to load categories: ${error.message}`, 'error');
+  }
+}
+
+function updateDetailedCategoriesForPrimary() {
+  const targetPrimary = document.getElementById('reassign-target-primary').value;
+  const detailedSelect = document.getElementById('reassign-detailed-target-all');
+  
+  if (!targetPrimary || !detailedSelect || !window.reassignDetailedOptions) {
+    return;
+  }
+  
+  const { getDetailedCategoriesForPrimary, categoryName } = window.reassignDetailedOptions;
+  const detailedCategories = getDetailedCategoriesForPrimary(targetPrimary);
+  
+  // Build options for selected primary
+  const options = detailedCategories.map(detailed => 
+    `<option value="${escapeHtml(targetPrimary)}|${escapeHtml(detailed)}">${escapeHtml(targetPrimary)}: ${escapeHtml(detailed)}</option>`
+  ).join('');
+  
+  // Update dropdown with options for selected primary
+  detailedSelect.innerHTML = `<option value="">-- Select an existing category or leave empty to create new --</option>${options}`;
+}
+
+function updateReassignOptions() {
+  const scope = document.querySelector('input[name="reassign-scope"]:checked').value;
+  const crossPrimaryDiv = document.getElementById('cross-primary-options');
+  const targetSelect = document.getElementById('reassign-detailed-target');
+  const targetSelectAll = document.getElementById('reassign-detailed-target-all');
+  
+  if (scope === 'same-primary') {
+    crossPrimaryDiv.style.display = 'none';
+    targetSelect.style.display = 'block';
+    targetSelect.disabled = false;
+  } else {
+    crossPrimaryDiv.style.display = 'block';
+    targetSelect.style.display = 'none';
+    targetSelect.disabled = true;
+  }
+}
+
+async function confirmReassignDetailed(categoryName) {
+  const scope = document.querySelector('input[name="reassign-scope"]:checked').value;
+  let targetCategory = '';
+  let targetPrimary = '';
+  let targetDetailedName = '';
+  
+  if (scope === 'same-primary') {
+    // Get target from same-primary selector
+    const value = document.getElementById('reassign-detailed-target').value;
+    if (!value) {
+      showStatus('Please select a target category', 'warning');
+      return;
+    }
+    const [primary, detailed] = value.split('|');
+    targetCategory = `${primary}: ${detailed}`;
+  } else {
+    // Cross-primary move
+    targetPrimary = document.getElementById('reassign-target-primary').value;
+    if (!targetPrimary) {
+      showStatus('Please select a target primary category', 'warning');
+      return;
+    }
+    
+    // Check if user entered a new name or selected existing
+    const newName = document.getElementById('reassign-detailed-new-name').value.trim();
+    const selectedValue = document.getElementById('reassign-detailed-target-all').value;
+    
+    if (newName) {
+      targetDetailedName = newName;
+    } else if (selectedValue) {
+      const [, detailed] = selectedValue.split('|');
+      targetDetailedName = detailed || '(primary only)';
+    } else {
+      // Default: use the detailed name from source category if not specified
+      const sourceParts = parseCategoryName(categoryName);
+      if (sourceParts.detailed) {
+        targetDetailedName = sourceParts.detailed;
+      } else {
+        showStatus('Please enter a new detailed name or select an existing category', 'warning');
+        return;
+      }
+    }
+  }
+  
+  try {
+    showStatus('Reassigning category...', 'info');
+    
+    const resolvedTargetPrimary = scope === 'same-primary'
+      ? parseCategoryName(categoryName).primary
+      : targetPrimary;
+    const resolvedTargetDetailed = scope === 'same-primary'
+      ? parseCategoryName(targetCategory).detailed
+      : targetDetailedName;
+    const targetFullName = `${resolvedTargetPrimary}: ${resolvedTargetDetailed}`;
+
+    const availableCategories = (window.reassignDetailedOptions && window.reassignDetailedOptions.allAvailablePrimaries)
+      ? window.reassignDetailedOptions.allAvailablePrimaries
+      : [];
+    const isTargetCustom = (customCategories || []).includes(targetFullName);
+    const isTargetPlaidDefault = availableCategories.includes(targetFullName) && !isTargetCustom;
+
+    if (isTargetPlaidDefault) {
+      // Use reassign delete path to avoid creating a custom category that matches Plaid defaults
+      closeModal();
+      await deleteCategory(categoryName, 'reassign', targetFullName);
+      return;
+    }
+
+    const payload = {
+      source_category: categoryName,
+      target_primary: resolvedTargetPrimary,
+      target_detailed_name: resolvedTargetDetailed
+    };
+    
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/reassign-detailed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      showStatus(`Failed to reassign category: ${data.error || 'Unknown error'}`, 'error');
+      return;
+    }
+    
+    closeModal();
+    
+    // Build success message
+    let successMsg = `Successfully reassigned ${categoryName} to ${data.target_category}`;
+    if (data.consolidation_occurred) {
+      successMsg += ' (merged with existing category)';
+    }
+    if (data.rules_affected > 0) {
+      successMsg += ` (${data.rules_affected} rule${data.rules_affected !== 1 ? 's' : ''} updated)`;
+    }
+    if (data.overrides_affected > 0) {
+      successMsg += ` (${data.overrides_affected} override${data.overrides_affected !== 1 ? 's' : ''} updated)`;
+    }
+    
+    showStatus(successMsg, 'success');
+    
+    // Reload data
+    await loadCategorizationData();
+    setTimeout(() => clearStatus(), 3000);
+  } catch (error) {
+    showStatus(`Failed to reassign category: ${error.message}`, 'error');
   }
 }
 
@@ -1542,6 +1825,28 @@ function openArchiveDetailedModal(categoryName) {
     actions: [
       { label: 'Cancel', className: 'secondary', onClick: closeModal },
       { label: 'Archive', onClick: () => deleteCategory(categoryName, 'archive') }
+    ]
+  });
+}
+
+function openArchivePrimaryModal(primaryName) {
+  const categoriesToArchive = (customCategories || [])
+    .filter(cat => {
+      const parts = parseCategoryName(cat);
+      return parts.primary === primaryName;
+    });
+  
+  openModal({
+    title: 'Archive Primary Category',
+    body: `
+      <p>Archive <strong>${escapeHtml(primaryName)}</strong> and all ${categoriesToArchive.length} category(ies) under it?</p>
+      <p style="font-size: 13px; color: #666; margin-top: 12px;">
+        ℹ️ All rules and overrides will be moved to the "Archived" category. Your data won't be deleted.
+      </p>
+    `,
+    actions: [
+      { label: 'Cancel', className: 'secondary', onClick: closeModal },
+      { label: 'Archive', onClick: () => deleteAllUnderPrimary(primaryName, categoriesToArchive, 'archive') }
     ]
   });
 }
@@ -1573,29 +1878,30 @@ function confirmDeletePrimaryCategory(primaryName) {
   });
 }
 
-async function deleteAllUnderPrimary(primaryName, categoriesToDelete) {
+async function deleteAllUnderPrimary(primaryName, categoriesToDelete, action = 'delete') {
   try {
-    showStatus('Deleting categories...', 'info');
+    showStatus(`${action === 'archive' ? 'Archiving' : 'Deleting'} categories...`, 'info');
     
     for (const categoryName of categoriesToDelete) {
       const response = await authenticatedFetch(
-        `${BACKEND_URL}/api/categorization/categories/${encodeURIComponent(categoryName)}?action=delete`,
+        `${BACKEND_URL}/api/categorization/categories/${encodeURIComponent(categoryName)}?action=${action}`,
         { method: 'DELETE' }
       );
       
       if (!response.ok) {
         const data = await response.json();
-        showStatus(`Failed to delete ${categoryName}: ${data.error}`, 'error');
+        showStatus(`Failed to ${action} ${categoryName}: ${data.error}`, 'error');
         return;
       }
     }
     
     closeModal();
-    showStatus(`Deleted ${categoriesToDelete.length} category(ies) under ${primaryName}`, 'success');
+    const actionLabel = action === 'archive' ? 'archived' : 'deleted';
+    showStatus(`${categoriesToDelete.length} category(ies) under ${primaryName} ${actionLabel}`, 'success');
     await loadCategorizationData();
     setTimeout(() => clearStatus(), 2000);
   } catch (error) {
-    showStatus(`Failed to delete categories: ${error.message}`, 'error');
+    showStatus(`Failed to ${action} categories: ${error.message}`, 'error');
   }
 }
 
@@ -2242,4 +2548,195 @@ async function deleteAllOverrides() {
   } catch (error) {
     showStatus(`Failed to delete overrides: ${error.message}`, 'error');
   }
+}
+
+// ============= CSV CATEGORY MANAGEMENT =============
+
+function toggleAdvancedMode() {
+  const advancedCard = document.getElementById('advanced-csv-card');
+  if (advancedCard.style.display === 'none') {
+    advancedCard.style.display = 'block';
+    clearCSVDisplay();
+  } else {
+    advancedCard.style.display = 'none';
+  }
+}
+
+function clearCSVDisplay() {
+  // Hide all containers
+  document.getElementById('csv-preview-container').style.display = 'none';
+  document.getElementById('csv-errors-container').style.display = 'none';
+  document.getElementById('csv-success-container').style.display = 'none';
+  document.getElementById('csv-file-name').textContent = 'No file selected';
+  document.getElementById('csv-upload-btn').disabled = true;
+  document.getElementById('csv-file-input').value = '';
+}
+
+async function downloadCategoriesCSV() {
+  try {
+    showStatus('Downloading CSV...', 'info');
+    
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/categorization/categories/csv`,
+      { method: 'GET' }
+    );
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      showStatus(`Download failed: ${errorData.error}`, 'error');
+      return;
+    }
+    
+    // Get CSV content as blob
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'category_mappings.csv';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    showStatus('CSV downloaded successfully', 'success');
+    setTimeout(() => clearStatus(), 3000);
+  } catch (error) {
+    showStatus(`Download error: ${error.message}`, 'error');
+    console.error('CSV download error:', error);
+  }
+}
+
+// Handle file selection
+document.addEventListener('DOMContentLoaded', function() {
+  const fileInput = document.getElementById('csv-file-input');
+  if (fileInput) {
+    fileInput.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        document.getElementById('csv-file-name').textContent = `Selected: ${file.name}`;
+        document.getElementById('csv-upload-btn').disabled = false;
+        
+        // Show preview
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          const content = event.target.result;
+          const lines = content.split('\n').slice(0, 6); // First 6 lines (header + 5 rows)
+          document.getElementById('csv-preview-content').innerHTML = lines
+            .map((line, idx) => `<div>${(idx + 1).toString().padStart(2, '0')}: ${escapeHtml(line)}</div>`)
+            .join('');
+          document.getElementById('csv-preview-container').style.display = 'block';
+        };
+        reader.readAsText(file);
+      }
+    });
+  }
+});
+
+function escapeHtml(text) {
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return text.replace(/[&<>"']/g, m => map[m]);
+}
+
+async function uploadCategoriesCSV() {
+  const fileInput = document.getElementById('csv-file-input');
+  const file = fileInput.files[0];
+  
+  if (!file) {
+    showStatus('Please select a CSV file first', 'error');
+    return;
+  }
+  
+  // Clear previous messages
+  document.getElementById('csv-errors-container').style.display = 'none';
+  document.getElementById('csv-success-container').style.display = 'none';
+  
+  try {
+    showStatus('Uploading CSV...', 'info');
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/categorization/categories/csv`,
+      {
+        method: 'POST',
+        body: formData
+        // Note: Don't set Content-Type header - let browser set it with boundary
+      }
+    );
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      // Handle validation errors
+      displayCSVErrors(data);
+      showStatus('CSV upload failed validation', 'error');
+      return;
+    }
+    
+    // Success
+    displayCSVSuccess(data);
+    showStatus('CSV uploaded successfully', 'success');
+    setTimeout(() => clearStatus(), 3000);
+    
+    // Reload categorization data
+    setTimeout(() => {
+      loadCategorizationData();
+      clearCSVDisplay();
+    }, 1500);
+    
+  } catch (error) {
+    showStatus(`Upload error: ${error.message}`, 'error');
+    console.error('CSV upload error:', error);
+  }
+}
+
+function displayCSVErrors(data) {
+  const errorsContainer = document.getElementById('csv-errors-container');
+  const errorsList = document.getElementById('csv-errors-list');
+  
+  let errorHTML = '';
+  
+  if (data.validation_errors && Array.isArray(data.validation_errors)) {
+    errorHTML = data.validation_errors
+      .map(err => `<div style="margin: 5px 0;">• ${escapeHtml(err)}</div>`)
+      .join('');
+  } else if (data.error) {
+    errorHTML = `<div>${escapeHtml(data.error)}</div>`;
+  }
+  
+  if (data.errors_count) {
+    errorHTML = `<div style="margin-bottom: 10px; font-weight: bold;">Total errors: ${data.errors_count}</div>` + errorHTML;
+  }
+  
+  errorsList.innerHTML = errorHTML;
+  errorsContainer.style.display = 'block';
+}
+
+function displayCSVSuccess(data) {
+  const successContainer = document.getElementById('csv-success-container');
+  const successContent = document.getElementById('csv-success-content');
+  
+  let successHTML = `
+    <div style="margin: 5px 0;">✓ Category mappings updated: <strong>${data.mappings_count}</strong> mappings</div>
+    <div style="margin: 5px 0;">✓ Custom categories updated: <strong>${data.custom_categories_count}</strong> categories</div>
+  `;
+  
+  if (data.custom_categories && data.custom_categories.length > 0) {
+    successHTML += `
+      <div style="margin: 10px 0; padding: 8px; background: rgba(0,0,0,0.1); border-radius: 3px;">
+        <strong>Custom categories:</strong><br>
+        ${data.custom_categories.map(cat => `• ${escapeHtml(cat)}`).join('<br>')}
+      </div>
+    `;
+  }
+  
+  successContent.innerHTML = successHTML;
+  successContainer.style.display = 'block';
 }
