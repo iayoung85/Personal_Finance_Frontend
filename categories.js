@@ -65,11 +65,10 @@ async function authenticatedFetch(url, options = {}) {
       headers['Authorization'] = `Bearer ${token}`;
       return fetch(url, { ...options, headers });
     }
+    // Session expired and refresh failed - logout and redirect
+    logout();
     alert('Session expired. Please log in again.');
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('currentUser');
-    window.location.href = 'index.html';
+    return Promise.reject(new Error('Session expired'));
   }
   
   return response;
@@ -103,6 +102,16 @@ function logout() {
   localStorage.removeItem('authToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('currentUser');
+  // Clear data caches on logout for security
+  localStorage.removeItem('pf_cached_transactions');
+  localStorage.removeItem('pf_transactions_cached_at');
+  localStorage.removeItem('pf_cached_categories');
+  localStorage.removeItem('pf_cached_taxonomy');
+  localStorage.removeItem('pf_categories_cached_at');
+  localStorage.removeItem('pf_catpage_data');
+  localStorage.removeItem('pf_catpage_cached_at');
+  localStorage.removeItem('pf_catpage_taxonomy');
+  localStorage.removeItem('pf_catpage_taxonomy_at');
   token = null;
   refreshToken = null;
   currentUser = null;
@@ -122,9 +131,6 @@ document.addEventListener('DOMContentLoaded', async function() {
   if (getDetailedCategoryValues().length === 0) {
     addDetailedCategoryField();
   }
-  
-  // Check for broken rules on load
-  await checkBrokenRules(true);
 
   // Filter mappings
   document.addEventListener('input', function(e) {
@@ -181,29 +187,149 @@ function clearStatus() {
 
 // ============= CATEGORIZATION MANAGEMENT =============
 
-async function loadCategorizationData() {
+// Cache keys for categories page localStorage caching
+const CAT_PAGE_CACHE_KEY = 'pf_catpage_data';
+const CAT_PAGE_CACHE_TS_KEY = 'pf_catpage_cached_at';
+const CAT_PAGE_CACHE_MAX_AGE_MS = 2 * 60 * 1000; // 2 minutes
+const CAT_PAGE_TAXONOMY_KEY = 'pf_catpage_taxonomy';
+const CAT_PAGE_TAXONOMY_TS_KEY = 'pf_catpage_taxonomy_at';
+const CAT_PAGE_TAXONOMY_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes (rarely changes)
+
+/**
+ * Derive availableCategories locally from mappings + custom categories.
+ * This is the same logic as the /categories/available endpoint,
+ * saving one API call per page load.
+ */
+function deriveAvailableCategories() {
+  const available = new Set();
+  if (categoryMappings) {
+    Object.values(categoryMappings).forEach(v => available.add(v));
+  }
+  if (customCategories) {
+    customCategories.forEach(c => available.add(c));
+  }
+  return Array.from(available).sort();
+}
+
+/**
+ * Save current categorization state to localStorage cache.
+ */
+function saveCatPageCache() {
+  try {
+    const cacheData = {
+      categoryMappings,
+      customCategories,
+      availableCategories,
+      rules,
+      migrationLog
+    };
+    localStorage.setItem(CAT_PAGE_CACHE_KEY, JSON.stringify(cacheData));
+    localStorage.setItem(CAT_PAGE_CACHE_TS_KEY, String(Date.now()));
+  } catch (e) {
+    console.warn('Could not cache categories page data:', e);
+  }
+  // Taxonomy cached separately with longer TTL
+  try {
+    localStorage.setItem(CAT_PAGE_TAXONOMY_KEY, JSON.stringify(plaidTaxonomy));
+    localStorage.setItem(CAT_PAGE_TAXONOMY_TS_KEY, String(Date.now()));
+  } catch (e) { /* non-fatal */ }
+}
+
+/**
+ * Try to load cached taxonomy from localStorage (long TTL).
+ * Returns the array or null if stale/missing.
+ */
+function loadCachedTaxonomy() {
+  try {
+    const ts = localStorage.getItem(CAT_PAGE_TAXONOMY_TS_KEY);
+    if (ts && (Date.now() - parseInt(ts)) < CAT_PAGE_TAXONOMY_MAX_AGE_MS) {
+      const data = JSON.parse(localStorage.getItem(CAT_PAGE_TAXONOMY_KEY) || '[]');
+      if (data.length > 0) return data;
+    }
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+async function loadCategorizationData(forceNetwork = false) {
   try {
     await window.BACKEND_URL_PROMISE;
-    const [categoriesRes, availableRes, rulesRes, logRes, taxonomyRes] = await Promise.all([
+
+    // ============= CACHE-FIRST STRATEGY =============
+    // On page load (forceNetwork=false): serve from cache if fresh, skip API calls.
+    // After mutations (forceNetwork=true): always fetch from server.
+    if (!forceNetwork) {
+      const cachedTs = localStorage.getItem(CAT_PAGE_CACHE_TS_KEY);
+      const cacheAge = cachedTs ? (Date.now() - parseInt(cachedTs)) : Infinity;
+
+      if (cacheAge < CAT_PAGE_CACHE_MAX_AGE_MS) {
+        try {
+          const cached = JSON.parse(localStorage.getItem(CAT_PAGE_CACHE_KEY) || 'null');
+          const cachedTax = loadCachedTaxonomy();
+          if (cached && cached.categoryMappings && cachedTax) {
+            categoryMappings = cached.categoryMappings;
+            customCategories = cached.customCategories || [];
+            availableCategories = cached.availableCategories || [];
+            rules = cached.rules || [];
+            migrationLog = cached.migrationLog || [];
+            plaidTaxonomy = cachedTax;
+
+            console.log(`Loaded categories page from cache (age: ${Math.round(cacheAge / 1000)}s)`);
+            renderAllCategoryViews();
+            checkBrokenRulesLocally();
+            return;
+          }
+        } catch (e) {
+          console.warn('Category cache parse error, fetching from server:', e);
+        }
+      }
+    }
+
+    // ============= NETWORK FETCH =============
+    // Check if we can reuse cached taxonomy (saves one API call)
+    const cachedTaxonomy = loadCachedTaxonomy();
+    const needTaxonomy = !cachedTaxonomy;
+
+    // Build fetch list — skip taxonomy if cached, skip /categories/available (derived locally)
+    // Include broken-rules validation in the same batch (no extra round-trip)
+    const fetches = [
       authenticatedFetch(`${BACKEND_URL}/api/categorization/categories`),
-      authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/available`),
       authenticatedFetch(`${BACKEND_URL}/api/categorization/rules`),
       authenticatedFetch(`${BACKEND_URL}/api/categorization/migration-log`),
-      authenticatedFetch(`${BACKEND_URL}/api/categorization/plaid-taxonomy`)
-    ]);
+      authenticatedFetch(`${BACKEND_URL}/api/categorization/validation/broken-rules`),
+    ];
+    if (needTaxonomy) {
+      fetches.push(authenticatedFetch(`${BACKEND_URL}/api/categorization/plaid-taxonomy`));
+    }
 
-    const categoriesData = await categoriesRes.json();
-    const availableData = await availableRes.json();
-    const rulesData = await rulesRes.json();
-    const logData = await logRes.json();
-    const taxonomyData = await taxonomyRes.json();
+    const responses = await Promise.all(fetches);
 
-    categoryMappings = categoriesRes.ok ? (categoriesData.category_mappings || {}) : {};
-    customCategories = categoriesRes.ok ? (categoriesData.custom_categories || []) : [];
-    availableCategories = availableRes.ok ? (availableData.available_categories || []) : [];
-    rules = rulesRes.ok ? (rulesData.rules || []) : [];
-    migrationLog = logRes.ok ? (logData.migrations || []) : [];
-    plaidTaxonomy = taxonomyRes.ok ? (taxonomyData.categories || []) : [];
+    const categoriesData = await responses[0].json();
+    const rulesData = await responses[1].json();
+    const logData = await responses[2].json();
+    const brokenRulesData = await responses[3].json();
+
+    categoryMappings = responses[0].ok ? (categoriesData.category_mappings || {}) : {};
+    customCategories = responses[0].ok ? (categoriesData.custom_categories || []) : [];
+    rules = responses[1].ok ? (rulesData.rules || []) : [];
+    migrationLog = responses[2].ok ? (logData.migrations || []) : [];
+
+    // Handle broken rules from the batch response
+    if (responses[3].ok && brokenRulesData.has_broken_rules) {
+      showBrokenRulesModal(brokenRulesData.broken_rules);
+    } else if (forceNetwork) {
+      showStatus('✓ All rules are valid', 'success');
+      setTimeout(() => clearStatus(), 3000);
+    }
+
+    if (needTaxonomy) {
+      const taxonomyData = await responses[4].json();
+      plaidTaxonomy = responses[4].ok ? (taxonomyData.categories || []) : [];
+    } else {
+      plaidTaxonomy = cachedTaxonomy;
+    }
+
+    // Derive availableCategories locally (eliminates /categories/available call)
+    availableCategories = deriveAvailableCategories();
 
     // Ensure all Plaid categories are in categoryMappings, defaulting to original formatted name
     plaidTaxonomy.forEach(cat => {
@@ -213,20 +339,37 @@ async function loadCategorizationData() {
       }
     });
 
-    renderMappingsList();
-    derivePrimaryMappingsFromDetailedMappings();
-    renderPrimaryMappingsList();
-    renderCustomCategories();
-    renderRulesTable();
-    renderRuleFormOptions();
-    renderMigrationSelectors();
-    renderMigrationLog();
-    renderDetailedMappingFilterOptions();
-    renderAvailableCategoriesPreview();
+    // Update cache
+    saveCatPageCache();
+
+    // Also update the shared category caches used by transactions.js
+    try {
+      localStorage.setItem('pf_cached_categories', JSON.stringify(availableCategories));
+      localStorage.setItem('pf_cached_taxonomy', JSON.stringify(plaidTaxonomy));
+      localStorage.setItem('pf_categories_cached_at', String(Date.now()));
+    } catch (e) { /* non-fatal */ }
+
+    renderAllCategoryViews();
   } catch (error) {
     console.error('loadCategorizationData error:', error);
     showStatus(`Failed to load categorization data: ${error.message}`, 'error');
   }
+}
+
+/**
+ * Render all category page views. Extracted so both cache and network paths can share it.
+ */
+function renderAllCategoryViews() {
+  renderMappingsList();
+  derivePrimaryMappingsFromDetailedMappings();
+  renderPrimaryMappingsList();
+  renderCustomCategories();
+  renderRulesTable();
+  renderRuleFormOptions();
+  renderMigrationSelectors();
+  renderMigrationLog();
+  renderDetailedMappingFilterOptions();
+  renderAvailableCategoriesPreview();
 }
 
 function renderAvailableCategoriesPreview() {
@@ -364,7 +507,7 @@ function buildDetailedPreviewRows(primaryOptions) {
 }
 
 function refreshCategorizationData() {
-  return loadCategorizationData();
+  return loadCategorizationData(true);
 }
 
 function renderMappingsList(filterText = '') {
@@ -537,7 +680,7 @@ async function saveCategoryMappings() {
 
     showStatus('Mappings saved', 'success');
     await reconcileCustomCategoriesForPrimaryMappings(previousMappings, primaryCategoryMappings);
-    await loadCategorizationData();
+    await loadCategorizationData(true);
     setTimeout(() => clearStatus(), 2000);
   } catch (error) {
     showStatus(`Failed to save mappings: ${error.message}`, 'error');
@@ -726,7 +869,7 @@ async function addCustomCategoryGroup() {
       ? `Added ${successCount} categories. ${errors.length} failed.`
       : `Added ${successCount} ${successCount === 1 ? 'category' : 'categories'}.`;
     showStatus(message, errors.length ? 'warning' : 'success');
-    await loadCategorizationData();
+    await loadCategorizationData(true);
     setTimeout(() => clearStatus(), 2500);
   } else {
     showStatus(errors[0] || 'Failed to add categories', 'error');
@@ -952,7 +1095,23 @@ function renderRulesTable() {
     .sort((a, b) => (b.priority || 0) - (a.priority || 0))
     .map(rule => {
       const match = rule.match_criteria || {};
-      const matchLabel = `${match.match_type || 'unknown'}: ${match.match_value || ''}`;
+      const matchTypeLabels = {
+        'name_contains': 'Description contains',
+        'merchant_contains': 'Merchant contains',
+        'amount_range': 'Amount range',
+        'regex': 'Regex',
+        'plaid_category': 'Plaid category'
+      };
+      const typeLabel = matchTypeLabels[match.match_type] || match.match_type || 'unknown';
+      let valueLabel = '';
+      if (match.match_type === 'amount_range' && typeof match.match_value === 'object') {
+        const min = match.match_value.min != null ? `$${match.match_value.min}` : 'any';
+        const max = match.match_value.max != null ? `$${match.match_value.max}` : 'any';
+        valueLabel = `${min} – ${max}`;
+      } else {
+        valueLabel = match.match_value || '';
+      }
+      const matchLabel = `${typeLabel}: ${valueLabel}`;
       return `
         <tr>
           <td>${rule.priority || 0}</td>
@@ -1036,7 +1195,7 @@ async function saveRule() {
 
     showStatus(isEditing ? 'Rule updated' : 'Rule created', 'success');
     cancelRuleEdit();
-    await loadCategorizationData();
+    await loadCategorizationData(true);
     setTimeout(() => clearStatus(), 2000);
   } catch (error) {
     showStatus(`Failed to save rule: ${error.message}`, 'error');
@@ -1049,8 +1208,16 @@ function editRule(ruleId) {
 
   currentRuleEditId = ruleId;
   document.getElementById('rule-name').value = rule.rule_name || '';
-  document.getElementById('rule-match-type').value = rule.match_criteria?.match_type || 'merchant_contains';
-  document.getElementById('rule-match-value').value = rule.match_criteria?.match_value || '';
+  document.getElementById('rule-match-type').value = rule.match_criteria?.match_type || 'name_contains';
+  // For amount_range, display min-max as a string for the text input
+  const mv = rule.match_criteria?.match_value;
+  if (rule.match_criteria?.match_type === 'amount_range' && typeof mv === 'object') {
+    const min = mv.min != null ? mv.min : '';
+    const max = mv.max != null ? mv.max : '';
+    document.getElementById('rule-match-value').value = `${min}-${max}`;
+  } else {
+    document.getElementById('rule-match-value').value = mv || '';
+  }
   document.getElementById('rule-target-category').value = rule.target_category || '';
   document.getElementById('rule-priority').value = rule.priority || 0;
   document.getElementById('rule-case-sensitive').checked = !!rule.match_criteria?.case_sensitive;
@@ -1087,7 +1254,7 @@ async function adjustRulePriority(ruleId, direction) {
       showStatus(data.error || 'Failed to update priority', 'error');
       return;
     }
-    await loadCategorizationData();
+    await loadCategorizationData(true);
   } catch (error) {
     showStatus(`Failed to update priority: ${error.message}`, 'error');
   }
@@ -1115,7 +1282,7 @@ async function deleteRule(ruleId) {
       return;
     }
     closeModal();
-    await loadCategorizationData();
+    await loadCategorizationData(true);
   } catch (error) {
     showStatus(`Failed to delete rule: ${error.message}`, 'error');
   }
@@ -1200,7 +1367,7 @@ async function renameCategory(oldName, newName) {
     }
     closeModal();
     showStatus('Category renamed successfully', 'success');
-    await loadCategorizationData();
+    await loadCategorizationData(true);
     setTimeout(() => clearStatus(), 2000);
   } catch (error) {
     showStatus(`Failed to rename category: ${error.message}`, 'error');
@@ -1290,7 +1457,7 @@ async function mergeCategories(sourceCategories, targetCategory) {
       return;
     }
     closeModal();
-    await loadCategorizationData();
+    await loadCategorizationData(true);
   } catch (error) {
     showStatus(`Failed to merge categories: ${error.message}`, 'error');
   }
@@ -1339,7 +1506,7 @@ async function splitCategory(oldCategory, splits) {
       return;
     }
     closeModal();
-    await loadCategorizationData();
+    await loadCategorizationData(true);
   } catch (error) {
     showStatus(`Failed to split category: ${error.message}`, 'error');
   }
@@ -1542,7 +1709,7 @@ async function confirmReassignPrimary(primaryName) {
     showStatus(successMsg, 'success');
     
     // Reload data
-    await loadCategorizationData();
+    await loadCategorizationData(true);
     setTimeout(() => clearStatus(), 3000);
   } catch (error) {
     showStatus(`Failed to reassign categories: ${error.message}`, 'error');
@@ -1832,7 +1999,7 @@ async function confirmReassignDetailed(categoryName) {
     showStatus(successMsg, 'success');
     
     // Reload data
-    await loadCategorizationData();
+    await loadCategorizationData(true);
     setTimeout(() => clearStatus(), 3000);
   } catch (error) {
     showStatus(`Failed to reassign category: ${error.message}`, 'error');
@@ -1921,7 +2088,7 @@ async function deleteAllUnderPrimary(primaryName, categoriesToDelete, action = '
     closeModal();
     const actionLabel = action === 'archive' ? 'archived' : 'deleted';
     showStatus(`${categoriesToDelete.length} category(ies) under ${primaryName} ${actionLabel}`, 'success');
-    await loadCategorizationData();
+    await loadCategorizationData(true);
     setTimeout(() => clearStatus(), 2000);
   } catch (error) {
     showStatus(`Failed to ${action} categories: ${error.message}`, 'error');
@@ -1988,7 +2155,7 @@ async function deleteCategory(categoryName, actionOverride = null, reassignTarge
       'success'
     );
     
-    await loadCategorizationData();
+    await loadCategorizationData(true);
     setTimeout(() => clearStatus(), 3000);
   } catch (error) {
     showStatus(`Failed to delete category: ${error.message}`, 'error');
@@ -2408,6 +2575,25 @@ function escapeHtml(str) {
 
 // ============= BROKEN RULES VALIDATION =============
 
+/**
+ * Check for broken rules using already-loaded in-memory data (no API call).
+ * A rule is "broken" if its target_category is not in availableCategories.
+ */
+function checkBrokenRulesLocally() {
+  if (!rules || !rules.length || !availableCategories || !availableCategories.length) return;
+  const validSet = new Set(availableCategories);
+  const broken = rules.filter(r => r.target_category && !validSet.has(r.target_category));
+  if (broken.length > 0) {
+    // Attach valid_categories list so the modal can offer fixes
+    const brokenWithFixes = broken.map(r => ({
+      ...r,
+      rule_name: r.name || r.rule_name || `Rule #${r.id}`,
+      valid_categories: availableCategories
+    }));
+    showBrokenRulesModal(brokenWithFixes);
+  }
+}
+
 async function checkBrokenRules(showIfValid = false) {
   try {
     const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/validation/broken-rules`);
@@ -2505,7 +2691,7 @@ async function fixAllBrokenRules(brokenRules) {
   
   closeModal();
   showStatus(`✓ Fixed ${fixes.length} rule${fixes.length > 1 ? 's' : ''}`, 'success');
-  await loadCategorizationData();
+  await loadCategorizationData(true);
   setTimeout(() => clearStatus(), 2000);
 }
 
@@ -2755,7 +2941,7 @@ async function uploadCategoriesCSV() {
     
     // Reload categorization data
     setTimeout(() => {
-      loadCategorizationData();
+      loadCategorizationData(true);
       clearCSVDisplay();
     }, 1500);
     

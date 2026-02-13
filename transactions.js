@@ -1105,7 +1105,8 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
 
 /**
  * Open modal to create a rule from transaction categorization.
- * Phase 5 implementation.
+ * Phase 5 implementation — improved UX with transaction preview and
+ * labels that match the visible table columns.
  */
 function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, accountId) {
   if (!selectedPrimary) {
@@ -1120,52 +1121,91 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
   }
 
   const categoryString = resolvedTarget.value;
-  const merchant = txn?.merchant_name || txn?.name || '';
-  const defaultRuleName = `${selectedPrimary}${selectedDetailed ? ' - ' + selectedDetailed : ''} (${merchant})`.trim();
-  const defaultMatchValue = merchant || txn?.name || '';
+
+  // --- Transaction field values for preview & smart defaults ---
+  const txnDescription = txn?.name || '';
+  const txnMerchant   = txn?.merchant_name || '';
+  const txnAmount     = txn?.amount != null ? Math.abs(txn.amount) : '';
+  const txnCurrency   = txn?.iso_currency_code || 'USD';
+
+  // Smart default: prefer merchant if available, fall back to description
+  const hasMerchant = !!txnMerchant;
+  const defaultMatchType  = hasMerchant ? 'merchant_contains' : 'name_contains';
+  const defaultMatchValue = hasMerchant ? txnMerchant : txnDescription;
+  const bestLabel = hasMerchant ? txnMerchant : txnDescription;
+  const defaultRuleName = `${selectedPrimary}${selectedDetailed ? ' - ' + selectedDetailed : ''} (${bestLabel})`.trim();
+
+  // Format amount for display
+  const fmtAmount = txnAmount !== '' ? new Intl.NumberFormat('en-US', { style: 'currency', currency: txnCurrency }).format(txnAmount) : '—';
 
   // Build rule configuration form
   const formHtml = `
-    <div style="display: grid; gap: 12px;">
+    <div style="display: grid; gap: 14px;">
+
+      <!-- Transaction preview so users can see what each field refers to -->
+      <details open style="background: #f8f9fb; border: 1px solid #e2e4e9; border-radius: 6px; padding: 10px 12px;">
+        <summary style="font-weight: 600; cursor: pointer; user-select: none;">Transaction being matched</summary>
+        <table style="width:100%; margin-top: 8px; font-size: 0.92em; border-collapse: collapse;">
+          <tr><td style="padding:3px 8px 3px 0; color:#666; white-space:nowrap;">Description</td>
+              <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnDescription) || '<em style="color:#aaa">empty</em>'}</td></tr>
+          <tr><td style="padding:3px 8px 3px 0; color:#666; white-space:nowrap;">Merchant</td>
+              <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnMerchant) || '<em style="color:#aaa">not available</em>'}</td></tr>
+          <tr><td style="padding:3px 8px 3px 0; color:#666; white-space:nowrap;">Amount</td>
+              <td style="padding:3px 0; font-family: monospace;">${fmtAmount}</td></tr>
+        </table>
+      </details>
+
       <div>
         <label style="display: block; font-weight: 500; margin-bottom: 4px;">Rule Name</label>
         <input id="rule-modal-name" type="text" placeholder="Rule name" value="${escapeHtml(defaultRuleName)}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
       </div>
-      
+
       <div>
         <label style="display: block; font-weight: 500; margin-bottom: 4px;">Match Type</label>
-        <select id="rule-modal-match-type" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
-          <option value="merchant_contains">Merchant contains</option>
-          <option value="name_contains">Name contains</option>
+        <select id="rule-modal-match-type" onchange="_ruleModalMatchTypeChanged()" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
+          <option value="name_contains"${defaultMatchType === 'name_contains' ? ' selected' : ''}>Description contains</option>
+          <option value="merchant_contains"${defaultMatchType === 'merchant_contains' ? ' selected' : ''}>Merchant contains</option>
           <option value="amount_range">Amount range</option>
           <option value="regex">Regular expression (advanced)</option>
         </select>
+        <small id="rule-modal-match-hint" style="color: #666; margin-top: 4px; display: block;"></small>
       </div>
-      
-      <div>
+
+      <!-- Text-based match value (description / merchant / regex) -->
+      <div id="rule-modal-text-group">
         <label style="display: block; font-weight: 500; margin-bottom: 4px;">Match Value</label>
-        <input id="rule-modal-match-value" type="text" placeholder="Value to match" value="${escapeHtml(defaultMatchValue)}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
-        <small style="color: #666; margin-top: 4px; display: block;">For "merchant contains" or "name contains", enter text to search for.</small>
+        <input id="rule-modal-match-value" type="text" placeholder="Text to search for" value="${escapeHtml(defaultMatchValue)}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
       </div>
-      
+
+      <!-- Amount range inputs (shown only for amount_range) -->
+      <div id="rule-modal-amount-group" style="display: none;">
+        <label style="display: block; font-weight: 500; margin-bottom: 4px;">Amount Range</label>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <input id="rule-modal-amount-min" type="number" step="0.01" min="0" placeholder="Min" value="" style="flex:1; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
+          <span>to</span>
+          <input id="rule-modal-amount-max" type="number" step="0.01" min="0" placeholder="Max" value="" style="flex:1; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
+        </div>
+        <small style="color: #666; margin-top: 4px; display: block;">Leave either blank for no limit. Matches absolute value of amount.</small>
+      </div>
+
       <div>
         <label style="display: block; font-weight: 500; margin-bottom: 4px;">Priority</label>
         <input id="rule-modal-priority" type="number" placeholder="0" value="0" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
         <small style="color: #666; margin-top: 4px; display: block;">Higher priority rules are applied first. Default is 0.</small>
       </div>
-      
-      <label style="display: flex; align-items: center; gap: 6px;">
+
+      <label id="rule-modal-case-row" style="display: flex; align-items: center; gap: 6px;">
         <input id="rule-modal-case-sensitive" type="checkbox">
         <span style="font-weight: 500;">Case sensitive</span>
       </label>
-      
+
       <label style="display: flex; align-items: center; gap: 6px;">
         <input id="rule-modal-active" type="checkbox" checked>
         <span style="font-weight: 500;">Active</span>
       </label>
-      
+
       <div style="background: #f5f5f5; padding: 10px; border-radius: 3px; border-left: 3px solid #6366f1;">
-        <strong>Category:</strong> ${escapeHtml(categoryString)}
+        <strong>Assign category:</strong> ${escapeHtml(categoryString)}
       </div>
     </div>
   `;
@@ -1178,6 +1218,62 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
       { label: 'Create Rule', onClick: () => submitCategoryRule(categoryString, txnId) }
     ]
   });
+
+  // Store txn data on the modal for match-type switching
+  window._ruleModalTxn = { description: txnDescription, merchant: txnMerchant, amount: txnAmount };
+
+  // Trigger hint update for initial match type
+  _ruleModalMatchTypeChanged();
+}
+
+/**
+ * Update the rule modal form when the match type dropdown changes.
+ * Toggles between text input and amount-range inputs and updates hints.
+ */
+function _ruleModalMatchTypeChanged() {
+  const matchType  = document.getElementById('rule-modal-match-type').value;
+  const textGroup  = document.getElementById('rule-modal-text-group');
+  const amtGroup   = document.getElementById('rule-modal-amount-group');
+  const hintEl     = document.getElementById('rule-modal-match-hint');
+  const caseRow    = document.getElementById('rule-modal-case-row');
+  const matchInput = document.getElementById('rule-modal-match-value');
+  const txnData    = window._ruleModalTxn || {};
+
+  // Toggle field visibility
+  const isAmount = matchType === 'amount_range';
+  textGroup.style.display  = isAmount ? 'none' : '';
+  amtGroup.style.display   = isAmount ? ''     : 'none';
+  caseRow.style.display    = isAmount ? 'none' : 'flex';
+
+  // Update hint & pre-fill based on selected match type
+  switch (matchType) {
+    case 'name_contains':
+      hintEl.textContent = 'Matches the Description column of your transactions.';
+      matchInput.value = txnData.description || '';
+      matchInput.placeholder = 'Text to search for in description';
+      break;
+    case 'merchant_contains':
+      hintEl.textContent = 'Matches the Merchant field (may be empty for some transactions).';
+      matchInput.value = txnData.merchant || '';
+      matchInput.placeholder = 'Text to search for in merchant name';
+      break;
+    case 'amount_range': {
+      hintEl.textContent = 'Matches transactions whose absolute amount falls within this range.';
+      // Pre-fill with a reasonable range around the current amount
+      const amt = txnData.amount;
+      if (amt !== '' && amt != null) {
+        const rounded = Math.round(amt * 100) / 100;
+        document.getElementById('rule-modal-amount-min').value = Math.max(0, rounded - 5).toFixed(2);
+        document.getElementById('rule-modal-amount-max').value = (rounded + 5).toFixed(2);
+      }
+      break;
+    }
+    case 'regex':
+      hintEl.textContent = 'Advanced: matches the Description field using a regular expression pattern.';
+      matchInput.value = txnData.description || '';
+      matchInput.placeholder = 'Regular expression pattern';
+      break;
+  }
 }
 
 /**
@@ -1186,7 +1282,6 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
 async function submitCategoryRule(targetCategory, txnId) {
   const ruleName = document.getElementById('rule-modal-name').value.trim();
   const matchType = document.getElementById('rule-modal-match-type').value;
-  const matchValue = document.getElementById('rule-modal-match-value').value.trim();
   const priority = parseInt(document.getElementById('rule-modal-priority').value || '0', 10);
   const caseSensitive = document.getElementById('rule-modal-case-sensitive').checked;
   const isActive = document.getElementById('rule-modal-active').checked;
@@ -1196,7 +1291,23 @@ async function submitCategoryRule(targetCategory, txnId) {
     return;
   }
 
-  if (!matchValue) {
+  // Build matchValue based on match type
+  let matchValue;
+  if (matchType === 'amount_range') {
+    const minVal = document.getElementById('rule-modal-amount-min').value.trim();
+    const maxVal = document.getElementById('rule-modal-amount-max').value.trim();
+    if (!minVal && !maxVal) {
+      showStatus('Please enter at least a minimum or maximum amount', 'warning');
+      return;
+    }
+    matchValue = {};
+    if (minVal) matchValue.min = parseFloat(minVal);
+    if (maxVal) matchValue.max = parseFloat(maxVal);
+  } else {
+    matchValue = document.getElementById('rule-modal-match-value').value.trim();
+  }
+
+  if (matchType !== 'amount_range' && !matchValue) {
     showStatus('Match value is required', 'warning');
     return;
   }

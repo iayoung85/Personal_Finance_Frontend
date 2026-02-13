@@ -147,10 +147,10 @@
         <div class="rule-form">
           <input id="rule-name" type="text" placeholder="Rule name">
           <select id="rule-match-type">
+            <option value="name_contains">Description contains</option>
             <option value="merchant_contains">Merchant contains</option>
-            <option value="name_contains">Name contains</option>
-            <option value="description_contains">Description contains</option>
-            <option value="category_equals">Category equals</option>
+            <option value="amount_range">Amount range</option>
+            <option value="regex">Regular expression (advanced)</option>
           </select>
           <input id="rule-match-value" type="text" placeholder="Match value">
           <select id="rule-target-category"></select>
