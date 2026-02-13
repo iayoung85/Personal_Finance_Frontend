@@ -166,11 +166,12 @@
       <div class="card" id="migrations-card">
         <div class="card-header">
           <h3>Category Migrations</h3>
+          <button class="secondary" onclick="showMigrationsHelp()" style="font-size: 12px; padding: 4px 8px;">Help</button>
         </div>
         <div class="migration-grid">
           <div class="migration-box">
             <h4>Rename</h4>
-            <input id="rename-old" type="text" placeholder="Old category">
+            <select id="rename-old" style="width: 100%; margin-bottom: 8px;"></select>
             <input id="rename-new" type="text" placeholder="New category">
             <button class="secondary" onclick="confirmRename()">Rename</button>
           </div>

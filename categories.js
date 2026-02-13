@@ -136,7 +136,14 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 // ============= STATUS MESSAGES =============
 
+let statusTimeout;
+
 function showStatus(message, type = 'info') {
+  // Clear any existing timeout
+  if (statusTimeout) {
+    clearTimeout(statusTimeout);
+  }
+  
   const container = document.getElementById('status-message');
   if (!container) {
     const el = document.createElement('div');
@@ -148,14 +155,28 @@ function showStatus(message, type = 'info') {
   statusEl.textContent = message;
   statusEl.style.position = 'fixed';
   statusEl.style.top = '20px';
-  statusEl.style.right = '20px';
+  statusEl.style.left = '50%';
+  statusEl.style.transform = 'translateX(-50%)';
   statusEl.style.zIndex = '1001';
   statusEl.style.minWidth = '300px';
+  statusEl.style.display = 'block';
+  
+  // Auto-hide after 20 seconds
+  statusTimeout = setTimeout(() => {
+    clearStatus();
+  }, 20000);
 }
 
 function clearStatus() {
   const el = document.getElementById('status-message');
-  if (el) el.textContent = '';
+  if (el) {
+    el.style.display = 'none';
+    el.textContent = '';
+  }
+  if (statusTimeout) {
+    clearTimeout(statusTimeout);
+    statusTimeout = undefined;
+  }
 }
 
 // ============= CATEGORIZATION MANAGEMENT =============
@@ -915,6 +936,8 @@ function renderRuleFormOptions() {
   if (mergeTarget) mergeTarget.innerHTML = options;
   const splitOld = document.getElementById('split-old');
   if (splitOld) splitOld.innerHTML = options;
+  const renameOld = document.getElementById('rename-old');
+  if (renameOld) renameOld.innerHTML = `<option value="">-- Select category to rename --</option>` + options;
 }
 
 function renderRulesTable() {
@@ -2023,6 +2046,51 @@ async function refreshMigrationLog() {
   } catch (error) {
     showStatus(`Failed to refresh audit log: ${error.message}`, 'error');
   }
+}
+
+function showMigrationsHelp() {
+  openModal({
+    title: 'Category Migrations Help',
+    body: `
+      <div style="text-align: left; line-height: 1.6;">
+        <h4 style="margin-top: 0;">When to Use Category Migrations</h4>
+        
+        <h5>Rename</h5>
+        <p>Use when you want to change the name of an existing category everywhere it's referenced. This updates:</p>
+        <ul>
+          <li>Category mappings</li>
+          <li>Rules that reference the old name</li>
+          <li>Overrides on historical transactions</li>
+          <li>All future transaction categorization</li>
+        </ul>
+        <p><strong>Example:</strong> Rename "Fast Food" to "Quick Service Restaurants"</p>
+        
+        <h5>Merge</h5>
+        <p>Use when you want to consolidate multiple separate categories into one. This is useful for:</p>
+        <ul>
+          <li>Simplifying your category taxonomy</li>
+          <li>Combining similar spending categories</li>
+          <li>Consolidating after re-evaluating your budget categories</li>
+        </ul>
+        <p><strong>Example:</strong> Merge "Fast Food", "Restaurants", and "Coffee Shops" into "Dining"</p>
+        
+        <h5>Split</h5>
+        <p>Use when you want to divide a previously merged category back into separate ones. This only affects future transactions - historical overrides remain unchanged.</p>
+        <p><strong>Example:</strong> Split "Dining" back into "Fast Food" and "Restaurants" with specific Plaid category mappings</p>
+        
+        <h4>Important Notes</h4>
+        <ul>
+          <li>These operations are permanent and affect all your historical data</li>
+          <li>Always backup your data before major migrations</li>
+          <li>Check the Audit Log to see what changes were made</li>
+          <li>For moving categories between primaries, use the "Reassign" buttons in Custom Categories instead</li>
+        </ul>
+      </div>
+    `,
+    actions: [
+      { label: 'Close', className: 'secondary', onClick: closeModal }
+    ]
+  });
 }
 
 function openModal({ title, body, actions }) {

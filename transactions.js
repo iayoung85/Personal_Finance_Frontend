@@ -132,6 +132,15 @@ $(document).ready(async function() {
   $(document).on('change', '.field-checkbox', function() {
     renderTransactionTable();
   });
+
+  // Add event listener for memo save buttons
+  $(document).on('click', '.memo-save', function() {
+    const button = $(this);
+    const txnId = button.data('txn-id');
+    const input = button.closest('td').find('.memo-input');
+    const memoValue = input.val();
+    saveTransactionMemo(txnId, memoValue, button);
+  });
   
   // Add event listener for date range changes - re-render when user changes dates
   $(document).on('input change', '#start-date, #end-date', function() {
@@ -678,6 +687,8 @@ function renderTransactionTable() {
   if (optionalFields.includes('original_description')) html += '<th>Original Desc</th>';
   if (optionalFields.includes('authorized_date')) html += '<th>Auth Date</th>';
   if (optionalFields.includes('authorized_datetime')) html += '<th>Auth Time</th>';
+  if (optionalFields.includes('personal_finance_category')) html += '<th>Plaid Category</th>';
+  if (optionalFields.includes('user_memo')) html += '<th>Memo</th>';
 
   html += '</tr></thead><tbody>';
   
@@ -776,6 +787,31 @@ function renderTransactionTable() {
         }
         html += `<td>${authTime}</td>`;
     }
+    if (optionalFields.includes('personal_finance_category')) {
+        let plaidCategoryDisplay = '';
+        if (txn.personal_finance_category) {
+            const pfc = txn.personal_finance_category;
+            const primary = pfc.primary || '';
+            const detailed = pfc.detailed || '';
+            const trimmed = trimCategoryPrefix(detailed, primary);
+            const displayPrimary = formatCategoryDisplay(primary);
+            const displayDetailed = formatCategoryDisplay(trimmed);
+            plaidCategoryDisplay = `${displayPrimary}${displayDetailed ? ': ' + displayDetailed : ''}`;
+        }
+        html += `<td>${escapeHtml(plaidCategoryDisplay)}</td>`;
+    }
+    if (optionalFields.includes('user_memo')) {
+        const memoValue = txn.user_memo || '';
+        const safeMemoValue = escapeHtml(memoValue);
+        html += `
+          <td>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <input class="memo-input" type="text" maxlength="256" value="${safeMemoValue}" style="width: 100%; min-width: 160px;">
+              <button class="secondary memo-save" data-txn-id="${txn.plaid_transaction_id || ''}">Save</button>
+            </div>
+          </td>
+        `;
+    }
 
     html += '</tr>';
   });
@@ -792,6 +828,48 @@ function renderTransactionTable() {
   
   // Update insights panel
   renderInsightsPanel();
+}
+
+async function saveTransactionMemo(plaidTransactionId, userMemo, buttonEl) {
+  if (!plaidTransactionId) {
+    showStatus('Unable to save memo: missing transaction id', 'error');
+    return;
+  }
+
+  const trimmedMemo = (userMemo || '').toString().slice(0, 256);
+
+  if (buttonEl) {
+    buttonEl.prop('disabled', true).text('Saving...');
+  }
+
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/add-memo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        plaid_transaction_id: plaidTransactionId,
+        user_memo: trimmedMemo
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to save memo');
+    }
+
+    const txn = transactions.find(t => t.plaid_transaction_id === plaidTransactionId);
+    if (txn) {
+      txn.user_memo = trimmedMemo;
+    }
+
+    showStatus('Memo saved successfully', 'success');
+  } catch (error) {
+    showStatus(`Failed to save memo: ${error.message}`, 'error');
+  } finally {
+    if (buttonEl) {
+      buttonEl.prop('disabled', false).text('Save');
+    }
+  }
 }
 
 /**
