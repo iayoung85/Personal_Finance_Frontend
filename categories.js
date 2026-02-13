@@ -2796,6 +2796,14 @@ function displayCSVSuccess(data) {
     <div style="margin: 5px 0;">✓ Custom categories updated: <strong>${data.custom_categories_count}</strong> categories</div>
   `;
   
+  if (data.rules_migrated !== undefined && data.rules_migrated > 0) {
+    successHTML += `<div style="margin: 5px 0;">✓ Rules migrated: <strong>${data.rules_migrated}</strong> rules retargeted</div>`;
+  }
+  
+  if (data.overrides_migrated !== undefined && data.overrides_migrated > 0) {
+    successHTML += `<div style="margin: 5px 0;">✓ Overrides migrated: <strong>${data.overrides_migrated}</strong> overrides retargeted</div>`;
+  }
+  
   if (data.custom_categories && data.custom_categories.length > 0) {
     successHTML += `
       <div style="margin: 10px 0; padding: 8px; background: rgba(0,0,0,0.1); border-radius: 3px;">

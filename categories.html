@@ -207,17 +207,29 @@
         </div>
         
         <div style="margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 4px; border-left: 4px solid #007bff;">
-          <h4 style="margin-top: 0;">CSV Format Guide</h4>
+          <h4 style="margin-top: 0;">CSV Format Guide (3 Columns)</h4>
           <p style="font-size: 0.9em; margin: 8px 0;">
-            <strong>Regular rows:</strong> Plaid category mapping<br>
-            Example: <code>BANK_FEES_ATM_FEES,Bank Fees: Atm Fees</code>
+            <strong>Header:</strong> <code>action,source_category,target_category</code>
           </p>
           <p style="font-size: 0.9em; margin: 8px 0;">
-            <strong>Custom category rows:</strong> Use <code>__CUSTOM__</code> marker<br>
-            Example: <code>__CUSTOM__,Pet Expenses: Dog Food</code>
+            <strong>MAPPING:</strong> Plaid category to user label<br>
+            Example: <code>MAPPING,BANK_FEES_ATM_FEES,Bank Fees: Atm Fees</code>
+          </p>
+          <p style="font-size: 0.9em; margin: 8px 0;">
+            <strong>SET_CUSTOM:</strong> Custom category (leave source_category empty)<br>
+            Example: <code>SET_CUSTOM,,Pet Expenses: Dog Food</code>
+          </p>
+          <p style="font-size: 0.9em; margin: 8px 0;">
+            <strong>EXISTING_RULES_RETARGET:</strong> Migrate rules to new category<br>
+            Example: <code>EXISTING_RULES_RETARGET,Old: Category,New: Category</code>
+          </p>
+          <p style="font-size: 0.9em; margin: 8px 0;">
+            <strong>EXISTING_OVERRIDES_RETARGET:</strong> Migrate overrides to new category<br>
+            Example: <code>EXISTING_OVERRIDES_RETARGET,Old: Category,New: Category</code>
           </p>
           <p style="font-size: 0.9em; margin: 8px 0; color: #d9534f;">
-            <strong>Important:</strong> All values must follow format <code>primary: detailed</code>
+            <strong>Important:</strong> All target values must follow format <code>Primary: Detailed</code><br>
+            <strong>Migration:</strong> When changing categories, you MUST retarget existing rules/overrides!
           </p>
         </div>
 

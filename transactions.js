@@ -126,7 +126,8 @@ $(document).ready(async function() {
   renderDynamicPeriodButtons();
 
   // Load available categories for manual categorization dropdown
-  loadAvailableCategories();
+  await loadAvailableCategories();
+  renderTransactionTable();
 
   // Add event listener for optional fields
   $(document).on('change', '.field-checkbox', function() {
@@ -1014,7 +1015,13 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
     return;
   }
 
-  const categoryString = buildCategoryString(selectedPrimary, selectedDetailed);
+  const resolvedTarget = resolveTargetCategory(selectedPrimary, selectedDetailed);
+  if (resolvedTarget.error) {
+    showStatus(resolvedTarget.error, 'warning');
+    return;
+  }
+
+  const categoryString = resolvedTarget.value;
   const merchant = txn?.merchant_name || txn?.name || '';
   const defaultRuleName = `${selectedPrimary}${selectedDetailed ? ' - ' + selectedDetailed : ''} (${merchant})`.trim();
   const defaultMatchValue = merchant || txn?.name || '';
@@ -1093,6 +1100,12 @@ async function submitCategoryRule(targetCategory, txnId) {
 
   if (!matchValue) {
     showStatus('Match value is required', 'warning');
+    return;
+  }
+
+  const targetValidation = validateTargetCategory(targetCategory);
+  if (targetValidation.error) {
+    showStatus(targetValidation.error, 'warning');
     return;
   }
 
@@ -2080,6 +2093,58 @@ function buildCategoryString(primary, detailed) {
   return `${primary}: ${detailed}`;
 }
 
+function normalizeCategoryLabel(label) {
+  return String(label || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function resolveTargetCategory(primary, detailed) {
+  const normalizedPrimary = normalizeCategoryLabel(primary);
+  const normalizedDetailed = normalizeCategoryLabel(detailed);
+
+  if (!normalizedPrimary || normalizedPrimary === 'Uncategorized') {
+    return { error: 'Please select a valid category (not Uncategorized)' };
+  }
+
+  const candidate = buildCategoryString(normalizedPrimary, normalizedDetailed);
+  const candidateNorm = normalizeCategoryLabel(candidate);
+
+  const matchingAvailable = (availableCategories || []).find(cat => normalizeCategoryLabel(cat) === candidateNorm);
+  if (matchingAvailable) {
+    return { value: matchingAvailable };
+  }
+
+  if (!normalizedDetailed) {
+    const matchingPrimary = (availableCategories || []).find(cat => normalizeCategoryLabel(cat) === normalizedPrimary);
+    if (matchingPrimary) {
+      return { value: matchingPrimary };
+    }
+  }
+
+  const detailedOptions = extractDetailedCategories(availableCategories, normalizedPrimary);
+  if (!normalizedDetailed && detailedOptions.length > 0) {
+    return { error: 'Please select a detailed category' };
+  }
+
+  return { error: 'Selected category is not available. Please choose a valid category.' };
+}
+
+function validateTargetCategory(targetCategory) {
+  const normalizedTarget = normalizeCategoryLabel(targetCategory);
+  if (!normalizedTarget || normalizedTarget === 'Uncategorized') {
+    return { error: 'Please select a valid category (not Uncategorized)' };
+  }
+
+  if (availableCategories && !(availableCategories || []).some(cat => normalizeCategoryLabel(cat) === normalizedTarget)) {
+    return { error: 'Selected category is not available. Please choose a valid category.' };
+  }
+
+  const matching = (availableCategories || []).find(cat => normalizeCategoryLabel(cat) === normalizedTarget);
+  return { value: matching || targetCategory };
+}
+
 /**
  * Extract unique primary categories from available categories list.
  * Returns sorted array of primary category names.
@@ -2204,8 +2269,8 @@ function openCategorizeModal(txn, selectedCategory, accountId, txnId) {
         <select id="modal-rule-match-type">
           <option value="merchant_contains">Merchant contains</option>
           <option value="name_contains">Name contains</option>
-          <option value="description_contains">Description contains</option>
-          <option value="category_equals">Category equals</option>
+          <option value="amount_range">Amount range</option>
+          <option value="regex">Regular expression (advanced)</option>
         </select>
         <input id="modal-rule-match-value" type="text" placeholder="Match value" value="${escapeHtml(defaultMatchValue)}">
         <label class="inline-checkbox"><input id="modal-rule-case" type="checkbox"> Case sensitive</label>
@@ -2266,6 +2331,12 @@ async function createRuleFromModal(targetCategory) {
 
   if (!ruleName || !matchValue) {
     showStatus('Rule name and match value are required', 'warning');
+    return;
+  }
+
+  const targetValidation = validateTargetCategory(targetCategory);
+  if (targetValidation.error) {
+    showStatus(targetValidation.error, 'warning');
     return;
   }
 
