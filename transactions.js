@@ -760,8 +760,7 @@ function renderTransactionTable() {
   html += '<th>Bank/Account</th>';
   html += '<th>Description</th>';
   html += '<th>Amount</th>';
-  html += '<th>Category (Primary)</th>';
-  html += '<th>Category (Detailed)</th>';
+  html += '<th>Category</th>';
   
   // Add optional headers
   if (optionalFields.includes('merchant_name')) html += '<th>Merchant</th>';
@@ -816,37 +815,29 @@ function renderTransactionTable() {
       };
     }
 
-    // Build dropdown options for primary categories
-    const primaryOptions = buildPrimaryDropdownOptions(currentParsed.primary);
-    
-    // Build dropdown options for detailed categories (filtered by current primary)
-    const detailedOptions = buildDetailedDropdownOptions(currentParsed.primary, currentParsed.detailed);
+    // Build the current full category string for the autocomplete
+    const currentFullCategory = buildCategoryString(currentParsed.primary, currentParsed.detailed);
 
-    // Create Primary category cell with dropdown and buttons
-    const primaryCell = txnId ? `
+    // Create combined category cell with autocomplete input + buttons
+    const overrideBadge = txn.is_override
+      ? '<span class="override-badge" title="This transaction has a manual override — rules will not change its category">Override</span>'
+      : '';
+    const categoryCell = txnId ? `
       <div class="category-cell">
-        <div class="category-display">${escapeHtml(currentParsed.primary || 'Uncategorized')}</div>
-        <select class="category-dropdown category-primary" data-txn-id="${txnId}" data-account-id="${accountId}" data-type="primary">
-          ${primaryOptions}
-        </select>
+        <div class="category-display">${overrideBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div>
+        <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
+          <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
+                 value="${escapeHtml(currentFullCategory)}" placeholder="Type to search categories…"
+                 autocomplete="off" spellcheck="false">
+          <div class="category-ac-list" data-txn-id="${txnId}"></div>
+        </div>
         <div class="category-buttons">
           <button class="secondary category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
           <button class="secondary category-rule" data-txn-id="${txnId}" data-account-id="${accountId}">Rule</button>
         </div>
       </div>
     ` : '<span class="pill">N/A</span>';
-    html += `<td>${primaryCell}</td>`;
-
-    // Create Detailed category cell with dropdown
-    const detailedCell = txnId ? `
-      <div class="category-cell">
-        <div class="category-display">${escapeHtml(currentParsed.detailed || '—')}</div>
-        <select class="category-dropdown category-detailed" data-txn-id="${txnId}" data-account-id="${accountId}" data-primary="${escapeHtml(currentParsed.primary)}" data-type="detailed">
-          ${detailedOptions}
-        </select>
-      </div>
-    ` : '<span class="pill">N/A</span>';
-    html += `<td>${detailedCell}</td>`;
+    html += `<td>${categoryCell}</td>`;
 
     // Add optional cells
     if (optionalFields.includes('merchant_name')) html += `<td>${txn.merchant_name || ''}</td>`;
@@ -984,14 +975,13 @@ function buildDetailedDropdownOptions(selectedPrimary = '', selected = '') {
     return '<option value="">— No detailed categories —</option>';
   }
   
-  const options = ['', ...detailed]; // Include empty option
+  // Auto-select the first detailed category when none is specified,
+  // so the user always has a valid "Primary: Detailed" combination.
+  const effectiveSelected = selected || detailed[0];
   
-  return options
+  return detailed
     .map(cat => {
-      if (!cat) {
-        return `<option value="">—</option>`;
-      }
-      return `<option value="${escapeHtml(cat)}" ${cat === selected ? 'selected' : ''}>${escapeHtml(cat)}</option>`;
+      return `<option value="${escapeHtml(cat)}" ${cat === effectiveSelected ? 'selected' : ''}>${escapeHtml(cat)}</option>`;
     })
     .join('');
 }
@@ -1001,51 +991,213 @@ function buildDetailedDropdownOptions(selectedPrimary = '', selected = '') {
  */
 function attachCategoryDropdownListeners() {
   // Remove any previously-bound delegated handlers to prevent stacking
-  // (this function is called on every renderTransactionTable)
-  $(document).off('change', '.category-primary');
+  $(document).off('input', '.category-autocomplete');
+  $(document).off('keydown', '.category-autocomplete');
+  $(document).off('focus', '.category-autocomplete');
+  $(document).off('blur', '.category-autocomplete');
+  $(document).off('click', '.category-ac-item');
   $(document).off('click', '.category-override');
   $(document).off('click', '.category-rule');
 
-  // When primary category changes, update detailed dropdown options
-  $(document).on('change', '.category-primary', function() {
-    const selectedPrimary = $(this).val();
-    const txnId = $(this).data('txn-id');
-    const detailedSelect = $(`.category-detailed[data-txn-id="${txnId}"]`);
-    
-    // Update data attribute
-    detailedSelect.data('primary', selectedPrimary);
-    
-    // Update detailed dropdown options
-    const detailedOptions = buildDetailedDropdownOptions(selectedPrimary, '');
-    detailedSelect.html(detailedOptions);
+  // ===== Autocomplete input handler =====
+  $(document).on('input', '.category-autocomplete', function() {
+    const input = this;
+    const query = input.value;
+    const txnId = $(input).data('txn-id');
+    _showCategoryAutocomplete(input, query, txnId);
   });
 
-  // Override button click handler
+  // Show list on focus if there's text
+  $(document).on('focus', '.category-autocomplete', function() {
+    const input = this;
+    const txnId = $(input).data('txn-id');
+    // Small delay so click-on-item doesn't race with blur
+    setTimeout(() => _showCategoryAutocomplete(input, input.value, txnId), 50);
+  });
+
+  // ===== Keyboard navigation: Tab to accept, Escape to close, Arrow keys =====
+  $(document).on('keydown', '.category-autocomplete', function(e) {
+    const input = this;
+    const txnId = $(input).data('txn-id');
+    const list = $(`.category-ac-list[data-txn-id="${txnId}"]`);
+    const items = list.find('.category-ac-item');
+    const activeIndex = items.index(items.filter('.active'));
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = Math.min(activeIndex + 1, items.length - 1);
+      items.removeClass('active');
+      $(items[next]).addClass('active');
+      items[next]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = Math.max(activeIndex - 1, 0);
+      items.removeClass('active');
+      $(items[prev]).addClass('active');
+      items[prev]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Tab') {
+      // Tab = accept the highlighted (or first) suggestion
+      const active = items.filter('.active').first();
+      const first = active.length ? active : items.first();
+      if (first.length) {
+        e.preventDefault();
+        input.value = first.data('value');
+        list.empty().hide();
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const active = items.filter('.active').first();
+      const first = active.length ? active : items.first();
+      if (first.length) {
+        input.value = first.data('value');
+        list.empty().hide();
+      }
+    } else if (e.key === 'Escape') {
+      list.empty().hide();
+    }
+  });
+
+  // ===== Click on autocomplete item =====
+  $(document).on('mousedown', '.category-ac-item', function(e) {
+    // mousedown instead of click so it fires before blur
+    e.preventDefault();
+    const value = $(this).data('value');
+    const txnId = $(this).closest('.category-ac-list').data('txn-id');
+    const input = $(`.category-autocomplete[data-txn-id="${txnId}"]`);
+    input.val(value);
+    $(this).closest('.category-ac-list').empty().hide();
+  });
+
+  // ===== Hide list on blur =====
+  $(document).on('blur', '.category-autocomplete', function() {
+    const txnId = $(this).data('txn-id');
+    // Small delay so click-on-item can fire first
+    setTimeout(() => {
+      $(`.category-ac-list[data-txn-id="${txnId}"]`).empty().hide();
+    }, 200);
+  });
+
+  // ===== Override button click handler =====
   $(document).on('click', '.category-override', function() {
     const txnId = $(this).data('txn-id');
     const accountId = $(this).data('account-id');
-    const primarySelect = $(`.category-primary[data-txn-id="${txnId}"]`);
-    const detailedSelect = $(`.category-detailed[data-txn-id="${txnId}"]`);
-    
-    const selectedPrimary = primarySelect.val();
-    const selectedDetailed = detailedSelect.val();
-    
-    applyOverride(txnId, accountId, selectedPrimary, selectedDetailed);
+    const input = $(`.category-autocomplete[data-txn-id="${txnId}"]`);
+    const fullValue = (input.val() || '').trim();
+
+    // Validate against known categories
+    const resolved = _resolveAutocompleteCategory(fullValue);
+    if (resolved.error) {
+      showStatus(resolved.error, 'warning');
+      return;
+    }
+
+    const parsed = parseCategoryString(resolved.value);
+    applyOverride(txnId, accountId, parsed.primary, parsed.detailed);
   });
 
-  // Rule button click handler
+  // ===== Rule button click handler =====
   $(document).on('click', '.category-rule', function() {
     const txnId = $(this).data('txn-id');
     const accountId = $(this).data('account-id');
-    const primarySelect = $(`.category-primary[data-txn-id="${txnId}"]`);
-    const detailedSelect = $(`.category-detailed[data-txn-id="${txnId}"]`);
-    
-    const selectedPrimary = primarySelect.val();
-    const selectedDetailed = detailedSelect.val();
+    const input = $(`.category-autocomplete[data-txn-id="${txnId}"]`);
+    const fullValue = (input.val() || '').trim();
+
+    const resolved = _resolveAutocompleteCategory(fullValue);
+    if (resolved.error) {
+      showStatus(resolved.error, 'warning');
+      return;
+    }
+
+    const parsed = parseCategoryString(resolved.value);
     const txn = transactions.find(t => (t.transaction_id || t.plaid_transaction_id) === txnId);
-    
-    openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, accountId);
+    openCategoryRuleModal(txn, parsed.primary, parsed.detailed, txnId, accountId);
   });
+}
+
+// ===== Autocomplete helper: show filtered list =====
+function _showCategoryAutocomplete(input, query, txnId) {
+  const list = $(`.category-ac-list[data-txn-id="${txnId}"]`);
+  const q = (query || '').toLowerCase().trim();
+
+  if (!q) {
+    list.empty().hide();
+    return;
+  }
+
+  // Smart filtering:
+  // - If query contains ':', split and match primary + detailed separately
+  // - Otherwise match anywhere in the full string
+  let matches;
+  if (q.includes(':')) {
+    const [qPrimary, qDetailed] = q.split(':').map(s => s.trim());
+    matches = (availableCategories || []).filter(cat => {
+      const lower = cat.toLowerCase();
+      const parts = lower.split(':').map(s => s.trim());
+      const primaryMatch = !qPrimary || (parts[0] || '').includes(qPrimary);
+      const detailedMatch = !qDetailed || (parts[1] || '').includes(qDetailed);
+      return primaryMatch && detailedMatch;
+    });
+  } else {
+    matches = (availableCategories || []).filter(cat =>
+      cat.toLowerCase().includes(q)
+    );
+  }
+
+  // Limit visible results
+  const maxShow = 10;
+  const shown = matches.slice(0, maxShow);
+
+  if (shown.length === 0) {
+    list.html('<div class="category-ac-empty">No matching categories</div>').show();
+    return;
+  }
+
+  // Build list HTML with highlighted matching text
+  const html = shown.map((cat, i) => {
+    const highlighted = _highlightMatch(cat, q);
+    return `<div class="category-ac-item${i === 0 ? ' active' : ''}" data-value="${escapeHtml(cat)}">${highlighted}</div>`;
+  }).join('');
+
+  const extra = matches.length > maxShow
+    ? `<div class="category-ac-more">${matches.length - maxShow} more…</div>` : '';
+
+  list.html(html + extra).show();
+}
+
+// Highlight matching portions of the category string
+function _highlightMatch(text, query) {
+  if (!query) return escapeHtml(text);
+  const escaped = escapeHtml(text);
+  // Case-insensitive highlight
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  return escaped.replace(regex, '<strong>$1</strong>');
+}
+
+// Validate that the autocomplete value resolves to a known category
+function _resolveAutocompleteCategory(value) {
+  if (!value) {
+    return { error: 'Please type or select a category' };
+  }
+
+  const normalized = normalizeCategoryLabel(value);
+
+  // Exact match (case-insensitive)
+  const exact = (availableCategories || []).find(cat =>
+    normalizeCategoryLabel(cat) === normalized
+  );
+  if (exact) return { value: exact };
+
+  // Partial match — if only one category matches, use it
+  const partial = (availableCategories || []).filter(cat =>
+    normalizeCategoryLabel(cat).includes(normalized)
+  );
+  if (partial.length === 1) return { value: partial[0] };
+
+  if (partial.length > 1) {
+    return { error: `Multiple categories match "${value}". Please select a specific one.` };
+  }
+
+  return { error: `"${value}" is not a known category. Please type to search and select from the list.` };
 }
 
 /**
@@ -1056,6 +1208,13 @@ function attachCategoryDropdownListeners() {
 async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed) {
   if (!selectedPrimary) {
     showStatus('Please select a primary category', 'warning');
+    return;
+  }
+
+  // Ensure a detailed category is selected when detailed options exist
+  const detailedOptions = extractDetailedCategories(availableCategories, selectedPrimary);
+  if (detailedOptions.length > 0 && !selectedDetailed) {
+    showStatus('Please select a detailed category', 'warning');
     return;
   }
 
@@ -1349,11 +1508,16 @@ async function submitCategoryRule(targetCategory, txnId) {
     // The backend returns how many transactions were updated. If any were,
     // just re-fetch the transaction list (no Plaid sync needed).
     const updatedCount = data.transactions_updated || 0;
+    const skippedCount = data.overrides_skipped || 0;
     
-    if (updatedCount > 0) {
+    if (updatedCount > 0 || skippedCount > 0) {
       // Some transactions were updated by the new rule — fetch fresh data from DB (not Plaid)
       await fetchAllTransactions(true);
-      showStatus(`Rule created: "${ruleName}" — applied to ${updatedCount} matching transactions`, 'success');
+      let msg = `Rule created: "${ruleName}" — applied to ${updatedCount} transaction${updatedCount !== 1 ? 's' : ''}`;
+      if (skippedCount > 0) {
+        msg += `. ${skippedCount} transaction${skippedCount !== 1 ? 's were' : ' was'} skipped because ${skippedCount !== 1 ? 'they have' : 'it has'} a manual override.`;
+      }
+      showStatus(msg, 'success');
     } else {
       showStatus(`Rule created: "${ruleName}" — will apply to future transactions`, 'success');
     }

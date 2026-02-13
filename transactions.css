@@ -1020,6 +1020,25 @@ tr:hover {
   color: #333;
   padding: 4px 0;
   min-height: 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.override-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+  cursor: default;
 }
 
 .category-dropdown {
@@ -1036,6 +1055,91 @@ tr:hover {
   outline: none;
   border-color: #6366f1;
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+/* Autocomplete wrapper */
+.category-autocomplete-wrap {
+  position: relative;
+}
+
+.category-autocomplete {
+  font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  background: white;
+  width: 100%;
+  min-width: 200px;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.category-autocomplete:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+.category-autocomplete::placeholder {
+  color: #aaa;
+  font-style: italic;
+}
+
+/* Autocomplete dropdown list */
+.category-ac-list {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.category-ac-item {
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f3f4f6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.category-ac-item:last-child {
+  border-bottom: none;
+}
+
+.category-ac-item.active,
+.category-ac-item:hover {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.category-ac-item strong {
+  color: #6366f1;
+  font-weight: 700;
+}
+
+.category-ac-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #999;
+  font-style: italic;
+}
+
+.category-ac-more {
+  padding: 4px 10px;
+  font-size: 11px;
+  color: #888;
+  text-align: center;
+  border-top: 1px solid #f3f4f6;
 }
 
 .category-buttons {
