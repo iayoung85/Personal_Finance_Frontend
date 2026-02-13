@@ -127,6 +127,28 @@
               <canvas id="category-chart"></canvas>
               <div id="chart-empty-state" class="chart-empty-state">No transaction data to visualize</div>
             </div>
+            
+            <!-- Category Filter Section -->
+            <div class="config-section" style="margin-top: 20px;">
+              <h3 style="margin: 0 0 10px 0;">Filter by Category</h3>
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div>
+                  <label style="display: block; margin-bottom: 4px; font-size: 14px; font-weight: 500;">Primary Category:</label>
+                  <select id="filter-primary-category" onchange="onFilterPrimaryChange()" style="width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="">— All Categories —</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="display: block; margin-bottom: 4px; font-size: 14px; font-weight: 500;">Detailed Category:</label>
+                  <select id="filter-detailed-category" onchange="onFilterDetailedChange()" style="width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="">— All Detailed Categories —</option>
+                  </select>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button onclick="clearCategoryFilters()" class="secondary" style="flex: 1; padding: 6px 12px; font-size: 13px;">Clear Filters</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         

@@ -7,6 +7,10 @@ let availableCategories = [];
 let plaidTaxonomy = []; // Plaid PFCv2 category taxonomy for parsing
 let syncing = false;
 
+// Category filter state
+let filterPrimaryCategory = '';
+let filterDetailedCategory = '';
+
 // Check authentication
 let token = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
@@ -127,6 +131,7 @@ $(document).ready(async function() {
 
   // Load available categories for manual categorization dropdown
   await loadAvailableCategories();
+  populateCategoryFilterDropdowns();
   renderTransactionTable();
 
   // Add event listener for optional fields
@@ -657,6 +662,21 @@ function renderTransactionTable() {
     if (hideTransfers) {
       const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
       if (/transfer/i.test(primaryCat)) {
+        return false;
+      }
+    }
+    
+    // Filter by category (primary and/or detailed)
+    if (filterPrimaryCategory || filterDetailedCategory) {
+      const parsed = parseCategoryString(txn.user_category || '');
+      
+      // If primary filter is set, check if it matches
+      if (filterPrimaryCategory && parsed.primary !== filterPrimaryCategory) {
+        return false;
+      }
+      
+      // If detailed filter is set, check if it matches
+      if (filterDetailedCategory && parsed.detailed !== filterDetailedCategory) {
         return false;
       }
     }
@@ -2188,6 +2208,103 @@ function buildCategoryOptions(selected) {
   return list
     .map(cat => `<option value="${escapeHtml(cat)}" ${cat === selected ? 'selected' : ''}>${escapeHtml(cat)}</option>`)
     .join('');
+}
+
+/**
+ * Populate the category filter dropdowns with available categories.
+ */
+function populateCategoryFilterDropdowns() {
+  const primarySelect = document.getElementById('filter-primary-category');
+  const detailedSelect = document.getElementById('filter-detailed-category');
+  
+  if (!primarySelect || !detailedSelect) return;
+  
+  // Get all primary categories
+  const primaries = extractPrimaryCategories(availableCategories);
+  
+  // Build primary dropdown
+  let primaryHTML = '<option value="">— All Categories —</option>';
+  primaries.forEach(cat => {
+    primaryHTML += `<option value="${escapeHtml(cat)}" ${cat === filterPrimaryCategory ? 'selected' : ''}>${escapeHtml(cat)}</option>`;
+  });
+  primarySelect.innerHTML = primaryHTML;
+  
+  // Build detailed dropdown based on current primary filter
+  updateDetailedFilterDropdown();
+}
+
+/**
+ * Update the detailed category filter dropdown based on selected primary category.
+ */
+function updateDetailedFilterDropdown() {
+  const detailedSelect = document.getElementById('filter-detailed-category');
+  if (!detailedSelect) return;
+  
+  if (!filterPrimaryCategory) {
+    // No primary selected - show all detailed categories message
+    detailedSelect.innerHTML = '<option value="">— All Detailed Categories —</option>';
+    detailedSelect.disabled = false;
+    return;
+  }
+  
+  // Get detailed categories for the selected primary
+  const detailed = extractDetailedCategories(availableCategories, filterPrimaryCategory);
+  
+  let detailedHTML = '<option value="">— All Detailed Categories —</option>';
+  detailed.forEach(cat => {
+    detailedHTML += `<option value="${escapeHtml(cat)}" ${cat === filterDetailedCategory ? 'selected' : ''}>${escapeHtml(cat)}</option>`;
+  });
+  detailedSelect.innerHTML = detailedHTML;
+  detailedSelect.disabled = false;
+}
+
+/**
+ * Handle primary category filter change.
+ */
+function onFilterPrimaryChange() {
+  const primarySelect = document.getElementById('filter-primary-category');
+  filterPrimaryCategory = primarySelect.value;
+  
+  // Reset detailed filter when primary changes
+  filterDetailedCategory = '';
+  
+  // Update detailed dropdown options
+  updateDetailedFilterDropdown();
+  
+  // Re-render table with new filters
+  renderTransactionTable();
+}
+
+/**
+ * Handle detailed category filter change.
+ */
+function onFilterDetailedChange() {
+  const detailedSelect = document.getElementById('filter-detailed-category');
+  filterDetailedCategory = detailedSelect.value;
+  
+  // Re-render table with new filters
+  renderTransactionTable();
+}
+
+/**
+ * Clear all category filters and refresh the table.
+ */
+function clearCategoryFilters() {
+  filterPrimaryCategory = '';
+  filterDetailedCategory = '';
+  
+  // Reset dropdowns
+  const primarySelect = document.getElementById('filter-primary-category');
+  const detailedSelect = document.getElementById('filter-detailed-category');
+  
+  if (primarySelect) primarySelect.value = '';
+  if (detailedSelect) {
+    detailedSelect.value = '';
+    updateDetailedFilterDropdown();
+  }
+  
+  // Re-render table
+  renderTransactionTable();
 }
 
 /**
