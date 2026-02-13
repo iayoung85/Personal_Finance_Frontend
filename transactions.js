@@ -104,6 +104,12 @@ function logout() {
   localStorage.removeItem('authToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('currentUser');
+  // Clear data caches on logout for security
+  localStorage.removeItem('pf_cached_transactions');
+  localStorage.removeItem('pf_transactions_cached_at');
+  localStorage.removeItem('pf_cached_categories');
+  localStorage.removeItem('pf_cached_taxonomy');
+  localStorage.removeItem('pf_categories_cached_at');
   token = null;
   refreshToken = null;
   currentUser = null;
@@ -526,7 +532,7 @@ function toggleBank(institution) {
   renderTransactionTable();
 }
 
-async function performSync(accountIds, startDate, endDate, activate = false) {
+async function performSync(accountIds, startDate, endDate, activate = false, force = false) {
   const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/sync_transactions`, {
     method: 'POST',
     mode: 'cors',
@@ -537,7 +543,8 @@ async function performSync(accountIds, startDate, endDate, activate = false) {
       start_date: startDate,
       end_date: endDate,
       account_ids: accountIds,
-      activate: activate
+      activate: activate,
+      force: force
     })
   });
   
@@ -551,9 +558,8 @@ async function performSync(accountIds, startDate, endDate, activate = false) {
 }
 
 async function syncTransactions() {
-  // This function is called when user manually clicks a sync button (if we keep one)
-  // For now, syncing happens automatically on page load via autoSyncAndLoadTransactions()
-  // Force network path on manual sync
+  // This function is called when user manually clicks a sync button
+  // Force network + force past cooldown for explicit user action
   await autoSyncAndLoadTransactions(true);
 }
 
@@ -573,25 +579,72 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
     return;
   }
   
+  // ============= CACHE-FIRST STRATEGY =============
+  // 1. Show cached transactions immediately if available (instant UI)
+  // 2. Sync with Plaid in background (may be skipped by backend cooldown)
+  // 3. Only re-fetch from server if Plaid returned actual changes
+  
+  const CACHE_KEY = 'pf_cached_transactions';
+  const CACHE_TS_KEY = 'pf_transactions_cached_at';
+  const CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+  
+  const cachedData = localStorage.getItem(CACHE_KEY);
+  const cachedAt = localStorage.getItem(CACHE_TS_KEY);
+  const cacheAge = cachedAt ? (Date.now() - parseInt(cachedAt)) : Infinity;
+  const cacheValid = cachedData && cacheAge < CACHE_MAX_AGE_MS;
+  
+  // Show cached data immediately for instant page load
+  if (cacheValid && !forceNetwork) {
+    try {
+      transactions = JSON.parse(cachedData);
+      renderTransactionTable();
+      renderDynamicPeriodButtons();
+      showStatus(`Loaded ${transactions.length} transactions from cache. Checking for updates...`, 'info');
+    } catch (e) {
+      console.error('Cache parse error, will fetch from server:', e);
+    }
+  }
+  
   try {
-    showStatus('Syncing transactions from Plaid...', 'info');
+    if (!forceNetwork && cacheValid) {
+      showStatus('Checking for new transactions...', 'info');
+    } else {
+      showStatus('Syncing transactions from Plaid...', 'info');
+    }
     
-    const syncData = await performSync(selectedAccounts, startDate, endDate);
-    let successMsg = `Synced ${syncData.synced_count || 0} transactions (${syncData.new_count || 0} new, ${syncData.updated_count || 0} updated)`;
-    showStatus(successMsg, 'info');
+    const syncData = await performSync(selectedAccounts, startDate, endDate, false, forceNetwork);
     synced = true;
     
-    // Now fetch all transactions from backend (no filters, frontend handles all filtering)
-    await fetchAllTransactions(true); // force network fetch after sync
+    // If Plaid returned no changes AND we have valid cache, skip the full re-fetch
+    if (syncData.no_changes && cacheValid && !forceNetwork) {
+      const cooldownMsg = syncData.cooldown 
+        ? ` (next sync available in ${syncData.seconds_until_next_sync}s)`
+        : '';
+      showStatus(`Transactions are up to date — ${transactions.length} loaded${cooldownMsg}`, 'success');
+      setTimeout(() => clearStatus(), 3000);
+      return;
+    }
+    
+    let successMsg = `Synced ${syncData.synced_count || 0} transactions (${syncData.new_count || 0} new, ${syncData.updated_count || 0} updated)`;
+    showStatus(successMsg, 'info');
+    
+    // Plaid had changes (or no cache) — fetch fresh from server
+    await fetchAllTransactions(true);
     
   } catch (error) {
     showStatus(`Sync failed: ${error.message}`, 'error');
-    await fetchAllTransactions(false);
+    // If sync failed but we don't have cache, try fetching from DB anyway
+    if (!cacheValid) {
+      await fetchAllTransactions(false);
+    }
   }
 }
 
 async function fetchAllTransactions(forceNetwork = false) {
   // Fetch all transactions for the user (backend returns all, frontend filters)
+  const CACHE_KEY = 'pf_cached_transactions';
+  const CACHE_TS_KEY = 'pf_transactions_cached_at';
+  
   try {
     showStatus('Loading all transactions...', 'info');
     
@@ -608,6 +661,16 @@ async function fetchAllTransactions(forceNetwork = false) {
     }
     
     transactions = data.transactions || [];
+    
+    // Cache transactions in localStorage for instant page loads
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify(transactions));
+      localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
+    } catch (cacheErr) {
+      console.warn('Could not cache transactions to localStorage:', cacheErr);
+      // localStorage might be full — not fatal
+    }
+    
     renderTransactionTable();
     renderDynamicPeriodButtons(); // Update period buttons when transactions change
     showStatus(`Loaded ${transactions.length} total transactions (filters applied on frontend)`, 'success');
@@ -937,6 +1000,12 @@ function buildDetailedDropdownOptions(selectedPrimary = '', selected = '') {
  * Attach event listeners for category dropdown changes.
  */
 function attachCategoryDropdownListeners() {
+  // Remove any previously-bound delegated handlers to prevent stacking
+  // (this function is called on every renderTransactionTable)
+  $(document).off('change', '.category-primary');
+  $(document).off('click', '.category-override');
+  $(document).off('click', '.category-rule');
+
   // When primary category changes, update detailed dropdown options
   $(document).on('change', '.category-primary', function() {
     const selectedPrimary = $(this).val();
@@ -1011,13 +1080,22 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
 
     showStatus(`Override applied: ${categoryString}. Recategorizing transactions...`, 'success');
     
-    // Trigger recategorization to update encrypted_transactions table
-    await recategorizeTransactions();
+    // ============= OPTIMIZED: Update local array directly instead of full re-sync =============
+    // The backend already updated the encrypted_transactions table directly,
+    // so we just need to update our local copy to match.
+    const txn = transactions.find(t => (t.transaction_id || t.plaid_transaction_id) === txnId);
+    if (txn) {
+      txn.user_category = categoryString;
+      txn.is_override = true;
+      // Update the localStorage cache
+      try {
+        localStorage.setItem('pf_cached_transactions', JSON.stringify(transactions));
+        localStorage.setItem('pf_transactions_cached_at', String(Date.now()));
+      } catch (e) { /* cache write failure is non-fatal */ }
+    }
+    renderTransactionTable();
     
-    // Reload transactions from server to get updated categories
-    await autoSyncAndLoadTransactions();
-    
-    showStatus(`Override applied and transactions recategorized`, 'success');
+    showStatus(`Override applied: ${categoryString}`, 'success');
     setTimeout(() => clearStatus(), 3000);
   } catch (error) {
     showStatus(`Failed to apply override: ${error.message}`, 'error');
@@ -1156,13 +1234,19 @@ async function submitCategoryRule(targetCategory, txnId) {
     closeModal();
     showStatus(`Rule created: "${ruleName}". Recategorizing transactions...`, 'success');
     
-    // Trigger recategorization to apply new rule to all matching transactions
-    await recategorizeTransactions();
+    // ============= OPTIMIZED: Backend already applied rule to matching transactions =============
+    // The backend returns how many transactions were updated. If any were,
+    // just re-fetch the transaction list (no Plaid sync needed).
+    const updatedCount = data.transactions_updated || 0;
     
-    // Reload transactions from server to get updated categories
-    await autoSyncAndLoadTransactions();
+    if (updatedCount > 0) {
+      // Some transactions were updated by the new rule — fetch fresh data from DB (not Plaid)
+      await fetchAllTransactions(true);
+      showStatus(`Rule created: "${ruleName}" — applied to ${updatedCount} matching transactions`, 'success');
+    } else {
+      showStatus(`Rule created: "${ruleName}" — will apply to future transactions`, 'success');
+    }
     
-    showStatus(`Rule created and transactions recategorized`, 'success');
     setTimeout(() => clearStatus(), 3000);
   } catch (error) {
     showStatus(`Failed to create rule: ${error.message}`, 'error');
@@ -1950,8 +2034,17 @@ async function applyManualCategory(txnId, accountId) {
     }
 
     closeModal();
+    // Update local array directly — backend already persisted the override
+    const txn = transactions.find(t => (t.transaction_id || t.plaid_transaction_id) === txnId);
+    if (txn) {
+      txn.user_category = selectedCategory;
+      txn.is_override = true;
+      try {
+        localStorage.setItem('pf_cached_transactions', JSON.stringify(transactions));
+        localStorage.setItem('pf_transactions_cached_at', String(Date.now()));
+      } catch (e) { /* non-fatal */ }
+    }
     showStatus('Transaction categorized', 'success');
-    await loadAvailableCategories();
     renderTransactionTable();
     setTimeout(() => clearStatus(), 2000);
   } catch (error) {
@@ -2430,8 +2523,17 @@ async function applyManualCategory(txnId, accountId) {
     }
 
     closeModal();
+    // Update local array directly — backend already persisted the override
+    const txn = transactions.find(t => (t.transaction_id || t.plaid_transaction_id) === txnId);
+    if (txn) {
+      txn.user_category = selectedCategory;
+      txn.is_override = true;
+      try {
+        localStorage.setItem('pf_cached_transactions', JSON.stringify(transactions));
+        localStorage.setItem('pf_transactions_cached_at', String(Date.now()));
+      } catch (e) { /* non-fatal */ }
+    }
     showStatus('Transaction categorized', 'success');
-    await loadAvailableCategories();
     renderTransactionTable();
     setTimeout(() => clearStatus(), 2000);
   } catch (error) {
@@ -2528,8 +2630,34 @@ function closeModal() {
 
 /**
  * Load available categories and Plaid taxonomy for categorization features.
+ * Uses localStorage cache to avoid redundant API calls (categories rarely change).
  */
-async function loadAvailableCategories() {
+async function loadAvailableCategories(forceNetwork = false) {
+  const CAT_CACHE_KEY = 'pf_cached_categories';
+  const TAX_CACHE_KEY = 'pf_cached_taxonomy';
+  const CAT_TS_KEY = 'pf_categories_cached_at';
+  const CAT_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes — categories change infrequently
+
+  // Try cache first
+  if (!forceNetwork) {
+    const cachedAt = localStorage.getItem(CAT_TS_KEY);
+    const cacheAge = cachedAt ? (Date.now() - parseInt(cachedAt)) : Infinity;
+    if (cacheAge < CAT_MAX_AGE_MS) {
+      try {
+        const cachedCats = JSON.parse(localStorage.getItem(CAT_CACHE_KEY) || '[]');
+        const cachedTax = JSON.parse(localStorage.getItem(TAX_CACHE_KEY) || '[]');
+        if (cachedCats.length > 0) {
+          availableCategories = cachedCats;
+          plaidTaxonomy = cachedTax;
+          console.log(`Loaded ${availableCategories.length} categories and ${plaidTaxonomy.length} taxonomy from cache`);
+          return;
+        }
+      } catch (e) {
+        console.warn('Category cache parse error, fetching from server:', e);
+      }
+    }
+  }
+
   try {
     const [categoriesRes, taxonomyRes] = await Promise.all([
       authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/available`),
@@ -2553,6 +2681,15 @@ async function loadAvailableCategories() {
     }
     
     console.log(`Loaded ${availableCategories.length} available categories and ${plaidTaxonomy.length} taxonomy entries`);
+    
+    // Cache for future page loads
+    try {
+      localStorage.setItem(CAT_CACHE_KEY, JSON.stringify(availableCategories));
+      localStorage.setItem(TAX_CACHE_KEY, JSON.stringify(plaidTaxonomy));
+      localStorage.setItem(CAT_TS_KEY, String(Date.now()));
+    } catch (e) {
+      console.warn('Could not cache categories to localStorage:', e);
+    }
   } catch (error) {
     console.error('Error loading category data:', error);
     availableCategories = [];
