@@ -2517,7 +2517,20 @@ async function createRuleFromModal(targetCategory) {
   const data = await response.json();
   if (!response.ok) {
     showStatus(data.error || 'Failed to create rule', 'error');
+    return;
   }
+
+  // Invalidate categories page cache so newly created rule shows up immediately
+  try {
+    localStorage.removeItem('pf_catpage_data');
+    localStorage.removeItem('pf_catpage_cached_at');
+  } catch (e) { /* cache removal failure is non-fatal */ }
+
+  showStatus(`Rule "${ruleName}" created successfully (${data.transactions_updated} transactions updated)`, 'success');
+  setTimeout(() => clearStatus(), 2000);
+  
+  // Close the modal after successful creation
+  closeModal();
 }
 
 // ===============================
@@ -3017,7 +3030,20 @@ async function createRuleFromModal(targetCategory) {
   const data = await response.json();
   if (!response.ok) {
     showStatus(data.error || 'Failed to create rule', 'error');
+    return;
   }
+
+  // Invalidate categories page cache so newly created rule shows up immediately
+  try {
+    localStorage.removeItem('pf_catpage_data');
+    localStorage.removeItem('pf_catpage_cached_at');
+  } catch (e) { /* cache removal failure is non-fatal */ }
+
+  showStatus(`Rule "${ruleName}" created successfully (${data.transactions_updated} transactions updated)`, 'success');
+  setTimeout(() => clearStatus(), 2000);
+  
+  // Close the modal after successful creation
+  closeModal();
 }
 
 function openModal({ title, body, actions }) {
@@ -3267,8 +3293,10 @@ function openAddManualTransactionModal() {
       <div>
         <label style="display: block; font-weight: 500; margin-bottom: 6px;">Category (Optional)</label>
         <select id="manual-txn-category" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+          <option value="">— None (Auto-apply rules) —</option>
           ${categoryOptions}
         </select>
+        <small style="color: #666; margin-top: 2px; display: block;">If not selected, mappings and rules will be applied automatically</small>
       </div>
 
       <div>
@@ -3287,6 +3315,19 @@ function openAddManualTransactionModal() {
       { label: 'Create', onClick: () => saveManualTransaction() }
     ]
   });
+  
+  // Add Enter key listener for Create button
+  setTimeout(() => {
+    const inputs = document.querySelectorAll('#manual-txn-name, #manual-txn-amount, #manual-txn-date, #manual-txn-merchant, #manual-txn-memo');
+    inputs.forEach(input => {
+      input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveManualTransaction();
+        }
+      });
+    });
+  }, 50);
 }
 
 /**
@@ -3344,7 +3385,13 @@ async function saveManualTransaction() {
     }
 
     closeModal();
-    showStatus('Manual transaction created successfully', 'success');
+    
+    // Show success message with category info if available
+    const appliedCategory = data.transaction?.user_category;
+    const successMsg = appliedCategory 
+      ? `Manual transaction created successfully (category: ${appliedCategory})`
+      : 'Manual transaction created successfully';
+    showStatus(successMsg, 'success');
     
     // Add the new transaction to the in-memory array and localStorage immediately for instant UI update
     const newTxn = data.transaction || {};
@@ -3385,44 +3432,30 @@ async function saveManualTransaction() {
  * Delete a manual transaction via API
  */
 async function deleteManualTransaction(manualTransactionId) {
-  // Show confirmation modal
-  openModal({
-    title: 'Confirm Delete',
-    body: '<p>Are you sure you want to delete this manual transaction? This action cannot be undone.</p>',
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { 
-        label: 'Delete', 
-        onClick: async () => {
-          try {
-            const response = await authenticatedFetch(
-              `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(manualTransactionId)}`,
-              { method: 'DELETE' }
-            );
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(manualTransactionId)}`,
+      { method: 'DELETE' }
+    );
 
-            if (!response.ok) {
-              const data = await response.json();
-              showStatus(data.error || 'Failed to delete transaction', 'error');
-              return;
-            }
+    if (!response.ok) {
+      const data = await response.json();
+      showStatus(data.error || 'Failed to delete transaction', 'error');
+      return;
+    }
 
-            closeModal();
-            showStatus('Manual transaction deleted successfully', 'success');
+    showStatus('Manual transaction deleted successfully', 'success');
 
-            // Invalidate cache
-            try {
-              localStorage.removeItem('pf_cached_transactions');
-              localStorage.removeItem('pf_transactions_cached_at');
-            } catch (e) { /* non-fatal */ }
+    // Invalidate cache
+    try {
+      localStorage.removeItem('pf_cached_transactions');
+      localStorage.removeItem('pf_transactions_cached_at');
+    } catch (e) { /* non-fatal */ }
 
-            // Refresh transactions
-            await fetchAllTransactions(true);
+    // Refresh transactions
+    await fetchAllTransactions(true);
 
-          } catch (error) {
-            showStatus(`Failed to delete transaction: ${error.message}`, 'error');
-          }
-        }
-      }
-    ]
-  });
+  } catch (error) {
+    showStatus(`Failed to delete transaction: ${error.message}`, 'error');
+  }
 }
