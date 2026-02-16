@@ -1181,3 +1181,47 @@ tr:hover {
 .category-rule:active {
   background: #e8e8e8;
 }
+
+/* Source Badge Styles */
+.source-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-right: 6px;
+  white-space: nowrap;
+}
+
+.source-badge.plaid {
+  background: #e8eaed;
+  color: #202124;
+}
+
+.source-badge.manual {
+  background: #c5d9f5;
+  color: #1967d2;
+}
+
+/* Delete Button for Manual Transactions */
+.delete-transaction-btn {
+  background: none;
+  border: none;
+  color: #dc3545;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 6px;
+  transition: all 0.2s;
+  display: inline-block;
+  line-height: 1;
+}
+
+.delete-transaction-btn:hover {
+  color: #bb2d3b;
+  background: #ffebee;
+  border-radius: 3px;
+}
+
+.delete-transaction-btn:active {
+  color: #a02830;
+}

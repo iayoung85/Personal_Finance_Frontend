@@ -794,6 +794,7 @@ function renderTransactionTable() {
   html += '<th>Bank/Account</th>';
   html += '<th>Description</th>';
   html += '<th>Amount</th>';
+  if (optionalFields.includes('source')) html += '<th>Source</th>';
   html += '<th>Category</th>';
   
   // Add optional headers
@@ -806,6 +807,7 @@ function renderTransactionTable() {
   if (optionalFields.includes('authorized_datetime')) html += '<th>Auth Time</th>';
   if (optionalFields.includes('personal_finance_category')) html += '<th>Plaid Category</th>';
   if (optionalFields.includes('user_memo')) html += '<th>Memo</th>';
+  html += '<th style="width: 40px;"></th>'; // Delete button column
 
   html += '</tr></thead><tbody>';
   
@@ -831,9 +833,17 @@ function renderTransactionTable() {
     html += `<td>${txn.name || ''}</td>`;
     html += `<td>${amount}</td>`;
 
-    // Category Primary and Detailed columns (always visible)
-    const txnId = txn.transaction_id || txn.plaid_transaction_id || '';
+    // Determine source and transaction IDs
+    const isManual = !!txn.manual_transaction_id;
+    const txnId = txn.plaid_transaction_id || txn.manual_transaction_id || '';
     const accountId = txn.plaid_account_id || '';
+    
+    // Add source badge if source field is selected
+    if (optionalFields.includes('source')) {
+      const sourceLabel = isManual ? 'Manual' : 'Plaid';
+      const sourceBadge = `<span class="source-badge ${isManual ? 'manual' : 'plaid'}" title="${isManual ? 'Added manually by user' : 'From Plaid'}">${sourceLabel}</span>`;
+      html += `<td>${sourceBadge}</td>`;
+    }
     
     // Parse current user_category to get primary and detailed
     let currentParsed = { primary: '', detailed: '' };
@@ -916,10 +926,21 @@ function renderTransactionTable() {
           <td>
             <div style="display: flex; gap: 6px; align-items: center;">
               <input class="memo-input" type="text" maxlength="256" value="${safeMemoValue}" style="width: 100%; min-width: 160px;">
-              <button class="secondary memo-save" data-txn-id="${txn.plaid_transaction_id || ''}">Save</button>
+              <button class="secondary memo-save" data-txn-id="${txnId}">Save</button>
             </div>
           </td>
         `;
+    }
+
+    // Add delete button for manual transactions only
+    if (isManual) {
+      html += `
+        <td style="text-align: center;">
+          <button class="delete-transaction-btn" onclick="deleteManualTransaction('${escapeHtml(txnId)}')" title="Delete manual transaction">🗑</button>
+        </td>
+      `;
+    } else {
+      html += '<td></td>'; // Empty cell for Plaid transactions
     }
 
     html += '</tr>';
@@ -939,8 +960,8 @@ function renderTransactionTable() {
   renderInsightsPanel();
 }
 
-async function saveTransactionMemo(plaidTransactionId, userMemo, buttonEl) {
-  if (!plaidTransactionId) {
+async function saveTransactionMemo(transactionId, userMemo, buttonEl) {
+  if (!transactionId) {
     showStatus('Unable to save memo: missing transaction id', 'error');
     return;
   }
@@ -952,11 +973,16 @@ async function saveTransactionMemo(plaidTransactionId, userMemo, buttonEl) {
   }
 
   try {
+    // Determine if this is a manual or Plaid transaction
+    const txn = transactions.find(t => (t.plaid_transaction_id || t.manual_transaction_id) === transactionId);
+    const isManual = txn && !!txn.manual_transaction_id;
+    
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/add-memo`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        plaid_transaction_id: plaidTransactionId,
+        plaid_transaction_id: !isManual ? transactionId : undefined,
+        manual_transaction_id: isManual ? transactionId : undefined,
         user_memo: trimmedMemo
       })
     });
@@ -966,9 +992,16 @@ async function saveTransactionMemo(plaidTransactionId, userMemo, buttonEl) {
       throw new Error(data.error || 'Failed to save memo');
     }
 
-    const txn = transactions.find(t => t.plaid_transaction_id === plaidTransactionId);
     if (txn) {
       txn.user_memo = trimmedMemo;
+      
+      // Update localStorage with the modified transaction
+      try {
+        localStorage.setItem('pf_cached_transactions', JSON.stringify(transactions));
+        localStorage.setItem('pf_transactions_cached_at', String(Date.now()));
+      } catch (e) {
+        console.warn('Could not update cached transactions in localStorage:', e);
+      }
     }
 
     showStatus('Memo saved successfully', 'success');
@@ -3181,4 +3214,215 @@ function testCategoryParsing() {
   console.log('Transportation detailed categories:', transportDetails);
   
   console.log('\n=== Tests Complete ===');
+}
+
+// ===============================
+// MANUAL TRANSACTIONS
+// ===============================
+
+/**
+ * Open modal to create a new manual transaction
+ */
+function openAddManualTransactionModal() {
+  const categoryOptions = buildCategoryOptions('');
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Build account dropdown from available accounts
+  let accountOptions = '<option value="">— Select Account —</option>';
+  accounts.forEach(account => {
+    accountOptions += `<option value="${escapeHtml(account.plaid_account_id)}">${escapeHtml(account.bank_account)} (${escapeHtml(account.account_subtype)})</option>`;
+  });
+
+  const formHtml = `
+    <div style="display: grid; gap: 14px;">
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Description *</label>
+        <input id="manual-txn-name" type="text" placeholder="e.g., Coffee at local shop" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;" maxlength="128">
+        <small style="color: #666; margin-top: 2px; display: block;">Brief description of transaction</small>
+      </div>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div>
+          <label style="display: block; font-weight: 500; margin-bottom: 6px;">Amount *</label>
+          <input id="manual-txn-amount" type="number" placeholder="0.00" step="0.01" min="0" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+        </div>
+        <div>
+          <label style="display: block; font-weight: 500; margin-bottom: 6px;">Date *</label>
+          <input id="manual-txn-date" type="date" value="${today}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+        </div>
+      </div>
+
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Account *</label>
+        <select id="manual-txn-account" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+          ${accountOptions}
+        </select>
+      </div>
+
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Merchant (Optional)</label>
+        <input id="manual-txn-merchant" type="text" placeholder="e.g., Starbucks" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;" maxlength="128">
+      </div>
+
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Category (Optional)</label>
+        <select id="manual-txn-category" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+          ${categoryOptions}
+        </select>
+      </div>
+
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Memo (Optional)</label>
+        <input id="manual-txn-memo" type="text" placeholder="Add a note" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;" maxlength="256">
+        <small style="color: #666; margin-top: 2px; display: block;">Additional notes about this transaction</small>
+      </div>
+    </div>
+  `;
+
+  openModal({
+    title: 'Add Manual Transaction',
+    body: formHtml,
+    actions: [
+      { label: 'Cancel', className: 'secondary', onClick: closeModal },
+      { label: 'Create', onClick: () => saveManualTransaction() }
+    ]
+  });
+}
+
+/**
+ * Save a new manual transaction via API
+ */
+async function saveManualTransaction() {
+  const name = document.getElementById('manual-txn-name').value.trim();
+  const amount = parseFloat(document.getElementById('manual-txn-amount').value);
+  const date = document.getElementById('manual-txn-date').value;
+  const accountId = document.getElementById('manual-txn-account').value;
+  const merchant = document.getElementById('manual-txn-merchant').value.trim();
+  const category = document.getElementById('manual-txn-category').value;
+  const memo = document.getElementById('manual-txn-memo').value.trim();
+
+  // Validate required fields
+  if (!name) {
+    showStatus('Description is required', 'error');
+    return;
+  }
+  if (!amount || amount <= 0 || isNaN(amount)) {
+    showStatus('Amount must be a positive number', 'error');
+    return;
+  }
+  if (!date) {
+    showStatus('Date is required', 'error');
+    return;
+  }
+  if (!accountId) {
+    showStatus('Please select an account', 'error');
+    return;
+  }
+
+  try {
+    const payload = {
+      description: name,
+      amount,
+      date,
+      plaid_account_id: accountId,
+      merchant_name: merchant || null,
+      user_category: category || null,
+      memo: memo || null
+    };
+
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      showStatus(data.error || 'Failed to create manual transaction', 'error');
+      return;
+    }
+
+    closeModal();
+    showStatus('Manual transaction created successfully', 'success');
+    
+    // Add the new transaction to the in-memory array and localStorage immediately for instant UI update
+    const newTxn = data.transaction || {};
+    
+    // Ensure transaction has required fields for rendering
+    newTxn.manual_transaction_id = data.manual_transaction_id;
+    newTxn.plaid_account_id = accountId;
+    newTxn.iso_currency_code = 'USD';
+    newTxn.source = 'manual';
+    newTxn.bank_account = accountId; // Will be updated after full fetch
+    
+    // Add to in-memory transactions array
+    transactions.unshift(newTxn);
+    
+    // Update localStorage immediately
+    try {
+      localStorage.setItem('pf_cached_transactions', JSON.stringify(transactions));
+      localStorage.setItem('pf_transactions_cached_at', String(Date.now()));
+    } catch (e) { /* non-fatal */ }
+    
+    // Refresh table with new transaction visible
+    renderTransactionTable();
+    
+    // Fetch all transactions in background to ensure consistency and get bank_account names
+    try {
+      await fetchAllTransactions(true);
+    } catch (e) {
+      // If fetch fails, user still sees the transaction locally
+      console.warn('Background fetch failed but transaction is locally cached:', e);
+    }
+
+  } catch (error) {
+    showStatus(`Failed to create transaction: ${error.message}`, 'error');
+  }
+}
+
+/**
+ * Delete a manual transaction via API
+ */
+async function deleteManualTransaction(manualTransactionId) {
+  // Show confirmation modal
+  openModal({
+    title: 'Confirm Delete',
+    body: '<p>Are you sure you want to delete this manual transaction? This action cannot be undone.</p>',
+    actions: [
+      { label: 'Cancel', className: 'secondary', onClick: closeModal },
+      { 
+        label: 'Delete', 
+        onClick: async () => {
+          try {
+            const response = await authenticatedFetch(
+              `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(manualTransactionId)}`,
+              { method: 'DELETE' }
+            );
+
+            if (!response.ok) {
+              const data = await response.json();
+              showStatus(data.error || 'Failed to delete transaction', 'error');
+              return;
+            }
+
+            closeModal();
+            showStatus('Manual transaction deleted successfully', 'success');
+
+            // Invalidate cache
+            try {
+              localStorage.removeItem('pf_cached_transactions');
+              localStorage.removeItem('pf_transactions_cached_at');
+            } catch (e) { /* non-fatal */ }
+
+            // Refresh transactions
+            await fetchAllTransactions(true);
+
+          } catch (error) {
+            showStatus(`Failed to delete transaction: ${error.message}`, 'error');
+          }
+        }
+      }
+    ]
+  });
 }

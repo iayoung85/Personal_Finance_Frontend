@@ -98,6 +98,7 @@
                 <label><input type="checkbox" class="field-checkbox" value="authorized_datetime"> Authorized Time</label>
                 <label><input type="checkbox" class="field-checkbox" value="personal_finance_category"> Plaid's Category</label>
                 <label><input type="checkbox" class="field-checkbox" value="user_memo"> Memo</label>
+                <label><input type="checkbox" class="field-checkbox" value="source"> Source (Plaid/Manual)</label>
               </div>
             </div>
             
@@ -105,6 +106,7 @@
             <div class="config-section">
               <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <button onclick="syncTransactions()">Re-sync transactions with Plaid</button>
+                <button onclick="openAddManualTransactionModal()" style="background: #1967d2;">Add Manual Transaction</button>
                 <button onclick="saveSettings()" class="secondary">Save Settings</button>
                 
                 <!-- Export Buttons (initially hidden until data loaded) -->
