@@ -6,6 +6,7 @@ let availableCategories = [];
 let rules = [];
 let plaidTaxonomy = [];
 let migrationLog = [];
+let overrides = []; // Overrides summary: [{category_name, transaction_count}]
 let currentRuleEditId = null;
 let selectedPrimaryCategories = new Set(['__all__']);
 let primaryCategoryMappings = {};
@@ -296,6 +297,7 @@ async function loadCategorizationData(forceNetwork = false) {
       authenticatedFetch(`${BACKEND_URL}/api/categorization/rules`),
       authenticatedFetch(`${BACKEND_URL}/api/categorization/migration-log`),
       authenticatedFetch(`${BACKEND_URL}/api/categorization/validation/broken-rules`),
+      authenticatedFetch(`${BACKEND_URL}/api/categorization/transaction-overrides/summary`),
     ];
     if (needTaxonomy) {
       fetches.push(authenticatedFetch(`${BACKEND_URL}/api/categorization/plaid-taxonomy`));
@@ -307,11 +309,13 @@ async function loadCategorizationData(forceNetwork = false) {
     const rulesData = await responses[1].json();
     const logData = await responses[2].json();
     const brokenRulesData = await responses[3].json();
+    const overridesData = await responses[4].json();
 
     categoryMappings = responses[0].ok ? (categoriesData.category_mappings || {}) : {};
     customCategories = responses[0].ok ? (categoriesData.custom_categories || []) : [];
     rules = responses[1].ok ? (rulesData.rules || []) : [];
     migrationLog = responses[2].ok ? (logData.migrations || []) : [];
+    overrides = responses[4].ok ? (overridesData.overrides_by_category || []) : [];
 
     // Handle broken rules from the batch response
     if (responses[3].ok && brokenRulesData.has_broken_rules) {
@@ -322,8 +326,8 @@ async function loadCategorizationData(forceNetwork = false) {
     }
 
     if (needTaxonomy) {
-      const taxonomyData = await responses[4].json();
-      plaidTaxonomy = responses[4].ok ? (taxonomyData.categories || []) : [];
+      const taxonomyData = await responses[5].json();
+      plaidTaxonomy = responses[5].ok ? (taxonomyData.categories || []) : [];
     } else {
       plaidTaxonomy = cachedTaxonomy;
     }
@@ -365,6 +369,7 @@ function renderAllCategoryViews() {
   renderPrimaryMappingsList();
   renderCustomCategories();
   renderRulesTable();
+  renderOverridesTable();
   renderRuleFormOptions();
   renderMigrationSelectors();
   renderMigrationLog();
@@ -1025,7 +1030,6 @@ function buildCustomDetailedPreviewRows(primaryMap, primaryOptions) {
           <div style="display: flex; gap: 6px;">
             <button class="secondary" style="padding: 4px 8px; font-size: 12px;" onclick="startAddDetailsForCategory('${escapeHtml(primary)}')">+ Add Detailed</button>
             <button class="secondary" style="padding: 4px 8px; font-size: 12px;" onclick="openReassignPrimaryModal('${escapeHtml(primary)}')" title="Move all detailed categories under this primary to another primary. All rules and overrides will follow.">Reassign</button>
-            <button class="secondary" style="padding: 4px 8px; font-size: 12px;" onclick="openArchivePrimaryModal('${escapeHtml(primary)}')" title="Archive this primary category and move its rules/overrides to Archived">Archive</button>
           </div>
         </div>
       </div>
@@ -1040,7 +1044,6 @@ function buildCustomDetailedPreviewRows(primaryMap, primaryOptions) {
             <span>${escapeHtml(detailed)}</span>
             <div style="display: flex; gap: 6px;">
               <button class="secondary" style="padding: 3px 8px; font-size: 11px;" onclick="openReassignDetailedModal('${escapeHtml(fullCategoryName)}')" title="Move this category to a different primary or consolidate with another detailed category. All rules and overrides will follow.">Reassign</button>
-              <button class="secondary" style="padding: 3px 8px; font-size: 11px;" onclick="openArchiveDetailedModal('${escapeHtml(fullCategoryName)}')">Archive</button>
             </div>
           </div>
         `);
@@ -1288,6 +1291,51 @@ async function deleteRule(ruleId) {
   }
 }
 
+function renderOverridesTable() {
+  const container = document.getElementById('overrides-table');
+  if (!container) return;
+  
+  if (!overrides || !overrides.length) {
+    container.innerHTML = '<div class="empty-state">No manual overrides yet. Override transactions on the Transactions page to see them here.</div>';
+    return;
+  }
+
+  // Sort by transaction count descending
+  const sorted = overrides.slice().sort((a, b) => (b.transaction_count || 0) - (a.transaction_count || 0));
+
+  const rows = sorted
+    .map(override => {
+      const categoryName = override.category_name || 'Unknown';
+      const txnCount = override.transaction_count || 0;
+      return `
+        <tr>
+          <td>${escapeHtml(categoryName)}</td>
+          <td style="text-align: center;">${txnCount}</td>
+          <td>
+            <div class="rules-actions">
+              <button class="secondary" onclick="clearOverridesForCategory('${escapeHtml(categoryName).replace(/'/g, "\\'")}')">Clear All</button>
+              <button class="secondary" onclick="reassignOverridesForCategory('${escapeHtml(categoryName).replace(/'/g, "\\'")}')">Reassign All</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  container.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Category Name</th>
+          <th style="text-align: center;"># Transactions</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
 function renderMigrationSelectors() {
   const mergeList = document.getElementById('merge-source-list');
   if (mergeList) {
@@ -1300,24 +1348,6 @@ function renderMigrationSelectors() {
       `)
       .join('');
   }
-  const splitRows = document.getElementById('split-rows');
-  if (splitRows && splitRows.children.length === 0) {
-    addSplitRow();
-  }
-}
-
-function addSplitRow() {
-  const container = document.getElementById('split-rows');
-  if (!container) return;
-  const row = document.createElement('div');
-  row.className = 'split-row';
-  row.innerHTML = `
-    <input type="text" placeholder="Plaid categories (comma separated)">
-    <input type="text" placeholder="Target category">
-    <button class="secondary" type="button">Remove</button>
-  `;
-  row.querySelector('button').addEventListener('click', () => row.remove());
-  container.appendChild(row);
 }
 
 function confirmRename() {
@@ -1463,133 +1493,7 @@ async function mergeCategories(sourceCategories, targetCategory) {
   }
 }
 
-function confirmSplit() {
-  const oldCategory = document.getElementById('split-old').value;
-  const splitRows = document.querySelectorAll('#split-rows .split-row');
-  const splits = [];
 
-  splitRows.forEach(row => {
-    const plaidRaw = row.querySelector('input:nth-child(1)').value.trim();
-    const target = row.querySelector('input:nth-child(2)').value.trim();
-    if (!plaidRaw || !target) return;
-    const plaidCategories = plaidRaw.split(',').map(v => v.trim()).filter(Boolean);
-    if (plaidCategories.length) {
-      splits.push({ plaid_categories: plaidCategories, target });
-    }
-  });
-
-  if (!oldCategory || splits.length === 0) {
-    showStatus('Provide a category to split and at least one split row', 'warning');
-    return;
-  }
-
-  openModal({
-    title: 'Confirm Split',
-    body: `<p>Split <strong>${escapeHtml(oldCategory)}</strong> into ${splits.length} categories?</p>`,
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Split', onClick: () => splitCategory(oldCategory, splits) }
-    ]
-  });
-}
-
-async function splitCategory(oldCategory, splits) {
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/split`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ old_category: oldCategory, splits })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      showStatus(data.error || 'Failed to split category', 'error');
-      return;
-    }
-    closeModal();
-    await loadCategorizationData(true);
-  } catch (error) {
-    showStatus(`Failed to split category: ${error.message}`, 'error');
-  }
-}
-
-async function confirmDeleteCategory(categoryName) {
-  // First, check if there are any rules or overrides using this category
-  let affectedRules = [];
-  let affectedOverrides = 0;
-  
-  // Check rules
-  affectedRules = rules.filter(r => r.target_category === categoryName);
-  
-  // Check overrides via API
-  try {
-    const overrideResponse = await authenticatedFetch(
-      `${BACKEND_URL}/api/categorization/transaction-overrides?category_name=${encodeURIComponent(categoryName)}`
-    );
-    if (overrideResponse.ok) {
-      const overrideData = await overrideResponse.json();
-      affectedOverrides = overrideData.count || 0;
-    }
-  } catch (error) {
-    console.error('Error checking overrides:', error);
-  }
-  
-  const warningText = affectedRules.length > 0 || affectedOverrides > 0
-    ? `<div style="background: #fff3cd; padding: 12px; border-radius: 4px; margin-bottom: 12px; color: #856404;">
-         <strong>⚠️ Warning:</strong> This category has:
-         ${affectedRules.length > 0 ? `<br>• ${affectedRules.length} rule${affectedRules.length > 1 ? 's' : ''}` : ''}
-         ${affectedOverrides > 0 ? `<br>• ${affectedOverrides} manual override${affectedOverrides > 1 ? 's' : ''}` : ''}
-       </div>`
-    : '';
-  
-  openModal({
-    title: 'Delete Category',
-    body: `
-      ${warningText}
-      <p>What would you like to do with <strong>${escapeHtml(categoryName)}</strong>?</p>
-      <div style="margin-top: 12px;">
-        <label class="inline-checkbox" style="display: block; margin-bottom: 8px;">
-          <input type="radio" name="delete-action" value="archive" checked> 
-          <strong>Archive</strong> - Disable safely (recommended)
-        </label>
-        <label class="inline-checkbox" style="display: block; margin-bottom: 8px;">
-          <input type="radio" name="delete-action" value="reassign"> 
-          <strong>Reassign</strong> - Move rules/overrides to another category
-        </label>
-        <label class="inline-checkbox" style="display: block;">
-          <input type="radio" name="delete-action" value="delete"> 
-          <strong>Delete</strong> - Remove completely (custom categories only)
-        </label>
-      </div>
-      <div id="reassign-target-container" style="margin-top: 12px; display: none;">
-        <label style="display: block; margin-bottom: 4px; font-weight: 500;">Reassign to:</label>
-        <select id="reassign-target-category" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
-          ${buildCategoryOptions()}
-        </select>
-      </div>
-    `,
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Confirm', onClick: () => deleteCategory(categoryName) }
-    ]
-  });
-  
-  // Add listener to show/hide reassign target
-  const radioButtons = document.querySelectorAll('input[name="delete-action"]');
-  const reassignContainer = document.getElementById('reassign-target-container');
-  radioButtons.forEach(radio => {
-    radio.addEventListener('change', () => {
-      if (radio.value === 'reassign') {
-        reassignContainer.style.display = 'block';
-      } else {
-        reassignContainer.style.display = 'none';
-      }
-    });
-  });
-}
-
-function deleteCategoryInlineAction(categoryName, action) {
-  deleteCategory(categoryName, action);
-}
 
 function openReassignCategoryModal(categoryName) {
   openModal({
@@ -2006,105 +1910,7 @@ async function confirmReassignDetailed(categoryName) {
   }
 }
 
-function openArchiveDetailedModal(categoryName) {
-  openModal({
-    title: 'Archive Category',
-    body: `
-      <p>Archive <strong>${escapeHtml(categoryName)}</strong>? It will no longer appear in dropdowns but won't be deleted.</p>
-    `,
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Archive', onClick: () => deleteCategory(categoryName, 'archive') }
-    ]
-  });
-}
 
-function openArchivePrimaryModal(primaryName) {
-  const categoriesToArchive = (customCategories || [])
-    .filter(cat => {
-      const parts = parseCategoryName(cat);
-      return parts.primary === primaryName;
-    });
-  
-  openModal({
-    title: 'Archive Primary Category',
-    body: `
-      <p>Archive <strong>${escapeHtml(primaryName)}</strong> and all ${categoriesToArchive.length} category(ies) under it?</p>
-      <p style="font-size: 13px; color: #666; margin-top: 12px;">
-        ℹ️ All rules and overrides will be moved to the "Archived" category. Your data won't be deleted.
-      </p>
-    `,
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Archive', onClick: () => deleteAllUnderPrimary(primaryName, categoriesToArchive, 'archive') }
-    ]
-  });
-}
-
-function confirmDeletePrimaryCategory(primaryName) {
-  // Get all categories under this primary
-  const categoriesToDelete = (customCategories || [])
-    .filter(cat => {
-      const parts = parseCategoryName(cat);
-      return parts.primary === primaryName;
-    });
-  
-  openModal({
-    title: 'Delete Primary Category',
-    body: `
-      <div style="background: #fff3cd; padding: 12px; border-radius: 4px; margin-bottom: 12px; color: #856404;">
-        <strong>⚠️ Warning:</strong> This will delete <strong>${categoriesToDelete.length}</strong> category(ies):
-        <ul style="margin: 8px 0 0 20px; padding: 0;">
-          ${categoriesToDelete.slice(0, 5).map(c => `<li>${escapeHtml(c)}</li>`).join('')}
-          ${categoriesToDelete.length > 5 ? `<li>... and ${categoriesToDelete.length - 5} more</li>` : ''}
-        </ul>
-      </div>
-      <p>This cannot be undone. Are you sure?</p>
-    `,
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Delete All', onClick: () => deleteAllUnderPrimary(primaryName, categoriesToDelete) }
-    ]
-  });
-}
-
-async function deleteAllUnderPrimary(primaryName, categoriesToDelete, action = 'delete') {
-  try {
-    showStatus(`${action === 'archive' ? 'Archiving' : 'Deleting'} categories...`, 'info');
-    
-    for (const categoryName of categoriesToDelete) {
-      const response = await authenticatedFetch(
-        `${BACKEND_URL}/api/categorization/categories/${encodeURIComponent(categoryName)}?action=${action}`,
-        { method: 'DELETE' }
-      );
-      
-      if (!response.ok) {
-        const data = await response.json();
-        showStatus(`Failed to ${action} ${categoryName}: ${data.error}`, 'error');
-        return;
-      }
-    }
-    
-    closeModal();
-    const actionLabel = action === 'archive' ? 'archived' : 'deleted';
-    showStatus(`${categoriesToDelete.length} category(ies) under ${primaryName} ${actionLabel}`, 'success');
-    await loadCategorizationData(true);
-    setTimeout(() => clearStatus(), 2000);
-  } catch (error) {
-    showStatus(`Failed to ${action} categories: ${error.message}`, 'error');
-  }
-}
-
-function confirmDeleteDetailedCategory(categoryName) {
-  openModal({
-    title: 'Delete Category',
-    body: `<p>Delete <strong>${escapeHtml(categoryName)}</strong> permanently?</p>`,
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Delete', onClick: () => deleteCategory(categoryName, 'delete') }
-    ]
-  });
-}
 
 function confirmReassignCategory(categoryName) {
   const targetSelect = document.getElementById('reassign-target-category');
@@ -2240,10 +2046,6 @@ function showMigrationsHelp() {
           <li>Consolidating after re-evaluating your budget categories</li>
         </ul>
         <p><strong>Example:</strong> Merge "Fast Food", "Restaurants", and "Coffee Shops" into "Dining"</p>
-        
-        <h5>Split</h5>
-        <p>Use when you want to divide a previously merged category back into separate ones. This only affects future transactions - historical overrides remain unchanged.</p>
-        <p><strong>Example:</strong> Split "Dining" back into "Fast Food" and "Restaurants" with specific Plaid category mappings</p>
         
         <h4>Important Notes</h4>
         <ul>
@@ -2769,6 +2571,7 @@ async function deleteOverridesForCategory(categoryName) {
     
     if (response.ok) {
       showStatus(`${data.deleted_count} override${data.deleted_count !== 1 ? 's' : ''} deleted`, 'success');
+      await loadCategorizationData(true);
       setTimeout(() => clearStatus(), 3000);
     } else {
       showStatus(data.error || 'Failed to delete overrides', 'error');
@@ -2795,12 +2598,97 @@ async function deleteAllOverrides() {
     
     if (response.ok) {
       showStatus(`Deleted all ${data.deleted_count} override${data.deleted_count !== 1 ? 's' : ''}`, 'success');
+      await loadCategorizationData(true);
       setTimeout(() => clearStatus(), 3000);
     } else {
       showStatus(data.error || 'Failed to delete overrides', 'error');
     }
   } catch (error) {
     showStatus(`Failed to delete overrides: ${error.message}`, 'error');
+  }
+}
+
+async function clearOverridesForCategory(categoryName) {
+  if (!confirm(
+    `Clear all manual overrides for "${categoryName}"?\n\n` +
+    'Transactions will revert to follow category mappings and/or rules. This cannot be undone.'
+  )) {
+    return;
+  }
+  
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/categorization/transaction-overrides?category_name=${encodeURIComponent(categoryName)}`,
+      { method: 'DELETE' }
+    );
+    const data = await response.json();
+    
+    if (response.ok) {
+      showStatus(`Cleared ${data.deleted_count} override${data.deleted_count !== 1 ? 's' : ''} for "${categoryName}"`, 'success');
+      await loadCategorizationData(true);
+      setTimeout(() => clearStatus(), 3000);
+    } else {
+      showStatus(data.error || 'Failed to clear overrides', 'error');
+    }
+  } catch (error) {
+    showStatus(`Failed to clear overrides: ${error.message}`, 'error');
+  }
+}
+
+function reassignOverridesForCategory(categoryName) {
+  openModal({
+    title: 'Reassign All Overrides',
+    body: `
+      <p>Reassign all overrides from <strong>${escapeHtml(categoryName)}</strong> to:</p>
+      <div style="margin-top: 12px;">
+        <select id="reassign-overrides-target" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+          <option value="">-- Select target category --</option>
+          ${buildCategoryOptions()}
+        </select>
+      </div>
+      <p style="font-size: 12px; color: #666; margin-top: 12px;">All transactions currently overridden to "${escapeHtml(categoryName)}" will be changed to the new category you select.</p>
+    `,
+    actions: [
+      { label: 'Cancel', className: 'secondary', onClick: closeModal },
+      { label: 'Reassign', onClick: () => confirmReassignOverrides(categoryName) }
+    ]
+  });
+}
+
+async function confirmReassignOverrides(oldCategory) {
+  const targetSelect = document.getElementById('reassign-overrides-target');
+  const newCategory = targetSelect ? targetSelect.value : '';
+  
+  if (!newCategory) {
+    showStatus('Please select a target category', 'warning');
+    return;
+  }
+  
+  try {
+    showStatus('Reassigning overrides...', 'info');
+    
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/transaction-overrides/reassign`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        old_category: oldCategory,
+        new_category: newCategory
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      showStatus(`Failed to reassign overrides: ${data.error || 'Unknown error'}`, 'error');
+      return;
+    }
+    
+    closeModal();
+    showStatus(`Successfully reassigned ${data.updated_count} override${data.updated_count !== 1 ? 's' : ''} to "${newCategory}"`, 'success');
+    await loadCategorizationData(true);
+    setTimeout(() => clearStatus(), 3000);
+  } catch (error) {
+    showStatus(`Failed to reassign overrides: ${error.message}`, 'error');
   }
 }
 

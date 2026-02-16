@@ -163,6 +163,14 @@
         <div id="rules-table" class="rules-table"></div>
       </div>
 
+      <div class="card" id="overrides-card">
+        <div class="card-header">
+          <h3>Transaction Overrides</h3>
+          <span class="panel-note">Manual categorizations applied to individual transactions</span>
+        </div>
+        <div id="overrides-table" class="overrides-table"></div>
+      </div>
+
       <div class="card" id="migrations-card">
         <div class="card-header">
           <h3>Category Migrations</h3>
@@ -181,13 +189,7 @@
             <select id="merge-target"></select>
             <button class="secondary" onclick="confirmMerge()">Merge</button>
           </div>
-          <div class="migration-box">
-            <h4>Split</h4>
-            <select id="split-old"></select>
-            <div id="split-rows" class="split-rows"></div>
-            <button class="secondary" onclick="addSplitRow()">Add Split</button>
-            <button class="secondary" onclick="confirmSplit()">Split</button>
-          </div>
+
         </div>
       </div>
 

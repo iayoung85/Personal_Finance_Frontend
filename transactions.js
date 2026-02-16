@@ -153,6 +153,29 @@ $(document).ready(async function() {
     const memoValue = input.val();
     saveTransactionMemo(txnId, memoValue, button);
   });
+
+  // Add Tab handler for memo input to move to next transaction's category
+  $(document).on('keydown', '.memo-input', function(e) {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const currentRow = $(this).closest('tr');
+      const nextRow = currentRow.next('tr');
+      if (nextRow.length) {
+        const nextCategoryInput = nextRow.find('.category-autocomplete');
+        if (nextCategoryInput.length) {
+          nextCategoryInput.focus();
+        }
+      }
+    } else if (e.key === 'Enter') {
+      // Enter key to save memo
+      e.preventDefault();
+      const button = $(this).closest('td').find('.memo-save');
+      if (button.length) {
+        button.click();
+      }
+    }
+  });
+
   
   // Add event listener for date range changes - re-render when user changes dates
   $(document).on('input change', '#start-date, #end-date', function() {
@@ -1007,12 +1030,9 @@ function attachCategoryDropdownListeners() {
     _showCategoryAutocomplete(input, query, txnId);
   });
 
-  // Show list on focus if there's text
+  // Select all text on focus for easy replacement
   $(document).on('focus', '.category-autocomplete', function() {
-    const input = this;
-    const txnId = $(input).data('txn-id');
-    // Small delay so click-on-item doesn't race with blur
-    setTimeout(() => _showCategoryAutocomplete(input, input.value, txnId), 50);
+    this.select();
   });
 
   // ===== Keyboard navigation: Tab to accept, Escape to close, Arrow keys =====
@@ -1036,21 +1056,53 @@ function attachCategoryDropdownListeners() {
       $(items[prev]).addClass('active');
       items[prev]?.scrollIntoView({ block: 'nearest' });
     } else if (e.key === 'Tab') {
-      // Tab = accept the highlighted (or first) suggestion
+      // If dropdown is open with suggestions, accept the highlighted (or first) suggestion
+      // Otherwise, validate the current input and move to memo if valid
       const active = items.filter('.active').first();
       const first = active.length ? active : items.first();
+      
       if (first.length) {
+        // Dropdown is open with items, accept the highlighted suggestion
         e.preventDefault();
         input.value = first.data('value');
         list.empty().hide();
+      } else {
+        // Dropdown is closed or empty, check if current input is valid
+        const currentValue = (input.value || '').trim();
+        if (currentValue) {
+          const resolved = _resolveAutocompleteCategory(currentValue);
+          if (!resolved.error) {
+            // Valid category found, move focus to memo
+            e.preventDefault();
+            const memoInput = $(input).closest('tr').find('.memo-input');
+            if (memoInput.length) {
+              memoInput.focus();
+            }
+          }
+          // If error, allow default Tab behavior (move to next focusable element)
+        }
+        // If no value, allow default Tab behavior
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const active = items.filter('.active').first();
       const first = active.length ? active : items.first();
       if (first.length) {
+        // If dropdown is open with items, accept the highlighted suggestion
         input.value = first.data('value');
         list.empty().hide();
+      } else if (e.metaKey || e.ctrlKey) {
+        // Cmd/Ctrl+Enter (with dropdown closed) = Open Rule modal
+        const ruleBtn = $(input).closest('.category-cell').find('.category-rule');
+        if (ruleBtn.length) {
+          ruleBtn.click();
+        }
+      } else {
+        // Enter (with dropdown closed) = Apply Override
+        const overrideBtn = $(input).closest('.category-cell').find('.category-override');
+        if (overrideBtn.length) {
+          overrideBtn.click();
+        }
       }
     } else if (e.key === 'Escape') {
       list.empty().hide();
