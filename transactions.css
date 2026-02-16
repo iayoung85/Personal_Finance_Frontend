@@ -1041,6 +1041,18 @@ tr:hover {
   cursor: default;
 }
 
+.clear-override {
+  font-size: 10px !important;
+  padding: 1px 4px !important;
+  height: auto !important;
+  line-height: 1 !important;
+  background: none !important;
+  color: #92400e !important;
+  border: none !important;
+  cursor: pointer;
+  vertical-align: baseline;
+}
+
 .category-dropdown {
   font-size: 12px;
   padding: 4px 6px;

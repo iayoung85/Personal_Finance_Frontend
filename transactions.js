@@ -192,6 +192,11 @@ $(document).ready(async function() {
     renderTransactionTable();
   });
 
+  // Add event listener for showing overrides only
+  $(document).on('change', '#show-overrides-only', function() {
+    renderTransactionTable();
+  });
+
   // Manual categorize handler
   $(document).on('click', '.manual-category-save', function() {
     const txnId = $(this).data('txn-id');
@@ -751,6 +756,12 @@ function renderTransactionTable() {
         return false;
       }
     }
+
+    // Filter by overrides only if requested
+    const showOverridesOnly = document.getElementById('show-overrides-only').checked;
+    if (showOverridesOnly && !txn.is_override) {
+      return false;
+    }
     
     // Filter by category (primary and/or detailed)
     if (filterPrimaryCategory || filterDetailedCategory) {
@@ -843,7 +854,7 @@ function renderTransactionTable() {
 
     // Create combined category cell with autocomplete input + buttons
     const overrideBadge = txn.is_override
-      ? '<span class="override-badge" title="This transaction has a manual override — rules will not change its category">Override</span>'
+      ? `<span class="override-badge" title="This transaction has a manual override — rules will not change its category">Override <button class='clear-override' data-txn-id='${txnId}' onclick='clearOverride(event)'>X</button></span>`
       : '';
     const categoryCell = txnId ? `
       <div class="category-cell">
@@ -1308,8 +1319,59 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
     
     showStatus(`Override applied: ${categoryString}`, 'success');
     setTimeout(() => clearStatus(), 3000);
+    // Invalidate categories page cache so overrides summary refreshes
+    try {
+      localStorage.removeItem('pf_catpage_data');
+      localStorage.removeItem('pf_catpage_cached_at');
+    } catch (e) { /* cache removal failure is non-fatal */ }
   } catch (error) {
     showStatus(`Failed to apply override: ${error.message}`, 'error');
+  }
+}
+
+/**
+ * Clear an override from a transaction.
+ */
+async function clearOverride(event) {
+  const txnId = event.target.getAttribute('data-txn-id');
+  
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/transactions/${encodeURIComponent(txnId)}/override`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      showStatus(data.error || 'Failed to clear override', 'error');
+      return;
+    }
+
+    // Update local transaction object
+    const txn = transactions.find(t => (t.transaction_id || t.plaid_transaction_id) === txnId);
+    if (txn) {
+      txn.is_override = false;
+      if (data.updated_category) {
+        txn.user_category = data.updated_category;
+      }
+      // Update the localStorage cache
+      try {
+        localStorage.setItem('pf_cached_transactions', JSON.stringify(transactions));
+        localStorage.setItem('pf_transactions_cached_at', String(Date.now()));
+      } catch (e) { /* cache write failure is non-fatal */ }
+    }
+
+    renderTransactionTable();
+    showStatus('Override cleared', 'success');
+    setTimeout(() => clearStatus(), 2000);
+    // Invalidate categories page cache so overrides summary refreshes
+    try {
+      localStorage.removeItem('pf_catpage_data');
+      localStorage.removeItem('pf_catpage_cached_at');
+    } catch (e) { /* cache removal failure is non-fatal */ }
+  } catch (error) {
+    showStatus(`Failed to clear override: ${error.message}`, 'error');
   }
 }
 
@@ -1900,12 +1962,14 @@ async function saveSettings() {
     });
     const timezone = document.getElementById('timezone').value;
     const hideTransfers = document.getElementById('hide-transfers').checked;
+    const showOverridesOnly = document.getElementById('show-overrides-only').checked;
     
     const settings = {
       optional_fields: optionalFields,
       field_order: ['datetime', 'bank_account', 'name', 'amount', ...optionalFields],
       timezone: timezone,
-      hide_transfers: hideTransfers
+      hide_transfers: hideTransfers,
+      show_overrides_only: showOverridesOnly
     };
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transaction_viewer_settings`, {
@@ -1965,6 +2029,10 @@ function applySettings(settings) {
   // Apply hide_transfers setting (default to true if not set)
   const hideTransfers = settings.hide_transfers !== undefined ? settings.hide_transfers : true;
   document.getElementById('hide-transfers').checked = hideTransfers;
+
+  // Apply show_overrides_only setting (default to false if not set)
+  const showOverridesOnly = settings.show_overrides_only !== undefined ? settings.show_overrides_only : false;
+  document.getElementById('show-overrides-only').checked = showOverridesOnly;
 }
 
 // ===============================
@@ -1978,6 +2046,7 @@ function generateSpendingInsights() {
   const selectedAccounts = getSelectedAccounts();
   const showPendingCheckbox = document.querySelector('.field-checkbox[value="pending"]:checked');
   const hideTransfers = document.getElementById('hide-transfers').checked;
+  const showOverridesOnly = document.getElementById('show-overrides-only').checked;
 
   // Get filtered transactions (same filter as table)
   const filteredTransactions = transactions.filter(txn => {
@@ -1988,6 +2057,7 @@ function generateSpendingInsights() {
       const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
       if (/transfer/i.test(primaryCat)) return false;
     }
+    if (showOverridesOnly && !txn.is_override) return false;
     if (txn.personal_finance_category && txn.personal_finance_category.primary) {
       if (/income/i.test(txn.personal_finance_category.primary)) return false;
     }
@@ -2374,6 +2444,11 @@ async function applyManualCategory(txnId, accountId) {
     showStatus('Transaction categorized', 'success');
     renderTransactionTable();
     setTimeout(() => clearStatus(), 2000);
+    // Invalidate categories page cache so overrides summary refreshes
+    try {
+      localStorage.removeItem('pf_catpage_data');
+      localStorage.removeItem('pf_catpage_cached_at');
+    } catch (e) { /* cache removal failure is non-fatal */ }
   } catch (error) {
     showStatus(`Failed to categorize transaction: ${error.message}`, 'error');
   }
@@ -2863,6 +2938,11 @@ async function applyManualCategory(txnId, accountId) {
     showStatus('Transaction categorized', 'success');
     renderTransactionTable();
     setTimeout(() => clearStatus(), 2000);
+    // Invalidate categories page cache so overrides summary refreshes
+    try {
+      localStorage.removeItem('pf_catpage_data');
+      localStorage.removeItem('pf_catpage_cached_at');
+    } catch (e) { /* cache removal failure is non-fatal */ }
   } catch (error) {
     showStatus(`Failed to categorize transaction: ${error.message}`, 'error');
   }
