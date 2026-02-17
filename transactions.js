@@ -765,16 +765,45 @@ function renderTransactionTable() {
     
     // Filter by category (primary and/or detailed)
     if (filterPrimaryCategory || filterDetailedCategory) {
-      const parsed = parseCategoryString(txn.user_category || '');
-      
-      // If primary filter is set, check if it matches
-      if (filterPrimaryCategory && parsed.primary !== filterPrimaryCategory) {
-        return false;
-      }
-      
-      // If detailed filter is set, check if it matches
-      if (filterDetailedCategory && parsed.detailed !== filterDetailedCategory) {
-        return false;
+      // For split transactions, check if any split child matches the filter
+      if (txn.is_split && txn.splits && txn.splits.length > 0) {
+        // Check if at least one split child matches the category filter
+        const hasMatchingSplit = txn.splits.some(split => {
+          const splitCategoryStr = split.user_category
+            || (split.personal_finance_category
+              ? `${split.personal_finance_category.primary || ''}${split.personal_finance_category.detailed ? ': ' + split.personal_finance_category.detailed : ''}`
+              : '');
+          
+          const parsed = parseCategoryString(splitCategoryStr);
+          
+          // Check if this split matches the filter criteria
+          let matches = true;
+          if (filterPrimaryCategory && parsed.primary !== filterPrimaryCategory) {
+            matches = false;
+          }
+          if (filterDetailedCategory && parsed.detailed !== filterDetailedCategory) {
+            matches = false;
+          }
+          return matches;
+        });
+        
+        // Only include the split group if at least one child matches
+        if (!hasMatchingSplit) {
+          return false;
+        }
+      } else {
+        // For non-split transactions, check parent transaction's user_category
+        const parsed = parseCategoryString(txn.user_category || '');
+        
+        // If primary filter is set, check if it matches
+        if (filterPrimaryCategory && parsed.primary !== filterPrimaryCategory) {
+          return false;
+        }
+        
+        // If detailed filter is set, check if it matches
+        if (filterDetailedCategory && parsed.detailed !== filterDetailedCategory) {
+          return false;
+        }
       }
     }
     
@@ -811,11 +840,167 @@ function renderTransactionTable() {
 
   html += '</tr></thead><tbody>';
   
+  // Track which transactions we've already rendered (split children)
+  const renderedTxnIds = new Set();
+  
   filteredTransactions.forEach(txn => {
+    // Skip if this is a split child that we'll render as part of a group
+    if (txn.is_split && txn.transaction_id && txn.transaction_id.includes('_split_')) {
+      return; // Split children are rendered as part of parent group
+    }
+    
+    // Check if this is a split parent (has splits array)
+    if (txn.is_split && txn.splits && txn.splits.length > 0) {
+      const splitTransactionId = txn.splits[0]?.split_transaction_id || '';
+      
+      // Filter and render each split child as actual table rows
+      let renderedSplitCount = 0;
+      txn.splits.forEach((split, idx) => {
+        // Apply category filter to individual splits
+        if (filterPrimaryCategory || filterDetailedCategory) {
+          const splitCategoryStr = split.user_category
+            || (split.personal_finance_category
+              ? `${split.personal_finance_category.primary || ''}${split.personal_finance_category.detailed ? ': ' + split.personal_finance_category.detailed : ''}`
+              : '');
+          
+          const parsed = parseCategoryString(splitCategoryStr);
+          
+          // Check if this split matches the filter criteria
+          if (filterPrimaryCategory && parsed.primary !== filterPrimaryCategory) {
+            return; // Skip this split
+          }
+          if (filterDetailedCategory && parsed.detailed !== filterDetailedCategory) {
+            return; // Skip this split
+          }
+        }
+        
+        renderedSplitCount++;
+        const dateStr = new Date(split.date).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          timeZone: 'UTC'
+        });
+        
+        const amount = new Intl.NumberFormat('en-US', { 
+          style: 'currency', 
+          currency: split.iso_currency_code || 'USD' 
+        }).format(split.amount);
+        
+        // Add split styling class and border class
+        // Note: isFirstSplit/isLastSplit now refer to rendered splits, not original splits
+        const isFirstSplit = renderedSplitCount === 1;
+        const isLastSplit = renderedSplitCount === txn.splits.filter(s => {
+          if (filterPrimaryCategory || filterDetailedCategory) {
+            const sCategoryStr = s.user_category
+              || (s.personal_finance_category
+                ? `${s.personal_finance_category.primary || ''}${s.personal_finance_category.detailed ? ': ' + s.personal_finance_category.detailed : ''}`
+                : '');
+            const sParsed = parseCategoryString(sCategoryStr);
+            if (filterPrimaryCategory && sParsed.primary !== filterPrimaryCategory) return false;
+            if (filterDetailedCategory && sParsed.detailed !== filterDetailedCategory) return false;
+          }
+          return true;
+        }).length;
+        const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}`;
+        
+        html += `<tr class="${rowClass}">
+          <td>${escapeHtml(dateStr)}</td>
+          <td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>
+          <td>${escapeHtml(split.name || '—')}</td>
+          <td>${amount}</td>`;
+        
+        // Add source column if needed
+        if (optionalFields.includes('source')) {
+          const sourceLabel = split.is_manual ? 'Manual' : 'Plaid';
+          const sourceBadge = `<span class="source-badge ${split.is_manual ? 'manual' : 'plaid'}">${sourceLabel}</span>`;
+          html += `<td>${sourceBadge}</td>`;
+        }
+        
+        // Parse split category - prioritize user_category over personal_finance_category
+        let splitCategoryDisplay = 'Uncategorized';
+        if (split.user_category) {
+          splitCategoryDisplay = split.user_category;
+        } else if (split.personal_finance_category?.detailed) {
+          splitCategoryDisplay = split.personal_finance_category.detailed;
+        }
+        
+        html += `<td class="split-category-cell">${escapeHtml(splitCategoryDisplay)}</td>`;
+        
+        // Add optional field columns
+        if (optionalFields.includes('merchant_name')) {
+          html += `<td>${escapeHtml(split.merchant_name || '')}</td>`;
+        }
+        if (optionalFields.includes('payment_channel')) {
+          html += `<td>${escapeHtml(split.payment_channel || '')}</td>`;
+        }
+        if (optionalFields.includes('pending')) {
+          html += `<td>${split.pending ? 'Yes' : 'No'}</td>`;
+        }
+        if (optionalFields.includes('check_number')) {
+          html += `<td>${escapeHtml(split.check_number || '')}</td>`;
+        }
+        if (optionalFields.includes('original_description')) {
+          html += `<td>${escapeHtml(split.original_description || '')}</td>`;
+        }
+        if (optionalFields.includes('authorized_date')) {
+          html += `<td>${escapeHtml(split.authorized_date || '')}</td>`;
+        }
+        if (optionalFields.includes('authorized_datetime')) {
+          let authTime = '';
+          if (split.authorized_datetime) {
+            const dt = new Date(split.authorized_datetime);
+            authTime = dt.toLocaleString('en-US', {
+              year: 'numeric', 
+              month: '2-digit', 
+              day: '2-digit',
+              hour: '2-digit', 
+              minute: '2-digit',
+              second: '2-digit',
+              timeZoneName: 'short'
+            });
+          }
+          html += `<td>${escapeHtml(authTime)}</td>`;
+        }
+        if (optionalFields.includes('personal_finance_category')) {
+          let plaidCategoryDisplay = '';
+          if (split.personal_finance_category) {
+            const pfc = split.personal_finance_category;
+            const primary = pfc.primary || '';
+            const detailed = pfc.detailed || '';
+            const trimmed = trimCategoryPrefix(detailed, primary);
+            const displayPrimary = formatCategoryDisplay(primary);
+            const displayDetailed = formatCategoryDisplay(trimmed);
+            plaidCategoryDisplay = `${displayPrimary}${displayDetailed ? ': ' + displayDetailed : ''}`;
+          }
+          html += `<td>${escapeHtml(plaidCategoryDisplay)}</td>`;
+        }
+        if (optionalFields.includes('user_memo')) {
+          html += `<td>${escapeHtml(split.user_memo || '')}</td>`;
+        }
+        
+        // Add split action badges on first row only
+        if (isFirstSplit) {
+          html += `<td class="split-actions-cell">
+            <span class="split-badge-inline">Split</span>
+            <button class="split-badge-btn split-modify-badge" onclick="modifySplitModal('${escapeHtml(splitTransactionId)}')" title="Modify splits">✎</button>
+            <button class="split-badge-btn split-delete-badge" onclick="handleDeleteSplit('${escapeHtml(splitTransactionId)}')" title="Delete splits">🗑</button>
+          </td>`;
+        } else {
+          html += `<td></td>`;
+        }
+        
+        html += `</tr>`;
+      });
+      
+      renderedTxnIds.add(txn.plaid_transaction_id || txn.manual_transaction_id);
+      return;
+    }
+
+    
+    // Normal transaction rendering (not split)
     // Parse the date string properly
-    const dateObj = new Date(txn.date);
-    // Format as MM/DD/YYYY using UTC to prevent timezone shifts
-    const dateStr = dateObj.toLocaleDateString('en-US', {
+    const dateStr = new Date(txn.date).toLocaleDateString('en-US', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -866,9 +1051,13 @@ function renderTransactionTable() {
     const overrideBadge = txn.is_override
       ? `<span class="override-badge" title="This transaction has a manual override — rules will not change its category">Override <button class='clear-override' data-txn-id='${txnId}' onclick='clearOverride(event)'>X</button></span>`
       : '';
+    
+    // Build split badge if transaction can be split
+    const splitBadge = (!txn.is_split) ? '' : `<span class="split-badge" title="This transaction is split">Split</span>`;
+    
     const categoryCell = txnId ? `
       <div class="category-cell">
-        <div class="category-display">${overrideBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div>
+        <div class="category-display">${splitBadge}${overrideBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div>
         <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
           <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
                  value="${escapeHtml(currentFullCategory)}" placeholder="Type to search categories…"
@@ -878,6 +1067,7 @@ function renderTransactionTable() {
         <div class="category-buttons">
           <button class="secondary category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
           <button class="secondary category-rule" data-txn-id="${txnId}" data-account-id="${accountId}">Rule</button>
+          <button class="secondary category-split" data-txn-id="${txnId}" onclick="window.splitModalTxnId='${escapeHtml(txnId)}'; openSplitModal(transactions.find(t => (t.plaid_transaction_id || t.manual_transaction_id) === '${escapeHtml(txnId)}')); return false;" title="Split this transaction">Split</button>
         </div>
       </div>
     ` : '<span class="pill">N/A</span>';
@@ -3459,3 +3649,512 @@ async function deleteManualTransaction(manualTransactionId) {
     showStatus(`Failed to delete transaction: ${error.message}`, 'error');
   }
 }
+
+// ====================== SPLIT TRANSACTIONS FUNCTIONS ======================
+
+// State for modal
+let currentSplitTransaction = null;
+let splitRows = [];
+let isEditingSplit = false;
+
+// Open split modal for creating a new split
+function openSplitModal(txn) {
+  currentSplitTransaction = txn;
+  isEditingSplit = false;
+  splitRows = [];
+  
+  // Populate original transaction data
+  const dateStr = new Date(txn.date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'UTC'
+  });
+  
+  const amountFormatted = new Intl.NumberFormat('en-US', { 
+    style: 'currency', 
+    currency: txn.iso_currency_code || 'USD' 
+  }).format(txn.amount);
+  
+  document.getElementById('split-modal-title').textContent = 'Create Split Transaction';
+  document.getElementById('split-orig-date').textContent = dateStr;
+  document.getElementById('split-orig-description').textContent = txn.name || '';
+  document.getElementById('split-orig-account').textContent = txn.bank_account || '';
+  document.getElementById('split-orig-amount').textContent = amountFormatted;
+  
+  // Initialize with 2 empty split rows
+  document.getElementById('split-rows').innerHTML = '';
+  addSplitRow();
+  addSplitRow();
+  
+  // Show modal
+  document.getElementById('split-modal').classList.remove('hidden');
+  
+  // Initialize validation display
+  updateSplitValidation();
+}
+
+// Open split modal for editing existing split
+async function modifySplitModal(splitTransactionId) {
+  try {
+    // Get split data from backend
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/split/${splitTransactionId}`
+    );
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch split data');
+    }
+    
+    const data = await response.json();
+    const splits = data.splits || [];
+    
+    if (splits.length === 0) {
+      showStatus('No splits found', 'error');
+      return;
+    }
+    
+    // Find parent transaction
+    const firstSplit = splits[0];
+    const parentId = firstSplit.split_transaction_id.replace('split_', '');
+    const parentTxn = transactions.find(t => 
+      t.plaid_transaction_id === parentId || t.manual_transaction_id === parentId
+    );
+    
+    if (!parentTxn) {
+      showStatus('Parent transaction not found', 'error');
+      return;
+    }
+    
+    currentSplitTransaction = parentTxn;
+    isEditingSplit = true;
+    splitRows = [];
+    
+    // Populate original transaction data
+    const dateStr = new Date(parentTxn.date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: 'UTC'
+    });
+    
+    const amountFormatted = new Intl.NumberFormat('en-US', { 
+      style: 'currency', 
+      currency: parentTxn.iso_currency_code || 'USD' 
+    }).format(parentTxn.amount);
+    
+    document.getElementById('split-modal-title').textContent = 'Modify Split Transaction';
+    document.getElementById('split-orig-date').textContent = dateStr;
+    document.getElementById('split-orig-description').textContent = parentTxn.name || '';
+    document.getElementById('split-orig-account').textContent = parentTxn.bank_account || '';
+    document.getElementById('split-orig-amount').textContent = amountFormatted;
+    
+    // Populate split rows with existing data
+    document.getElementById('split-rows').innerHTML = '';
+    splits.forEach(split => {
+      addSplitRow(
+        split.amount,
+        split.user_category || split.personal_finance_category?.detailed || '',
+        split.user_memo || ''
+      );
+    });
+    
+    // Show modal
+    document.getElementById('split-modal').classList.remove('hidden');
+    updateSplitValidation();
+    
+  } catch (error) {
+    showStatus(`Error loading split data: ${error.message}`, 'error');
+  }
+}
+
+// Add a split row to the modal
+function addSplitRow(amount = '', category = '', memo = '') {
+  const splitRowsContainer = document.getElementById('split-rows');
+  const rowIndex = splitRows.length;
+  
+  const rowDiv = document.createElement('div');
+  rowDiv.className = 'split-row';
+  rowDiv.id = `split-row-${rowIndex}`;
+  
+  rowDiv.innerHTML = `
+    <div>
+      <div class="split-row-label">Amount</div>
+      <input type="number" step="0.01" value="${amount}" placeholder="0.00" class="split-amount-input" 
+             onchange="updateSplitValidation()" oninput="updateSplitValidation()">
+    </div>
+    <div>
+      <div class="split-row-label">Category</div>
+      <div class="split-category-autocomplete-wrap" data-split-row-id="${rowIndex}">
+        <input type="text" value="${escapeHtml(category)}" placeholder="Type category..." 
+               class="split-category-autocomplete" data-split-row-id="${rowIndex}"
+               onchange="updateSplitValidation()" oninput="updateSplitValidation()">
+        <div class="split-category-ac-list" data-split-row-id="${rowIndex}"></div>
+      </div>
+    </div>
+    <div>
+      <div class="split-row-label">Memo (Optional)</div>
+      <input type="text" value="${escapeHtml(memo)}" placeholder="Enter memo..." class="split-memo-input" maxlength="256">
+    </div>
+    <button type="button" class="split-row-remove" onclick="removeSplitRow(${rowIndex})" title="Remove this split">−</button>
+  `;
+  
+  splitRowsContainer.appendChild(rowDiv);
+  splitRows.push({ rowIndex, element: rowDiv });
+  
+  // Attach autocomplete event handlers to the new row
+  attachSplitCategoryAutocomplete(rowIndex);
+}
+
+// Attach autocomplete event handlers to split category input
+function attachSplitCategoryAutocomplete(rowIndex) {
+  const input = document.querySelector(`.split-category-autocomplete[data-split-row-id="${rowIndex}"]`);
+  if (!input) return;
+  
+  // Input event for showing autocomplete
+  input.addEventListener('input', function() {
+    showSplitCategoryAutocomplete(this, rowIndex);
+  });
+  
+  // Focus event - select all
+  input.addEventListener('focus', function() {
+    this.select();
+  });
+  
+  // Keyboard navigation (Arrow keys, Enter, Tab accept, Escape close)
+  input.addEventListener('keydown', function(e) {
+    const list = document.querySelector(`.split-category-ac-list[data-split-row-id="${rowIndex}"]`);
+    const items = list.querySelectorAll('.split-category-ac-item');
+    let activeIndex = Array.from(items).findIndex(item => item.classList.contains('active'));
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = Math.min(activeIndex + 1, items.length - 1);
+      items.forEach(item => item.classList.remove('active'));
+      if (items[next]) items[next].classList.add('active');
+      items[next]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = Math.max(activeIndex - 1, 0);
+      items.forEach(item => item.classList.remove('active'));
+      if (items[prev]) items[prev].classList.add('active');
+      items[prev]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Tab') {
+      // If dropdown has suggestions, accept the highlighted (or first) suggestion.
+      // Otherwise, if the current input resolves to a valid category, move focus to the memo input.
+      const active = Array.from(items).find(item => item.classList.contains('active'));
+      const first = active || items[0];
+
+      if (first) {
+        e.preventDefault();
+        this.value = first.dataset.value;
+        list.innerHTML = '';
+        list.style.display = 'none';
+        updateSplitValidation();
+      } else {
+        const currentValue = (this.value || '').trim();
+        if (currentValue) {
+          const resolved = _resolveAutocompleteCategory(currentValue);
+          if (!resolved.error) {
+            e.preventDefault();
+            const memoInput = this.closest('.split-row')?.querySelector('.split-memo-input');
+            if (memoInput) memoInput.focus();
+          }
+          // if invalid, allow default Tab behavior (move focus)
+        }
+        // if empty, allow default Tab behavior
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const active = Array.from(items).find(item => item.classList.contains('active'));
+      const first = active || items[0];
+      if (first) {
+        this.value = first.dataset.value;
+        list.innerHTML = '';
+        list.style.display = 'none';
+        updateSplitValidation();
+      }
+    } else if (e.key === 'Escape') {
+      list.innerHTML = '';
+      list.style.display = 'none';
+    }
+  });
+  
+  // Blur event - hide list
+  input.addEventListener('blur', function() {
+    const list = document.querySelector(`.split-category-ac-list[data-split-row-id="${rowIndex}"]`);
+    setTimeout(() => {
+      list.innerHTML = '';
+      list.style.display = 'none';
+    }, 200);
+  });
+}
+
+// Show autocomplete suggestions for split category
+function showSplitCategoryAutocomplete(input, rowIndex) {
+  const list = document.querySelector(`.split-category-ac-list[data-split-row-id="${rowIndex}"]`);
+  const query = (input.value || '').toLowerCase().trim();
+  
+  if (!query) {
+    list.innerHTML = '';
+    list.style.display = 'none';
+    return;
+  }
+  
+  // Smart filtering
+  let matches;
+  if (query.includes(':')) {
+    const [qPrimary, qDetailed] = query.split(':').map(s => s.trim());
+    matches = (availableCategories || []).filter(cat => {
+      const lower = cat.toLowerCase();
+      const parts = lower.split(':').map(s => s.trim());
+      const primaryMatch = !qPrimary || (parts[0] || '').includes(qPrimary);
+      const detailedMatch = !qDetailed || (parts[1] || '').includes(qDetailed);
+      return primaryMatch && detailedMatch;
+    });
+  } else {
+    matches = (availableCategories || []).filter(cat =>
+      cat.toLowerCase().includes(query)
+    );
+  }
+  
+  const maxShow = 10;
+  const shown = matches.slice(0, maxShow);
+  
+  if (shown.length === 0) {
+    list.innerHTML = '<div style="padding: 8px; color: #999; font-size: 13px;">No matching categories</div>';
+    list.style.display = 'block';
+    return;
+  }
+  
+  // Build list HTML
+  const html = shown.map((cat, i) => {
+    const highlighted = highlightCategoryMatch(cat, query);
+    return `<div class="split-category-ac-item${i === 0 ? ' active' : ''}" data-value="${escapeHtml(cat)}">${highlighted}</div>`;
+  }).join('');
+  
+  const extra = matches.length > maxShow
+    ? `<div style="padding: 8px; color: #999; font-size: 12px;">${matches.length - maxShow} more…</div>` : '';
+  
+  list.innerHTML = html + extra;
+  list.style.display = 'block';
+}
+
+// Highlight matching portions
+function highlightCategoryMatch(text, query) {
+  if (!query) return escapeHtml(text);
+  const escaped = escapeHtml(text);
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  return escaped.replace(regex, '<strong>$1</strong>');
+}
+
+// Remove a split row
+function removeSplitRow(rowIndex) {
+  const rowElement = document.getElementById(`split-row-${rowIndex}`);
+  if (rowElement) {
+    rowElement.remove();
+    splitRows = splitRows.filter(r => r.rowIndex !== rowIndex);
+    updateSplitValidation();
+  }
+}
+
+// Update split validation display
+function updateSplitValidation() {
+  if (!currentSplitTransaction) return;
+  
+  const originalAmount = currentSplitTransaction.amount;
+  let splitSum = 0;
+  let validCount = 0;
+  
+  // Get all split rows with values
+  const rowElements = document.querySelectorAll('.split-row');
+  rowElements.forEach(row => {
+    const amountInput = row.querySelector('.split-amount-input');
+    const categoryInput = row.querySelector('.split-category-autocomplete');
+    
+    if (amountInput && amountInput.value && categoryInput && categoryInput.value) {
+      const amount = parseFloat(amountInput.value) || 0;
+      splitSum += amount;
+      validCount++;
+    }
+  });
+  
+  // Update sum display
+  const sumFormatted = new Intl.NumberFormat('en-US', { 
+    style: 'currency', 
+    currency: currentSplitTransaction.iso_currency_code || 'USD' 
+  }).format(splitSum);
+  
+  const remaining = originalAmount - splitSum;
+  const remainingFormatted = new Intl.NumberFormat('en-US', { 
+    style: 'currency', 
+    currency: currentSplitTransaction.iso_currency_code || 'USD' 
+  }).format(remaining);
+  
+  document.getElementById('split-sum').textContent = sumFormatted;
+  document.getElementById('split-remaining').textContent = remainingFormatted;
+  
+  const remainingElement = document.getElementById('split-remaining');
+  const isBalanced = Math.abs(remaining) < 0.01;
+  remainingElement.classList.toggle('balanced', isBalanced);
+  remainingElement.classList.toggle('unbalanced', !isBalanced);
+  
+  // Update validation error
+  const errorDiv = document.getElementById('split-validation-error');
+  let errorMsg = '';
+  
+  if (validCount < 2) {
+    errorMsg = 'Need at least 2 splits with both amount and category.';
+  } else if (!isBalanced) {
+    errorMsg = `Split amounts don't balance. Difference: ${remainingFormatted}`;
+  }
+  
+  if (errorMsg) {
+    errorDiv.textContent = errorMsg;
+    errorDiv.classList.remove('hidden');
+  } else {
+    errorDiv.classList.add('hidden');
+  }
+  
+  // Update submit button state
+  const submitBtn = document.getElementById('split-submit-btn');
+  submitBtn.disabled = validCount < 2 || !isBalanced;
+}
+
+// Close split modal
+function closeSplitModal() {
+  document.getElementById('split-modal').classList.add('hidden');
+  currentSplitTransaction = null;
+  splitRows = [];
+  isEditingSplit = false;
+}
+
+// Handle split creation/modification submission
+async function handleSplitSubmit() {
+  if (!currentSplitTransaction) return;
+  
+  try {
+    // Gather split data
+    const splits = [];
+    document.querySelectorAll('.split-row').forEach(row => {
+      const amountInput = row.querySelector('.split-amount-input');
+      const categoryInput = row.querySelector('.split-category-autocomplete');
+      const memoInput = row.querySelector('.split-memo-input');
+      
+      if (amountInput && amountInput.value && categoryInput && categoryInput.value) {
+        const split = {
+          amount: parseFloat(amountInput.value),
+          category: categoryInput.value,
+        };
+        if (memoInput && memoInput.value) {
+          split.user_memo = memoInput.value;
+        }
+        splits.push(split);
+      }
+    });
+    
+    if (splits.length < 2) {
+      showStatus('Please add at least 2 splits', 'error');
+      return;
+    }
+    
+    const submitBtn = document.getElementById('split-submit-btn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = isEditingSplit ? 'Updating...' : 'Creating...';
+    
+    if (isEditingSplit) {
+      // Delete old splits, then create new ones
+      const splitTransactionId = currentSplitTransaction.splits?.[0]?.split_transaction_id;
+      if (splitTransactionId) {
+        await deleteSplitHelper(splitTransactionId);
+      }
+    }
+    
+    // Create new splits
+    const txnId = currentSplitTransaction.plaid_transaction_id || currentSplitTransaction.manual_transaction_id;
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/split`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transaction_id: txnId,
+          splits: splits
+        })
+      }
+    );
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create split');
+    }
+    
+    closeSplitModal();
+    showStatus(isEditingSplit ? 'Split updated successfully' : 'Split created successfully', 'success');
+    
+    // Refresh transactions
+    await fetchAllTransactions(true);
+    
+  } catch (error) {
+    showStatus(`Error: ${error.message}`, 'error');
+    const submitBtn = document.getElementById('split-submit-btn');
+    submitBtn.disabled = false;
+    submitBtn.textContent = isEditingSplit ? 'Update' : 'Create';
+  }
+}
+
+// Helper function to delete splits
+async function deleteSplitHelper(splitTransactionId) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/transactions/split/${splitTransactionId}`,
+    { method: 'DELETE' }
+  );
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete split');
+  }
+}
+
+// Delete split immediately (no confirmation)
+async function handleDeleteSplit(splitTransactionId) {
+  try {
+    await deleteSplitHelper(splitTransactionId);
+    showStatus('Split deleted successfully', 'success');
+    await fetchAllTransactions(true);
+  } catch (error) {
+    showStatus(`Error: ${error.message}`, 'error');
+  }
+}
+
+// Show confirmation dialog
+function showConfirmationDialog(title, message, onConfirm) {
+  const backdrop = document.createElement('div');
+  backdrop.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;';
+  
+  const dialog = document.createElement('div');
+  dialog.className = 'confirmation-dialog';
+  dialog.innerHTML = `
+    <h3>${title}</h3>
+    <p>${message}</p>
+    <div class="confirmation-dialog-buttons">
+      <button class="confirm-btn" onclick="this.closest('.confirmation-dialog').parentElement.remove()">No, Cancel</button>
+      <button class="cancel-btn" onclick="this.closest('.confirmation-dialog').parentElement.remove()">Yes, Confirm</button>
+    </div>
+  `;
+  
+  const confirmBtn = dialog.querySelector('.cancel-btn');
+  confirmBtn.onclick = () => {
+    backdrop.remove();
+    onConfirm();
+  };
+  
+  const cancelBtn = dialog.querySelector('.confirm-btn');
+  cancelBtn.onclick = () => {
+    backdrop.remove();
+  };
+  
+  backdrop.appendChild(dialog);
+  document.body.appendChild(backdrop);
+}
+

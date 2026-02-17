@@ -174,6 +174,60 @@
     </div>
   </div>
 
+  <!-- Split Transaction Modal -->
+  <div id="split-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="split-modal-title">Create Split Transaction</h2>
+        <button class="modal-close" onclick="closeSplitModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Original Transaction Info -->
+        <div class="split-original-txn">
+          <h3>Original Transaction</h3>
+          <div class="split-txn-info">
+            <div class="split-info-row">
+              <span class="split-info-label">Date:</span>
+              <span id="split-orig-date" class="split-info-value"></span>
+            </div>
+            <div class="split-info-row">
+              <span class="split-info-label">Description:</span>
+              <span id="split-orig-description" class="split-info-value"></span>
+            </div>
+            <div class="split-info-row">
+              <span class="split-info-label">Bank/Account:</span>
+              <span id="split-orig-account" class="split-info-value"></span>
+            </div>
+            <div class="split-info-row">
+              <span class="split-info-label">Original Amount:</span>
+              <span id="split-orig-amount" class="split-info-value"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Split Rows -->
+        <div class="split-rows-container">
+          <h3>Splits</h3>
+          <div class="split-rows-validation">
+            <div class="split-sum-tracker">
+              <span class="split-sum-label">Sum of splits:</span>
+              <span id="split-sum" class="split-sum-value">$0.00</span>
+              <span class="split-remaining-label">Remaining:</span>
+              <span id="split-remaining" class="split-remaining-value">$0.00</span>
+            </div>
+            <div id="split-validation-error" class="split-validation-error hidden"></div>
+          </div>
+          <div id="split-rows" class="split-rows"></div>
+          <button id="split-add-row-btn" class="split-add-row-btn secondary" onclick="addSplitRow()">+ Add Split</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="secondary" onclick="closeSplitModal()">Cancel</button>
+        <button id="split-submit-btn" class="split-submit-btn" onclick="handleSplitSubmit()">Create</button>
+      </div>
+    </div>
+  </div>
+
   <script src="config.js"></script>
   <script src="transactions.js"></script>
 </body>
