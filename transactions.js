@@ -7,6 +7,10 @@ let availableCategories = [];
 let plaidTaxonomy = []; // Plaid PFCv2 category taxonomy for parsing
 let syncing = false;
 
+// Account selection state
+let selectedAccountMode = 'all'; // 'all' or specific account_id
+let selectedAccountId = null; // The account_id when mode is not 'all'
+
 // Category filter state
 let filterPrimaryCategory = '';
 let filterDetailedCategory = '';
@@ -18,10 +22,18 @@ let idleTimeout;
 const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 
-if (!token) {
-  alert('Please log in first');
-  window.location.href = 'index.html';
+function refreshAuthState() {
+  token = localStorage.getItem('authToken');
+  refreshToken = localStorage.getItem('refreshToken');
+  try {
+    currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  } catch (e) {
+    console.error('Error parsing currentUser', e);
+    currentUser = null;
+  }
 }
+
+refreshAuthState();
 
 async function refreshAccessToken() {
   if (!refreshToken) {
@@ -75,6 +87,9 @@ async function authenticatedFetch(url, options = {}) {
 }
 
 function resetIdleTimeout() {
+  if (window.LOCAL_AUTO_LOGIN_ENABLED) {
+    return;
+  }
   // Clear existing timeout
   if (idleTimeout) {
     clearTimeout(idleTimeout);
@@ -90,6 +105,9 @@ function resetIdleTimeout() {
 }
 
 function setupActivityListeners() {
+  if (window.LOCAL_AUTO_LOGIN_ENABLED) {
+    return;
+  }
   // List of events that indicate user activity
   const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
   
@@ -119,6 +137,15 @@ function logout() {
 // Initialize
 $(document).ready(async function() {
   await window.BACKEND_URL_PROMISE;
+  if (window.ensureLocalDevSession) {
+    window.ensureLocalDevSession();
+  }
+  refreshAuthState();
+  if (!token) {
+    alert('Please log in first');
+    window.location.href = 'index.html';
+    return;
+  }
   setDefaultDates();
   resetIdleTimeout();
   setupActivityListeners();
@@ -380,34 +407,79 @@ async function refreshAccounts() {
 }
 
 function selectAllAccounts() {
-  // Select all account checkboxes that are not disabled
-  document.querySelectorAll('.account-checkbox:not(:disabled)').forEach(checkbox => {
-    checkbox.checked = true;
-  });
-  // Also check bank checkboxes if all their children are checked (simplified: just check all enabled bank checkboxes)
-  document.querySelectorAll('.bank-checkbox:not(:disabled)').forEach(checkbox => {
-    checkbox.checked = true;
-  });
-  renderTransactionTable();
+  selectedAccountMode = 'all';
+  selectedAccountId = null;
+  renderAccountsSidebar();
+  // Note: Don't render transaction table here during init - transactions may not be loaded yet
 }
 
 function deselectAllAccounts() {
-  // Deselect all account checkboxes
-  document.querySelectorAll('.account-checkbox').forEach(checkbox => {
-    checkbox.checked = false;
-  });
-  // Deselect all bank checkboxes
-  document.querySelectorAll('.bank-checkbox').forEach(checkbox => {
-    checkbox.checked = false;
-  });
+  selectedAccountMode = 'all';
+  selectedAccountId = null;
+  renderAccountsSidebar();
+  // Note: Don't render transaction table here during init - transactions may not be loaded yet
+}
+
+/* ===================================
+   SIDEBAR: Toggle for Mobile
+   =================================== */
+function toggleSidebar() {
+  const sidebar = document.getElementById('accounts-sidebar');
+  sidebar.classList.toggle('open');
+}
+
+/* ===================================
+   ACCOUNT SELECTION: Single Select Mode
+   =================================== */
+function selectAccount(accountId) {
+  selectedAccountMode = 'single';
+  selectedAccountId = accountId;
+  renderAccountsSidebar();
   renderTransactionTable();
 }
+
+function selectAllAccountsMode() {
+  selectedAccountMode = 'all';
+  selectedAccountId = null;
+  renderAccountsSidebar();
+  renderTransactionTable();
+}
+
+/* ===================================
+   HELPER: Fetch Plaid Item Info
+   =================================== */
+async function fetchItemInfo(itemId) {
+  // Fetch item info from connections endpoint
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/item_info`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ item_id: itemId })
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch item info');
+    }
+    return await response.json();
+  } catch (error) {
+    console.debug('fetchItemInfo error:', error);
+    // Return default structure if endpoint doesn't exist
+    return {
+      item_id: itemId,
+      billed_products: ['transactions'], // Assume transactions is billed by default
+      available_products: []
+    };
+  }
+}
+
 
 async function loadAccounts() {
   try {
     showStatus('Loading accounts...', 'info');
 
-    // 1) Get canonical accounts list (includes Plaid + manual accounts)
+    // 1) Get canonical accounts list (includes Plaid + manual accounts, all types)
     const resp = await authenticatedFetch(`${BACKEND_URL}/api/accounts`);
     const data = await resp.json();
     if (data.error) {
@@ -418,57 +490,72 @@ async function loadAccounts() {
     const allAccounts = data.accounts || [];
     console.debug('loadAccounts: /api/accounts returned', allAccounts.length, 'accounts');
 
-    // 2) Keep only Plaid accounts and exclude investment accounts (transactions page)
-    const plaidAccounts = allAccounts.filter(a => (a.source_type || a.source || '').toLowerCase() === 'plaid')
-      .map(a => ({
-        // Use internal account_id as the primary identifier (works for both Plaid and future custom accounts)
-        account_id: a.account_id || null,
-        plaid_account_id: a.plaid_account_id || null,  // Keep for reference, but not used as primary key
-        plaid_item_id: a.plaid_item_id || a.plaid_item_id || a.item_id || null,
-        institution_name: a.institution_name || a.institution_name || a.bank_name || null,
-        account_name: a.account_name || a.account_name || a.account_name || '',
-        account_type: a.account_type || a.account_category || '',
-        account_subtype: a.account_subcategory || a.account_subtype || '',
-        mask: a.mask || a.mask || null,
-        current_balance: a.current_balance || a.current_balance || null,
-        available_balance: a.available_balance || a.available_balance || null,
-        custom_name: a.custom_name || a.custom_name || null,
-        last_updated: a.last_balance_update || a.last_updated || null
-      }))
-      // exclude investment accounts (transaction UI only shows non-investment accounts)
-      .filter(a => (a.account_type || '').toLowerCase() !== 'investment' && a.account_id);
+    // 2) Map to internal format (all account types now included)
+    const mappedAccounts = allAccounts.map(a => ({
+      account_id: a.account_id || null,
+      plaid_account_id: a.plaid_account_id || null,
+      plaid_item_id: a.plaid_item_id || a.item_id || null,
+      institution_name: a.institution_name || a.bank_name || null,
+      account_name: a.account_name || '',
+      account_category: a.account_category || a.account_type || '',
+      account_subcategory: a.account_subcategory || a.account_subtype || '',
+      current_balance: a.current_balance || 0,
+      custom_name: a.custom_name || null,
+      source_type: a.source_type || 'manual',
+      mask: a.mask || null,
+      last_updated: a.last_balance_update || a.last_updated || null,
+      is_active: a.is_active !== false,
+      billed_products: a.billed_products || [],
+      available_products: a.available_products || []
+    }))
+    .filter(a => a.account_id); // Filter out any without account_id
 
-    // 3) For each distinct item, fetch item-level product info so we can determine billed vs available
-    const itemIds = [...new Set(plaidAccounts.map(a => a.plaid_item_id).filter(Boolean))];
-    console.debug('loadAccounts: detected', plaidAccounts.length, 'plaid accounts, itemIds:', itemIds);
+    accounts = mappedAccounts;
+    console.debug('loadAccounts: mapped', accounts.length, 'accounts');
 
-    const itemInfoResults = await Promise.all(itemIds.map(async (itemId) => {
-      try {
-        return await fetchItemInfo(itemId);
-      } catch (err) {
-        console.debug('fetchItemInfo failed for', itemId, err && err.message);
-        return { item_id: itemId, billed_products: [], available_products: [] };
-      }
-    }));
+    // 3) For Plaid accounts, fetch item-level product info for activation status
+    const plaidAccountIds = [...new Set(
+      accounts
+        .filter(a => a.source_type === 'plaid')
+        .map(a => a.plaid_item_id)
+        .filter(Boolean)
+    )];
 
-    const itemInfoMap = {};
-    itemInfoResults.forEach(it => { if (it && (it.item_id || it.plaid_item_id)) itemInfoMap[it.item_id || it.plaid_item_id] = it; });
+    if (plaidAccountIds.length > 0) {
+      const itemInfoResults = await Promise.all(
+        plaidAccountIds.map(async (itemId) => {
+          try {
+            return await fetchItemInfo(itemId);
+          } catch (err) {
+            console.debug('fetchItemInfo failed for', itemId, err && err.message);
+            return { item_id: itemId, billed_products: [], available_products: [] };
+          }
+        })
+      );
 
-    // 4) Attach billed_products to each account so existing grouping/render logic continues to work
-    accounts = plaidAccounts.map(acc => {
-      const info = itemInfoMap[acc.plaid_item_id] || { billed_products: [], available_products: [] };
-      let billed = info.billed_products || [];
-      if (typeof billed === 'string') {
-        try { billed = JSON.parse(billed); } catch (e) { billed = []; }
-      }
-      return {
-        ...acc,
-        billed_products: billed,
-        available_products: info.available_products || []
-      };
-    });
+      const itemInfoMap = {};
+      itemInfoResults.forEach(it => {
+        if (it && (it.item_id || it.plaid_item_id)) {
+          itemInfoMap[it.item_id || it.plaid_item_id] = it;
+        }
+      });
 
-    renderAccountSelector();
+      // Attach product info to accounts
+      accounts = accounts.map(acc => {
+        const info = itemInfoMap[acc.plaid_item_id] || { billed_products: [], available_products: [] };
+        let billed = info.billed_products || [];
+        if (typeof billed === 'string') {
+          try { billed = JSON.parse(billed); } catch (e) { billed = []; }
+        }
+        return {
+          ...acc,
+          billed_products: billed,
+          available_products: info.available_products || []
+        };
+      });
+    }
+
+    renderAccountsSidebar();
 
     showStatus('Accounts loaded successfully', 'success');
     setTimeout(() => clearStatus(), 2000);
@@ -480,77 +567,144 @@ async function loadAccounts() {
 }
 
 
-function renderAccountSelector() {
-  const container = document.getElementById('account-selector');
+function renderAccountsSidebar() {
+  const container = document.getElementById('accounts-list');
   
   if (accounts.length === 0) {
-    container.innerHTML = '<p>No accounts found. Please connect a bank first.</p>';
+    container.innerHTML = '<p style="padding: 10px; color: #999;">No accounts found</p>';
     return;
   }
-  
-  // Group by institution
-  const grouped = {};
-  accounts.forEach(acc => {
-    const institutionKey = acc.institution_name;
-    if (!grouped[institutionKey]) {
-      grouped[institutionKey] = {
-        name: acc.institution_name,
-        plaid_item_id: acc.plaid_item_id,
-        billed_products: acc.billed_products || [],
-        accounts: []
-      };
-    }
-    grouped[institutionKey].accounts.push(acc);
-  });
-  
-  let html = '';
-  Object.keys(grouped).forEach(key => {
-    const group = grouped[key];
-    const isBilled = group.billed_products.includes('transactions');
-    
-    let headerAction = '';
-    if (!isBilled) {
-        headerAction = `<button class="activate-btn" style="margin-left: 10px;" onclick="activateBank('${group.plaid_item_id}')">Activate & Sync</button>`;
-    }
 
-    html += `
-      <div class="account-group">
-        <div style="display: flex; align-items: center; margin-bottom: 5px;">
-            <label style="display: flex; align-items: center;">
-            <input type="checkbox" class="bank-checkbox" data-bank="${key}" 
-                    onchange="toggleBank('${key}')" ${!isBilled ? 'disabled' : ''}>
-            <strong style="margin-left: 5px;">${group.name}</strong>
-            </label>
-            ${!isBilled ? '<span class="status-badge status-inactive">Available (Not Active)</span>' : '<span class="status-badge status-active">Active</span>'}
-            ${headerAction}
-        </div>
-    `;
+  // Compute total balance across all accounts
+  const totalBalance = accounts.reduce((sum, acc) => sum + (acc.current_balance || 0), 0);
+  const totalBalanceStr = new Intl.NumberFormat('en-US', { 
+    style: 'currency', 
+    currency: 'USD' 
+  }).format(totalBalance);
+
+  // Group accounts by category
+  const categoryOrder = ['depository', 'credit', 'investment', 'loan', 'asset', 'liability'];
+  const categoryLabels = {
+    'depository': '🔹 Depository',
+    'credit': '💳 Credit',
+    'investment': '📈 Investment',
+    'loan': '📋 Loan',
+    'asset': '💎 Asset',
+    'liability': '⚠️ Liability'
+  };
+
+  const grouped = {
+    active: {},
+    inactive: [] // Plaid items without transactions product billed
+  };
+
+  accounts.forEach(acc => {
+    // Check if this account's Plaid item (if Plaid) has transactions billed
+    const isActive = acc.source_type !== 'plaid' || acc.billed_products.includes('transactions');
     
-    group.accounts.forEach(acc => {
-      const displayName = acc.custom_name || `${acc.account_name} (${acc.account_subtype || acc.account_type})${acc.mask ? ' ...' + acc.mask : ''}`;
-      
-      html += `
-        <div class="account-item">
-          <div style="display: flex; align-items: center;">
-            <button class="secondary" style="padding: 2px 6px; font-size: 10px; margin-right: 8px;" 
-                    onclick="promptRename('${acc.account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
-              Rename
-            </button>
-            <label style="flex-grow: 1;">
-              <input type="checkbox" class="account-checkbox" 
-                     data-bank="${key}"
-                     data-account-id="${acc.account_id}"
-                     ${!isBilled ? 'disabled' : ''}>
-              ${displayName}
-            </label>
+    if (isActive) {
+      const cat = acc.account_category || 'asset';
+      if (!grouped.active[cat]) {
+        grouped.active[cat] = [];
+      }
+      grouped.active[cat].push(acc);
+    } else {
+      // Separate inactive Plaid items
+      grouped.inactive.push(acc);
+    }
+  });
+
+  // Sort accounts within each category by account_name
+  Object.keys(grouped.active).forEach(cat => {
+    grouped.active[cat].sort((a, b) => {
+      const nameA = (a.custom_name || a.account_name).toLowerCase();
+      const nameB = (b.custom_name || b.account_name).toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  });
+
+  let html = '';
+
+  // ===== ALL ACCOUNTS ITEM =====
+  const allAccountsClass = selectedAccountMode === 'all' ? 'selected' : '';
+  html += `
+    <div class="sidebar-all-accounts ${allAccountsClass}" onclick="selectAllAccountsMode()">
+      <div style="font-weight: 600; margin-bottom: 4px;">⊕ All Accounts</div>
+      <div style="font-size: 12px; color: #2e7d32; font-weight: 500;">Total: ${totalBalanceStr}</div>
+    </div>
+  `;
+
+  // ===== ACTIVE ACCOUNTS (grouped by category) =====
+  categoryOrder.forEach(cat => {
+    if (grouped.active[cat] && grouped.active[cat].length > 0) {
+      html += `<div class="sidebar-account-group">`;
+      html += `<div class="sidebar-group-title">${categoryLabels[cat] || cat}</div>`;
+
+      grouped.active[cat].forEach(acc => {
+        const displayName = acc.custom_name || acc.account_name;
+        const balanceStr = new Intl.NumberFormat('en-US', { 
+          style: 'currency', 
+          currency: 'USD' 
+        }).format(acc.current_balance || 0);
+
+        const isSelected = selectedAccountMode === 'single' && selectedAccountId === acc.account_id;
+        const selectedClass = isSelected ? 'selected' : '';
+
+        html += `
+          <div class="sidebar-account-item ${selectedClass}" onclick="selectAccount('${acc.account_id}')">
+            <div class="sidebar-account-label">
+              <span>${displayName}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div class="sidebar-account-balance">${balanceStr}</div>
+              <button class="secondary" style="padding: 2px 6px; font-size: 10px;" 
+                      onclick="event.stopPropagation(); promptRename('${acc.account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
+                Rename
+              </button>
+            </div>
           </div>
+        `;
+      });
+
+      html += '</div>';
+    }
+  });
+
+  // ===== INACTIVE PLAID ITEMS =====
+  if (grouped.inactive.length > 0) {
+    html += `<div class="sidebar-inactive-section">`;
+    html += `<div class="sidebar-inactive-title">⚠️ Needs Activation</div>`;
+
+    // Group inactive accounts by institution
+    const inactiveByInstitution = {};
+    grouped.inactive.forEach(acc => {
+      const inst = acc.institution_name || 'Unknown';
+      if (!inactiveByInstitution[inst]) {
+        inactiveByInstitution[inst] = [];
+      }
+      inactiveByInstitution[inst].push(acc);
+    });
+
+    Object.entries(inactiveByInstitution).forEach(([inst, accs]) => {
+      const itemId = accs[0].plaid_item_id;
+      html += `
+        <div class="sidebar-activate-section">
+          <div style="font-weight: 500; margin-bottom: 6px;">• ${inst}</div>
+          <button class="activate-btn" onclick="activateBank('${itemId}')">Activate & Sync</button>
         </div>
       `;
     });
-    
+
     html += '</div>';
-  });
-  
+  }
+
+  // ===== CREATE MANUAL ACCOUNT BUTTON =====
+  html += `
+    <button class="sidebar-create-btn" onclick="openCreateManualAccountModal()">
+      + Create Manual Account
+    </button>
+  `;
+
   container.innerHTML = html;
 }
 
@@ -562,9 +716,10 @@ async function activateBank(itemId) {
     // Invalidate cached item_info so subsequent UI reads the freshest product state
     try { invalidateItemInfoCache(itemId); } catch (e) {}
 
-    const btn = $(`button[onclick="activateBank('${itemId}')"]`);
-    const originalText = btn.text();
-    btn.prop('disabled', true).text('Activating...');
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Activating...';
 
     try {
         const itemAccounts = accounts.filter(a => a.plaid_item_id === itemId);
@@ -594,16 +749,9 @@ async function activateBank(itemId) {
     } catch (error) {
         alert('Activation failed: ' + error.message);
     } finally {
-        btn.prop('disabled', false).text(originalText);
+        btn.disabled = false;
+        btn.textContent = originalText;
     }
-}
-
-function toggleBank(institution) {
-  const bankCheckbox = $(`.bank-checkbox[data-bank="${institution}"]`);
-  // Only toggle enabled account checkboxes
-  const accountCheckboxes = $(`.account-checkbox[data-bank="${institution}"]:not(:disabled)`);
-  accountCheckboxes.prop('checked', bankCheckbox.prop('checked'));
-  renderTransactionTable();
 }
 
 async function performSync(accountIds, startDate, endDate, activate = false, force = false) {
@@ -648,8 +796,10 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
     return;
   }
   
+  // If no accounts selected, still try to fetch existing transactions from DB
   if (selectedAccounts.length === 0) {
-    showStatus('Please select at least one account', 'error');
+    console.warn('No accounts selected - skipping sync, loading existing transactions only');
+    await fetchAllTransactions(false);
     return;
   }
   
@@ -680,6 +830,7 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
   }
   
   try {
+    // Try to sync with Plaid first
     if (!forceNetwork && cacheValid) {
       showStatus('Checking for new transactions...', 'info');
     } else {
@@ -687,29 +838,38 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
     }
     
     const syncData = await performSync(selectedAccounts, startDate, endDate, false, forceNetwork);
-    synced = true;
     
-    // If Plaid returned no changes AND we have valid cache, skip the full re-fetch
-    if (syncData.no_changes && cacheValid && !forceNetwork) {
+    // Determine if we need to fetch from DB
+    const shouldFetchFromDB = !cacheValid || syncData.synced_count > 0 || forceNetwork;
+    
+    if (shouldFetchFromDB) {
+      // No cache OR sync returned changes OR force requested → fetch from DB
+      let successMsg = syncData.synced_count > 0 
+        ? `Synced ${syncData.synced_count} transactions (${syncData.new_count || 0} new, ${syncData.updated_count || 0} updated)`
+        : 'Sync complete, loading transactions...';
+      showStatus(successMsg, 'info');
+      
+      await fetchAllTransactions(true);
+    } else {
+      // Have valid cache AND no changes from Plaid → use cache
       const cooldownMsg = syncData.cooldown 
         ? ` (next sync available in ${syncData.seconds_until_next_sync}s)`
         : '';
       showStatus(`Transactions are up to date — ${transactions.length} loaded${cooldownMsg}`, 'success');
       setTimeout(() => clearStatus(), 3000);
-      return;
     }
     
-    let successMsg = `Synced ${syncData.synced_count || 0} transactions (${syncData.new_count || 0} new, ${syncData.updated_count || 0} updated)`;
-    showStatus(successMsg, 'info');
-    
-    // Plaid had changes (or no cache) — fetch fresh from server
-    await fetchAllTransactions(true);
-    
   } catch (error) {
+    console.error('Sync error:', error);
     showStatus(`Sync failed: ${error.message}`, 'error');
-    // If sync failed but we don't have cache, try fetching from DB anyway
-    if (!cacheValid) {
+    
+    // Always try to fetch existing transactions from DB when sync fails
+    // This ensures the page shows something even if Plaid sync fails
+    try {
       await fetchAllTransactions(false);
+    } catch (fetchError) {
+      console.error('Failed to fetch transactions after sync error:', fetchError);
+      showStatus(`Failed to load transactions: ${fetchError.message}`, 'error');
     }
   }
 }
@@ -786,7 +946,7 @@ function renderTransactionTable() {
     }
     
     // Filter by selected accounts
-    if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.plaid_account_id)) {
+    if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.account_id || txn.plaid_account_id)) {
       return false;
     }
     
@@ -864,11 +1024,20 @@ function renderTransactionTable() {
     return;
   }
   
+  // Determine if we're in single account mode to show ledger column
+  const showLedgerColumn = selectedAccountMode === 'single' && selectedAccountId;
+  
   let html = '<table><thead><tr>';
   html += '<th>Date</th>';
   html += '<th>Bank/Account</th>';
   html += '<th>Description</th>';
-  html += '<th>Amount</th>';
+  
+  // In single account view: amount goes 2nd-from-right (before ledger column)
+  // In all accounts view: amount stays in normal position
+  if (!showLedgerColumn) {
+    html += '<th>Amount</th>';
+  }
+  
   if (optionalFields.includes('source')) html += '<th>Source</th>';
   html += '<th>Category</th>';
   
@@ -882,6 +1051,14 @@ function renderTransactionTable() {
   if (optionalFields.includes('authorized_datetime')) html += '<th>Auth Time</th>';
   if (optionalFields.includes('personal_finance_category')) html += '<th>Plaid Category</th>';
   if (optionalFields.includes('user_memo')) html += '<th>Memo</th>';
+  
+  // In single account view, add amount column here (2nd-from-right)
+  // and then ledger column will be the rightmost
+  if (showLedgerColumn) {
+    html += '<th>Amount</th>';
+    html += '<th>Balance Ledger</th>';
+  }
+  
   html += '<th style="width: 40px;"></th>'; // Delete button column
 
   html += '</tr></thead><tbody>';
@@ -1058,11 +1235,18 @@ function renderTransactionTable() {
       currency: txn.iso_currency_code || 'USD' 
     }).format(txn.amount);
     
+    // Stub balance ledger value (placeholder)
+    const ledgerBalance = '$9,999,999.99';
+    
     html += '<tr>';
     html += `<td>${dateStr}</td>`;
     html += `<td>${txn.bank_account}</td>`;
     html += `<td>${txn.name || ''}</td>`;
-    html += `<td>${amount}</td>`;
+    
+    // In all accounts view, add amount here; in single account view, it goes later
+    if (!showLedgerColumn) {
+      html += `<td>${amount}</td>`;
+    }
 
     // Determine source and transaction IDs
     const isManual = !!txn.manual_transaction_id;
@@ -1166,6 +1350,12 @@ function renderTransactionTable() {
             </div>
           </td>
         `;
+    }
+
+    // In single account view, add amount and balance ledger columns before delete button
+    if (showLedgerColumn) {
+      html += `<td>${amount}</td>`;
+      html += `<td>${ledgerBalance}</td>`;
     }
 
     // Add delete button for manual transactions only
@@ -1914,11 +2104,16 @@ async function submitCategoryRule(targetCategory, txnId) {
 
 
 function getSelectedAccounts() {
-  const selected = [];
-  $('.account-checkbox:checked').each(function() {
-    selected.push($(this).data('account-id'));
-  });
-  return selected;
+  if (selectedAccountMode === 'all') {
+    // Return all account IDs (active only - Plaid items with transactions billed)
+    return accounts
+      .filter(a => a.source_type !== 'plaid' || a.billed_products.includes('transactions'))
+      .map(a => a.account_id);
+  } else if (selectedAccountMode === 'single' && selectedAccountId) {
+    // Return single selected account
+    return [selectedAccountId];
+  }
+  return [];
 }
 
 function exportJSON() {
@@ -4203,3 +4398,84 @@ function showConfirmationDialog(title, message, onConfirm) {
   document.body.appendChild(backdrop);
 }
 
+/* ==============================================
+   CREATE MANUAL ACCOUNT MODAL
+   ============================================== */
+
+function openCreateManualAccountModal() {
+  const modal = document.getElementById('create-manual-account-modal');
+  modal.classList.remove('hidden');
+  document.getElementById('manual-account-name').focus();
+}
+
+function closeCreateManualAccountModal() {
+  const modal = document.getElementById('create-manual-account-modal');
+  modal.classList.add('hidden');
+  // Clear form
+  document.getElementById('manual-account-name').value = '';
+  document.getElementById('manual-account-category').value = '';
+  document.getElementById('manual-account-balance').value = '';
+  document.getElementById('manual-account-error').textContent = '';
+  document.getElementById('manual-account-error').style.display = 'none';
+}
+
+async function submitCreateManualAccount() {
+  const name = document.getElementById('manual-account-name').value.trim();
+  const category = document.getElementById('manual-account-category').value;
+  const balance = parseFloat(document.getElementById('manual-account-balance').value);
+  const errorDiv = document.getElementById('manual-account-error');
+
+  // Validation
+  if (!name) {
+    errorDiv.textContent = 'Account name is required';
+    errorDiv.style.display = 'block';
+    return;
+  }
+
+  if (!category) {
+    errorDiv.textContent = 'Please select an account category';
+    errorDiv.style.display = 'block';
+    return;
+  }
+
+  if (isNaN(balance)) {
+    errorDiv.textContent = 'Starting balance must be a valid number';
+    errorDiv.style.display = 'block';
+    return;
+  }
+
+  try {
+    showStatus('Creating manual account...', 'info');
+
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts/manual`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        account_name: name,
+        account_category: category,
+        opening_balance: balance
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      errorDiv.textContent = data.error || 'Failed to create account';
+      errorDiv.style.display = 'block';
+      return;
+    }
+
+    closeCreateManualAccountModal();
+    showStatus(`Account "${name}" created successfully`, 'success');
+
+    // Reload accounts to show new account in sidebar
+    await loadAccounts();
+    selectAllAccounts();
+
+    setTimeout(() => clearStatus(), 2000);
+
+  } catch (error) {
+    errorDiv.textContent = `Error: ${error.message}`;
+    errorDiv.style.display = 'block';
+  }
+}

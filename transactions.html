@@ -14,15 +14,33 @@
 </head>
 <body>
   <div class="container">
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-      <a href="index.html" class="back-link">← Back to Dashboard</a>
-      <div style="display: flex; gap: 12px; align-items: center;">
-        <a href="categories.html" class="back-link" style="color: #6366f1;">Manage Categories →</a>
-        <a href="investments.html" class="back-link" style="color: #28a745;">View Investments →</a>
+    <!-- Header with Hamburger Toggle for Mobile -->
+    <div class="page-header">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button id="sidebar-toggle" class="sidebar-toggle" onclick="toggleSidebar()">☰ Accounts</button>
+          <a href="index.html" class="back-link">← Back to Dashboard</a>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <a href="categories.html" class="back-link" style="color: #6366f1;">Manage Categories →</a>
+          <a href="investments.html" class="back-link" style="color: #28a745;">View Investments →</a>
+        </div>
       </div>
     </div>
     
     <h1>Transaction Viewer</h1>
+
+    <!-- Main Content Wrapper -->
+    <div class="main-wrapper">
+      <!-- Accounts Sidebar -->
+      <aside class="accounts-sidebar" id="accounts-sidebar">
+        <div class="sidebar-content">
+          <div id="accounts-list"></div>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <div class="main-content">
     
     <!-- Configuration Panel -->
     <div class="config-panel">
@@ -35,18 +53,6 @@
         <div class="config-layout">
           <!-- Left Column: Controls -->
           <div class="config-left">
-            <!-- Bank & Account Selection -->
-            <div class="config-section">
-              <div style="display: flex; justify-content: flex-start; align-items: center; margin-bottom: 10px;">
-                <h3 style="margin: 0;">Select Accounts</h3>
-                <button onclick="selectAllAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 8px; margin-left: 8px;">Select All</button>
-                <button onclick="deselectAllAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 8px;">Deselect All</button>
-                <button onclick="refreshAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Refresh List</button> 
-              </div>
-              <p style="margin: 0 0 10px 0; font-size: 14px; color: #666;">Only checking, savings, and credit card accounts are shown. Investment accounts are not currently supported.</p>
-              <div id="account-selector"></div>
-            </div>
-        
             <!-- Date Range -->
             <div class="config-section">
               <h3>Date Range (up to 90 days of transaction data is available)</h3>
@@ -170,6 +176,48 @@
     <div id="table-container">
       <div class="empty-state">
         Configure your settings above and click "Sync Transactions" to get started.
+      </div>
+    </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Create Manual Account Modal -->
+  <div id="create-manual-account-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Create Manual Account</h2>
+        <button class="modal-close" onclick="closeCreateManualAccountModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+          <div>
+            <label style="display: block; margin-bottom: 6px; font-weight: 500;">Account Name</label>
+            <input type="text" id="manual-account-name" placeholder="e.g., My Savings" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
+          </div>
+          <div>
+            <label style="display: block; margin-bottom: 6px; font-weight: 500;">Account Category</label>
+            <select id="manual-account-category" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
+              <option value="">— Select Category —</option>
+              <option value="depository">Depository (Checking, Savings)</option>
+              <option value="credit">Credit (Credit Card)</option>
+              <option value="investment">Investment (Stocks, Bonds, ETFs)</option>
+              <option value="loan">Loan (Mortgage, Personal Loan)</option>
+              <option value="asset">Asset (Other Assets)</option>
+              <option value="liability">Liability (Other Liabilities)</option>
+            </select>
+          </div>
+          <div>
+            <label style="display: block; margin-bottom: 6px; font-weight: 500;">Starting Balance</label>
+            <input type="number" id="manual-account-balance" placeholder="0.00" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
+          </div>
+          <div id="manual-account-error" style="color: #d32f2f; font-size: 14px; display: none;"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="secondary" onclick="closeCreateManualAccountModal()">Cancel</button>
+        <button onclick="submitCreateManualAccount()">Create Account</button>
       </div>
     </div>
   </div>

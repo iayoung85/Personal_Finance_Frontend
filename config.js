@@ -2,6 +2,40 @@
 
 // Define global variable
 var BACKEND_URL;
+window.LOCAL_AUTO_LOGIN_ENABLED = false;
+
+function isLocalBackendUrl(url) {
+  return url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:');
+}
+
+function ensureLocalDevSession() {
+  if (!window.LOCAL_AUTO_LOGIN_ENABLED) {
+    return false;
+  }
+
+  const existingUser = localStorage.getItem('currentUser');
+  if (!existingUser) {
+    const devUser = {
+      id: 1,
+      user_id: 'user_1',
+      email: 'iayoung8505@gmail.com',
+      first_name: 'Isaac',
+      last_name: 'Young'
+    };
+    localStorage.setItem('currentUser', JSON.stringify(devUser));
+  }
+
+  if (!localStorage.getItem('authToken')) {
+    localStorage.setItem('authToken', 'local-dev');
+  }
+  if (!localStorage.getItem('refreshToken')) {
+    localStorage.setItem('refreshToken', 'local-dev');
+  }
+
+  return true;
+}
+
+window.ensureLocalDevSession = ensureLocalDevSession;
 
 function detectBackendUrl() {
   // Check for backend URL in query params (for ngrok demos)
@@ -69,6 +103,10 @@ function detectBackendUrl() {
 window.BACKEND_URL_PROMISE = detectBackendUrl().then(url => {
   BACKEND_URL = url;
   window.BACKEND_URL = url;
+  window.LOCAL_AUTO_LOGIN_ENABLED = isLocalBackendUrl(url);
+  window.ensureLocalDevSession();
+  console.log('[Backend Detection] Using backend URL:', url);
+  console.log('[Backend Detection] Local auto-login enabled:', window.LOCAL_AUTO_LOGIN_ENABLED);
   return url;
 });
 

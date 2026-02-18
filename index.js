@@ -5,16 +5,26 @@ let refreshToken = localStorage.getItem('refreshToken');
 let currentUser = null;
 let tempLoginCreds = null;
 
-try {
-  currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
-} catch (e) {
-  console.error('Error parsing currentUser from localStorage', e);
-  localStorage.removeItem('currentUser');
+function refreshAuthState() {
+  authToken = localStorage.getItem('authToken');
+  refreshToken = localStorage.getItem('refreshToken');
+  try {
+    currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  } catch (e) {
+    console.error('Error parsing currentUser from localStorage', e);
+    localStorage.removeItem('currentUser');
+    currentUser = null;
+  }
 }
+
+refreshAuthState();
 
 $(document).ready(async function() {
   try {
     await window.BACKEND_URL_PROMISE;
+    // Don't auto-login on the login page - let user register or login normally
+    // Auto-login only happens on protected pages (transactions, investments, etc.)
+    refreshAuthState();
     if (authToken && currentUser) {
       showDashboard();
     } else {

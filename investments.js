@@ -8,19 +8,30 @@ let currentUser = null;
 let authToken = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
 
-// Auth Check
-if (!authToken) {
-  window.location.href = 'index.html';
+function refreshAuthState() {
+  authToken = localStorage.getItem('authToken');
+  refreshToken = localStorage.getItem('refreshToken');
+  try {
+    currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  } catch (e) {
+    console.error('Error parsing user', e);
+    currentUser = null;
+  }
 }
 
-try {
-  currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
-} catch (e) {
-  console.error('Error parsing user', e);
-}
+refreshAuthState();
 
 $(document).ready(async function() {
   await window.BACKEND_URL_PROMISE;
+
+  if (window.ensureLocalDevSession) {
+    window.ensureLocalDevSession();
+  }
+  refreshAuthState();
+  if (!authToken) {
+    window.location.href = 'index.html';
+    return;
+  }
   
   // Load accounts first so selections exist
   await loadAccounts();

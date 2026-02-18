@@ -20,10 +20,18 @@ let idleTimeout;
 const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 
-if (!token) {
-  alert('Please log in first');
-  window.location.href = 'index.html';
+function refreshAuthState() {
+  token = localStorage.getItem('authToken');
+  refreshToken = localStorage.getItem('refreshToken');
+  try {
+    currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  } catch (e) {
+    console.error('Error parsing currentUser', e);
+    currentUser = null;
+  }
 }
+
+refreshAuthState();
 
 async function refreshAccessToken() {
   if (!refreshToken) {
@@ -76,6 +84,9 @@ async function authenticatedFetch(url, options = {}) {
 }
 
 function resetIdleTimeout() {
+  if (window.LOCAL_AUTO_LOGIN_ENABLED) {
+    return;
+  }
   // Clear existing timeout
   if (idleTimeout) {
     clearTimeout(idleTimeout);
@@ -91,6 +102,9 @@ function resetIdleTimeout() {
 }
 
 function setupActivityListeners() {
+  if (window.LOCAL_AUTO_LOGIN_ENABLED) {
+    return;
+  }
   // List of events that indicate user activity
   const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
   
@@ -122,6 +136,15 @@ function logout() {
 // Initialize
 document.addEventListener('DOMContentLoaded', async function() {
   await window.BACKEND_URL_PROMISE;
+  if (window.ensureLocalDevSession) {
+    window.ensureLocalDevSession();
+  }
+  refreshAuthState();
+  if (!token) {
+    alert('Please log in first');
+    window.location.href = 'index.html';
+    return;
+  }
   resetIdleTimeout();
   setupActivityListeners();
 

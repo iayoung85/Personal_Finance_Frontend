@@ -5,17 +5,26 @@
 let authToken = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
 let currentUser = null;
-try {
-  currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
-} catch (e) {
-  console.error('Error parsing currentUser from localStorage', e);
-  localStorage.removeItem('currentUser');
+function refreshAuthState() {
+  authToken = localStorage.getItem('authToken');
+  refreshToken = localStorage.getItem('refreshToken');
+  try {
+    currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  } catch (e) {
+    console.error('Error parsing currentUser from localStorage', e);
+    localStorage.removeItem('currentUser');
+    currentUser = null;
+  }
 }
+
+refreshAuthState();
 
 // Initialize on page load
 $(document).ready(async function() {
   try {
     await window.BACKEND_URL_PROMISE;
+    // Don't auto-login on account page - requires real authentication
+    refreshAuthState();
     
     // Check for email verification/rejection tokens in URL
     const urlParams = new URLSearchParams(window.location.search);
