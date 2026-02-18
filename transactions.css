@@ -1196,6 +1196,14 @@ tr:hover {
   gap: 8px;
 }
 
+.modal-footer {
+  padding: 12px 16px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .modal-close {
   background: transparent;
   color: #555;
