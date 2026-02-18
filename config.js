@@ -71,3 +71,71 @@ window.BACKEND_URL_PROMISE = detectBackendUrl().then(url => {
   window.BACKEND_URL = url;
   return url;
 });
+
+// ----------------------
+// item_info client cache
+// ----------------------
+const ITEM_INFO_CACHE_KEY = 'itemInfoCache';
+const ITEM_INFO_CACHE_TTL = 300; // seconds — matches server-side cooldown
+
+function _readItemInfoCache() {
+  try {
+    return JSON.parse(localStorage.getItem(ITEM_INFO_CACHE_KEY) || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+function _writeItemInfoCache(cache) {
+  try {
+    localStorage.setItem(ITEM_INFO_CACHE_KEY, JSON.stringify(cache));
+  } catch (e) {
+    console.warn('Failed to write itemInfoCache', e);
+  }
+}
+
+async function fetchItemInfo(itemId, force = false) {
+  if (!itemId) return null;
+  const cache = _readItemInfoCache();
+  const entry = cache[itemId];
+  if (!force && entry && entry.cached_at) {
+    const age = (Date.now() - entry.cached_at) / 1000;
+    if (age < ITEM_INFO_CACHE_TTL) {
+      return entry.data;
+    }
+  }
+
+  // Not cached or expired — fetch from backend
+  const resp = await fetch(`${BACKEND_URL}/api/connections/item_info`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ item_id: itemId })
+  });
+
+  if (!resp.ok) {
+    // If server denies (cooldown) and we have a cached entry, return cached entry
+    const errData = await resp.json().catch(() => ({}));
+    if (entry && entry.data) return entry.data;
+    throw new Error(errData.error || 'Failed to fetch item info');
+  }
+
+  const data = await resp.json();
+  cache[itemId] = { data, cached_at: Date.now() };
+  _writeItemInfoCache(cache);
+  return data;
+}
+
+function invalidateItemInfoCache(itemId) {
+  const cache = _readItemInfoCache();
+  if (itemId) {
+    delete cache[itemId];
+  } else {
+    // clear all
+    for (const k in cache) delete cache[k];
+  }
+  _writeItemInfoCache(cache);
+}
+
+// Expose helpers globally
+window.fetchItemInfo = fetchItemInfo;
+window.invalidateItemInfoCache = invalidateItemInfoCache;

@@ -87,6 +87,8 @@ function logout() {
   localStorage.removeItem('authToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('currentUser');
+  // Invalidate cached Plaid item info on logout
+  localStorage.removeItem(ITEM_INFO_CACHE_KEY);
   authToken = null;
   refreshToken = null;
   currentUser = null;
@@ -115,6 +117,8 @@ async function refreshAccessToken() {
     return false;
   }
 }
+
+
 
 async function authenticatedFetch(url, options = {}) {
   const headers = {
@@ -233,6 +237,8 @@ async function reconnectBank(itemId, bankName) {
           });
 
           if (response.ok) {
+            // Invalidate cached item_info for this item so UI will re-query fresh product info
+            invalidateItemInfoCache(itemId);
             showMessage('dashboard-message', `✓ ${bankName} refreshed successfully!`, 'success');
           } else {
             showMessage('dashboard-message', `✓ ${bankName} refreshed, but failed to sync accounts`, 'success');
@@ -274,6 +280,8 @@ async function disconnectBank(itemId, bankName) {
     const data = await response.json();
 
     if (response.ok) {
+      // Invalidate cache for the removed item
+      invalidateItemInfoCache(itemId);
       showMessage('dashboard-message', '✓ Bank disconnected successfully!', 'success');
       loadConnectedBanks();
     } else {
@@ -461,6 +469,8 @@ $('#link-button').on('click', async function() {
           // Clear transactions page caches
           localStorage.removeItem('transactionsCache');
           localStorage.removeItem('transactionsAccountsCache');
+          // Invalidate item_info cache so new item shows up correctly
+          invalidateItemInfoCache();
           
           // Set flag for investments page to auto-sync new items (if investments were included)
           if (result.billed_products && result.billed_products.includes('investments')) {

@@ -360,7 +360,7 @@ function toggleConfig() {
 async function refreshAccounts() {
   try {
     showStatus('Syncing accounts from Plaid...', 'info');
-    const response = await fetch(`${BACKEND_URL}/api/connections/accounts`, {
+    const response = await fetch(`${BACKEND_URL}/api/accounts`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -406,36 +406,79 @@ function deselectAllAccounts() {
 async function loadAccounts() {
   try {
     showStatus('Loading accounts...', 'info');
-    
-    // Use new endpoint that gets all accounts including disconnected ones
-    const url = `${BACKEND_URL}/api/transactions/accounts/all?t=${Date.now()}`;
-    const response = await authenticatedFetch(url, {
-      method: 'GET',
-      mode: 'cors',
-      cache: 'no-cache'
-    });
-    
-    const data = await response.json();
-    
+
+    // 1) Get canonical accounts list (includes Plaid + manual accounts)
+    const resp = await authenticatedFetch(`${BACKEND_URL}/api/accounts`);
+    const data = await resp.json();
     if (data.error) {
       showStatus(`Error: ${data.error}`, 'error');
       return;
     }
-    
-    accounts = data.accounts || [];
-    // Filter out investment accounts as they are not supported
-    accounts = accounts.filter(acc => acc.account_type !== 'investment');
-    
+
+    const allAccounts = data.accounts || [];
+    console.debug('loadAccounts: /api/accounts returned', allAccounts.length, 'accounts');
+
+    // 2) Keep only Plaid accounts and exclude investment accounts (transactions page)
+    const plaidAccounts = allAccounts.filter(a => (a.source_type || a.source || '').toLowerCase() === 'plaid')
+      .map(a => ({
+        // Use internal account_id as the primary identifier (works for both Plaid and future custom accounts)
+        account_id: a.account_id || null,
+        plaid_account_id: a.plaid_account_id || null,  // Keep for reference, but not used as primary key
+        plaid_item_id: a.plaid_item_id || a.plaid_item_id || a.item_id || null,
+        institution_name: a.institution_name || a.institution_name || a.bank_name || null,
+        account_name: a.account_name || a.account_name || a.account_name || '',
+        account_type: a.account_type || a.account_category || '',
+        account_subtype: a.account_subcategory || a.account_subtype || '',
+        mask: a.mask || a.mask || null,
+        current_balance: a.current_balance || a.current_balance || null,
+        available_balance: a.available_balance || a.available_balance || null,
+        custom_name: a.custom_name || a.custom_name || null,
+        last_updated: a.last_balance_update || a.last_updated || null
+      }))
+      // exclude investment accounts (transaction UI only shows non-investment accounts)
+      .filter(a => (a.account_type || '').toLowerCase() !== 'investment' && a.account_id);
+
+    // 3) For each distinct item, fetch item-level product info so we can determine billed vs available
+    const itemIds = [...new Set(plaidAccounts.map(a => a.plaid_item_id).filter(Boolean))];
+    console.debug('loadAccounts: detected', plaidAccounts.length, 'plaid accounts, itemIds:', itemIds);
+
+    const itemInfoResults = await Promise.all(itemIds.map(async (itemId) => {
+      try {
+        return await fetchItemInfo(itemId);
+      } catch (err) {
+        console.debug('fetchItemInfo failed for', itemId, err && err.message);
+        return { item_id: itemId, billed_products: [], available_products: [] };
+      }
+    }));
+
+    const itemInfoMap = {};
+    itemInfoResults.forEach(it => { if (it && (it.item_id || it.plaid_item_id)) itemInfoMap[it.item_id || it.plaid_item_id] = it; });
+
+    // 4) Attach billed_products to each account so existing grouping/render logic continues to work
+    accounts = plaidAccounts.map(acc => {
+      const info = itemInfoMap[acc.plaid_item_id] || { billed_products: [], available_products: [] };
+      let billed = info.billed_products || [];
+      if (typeof billed === 'string') {
+        try { billed = JSON.parse(billed); } catch (e) { billed = []; }
+      }
+      return {
+        ...acc,
+        billed_products: billed,
+        available_products: info.available_products || []
+      };
+    });
+
     renderAccountSelector();
-    
+
     showStatus('Accounts loaded successfully', 'success');
     setTimeout(() => clearStatus(), 2000);
-    
+
   } catch (error) {
     console.error('loadAccounts error:', error);
     showStatus(`Failed to load accounts: ${error.message}`, 'error');
   }
 }
+
 
 function renderAccountSelector() {
   const container = document.getElementById('account-selector');
@@ -490,13 +533,13 @@ function renderAccountSelector() {
         <div class="account-item">
           <div style="display: flex; align-items: center;">
             <button class="secondary" style="padding: 2px 6px; font-size: 10px; margin-right: 8px;" 
-                    onclick="promptRename('${acc.plaid_account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
+                    onclick="promptRename('${acc.account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
               Rename
             </button>
             <label style="flex-grow: 1;">
               <input type="checkbox" class="account-checkbox" 
                      data-bank="${key}"
-                     data-account-id="${acc.plaid_account_id}"
+                     data-account-id="${acc.account_id}"
                      ${!isBilled ? 'disabled' : ''}>
               ${displayName}
             </label>
@@ -516,6 +559,9 @@ async function activateBank(itemId) {
         return;
     }
 
+    // Invalidate cached item_info so subsequent UI reads the freshest product state
+    try { invalidateItemInfoCache(itemId); } catch (e) {}
+
     const btn = $(`button[onclick="activateBank('${itemId}')"]`);
     const originalText = btn.text();
     btn.prop('disabled', true).text('Activating...');
@@ -525,7 +571,7 @@ async function activateBank(itemId) {
         if (itemAccounts.length === 0) {
             throw new Error('No accounts found for this bank.');
         }
-        const accountIds = itemAccounts.map(a => a.plaid_account_id);
+        const accountIds = itemAccounts.map(a => a.account_id);
 
         // Use last 30 days for activation
         const end = new Date();
@@ -2147,13 +2193,12 @@ async function promptRename(accountId, currentCustomName) {
   try {
     showStatus('Updating account name...', 'info');
     
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/accounts/rename`, {
-      method: 'POST',
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts/${accountId}`, {
+      method: 'PATCH',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        plaid_account_id: accountId,
         custom_name: newName.trim() || null
       })
     });
@@ -2274,7 +2319,7 @@ function generateSpendingInsights() {
   // Get filtered transactions (same filter as table)
   const filteredTransactions = transactions.filter(txn => {
     if (txn.date < startDate || txn.date > endDate) return false;
-    if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.plaid_account_id)) return false;
+    if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.account_id || txn.plaid_account_id)) return false;
     if (txn.pending && !showPendingCheckbox) return false;
     if (hideTransfers) {
       const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
@@ -2445,8 +2490,8 @@ function aggregateCategoriesFromFilteredTransactions() {
       return false;
     }
     
-    // Filter by selected accounts
-    if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.plaid_account_id)) {
+    // Filter by selected accounts (use account_id for both Plaid and future custom accounts)
+    if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.account_id || txn.plaid_account_id)) {
       return false;
     }
     

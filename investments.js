@@ -105,13 +105,70 @@ async function loadAccounts() {
   const container = $('#account-selector');
   container.html('<div class="status-message info">Loading accounts...</div>');
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/accounts/all`);
+    // 1) Get all accounts from the shared accounts endpoint
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts`);
     const data = await response.json();
     if (data.error) throw new Error(data.error);
 
-    investmentAccounts = data.accounts || [];
+    const allAccounts = data.accounts || [];
+
+    // 2) Keep only investment accounts (we'll enrich these with item product info)
+    const invAccounts = allAccounts.filter(a => (a.account_category || '').toLowerCase() === 'investment');
+
+    // 3) Fetch item-level product info for each distinct plaid_item_id in parallel
+    const itemIds = [...new Set(invAccounts.map(a => a.plaid_item_id).filter(Boolean))];
+    console.debug('investments.loadAccounts: found', invAccounts.length, 'invAccounts, itemIds:', itemIds);
+
+    const itemInfoResults = await Promise.all(itemIds.map(async (itemId) => {
+      try {
+        return await fetchItemInfo(itemId);
+      } catch (err) {
+        console.debug('investments.fetchItemInfo failed for', itemId, err && err.message);
+        return { item_id: itemId, billed_products: [], available_products: [] };
+      }
+    }));
+
+    const itemInfoMap = {};
+    itemInfoResults.forEach(it => { if (it && (it.item_id || it.plaid_item_id)) itemInfoMap[it.item_id || it.plaid_item_id] = it; });
+
+    // 4) Build investmentAccounts in the same shape the rest of this file expects
+    investmentAccounts = invAccounts.map(acc => {
+      const info = itemInfoMap[acc.plaid_item_id] || { billed_products: [], available_products: [] };
+
+      let billed = info.billed_products || [];
+      let available = info.available_products || [];
+      // normalize strings -> arrays if backend ever returns JSON strings
+      if (typeof billed === 'string') {
+        try { billed = JSON.parse(billed); } catch (e) { billed = []; }
+      }
+      if (typeof available === 'string') {
+        try { available = JSON.parse(available); } catch (e) { available = []; }
+      }
+
+      let status = 'inactive';
+      if (Array.isArray(billed) && billed.includes('investments')) status = 'active';
+      else if (Array.isArray(available) && available.includes('investments')) status = 'available';
+
+      return {
+        account_id: acc.account_id,
+        plaid_account_id: acc.plaid_account_id,  // Keep for reference only
+        plaid_item_id: acc.plaid_item_id,
+        institution_name: acc.institution_name,
+        account_name: acc.account_name,
+        custom_name: acc.custom_name,  // Add custom_name support
+        account_type: acc.account_type,
+        account_subtype: acc.account_subtype,
+        mask: acc.mask,
+        status: status,
+        billed_products: billed,
+        available_products: available,
+        // Use last_updated from `/api/accounts` if provided
+        updated_at: acc.last_updated || null
+      };
+    });
+
     renderAccountSelector();
-    // Auto-select all active/available accounts
+    // Auto-select all active accounts
     selectAllAccounts();
   } catch (error) {
     container.html(`<div class="error">Error loading accounts: ${error.message}</div>`);
@@ -150,12 +207,18 @@ function renderAccountSelector() {
       const maskDisplay = acc.mask ? ` ...${acc.mask}` : '';
       const statusBadge = accountStatusLabel(acc.status);
       
+      const displayName = acc.custom_name || accountName;
       html += `
         <div class="account-row">
+          <button class="secondary" style="padding: 2px 6px; font-size: 10px; margin-right: 8px;" 
+                  onclick="promptRename('${acc.account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')" 
+                  ${disabled ? 'disabled' : ''}>
+            Rename
+          </button>
           <label>
-            <input type="checkbox" class="account-checkbox" data-account-id="${acc.plaid_account_id}" ${disabled ? 'disabled' : ''}>
+            <input type="checkbox" class="account-checkbox" data-account-id="${acc.account_id}" ${disabled ? 'disabled' : ''}>
             <span class="bank-name">${institutionName}</span>
-            <span class="account-name">${accountName}${maskDisplay}</span>
+            <span class="account-name">${displayName}${maskDisplay}</span>
           </label>
           ${statusBadge}
         </div>
@@ -187,7 +250,11 @@ function accountStatusLabel(status) {
 function getSelectedAccounts() {
   const selected = [];
   $('.account-checkbox:checked').each(function() {
-    selected.push($(this).data('account-id'));
+    // Use account_id as primary identifier
+    const accountId = $(this).data('account-id');
+    if (accountId) {
+      selected.push(accountId);
+    }
   });
   return selected;
 }
@@ -202,16 +269,101 @@ function deselectAllAccounts() {
   renderTable();
 }
 
+async function promptRename(accountId, currentCustomName) {
+  const newName = prompt('Enter a custom name for this account (leave empty to reset):', currentCustomName);
+  
+  if (newName === null) return; // User cancelled
+  
+  try {
+    const container = $('#account-selector');
+    container.html('<div class="status-message info">Updating account name...</div>');
+    
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts/${accountId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        custom_name: newName.trim() || null
+      })
+    });
+    
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to rename account');
+    }
+    
+    container.html('<div class="status-message success">Account renamed successfully</div>');
+    setTimeout(() => {
+      // Refresh accounts list
+      loadAccounts();
+    }, 1000);
+    
+  } catch (error) {
+    console.error('Rename error:', error);
+    $('#account-selector').html(`<div class="status-message error">Failed to rename account: ${error.message}</div>`);
+  }
+}
+
 
 
 async function loadAccountStatus() {
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/accounts_status`);
-    const data = await response.json();
-    accountStatus = data.items;
+    // Use item_info per-item (cache-aware) instead of server `accounts_status`
+    if (!investmentAccounts || investmentAccounts.length === 0) {
+      accountStatus = [];
+      renderAccountStatus();
+      return;
+    }
+
+    const itemIds = [...new Set(investmentAccounts.map(a => a.plaid_item_id).filter(Boolean))];
+    const results = await Promise.all(itemIds.map(id => fetchItemInfo(id).catch(() => null)));
+
+    const items_status = [];
+    for (const itemId of itemIds) {
+      const info = results.find(r => r && (r.item_id === itemId || r.plaid_item_id === itemId));
+
+      // Determine if this user actually has investment accounts for the item
+      const hasInvAccounts = investmentAccounts.some(a => a.plaid_item_id === itemId);
+
+      // Normalize product lists
+      let billed = (info && info.billed_products) || [];
+      let available = (info && info.available_products) || [];
+      if (typeof billed === 'string') {
+        try { billed = JSON.parse(billed); } catch (e) { billed = []; }
+      }
+      if (typeof available === 'string') {
+        try { available = JSON.parse(available); } catch (e) { available = []; }
+      }
+
+      let status = 'not_supported';
+      if (hasInvAccounts) {
+        if (Array.isArray(billed) && billed.includes('investments')) {
+          status = 'active';
+        } else if (Array.isArray(available) && available.includes('investments')) {
+          status = 'available';
+        } else {
+          status = 'unsupported_by_institution';
+        }
+      }
+
+      // institution_name / last_updated from the account objects we already fetched
+      const acct = investmentAccounts.find(a => a.plaid_item_id === itemId) || {};
+      const instName = acct.institution_name || (info && info.institution_id) || 'Unknown Institution';
+      const lastUpdated = acct.updated_at || null;
+
+      items_status.push({
+        plaid_item_id: itemId,
+        institution_name: instName,
+        status,
+        last_updated: lastUpdated
+      });
+    }
+
+    accountStatus = items_status;
     renderAccountStatus();
   } catch (error) {
-    console.error('Error loading account status:', error);
+    console.error('Error loading account status (item_info):', error);
     if (document.getElementById('account-status-list')) {
       $('#account-status-list').html(`<div class="error">Error loading status: ${error.message}</div>`);
     }
@@ -240,6 +392,11 @@ async function syncItem(itemId, activate = false) {
         return;
     }
 
+    // Invalidate cached item_info on activate so UI will re-fetch fresh product state
+    if (activate) {
+      try { invalidateItemInfoCache(itemId); } catch (e) {}
+    }
+
     const btn = $(`button[data-item="${itemId}"]`);
     const originalText = btn.text();
     btn.prop('disabled', true).text(activate ? 'Activating...' : 'Syncing...');
@@ -255,6 +412,8 @@ async function syncItem(itemId, activate = false) {
     const responseData = await response.json();
     
     if (response.ok) {
+      // Invalidate cached item_info so UI will re-query after activation/sync
+      try { invalidateItemInfoCache(itemId); } catch (e) {}
       // Refresh all data
       await loadAccounts(); 
       await loadAccountStatus(); 
@@ -464,6 +623,16 @@ function formatDate(isoString) {
 function buildGroupedHoldings(selectedAccounts) {
   const grouped = {}; // Key: ticker_symbol or name
   
+  // Create a mapping from our internal account_id to plaid_account_id
+  // so we can match selected accounts to holdings data
+  const accountIdToPlaidId = {};
+  investmentAccounts.forEach(acc => {
+    accountIdToPlaidId[acc.account_id] = acc.plaid_account_id;
+  });
+  
+  // Convert our internal account_ids to plaid account_ids for matching against holdings
+  const selectedPlaidAccountIds = selectedAccounts.map(id => accountIdToPlaidId[id]).filter(Boolean);
+  
   // Helper to lookup security by security_id
   const getSecurityById = (securityId) => {
     return securitiesData.find(s => s.security_id === securityId);
@@ -475,12 +644,13 @@ function buildGroupedHoldings(selectedAccounts) {
     
     const itemInstitution = item.institution_name || 'Unknown';
     
-    // Get investment accounts from this item
-    const investmentAccounts = item.accounts.filter(acc => 
-      acc.type === 'investment' && selectedAccounts.includes(acc.account_id)
+    // Get investment accounts from this item that are in the selected list
+    // Note: holdings data has plaid_account_id in the account_id field
+    const itemInvestmentAccounts = item.accounts.filter(acc => 
+      acc.type === 'investment' && selectedPlaidAccountIds.includes(acc.account_id)
     );
     
-    investmentAccounts.forEach(account => {
+    itemInvestmentAccounts.forEach(account => {
       // Get holdings for this account
       const accountHoldings = item.holdings.filter(h => h.account_id === account.account_id);
       
@@ -529,6 +699,15 @@ function buildGroupedHoldings(selectedAccounts) {
 function buildRawHoldingsExport(selectedAccounts) {
   if (!holdingsData || holdingsData.length === 0) return [];
   
+  // Create a mapping from our internal account_id to plaid_account_id
+  const accountIdToPlaidId = {};
+  investmentAccounts.forEach(acc => {
+    accountIdToPlaidId[acc.account_id] = acc.plaid_account_id;
+  });
+  
+  // Convert our internal account_ids to plaid account_ids for matching against holdings
+  const selectedPlaidAccountIds = selectedAccounts.map(id => accountIdToPlaidId[id]).filter(Boolean);
+  
   const getSecurityById = (securityId) => {
     return securitiesData.find(s => s.security_id === securityId) || {};
   };
@@ -538,16 +717,16 @@ function buildRawHoldingsExport(selectedAccounts) {
   holdingsData.forEach(item => {
     if (!item || !item.holdings || !item.accounts) return;
     
-    // Filter to selected investment accounts
-    const selectedInvestmentAccounts = item.accounts.filter(acc => 
-      acc.type === 'investment' && selectedAccounts.includes(acc.account_id)
+    // Filter to selected investment accounts (match against plaid account IDs)
+    const itemSelectedAccounts = item.accounts.filter(acc => 
+      acc.type === 'investment' && selectedPlaidAccountIds.includes(acc.account_id)
     );
     
-    if (selectedInvestmentAccounts.length === 0) return;
+    if (itemSelectedAccounts.length === 0) return;
     
     // Create enriched holdings for this item
     const enrichedHoldings = item.holdings
-      .filter(h => selectedInvestmentAccounts.some(acc => acc.account_id === h.account_id))
+      .filter(h => itemSelectedAccounts.some(acc => acc.account_id === h.account_id))
       .map(holding => {
         const security = getSecurityById(holding.security_id);
         return {
@@ -569,6 +748,7 @@ function buildRawHoldingsExport(selectedAccounts) {
   
   return exportData;
 }
+
 
 function showMessage(msg, type) {
   const el = $('#status-message');
