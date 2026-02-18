@@ -740,11 +740,17 @@ async function activateBank(itemId) {
             return `${year}-${month}-${day}`;
         };
 
-        await performSync(accountIds, formatDate(start), formatDate(end), true);
+        const activationResult = await performSync(accountIds, formatDate(start), formatDate(end), true);
         
         // Refresh accounts to update status (force network)
         await loadAccounts(true);
-        showStatus('Activated successfully', 'success');
+        
+        // If items were activated, inform user that background sync is in progress
+        if (activationResult.activated && activationResult.activated.length > 0) {
+            showStatus('Activation complete! Transactions will be synced automatically in the background.', 'success');
+        } else {
+            showStatus('Activated successfully. Fetching transactions...', 'success');
+        }
 
     } catch (error) {
         alert('Activation failed: ' + error.message);
@@ -3681,13 +3687,34 @@ function testCategoryParsing() {
  */
 function openAddManualTransactionModal() {
   const categoryOptions = buildCategoryOptions('');
-  const today = new Date().toISOString().split('T')[0];
+  
+  // Get today's date in local timezone (not UTC)
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const today = `${year}-${month}-${day}`;
   
   // Build account dropdown from available accounts
   let accountOptions = '<option value="">— Select Account —</option>';
+  let defaultAccountId = '';
+  
   accounts.forEach(account => {
-    accountOptions += `<option value="${escapeHtml(account.plaid_account_id)}">${escapeHtml(account.bank_account)} (${escapeHtml(account.account_subtype)})</option>`;
+    // Use custom_name if available, otherwise use account_name, otherwise use institution_name + account_name
+    const displayName = account.custom_name || account.account_name || account.institution_name || 'Unknown Account';
+    const categoryLabel = account.account_category || '';
+    
+    accountOptions += `<option value="${escapeHtml(account.account_id)}">${escapeHtml(displayName)} (${escapeHtml(categoryLabel)})</option>`;
   });
+  
+  // If in single account mode, default to that account
+  if (selectedAccountMode === 'single' && selectedAccountId) {
+    defaultAccountId = selectedAccountId;
+    accountOptions = accountOptions.replace(
+      `value="${selectedAccountId}"`,
+      `value="${selectedAccountId}" selected`
+    );
+  }
 
   const formHtml = `
     <div style="display: grid; gap: 14px;">
@@ -3795,7 +3822,7 @@ async function saveManualTransaction() {
       description: name,
       amount,
       date,
-      plaid_account_id: accountId,
+      account_id: accountId,  // Use unified account_id (works for both Plaid and manual accounts)
       merchant_name: merchant || null,
       user_category: category || null,
       memo: memo || null
@@ -3828,10 +3855,9 @@ async function saveManualTransaction() {
     
     // Ensure transaction has required fields for rendering
     newTxn.manual_transaction_id = data.manual_transaction_id;
-    newTxn.plaid_account_id = accountId;
+    newTxn.account_id = accountId;
     newTxn.iso_currency_code = 'USD';
     newTxn.source = 'manual';
-    newTxn.bank_account = accountId; // Will be updated after full fetch
     
     // Add to in-memory transactions array
     transactions.unshift(newTxn);
@@ -4447,7 +4473,7 @@ async function submitCreateManualAccount() {
   try {
     showStatus('Creating manual account...', 'info');
 
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts/manual`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
