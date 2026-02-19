@@ -1066,7 +1066,7 @@ function renderTransactionTable() {
   }
   
   html += '<th style="width: 40px;"></th>'; // Delete button column 
-  // TODO: 3a: move delete button to be an icon in the description column to save horizontal space and avoid accidental clicks
+  // TODO: 3f: move delete button to be an icon in the description column to save horizontal space and avoid accidental clicks
 
   html += '</tr></thead><tbody>';
   
@@ -2726,34 +2726,12 @@ function aggregateCategoriesFromFilteredTransactions() {
   
   // Aggregate by category
   const categoryTotals = {};
-  
+
   filteredTransactions.forEach(txn => {
-    const pfc = txn.personal_finance_category;
-    let categoryKey = 'Uncategorized';
-    
-    if (pfc) {
-      if (chartViewMode === 'primary') {
-        categoryKey = (pfc.primary || 'Uncategorized').replace(/_/g, ' ');
-      } else {
-        // Detailed mode
-        const primaryRaw = (pfc.primary || '').replace(/_/g, ' ').trim();
-        const detailedRaw = (pfc.detailed || '').replace(/_/g, ' ').trim();
-        
-        // Use the helper function for consistent trimming
-        const displayNames = getCategoryDisplayNames(pfc);
-        categoryKey = displayNames.trimmed || displayNames.primary || 'Uncategorized';
-      }
-    } else if (txn.category) {
-      // Fallback to legacy category
-      let cat = txn.category;
-      if (typeof cat === 'string' && cat.startsWith('{')) {
-        cat = cat.replace(/^{|}$/g, '').replace(/,/g, ', ');
-      } else if (Array.isArray(cat)) {
-        cat = cat.join(', ');
-      }
-      categoryKey = cat || 'Uncategorized';
-    }
-    
+    // Use user_category — the final label after mappings, rules, and overrides.
+    // Falls back to Uncategorized if not yet categorized.
+    const categoryKey = txn.user_category || 'Uncategorized';
+
     // Sum amounts (use absolute value for visualization)
     const amount = Math.abs(txn.amount || 0);
     categoryTotals[categoryKey] = (categoryTotals[categoryKey] || 0) + amount;
@@ -2796,9 +2774,9 @@ function renderCategoryChart() {
   }
   
   // Create new chart
-  // TODO: 2g: change pie chart to read category from user_category rather than plaid personal_finance_category
-  // TODO: 3b: change pie chart to be drilldown - click on primary category to break down into detailed categories (if available)
-  // For the drilldown: when clicking on a primary category slice, we can filter the transactions to just that primary category and re-render the chart in detailed mode. We can also show a "Back" button to return to the primary view.
+  // TODO: 3b: drilldown pie chart - click a slice to break it into subcategories.
+  // When clicking a slice, filter transactions to that user_category and re-render
+  // in a detailed breakdown. Add a "Back" button to return to the top-level view.
   const ctx = canvas.getContext('2d');
   categoryChart = new Chart(ctx, {
     type: 'pie',
