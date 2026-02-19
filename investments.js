@@ -520,6 +520,7 @@ function renderAccountStatus() {
 }
 
 function renderTable() {
+  // TODO: 3e: build in filtering by securities category.
   const container = $('#table-container');
   
   const selectedAccounts = getSelectedAccounts();
@@ -789,7 +790,9 @@ function exportJSON() {
   link.click();
   URL.revokeObjectURL(url);
 }
-
+// FIXME: entire data export/download seems maybe broken, and we could probably do a better job with the CSV formatting (escaping, etc.) needs more testing at least!
+// TODO: 2f: account balance summary for data exports.
+// for a specific day like balance at end of day on last day of month. THIS IS A KEY DELIVERABLE- users want to be able to export a snapshot of their finances at month-end, not just raw transactions.
 function copyCSV() {
   const csv = buildCSV();
   if (!csv) return;

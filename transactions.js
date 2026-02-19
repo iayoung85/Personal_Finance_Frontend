@@ -1065,7 +1065,8 @@ function renderTransactionTable() {
     html += '<th>Balance Ledger</th>';
   }
   
-  html += '<th style="width: 40px;"></th>'; // Delete button column
+  html += '<th style="width: 40px;"></th>'; // Delete button column 
+  // TODO: 3a: move delete button to be an icon in the description column to save horizontal space and avoid accidental clicks
 
   html += '</tr></thead><tbody>';
   
@@ -1242,6 +1243,8 @@ function renderTransactionTable() {
     }).format(txn.amount);
     
     // Stub balance ledger value (placeholder)
+    // TODO: 1h: build ledger functionality allowing for front end to work seemlessly with backend.
+    // This will involve calculating running balances based on transaction history and any pending transactions.
     const ledgerBalance = '$9,999,999.99';
     
     html += '<tr>';
@@ -2131,7 +2134,8 @@ function exportJSON() {
   link.download = `transactions_${getDateRange()}.json`;
   link.click();
 }
-
+// TODO: 2f: account balance summary for data exports.
+// for a specific day like balance at end of day on last day of month. THIS IS A KEY DELIVERABLE- users want to be able to export a snapshot of their finances at month-end, not just raw transactions.
 function copyCSV() {
   const csv = generateCSV();
   navigator.clipboard.writeText(csv).then(() => {
@@ -2792,6 +2796,9 @@ function renderCategoryChart() {
   }
   
   // Create new chart
+  // TODO: 2g: change pie chart to read category from user_category rather than plaid personal_finance_category
+  // TODO: 3b: change pie chart to be drilldown - click on primary category to break down into detailed categories (if available)
+  // For the drilldown: when clicking on a primary category slice, we can filter the transactions to just that primary category and re-render the chart in detailed mode. We can also show a "Back" button to return to the primary view.
   const ctx = canvas.getContext('2d');
   categoryChart = new Chart(ctx, {
     type: 'pie',
