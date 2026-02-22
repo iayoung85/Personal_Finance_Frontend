@@ -45,16 +45,19 @@ function toggleSidebar() {
   sidebar.classList.toggle('open');
 }
 
-function selectAccount(accountId) {
+async function selectAccount(accountId) {
   selectedAccountMode = 'single';
   selectedAccountId = accountId;
   renderAccountsSidebar();
+  // Fetch running balance data for the ledger column before rendering table
+  await fetchBalanceHistory(accountId);
   renderTransactionTable();
 }
 
 function selectAllAccountsMode() {
   selectedAccountMode = 'all';
   selectedAccountId = null;
+  balanceHistoryLookup = {};
   renderAccountsSidebar();
   renderTransactionTable();
 }

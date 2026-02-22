@@ -281,3 +281,56 @@ async function fetchAllTransactions(forceNetwork = false) {
     showStatus(`Load failed: ${error.message}`, 'error');
   }
 }
+
+// ===== Balance History for Ledger Column =====
+
+async function fetchBalanceHistory(accountId) {
+  /**
+   * Fetches all balance-history rows for a single account and builds
+   * a lookup map: transactionId → running_balance (as a number).
+   * Called when the user selects a single account in the sidebar.
+   * The lookup is consumed by renderTransactionTable to populate
+   * the "Balance Ledger" column.
+   */
+  if (!accountId) {
+    balanceHistoryLookup = {};
+    return;
+  }
+
+  balanceHistoryLoading = true;
+
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/accounts/${accountId}/balance-history?limit=10000`
+    );
+
+    if (!response.ok) {
+      console.error('fetchBalanceHistory: non-OK response', response.status);
+      balanceHistoryLookup = {};
+      return;
+    }
+
+    const data = await response.json();
+    const historyRows = data.balance_history || [];
+
+    const lookup = {};
+    historyRows.forEach(row => {
+      // Key by whichever transaction ID is present (plaid or manual)
+      const transactionKey = row.plaid_transaction_id || row.manual_transaction_id;
+      if (transactionKey) {
+        lookup[transactionKey] = parseFloat(row.running_balance);
+      }
+    });
+
+    balanceHistoryLookup = lookup;
+    console.debug(
+      `fetchBalanceHistory: loaded ${Object.keys(lookup).length} ledger entries for account ${accountId}`
+    );
+
+  } catch (error) {
+    console.error('fetchBalanceHistory error:', error);
+    balanceHistoryLookup = {};
+  } finally {
+    balanceHistoryLoading = false;
+  }
+}

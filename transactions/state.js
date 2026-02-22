@@ -41,3 +41,8 @@ const PASTEL_COLORS = [
 let currentSplitTransaction = null;
 let splitRows = [];
 let isEditingSplit = false;
+
+// Balance ledger state — populated when a single account is selected
+// Maps transaction ID (plaid or manual) to its running balance string
+let balanceHistoryLookup = {};
+let balanceHistoryLoading = false;

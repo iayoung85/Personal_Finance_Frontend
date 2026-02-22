@@ -2166,3 +2166,33 @@ tr:hover {
 .confirmation-dialog-buttons .cancel-btn:hover {
   background: #e0e0e0;
 }
+
+/* ============================================================
+   Balance Ledger Column (Phase 2-C)
+   Appears when a single account is selected in the sidebar.
+   ============================================================ */
+
+.ledger-cell {
+  text-align: right;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: #2e7d32;
+}
+
+.ledger-amount-cell {
+  text-align: right;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ledger-negative {
+  color: #d32f2f;
+}
+
+.ledger-unavailable {
+  color: #999;
+  font-style: italic;
+}

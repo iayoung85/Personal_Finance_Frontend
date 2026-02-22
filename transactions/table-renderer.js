@@ -195,10 +195,12 @@ function renderTransactionTable() {
           timeZone: 'UTC'
         });
         
+        // Negate for display so sign matches ledger convention
+        const displayAmount = -split.amount;
         const amount = new Intl.NumberFormat('en-US', { 
           style: 'currency', 
           currency: split.iso_currency_code || 'USD' 
-        }).format(split.amount);
+        }).format(displayAmount);
         
         // Add split styling class and border class
         // Note: isFirstSplit/isLastSplit now refer to rendered splits, not original splits
@@ -220,8 +222,12 @@ function renderTransactionTable() {
         html += `<tr class="${rowClass}">
           <td>${escapeHtml(dateStr)}</td>
           <td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>
-          <td>${escapeHtml(split.name || '—')}</td>
-          <td>${amount}</td>`;
+          <td>${escapeHtml(split.name || '—')}</td>`;
+        
+        // When ledger column is NOT shown, amount stays in normal position
+        if (!showLedgerColumn) {
+          html += `<td>${amount}</td>`;
+        }
         
         // Add source column if needed
         if (optionalFields.includes('source')) {
@@ -294,12 +300,34 @@ function renderTransactionTable() {
         
         // Add split action badges on first row only
         if (isFirstSplit) {
+          // When ledger is shown, add amount + ledger columns for split rows
+          if (showLedgerColumn) {
+            html += `<td class="ledger-amount-cell">${amount}</td>`;
+            // Top child shows the parent transaction's running balance
+            const parentLookupKey = txn.plaid_transaction_id || txn.manual_transaction_id;
+            const parentRunningBalance = balanceHistoryLookup[parentLookupKey];
+            if (parentRunningBalance !== undefined) {
+              const formattedParentBalance = new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: split.iso_currency_code || 'USD'
+              }).format(parentRunningBalance);
+              const negativeClass = parentRunningBalance < 0 ? ' ledger-negative' : '';
+              html += `<td class="ledger-cell${negativeClass}">${formattedParentBalance}</td>`;
+            } else {
+              html += '<td class="ledger-cell ledger-unavailable">—</td>';
+            }
+          }
           html += `<td class="split-actions-cell">
             <span class="split-badge-inline">Split</span>
             <button class="split-badge-btn split-modify-badge" onclick="modifySplitModal('${escapeHtml(splitTransactionId)}')" title="Modify splits">✎</button>
             <button class="split-badge-btn split-delete-badge" onclick="handleDeleteSplit('${escapeHtml(splitTransactionId)}')" title="Delete splits">🗑</button>
           </td>`;
         } else {
+          // Non-top split children: show amount but dash for ledger
+          if (showLedgerColumn) {
+            html += `<td class="ledger-amount-cell">${amount}</td>`;
+            html += '<td class="ledger-cell ledger-unavailable">—</td>';
+          }
           html += `<td></td>`;
         }
         
@@ -320,15 +348,30 @@ function renderTransactionTable() {
       timeZone: 'UTC'
     });
     
+    // Negate for display so sign matches ledger convention:
+    // positive = money in (deposits, refunds), negative = money out (purchases, charges)
+    const displayAmount = -txn.amount;
     const amount = new Intl.NumberFormat('en-US', { 
       style: 'currency', 
       currency: txn.iso_currency_code || 'USD' 
-    }).format(txn.amount);
+    }).format(displayAmount);
     
-    // Stub balance ledger value (placeholder)
-    // TODO: 1h: build ledger functionality allowing for front end to work seemlessly with backend.
-    // This will involve calculating running balances based on transaction history and any pending transactions.
-    const ledgerBalance = '$9,999,999.99';
+    // Look up running balance from the balance-history data fetched when account was selected
+    let ledgerBalanceHtml = '';
+    if (showLedgerColumn) {
+      const lookupKey = txn.plaid_transaction_id || txn.manual_transaction_id;
+      const runningBalance = balanceHistoryLookup[lookupKey];
+      if (runningBalance !== undefined) {
+        const formattedBalance = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: txn.iso_currency_code || 'USD'
+        }).format(runningBalance);
+        const negativeClass = runningBalance < 0 ? ' ledger-negative' : '';
+        ledgerBalanceHtml = `<td class="ledger-cell${negativeClass}">${formattedBalance}</td>`;
+      } else {
+        ledgerBalanceHtml = '<td class="ledger-cell ledger-unavailable">—</td>';
+      }
+    }
     
     html += '<tr>';
     html += `<td>${dateStr}</td>`;
@@ -446,8 +489,8 @@ function renderTransactionTable() {
 
     // In single account view, add amount and balance ledger columns before delete button
     if (showLedgerColumn) {
-      html += `<td>${amount}</td>`;
-      html += `<td>${ledgerBalance}</td>`;
+      html += `<td class="ledger-amount-cell">${amount}</td>`;
+      html += ledgerBalanceHtml;
     }
 
     // Add delete button for manual transactions only
