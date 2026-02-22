@@ -113,6 +113,17 @@ function renderTransactionTable() {
     return;
   }
   
+  // Sort: date descending, then transaction ID descending within same day.
+  // Mirrors backend balance engine order (date ASC, txn_id ASC) reversed,
+  // so the ledger column reads naturally: balance[row] - amount[row] = balance[next row]
+  filteredTransactions.sort((rowA, rowB) => {
+    const dateComparison = rowB.date.localeCompare(rowA.date);
+    if (dateComparison !== 0) return dateComparison;
+    const idA = rowA.plaid_transaction_id || rowA.manual_transaction_id || '';
+    const idB = rowB.plaid_transaction_id || rowB.manual_transaction_id || '';
+    return idB.localeCompare(idA);
+  });
+  
   // Determine if we're in single account mode to show ledger column
   const showLedgerColumn = selectedAccountMode === 'single' && selectedAccountId;
   
