@@ -278,6 +278,23 @@
   </div>
 
   <script src="config.js"></script>
-  <script src="transactions.js"></script>
+
+  <!-- Modularised transactions scripts (Phase 2-A) -->
+  <!-- state.js MUST load first (shared variable declarations) -->
+  <!-- main.js MUST load last  ($(document).ready orchestrator) -->
+  <script src="transactions/state.js"></script>
+  <script src="transactions/utils.js"></script>
+  <script src="transactions/api.js"></script>
+  <script src="transactions/categories.js"></script>
+  <script src="transactions/filters.js"></script>
+  <script src="transactions/settings.js"></script>
+  <script src="transactions/accounts-sidebar.js"></script>
+  <script src="transactions/insights.js"></script>
+  <script src="transactions/chart.js"></script>
+  <script src="transactions/table-renderer.js"></script>
+  <script src="transactions/export.js"></script>
+  <script src="transactions/manual-transactions.js"></script>
+  <script src="transactions/split-transactions.js"></script>
+  <script src="transactions/main.js"></script>
 </body>
 </html>
