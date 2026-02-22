@@ -772,7 +772,8 @@ async function performSync(accountIds, startDate, endDate, activate = false, for
       end_date: endDate,
       account_ids: accountIds,
       activate: activate,
-      force: force
+      force: force,
+      sync_all: 'True'
     })
   });
   
