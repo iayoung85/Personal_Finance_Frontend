@@ -102,11 +102,34 @@ function setLastMonth() {
   renderTransactionTable();
 }
 
-function toggleConfig() {
-  const content = document.getElementById('config-content');
-  const icon = document.getElementById('toggle-icon');
-  content.classList.toggle('open');
-  icon.textContent = content.classList.contains('open') ? '▲' : '▼';
+/**
+ * Open the settings modal (replaces the old collapsible config panel).
+ */
+function openConfigModal() {
+  document.getElementById('config-modal').classList.remove('hidden');
+}
+
+/**
+ * Close the settings modal.
+ */
+function closeConfigModal() {
+  document.getElementById('config-modal').classList.add('hidden');
+}
+
+/**
+ * Open the expense chart modal.
+ */
+function openChartModal() {
+  document.getElementById('chart-modal').classList.remove('hidden');
+  // Re-render chart when modal opens so canvas sizes correctly
+  renderCategoryChart();
+}
+
+/**
+ * Close the expense chart modal.
+ */
+function closeChartModal() {
+  document.getElementById('chart-modal').classList.add('hidden');
 }
 
 // ===== Dynamic Period Buttons =====

@@ -387,9 +387,9 @@ function renderTransactionTable() {
           <div class="category-ac-list" data-txn-id="${txnId}"></div>
         </div>
         <div class="category-buttons">
-          <button class="secondary category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
-          <button class="secondary category-rule" data-txn-id="${txnId}" data-account-id="${accountId}">Rule</button>
-          <button class="secondary category-split" data-txn-id="${txnId}" onclick="window.splitModalTxnId='${escapeHtml(txnId)}'; openSplitModal(transactions.find(t => (t.plaid_transaction_id || t.manual_transaction_id) === '${escapeHtml(txnId)}')); return false;" title="Split this transaction">Split</button>
+          <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
+          <button class="category-rule" data-txn-id="${txnId}" data-account-id="${accountId}">Rule</button>
+          <button class="category-split" data-txn-id="${txnId}" onclick="window.splitModalTxnId='${escapeHtml(txnId)}'; openSplitModal(transactions.find(t => (t.plaid_transaction_id || t.manual_transaction_id) === '${escapeHtml(txnId)}')); return false;" title="Split this transaction">Split</button>
         </div>
       </div>
     ` : '<span class="pill">N/A</span>';
@@ -436,9 +436,9 @@ function renderTransactionTable() {
         const safeMemoValue = escapeHtml(memoValue);
         html += `
           <td>
-            <div style="display: flex; gap: 6px; align-items: center;">
-              <input class="memo-input" type="text" maxlength="256" value="${safeMemoValue}" style="width: 100%; min-width: 160px;">
-              <button class="secondary memo-save" data-txn-id="${txnId}">Save</button>
+            <div style="display: flex; gap: 3px; align-items: center;">
+              <input class="memo-input" type="text" maxlength="256" value="${safeMemoValue}" style="width: 100%; min-width: 100px; padding: 2px 4px; font-size: 12px;">
+              <button class="memo-save" data-txn-id="${txnId}" style="padding: 2px 6px; font-size: 10px;">Save</button>
             </div>
           </td>
         `;

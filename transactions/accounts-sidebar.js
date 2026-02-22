@@ -109,7 +109,7 @@ async function loadAccounts() {
       account_name: a.account_name || '',
       account_category: a.account_category || a.account_type || '',
       account_subcategory: a.account_subcategory || a.account_subtype || '',
-      current_balance: a.current_balance || 0,
+      current_balance: parseFloat(a.current_balance) || 0,
       custom_name: a.custom_name || null,
       source_type: a.source_type || 'manual',
       mask: a.mask || null,
@@ -251,10 +251,12 @@ function renderAccountsSidebar() {
 
       grouped.active[cat].forEach(acc => {
         const displayName = acc.custom_name || acc.account_name;
+        const currentBalance = acc.current_balance || 0;
         const balanceStr = new Intl.NumberFormat('en-US', { 
           style: 'currency', 
           currency: 'USD' 
-        }).format(acc.current_balance || 0);
+        }).format(currentBalance);
+        const balanceColorClass = currentBalance < 0 ? 'sidebar-account-balance-negative' : 'sidebar-account-balance';
 
         const isSelected = selectedAccountMode === 'single' && selectedAccountId === acc.account_id;
         const selectedClass = isSelected ? 'selected' : '';
@@ -265,7 +267,7 @@ function renderAccountsSidebar() {
               <span>${displayName}</span>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
-              <div class="sidebar-account-balance">${balanceStr}</div>
+              <div class="${balanceColorClass}">${balanceStr}</div>
               <button class="secondary" style="padding: 2px 6px; font-size: 10px;" 
                       onclick="event.stopPropagation(); promptRename('${acc.account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
                 Rename

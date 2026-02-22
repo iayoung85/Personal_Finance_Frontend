@@ -142,6 +142,19 @@ function renderInsightsPanel() {
       </div>
     `;
   });
+
+  // Chart insight card — click opens chart modal
+  html += `
+    <div class="insight-card insight-chart-card"
+         onclick="openChartModal()"
+         title="View expense breakdown chart">
+      <div class="insight-icon">📊</div>
+      <div class="insight-content">
+        <div class="insight-label">Chart</div>
+      </div>
+    </div>
+  `;
+
   html += '</div>';
 
   container.innerHTML = html;

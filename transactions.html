@@ -28,8 +28,6 @@
       </div>
     </div>
     
-    <h1>Transaction Viewer</h1>
-    <!-- TODO: 3d: add transaction search bar somewhere -->
     <!-- Main Content Wrapper -->
     <div class="main-wrapper">
       <!-- Accounts Sidebar -->
@@ -41,147 +39,172 @@
 
       <!-- Main Content Area -->
       <div class="main-content">
-    
-    <!-- Configuration Panel -->
-    <div class="config-panel">
-      <div class="config-header" onclick="toggleConfig()">
-        <span>Configuration</span>
-        <span id="toggle-icon">▲</span>
-      </div>
-      <div class="config-content open" id="config-content">
-        
-        <div class="config-layout">
-          <!-- Left Column: Controls -->
-          <div class="config-left">
-            <!-- Date Range -->
-            <div class="config-section">
-              <h3>Date Range (up to 90 days of transaction data is available)</h3>
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <input type="date" id="start-date">
-                <input type="date" id="end-date">
-                <button onclick="setEarliestToDate()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Earliest to Date</button>
-                <button onclick="setMonthToDate()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Month to Date</button>
-                <button onclick="setLastMonth()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Last Month</button>
-              </div>
-              <!-- Dynamic Period Buttons -->
-              <div id="dynamic-period-buttons" style="display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
-                <!-- Buttons will be generated dynamically based on transaction data -->
-              </div>
-            </div>
-            
-            <!-- Timezone -->
-            <div class="config-section">
-              <h3>Timezone</h3>
-              <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                <select id="timezone">
-                  <option value="America/New_York">Eastern Time (ET)</option>
-                  <option value="America/Chicago" selected>Central Time (CT)</option>
-                  <option value="America/Denver">Mountain Time (MT)</option>
-                  <option value="America/Los_Angeles">Pacific Time (PT)</option>
-                  <option value="UTC">UTC</option>
-                </select>
-                <label style="display: flex; align-items: center; gap: 6px; font-weight: 500;">
-                  <input type="checkbox" id="hide-transfers" checked>
-                  <span>Hide transfers</span>
-                </label>
-                <label style="display: flex; align-items: center; gap: 6px; font-weight: 500;">
-                  <input type="checkbox" id="show-overrides-only">
-                  <span>Show overrides only</span>
-                </label>
-              </div>
+
+        <!-- ── Filter Strip (always visible) ────────────────── -->
+        <div class="filter-strip">
+          <!-- Date Range Row -->
+          <div class="filter-row">
+            <div class="filter-group filter-group-dates">
+              <input type="date" id="start-date">
+              <span class="filter-separator">to</span>
+              <input type="date" id="end-date">
+              <button onclick="setEarliestToDate()" class="btn-quick-range">Earliest</button>
+              <button onclick="setMonthToDate()" class="btn-quick-range">MTD</button>
+              <button onclick="setLastMonth()" class="btn-quick-range">Last Month</button>
             </div>
 
-            <!-- Optional Fields -->
-            <div class="config-section">
-              <h3>Optional Fields</h3>
-              <div class="optional-fields-grid">
-                <label><input type="checkbox" class="field-checkbox" value="merchant_name"> Merchant Name</label>
-                <label><input type="checkbox" class="field-checkbox" value="payment_channel"> Payment Channel</label>
-                <label><input type="checkbox" class="field-checkbox" value="pending"> Pending Status</label>
-                <label><input type="checkbox" class="field-checkbox" value="check_number"> Check Number</label>
-                <label><input type="checkbox" class="field-checkbox" value="original_description"> Original Description</label>
-                <label><input type="checkbox" class="field-checkbox" value="authorized_date"> Authorized Date</label>
-                <label><input type="checkbox" class="field-checkbox" value="authorized_datetime"> Authorized Time</label>
-                <label><input type="checkbox" class="field-checkbox" value="personal_finance_category"> Plaid's Category</label>
-                <label><input type="checkbox" class="field-checkbox" value="user_memo"> Memo</label>
-                <label><input type="checkbox" class="field-checkbox" value="source"> Source (Plaid/Manual)</label>
-              </div>
+            <div class="filter-group filter-group-categories">
+              <select id="filter-primary-category" onchange="onFilterPrimaryChange()">
+                <option value="">— All Categories —</option>
+              </select>
+              <select id="filter-detailed-category" onchange="onFilterDetailedChange()">
+                <option value="">— All Detailed —</option>
+              </select>
+              <button onclick="clearCategoryFilters()" class="btn-quick-range">Clear</button>
             </div>
-            
-            <!-- Action Buttons -->
-            <div class="config-section">
-              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                <button onclick="syncTransactions()">Re-sync transactions with Plaid</button>
-                <!-- TODO: 3c move manual transactions button outside of config-section -->
-                <button onclick="openAddManualTransactionModal()" style="background: #1967d2;">Add Manual Transaction</button>
-                <button onclick="saveSettings()" class="secondary">Save Settings</button>
-                
-                <!-- Export Buttons (initially hidden until data loaded) -->
-                <div id="export-buttons" class="export-buttons hidden">
-                  <button onclick="exportJSON()" class="secondary">Export JSON</button>
-                  <button onclick="copyCSV()" class="secondary">Copy CSV</button>
-                  <button onclick="downloadCSV()" class="secondary">Download CSV</button>
-                </div>
-              </div>
-              <div id="status-message"></div>
+
+            <div id="dynamic-period-buttons" class="filter-group filter-group-periods">
+              <!-- Buttons generated dynamically based on transaction data -->
             </div>
-          </div>
-          
-          <!-- Right Column: Chart Visualization -->
-          <div class="config-right">
-            <div class="chart-header">
-              <h3 style="margin: 0 0 10px 0;">Expense Category Breakdown</h3>
-              <div class="chart-toggle-buttons">
-                <button id="chart-primary-btn" class="chart-toggle-btn active" onclick="switchChartView('primary')">Primary</button>
-                <button id="chart-detailed-btn" class="chart-toggle-btn" onclick="switchChartView('detailed')">Detailed</button>
-              </div>
-            </div>
-            <div class="chart-container">
-              <canvas id="category-chart"></canvas>
-              <div id="chart-empty-state" class="chart-empty-state">No transaction data to visualize</div>
-            </div>
-            
-            <!-- Category Filter Section -->
-            <div class="config-section" style="margin-top: 20px;">
-              <h3 style="margin: 0 0 10px 0;">Filter by Category</h3>
-              <div style="display: flex; flex-direction: column; gap: 10px;">
-                <div>
-                  <label style="display: block; margin-bottom: 4px; font-size: 14px; font-weight: 500;">Primary Category:</label>
-                  <select id="filter-primary-category" onchange="onFilterPrimaryChange()" style="width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px;">
-                    <option value="">— All Categories —</option>
-                  </select>
-                </div>
-                <div>
-                  <label style="display: block; margin-bottom: 4px; font-size: 14px; font-weight: 500;">Detailed Category:</label>
-                  <select id="filter-detailed-category" onchange="onFilterDetailedChange()" style="width: 100%; padding: 6px 8px; border: 1px solid #ddd; border-radius: 4px;">
-                    <option value="">— All Detailed Categories —</option>
-                  </select>
-                </div>
-                <div style="display: flex; gap: 8px;">
-                  <button onclick="clearCategoryFilters()" class="secondary" style="flex: 1; padding: 6px 12px; font-size: 13px;">Clear Filters</button>
-                </div>
-              </div>
+
+            <div class="filter-group filter-group-toggles">
+              <label class="toggle-label">
+                <input type="checkbox" id="hide-transfers" checked>
+                <span>Hide transfers</span>
+              </label>
+              <label class="toggle-label">
+                <input type="checkbox" id="show-overrides-only">
+                <span>Overrides only</span>
+              </label>
             </div>
           </div>
         </div>
-        
-      </div>
-    </div>
-    
-    <!-- Spending Insights Panel -->
-    <div id="insights-container" class="insights-panel">
-      <div class="insights-empty">Select accounts and date range to view insights</div>
-    </div>
-    
-    <!-- Transaction Table -->
-    <div id="table-container">
-      <div class="empty-state">
-        Configure your settings above and click "Sync Transactions" to get started.
-      </div>
-    </div>
+
+        <!-- ── Spending Insights Panel ──────────────────────── -->
+        <div id="insights-container" class="insights-panel">
+          <div class="insights-empty">Select accounts and date range to view insights</div>
+        </div>
+
+        <!-- ── Action Row ───────────────────────────────────── -->
+        <div class="action-row">
+          <div class="action-row-left">
+            <button onclick="syncTransactions()" class="btn-action btn-sync">⟳ Re-sync</button>
+            <button onclick="openAddManualTransactionModal()" class="btn-action btn-manual-txn">+ Manual Txn</button>
+          </div>
+          <div class="action-row-right">
+            <button onclick="openConfigModal()" class="btn-action btn-config" title="Settings">⚙</button>
+          </div>
+        </div>
+        <div id="status-message"></div>
+
+        <!-- ── Pending Transactions Placeholder (Phase 2-D) ── -->
+        <div id="pending-table-container" class="pending-table-container"></div>
+
+        <!-- ── Transaction Scroll Pane ──────────────────────── -->
+        <div class="transaction-scroll-pane">
+          <div id="table-container">
+            <div class="empty-state">
+              Select accounts and date range to view transactions.
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Export Bar (pinned bottom) ───────────────────── -->
+        <div class="export-bar">
+          <div class="export-group">
+            <span class="export-group-label">Transactions</span>
+            <div id="export-buttons" class="export-buttons hidden">
+              <button onclick="exportJSON()" class="btn-export">JSON</button>
+              <button onclick="downloadCSV()" class="btn-export">CSV</button>
+              <button onclick="copyCSV()" class="btn-export">Copy CSV</button>
+            </div>
+          </div>
+          <div class="export-group">
+            <span class="export-group-label">Balance Summary</span>
+            <div class="export-buttons">
+              <!-- TODO: 2-E — Month-end balance snapshot export buttons -->
+              <button class="btn-export" disabled title="Coming soon">JSON</button>
+              <button class="btn-export" disabled title="Coming soon">CSV</button>
+              <button class="btn-export" disabled title="Coming soon">Copy CSV</button>
+            </div>
+          </div>
+          <div class="export-group">
+            <span class="export-group-label">Category Summary</span>
+            <div class="export-buttons">
+              <!-- TODO: 2-E — Category summary export buttons -->
+              <button class="btn-export" disabled title="Coming soon">JSON</button>
+              <button class="btn-export" disabled title="Coming soon">CSV</button>
+              <button class="btn-export" disabled title="Coming soon">Copy CSV</button>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
+  </div>
+
+  <!-- ═══ Config Modal (settings popup) ═══ -->
+  <div id="config-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>⚙ Settings</h2>
+        <button class="modal-close" onclick="closeConfigModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Timezone -->
+        <div class="config-section">
+          <h3>Timezone</h3>
+          <select id="timezone">
+            <option value="America/New_York">Eastern Time (ET)</option>
+            <option value="America/Chicago" selected>Central Time (CT)</option>
+            <option value="America/Denver">Mountain Time (MT)</option>
+            <option value="America/Los_Angeles">Pacific Time (PT)</option>
+            <option value="UTC">UTC</option>
+          </select>
+        </div>
+        <!-- Optional Fields -->
+        <div class="config-section">
+          <h3>Optional Table Columns</h3>
+          <div class="optional-fields-grid">
+            <label><input type="checkbox" class="field-checkbox" value="merchant_name"> Merchant Name</label>
+            <label><input type="checkbox" class="field-checkbox" value="payment_channel"> Payment Channel</label>
+            <label><input type="checkbox" class="field-checkbox" value="pending"> Pending Status</label>
+            <label><input type="checkbox" class="field-checkbox" value="check_number"> Check Number</label>
+            <label><input type="checkbox" class="field-checkbox" value="original_description"> Original Description</label>
+            <label><input type="checkbox" class="field-checkbox" value="authorized_date"> Authorized Date</label>
+            <label><input type="checkbox" class="field-checkbox" value="authorized_datetime"> Authorized Time</label>
+            <label><input type="checkbox" class="field-checkbox" value="personal_finance_category"> Plaid's Category</label>
+            <label><input type="checkbox" class="field-checkbox" value="user_memo"> Memo</label>
+            <label><input type="checkbox" class="field-checkbox" value="source"> Source (Plaid/Manual)</label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="secondary" onclick="closeConfigModal()">Close</button>
+        <button onclick="saveSettings()">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Chart Modal (expense breakdown) ═══ -->
+  <div id="chart-modal" class="modal-overlay hidden">
+    <div class="modal modal-chart">
+      <div class="modal-header">
+        <h2>Expense Category Breakdown</h2>
+        <button class="modal-close" onclick="closeChartModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="chart-toggle-buttons">
+          <button id="chart-primary-btn" class="chart-toggle-btn active" onclick="switchChartView('primary')">Primary</button>
+          <button id="chart-detailed-btn" class="chart-toggle-btn" onclick="switchChartView('detailed')">Detailed</button>
+        </div>
+        <div class="chart-container">
+          <canvas id="category-chart"></canvas>
+          <div id="chart-empty-state" class="chart-empty-state">No transaction data to visualize</div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Create Manual Account Modal -->
