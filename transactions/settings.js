@@ -21,7 +21,8 @@ async function saveSettings() {
       field_order: ['datetime', 'bank_account', 'name', 'amount', ...optionalFields],
       timezone: timezone,
       hide_transfers: hideTransfers,
-      show_overrides_only: showOverridesOnly
+      show_overrides_only: showOverridesOnly,
+      show_pending: document.getElementById('show-pending-toggle').checked
     };
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transaction_viewer_settings`, {
@@ -85,4 +86,8 @@ function applySettings(settings) {
   // Apply show_overrides_only setting (default to false if not set)
   const showOverridesOnly = settings.show_overrides_only !== undefined ? settings.show_overrides_only : false;
   document.getElementById('show-overrides-only').checked = showOverridesOnly;
+
+  // Apply show_pending setting (default to false if not set)
+  const showPending = settings.show_pending !== undefined ? settings.show_pending : false;
+  document.getElementById('show-pending-toggle').checked = showPending;
 }

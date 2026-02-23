@@ -9,15 +9,14 @@ function generateSpendingInsights() {
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
   const selectedAccounts = getSelectedAccounts();
-  const showPendingCheckbox = document.querySelector('.field-checkbox[value="pending"]:checked');
   const hideTransfers = document.getElementById('hide-transfers').checked;
   const showOverridesOnly = document.getElementById('show-overrides-only').checked;
 
-  // Get filtered transactions (same filter as table)
+  // Get filtered transactions (same filter as table, but always exclude pending)
   const filteredTransactions = transactions.filter(txn => {
     if (txn.date < startDate || txn.date > endDate) return false;
     if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.account_id || txn.plaid_account_id)) return false;
-    if (txn.pending && !showPendingCheckbox) return false;
+    if (txn.pending) return false;
     if (hideTransfers) {
       const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
       if (/transfer/i.test(primaryCat)) return false;

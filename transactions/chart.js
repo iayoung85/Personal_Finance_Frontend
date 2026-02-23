@@ -20,7 +20,6 @@ function aggregateCategoriesFromFilteredTransactions() {
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
   const selectedAccounts = getSelectedAccounts();
-  const showPendingCheckbox = document.querySelector('.field-checkbox[value="pending"]:checked');
   const hideTransfers = document.getElementById('hide-transfers').checked;
   
   const filteredTransactions = transactions.filter(txn => {
@@ -34,8 +33,8 @@ function aggregateCategoriesFromFilteredTransactions() {
       return false;
     }
     
-    // Filter pending transactions
-    if (txn.pending && !showPendingCheckbox) {
+    // Always exclude pending from chart aggregation
+    if (txn.pending) {
       return false;
     }
 

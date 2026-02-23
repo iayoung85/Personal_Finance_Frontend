@@ -2196,3 +2196,49 @@ tr:hover {
   color: #999;
   font-style: italic;
 }
+
+/* ============================================================
+   Pending Transactions (Phase 2-D)
+   Muted rows with amber accent, displayed above posted rows
+   when "Show Pending" is toggled on in settings.
+   ============================================================ */
+
+.pending-tbody {
+  background: #fffdf5;
+}
+
+.pending-row {
+  opacity: 0.72;
+}
+
+.pending-row td {
+  color: #7a6e52;
+  border-bottom-color: #f0ead8;
+}
+
+.pending-badge {
+  display: inline-block;
+  background: #fff3cd;
+  color: #856404;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid #ffc107;
+  margin-right: 4px;
+  vertical-align: middle;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.pending-separator-row td {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b08d24;
+  background: linear-gradient(to right, #fff, #fff8e1, #fff);
+  padding: 4px 0;
+  border-top: 1px dashed #e0d5a0;
+  border-bottom: 1px dashed #e0d5a0;
+  letter-spacing: 0.5px;
+}

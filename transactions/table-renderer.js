@@ -10,6 +10,7 @@ function renderTransactionTable() {
   if (transactions.length === 0) {
     container.innerHTML = '<div class="empty-state">No transactions found. Sync transactions first.</div>';
     document.getElementById('export-buttons').classList.add('hidden');
+    document.getElementById('pending-table-container').innerHTML = '';
     renderInsightsPanel(); // Still render empty insights
     return;
   }
@@ -18,7 +19,7 @@ function renderTransactionTable() {
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
   const selectedAccounts = getSelectedAccounts();
-  const showPendingCheckbox = document.querySelector('.field-checkbox[value="pending"]:checked');
+  const showPendingEnabled = document.getElementById('show-pending-toggle').checked;
   const hideTransfers = document.getElementById('hide-transfers').checked;
   
   // Get selected optional fields
@@ -39,8 +40,9 @@ function renderTransactionTable() {
       return false;
     }
     
-    // Filter pending transactions - only show if pending checkbox is checked
-    if (txn.pending && !showPendingCheckbox) {
+    // Filter pending transactions — always exclude pending from main filter
+    // pass. Pending txns are handled separately below when showPending is on.
+    if (txn.pending && !showPendingEnabled) {
       return false;
     }
 
@@ -108,24 +110,58 @@ function renderTransactionTable() {
   if (filteredTransactions.length === 0) {
     container.innerHTML = '<div class="empty-state">No transactions found for the selected criteria.</div>';
     document.getElementById('export-buttons').classList.add('hidden');
+    document.getElementById('pending-table-container').innerHTML = '';
     renderCategoryChart(); // Clear chart when no data
     renderInsightsPanel(); // Still render empty insights
     return;
   }
   
-  // Sort: date descending, then transaction ID descending within same day.
-  // Mirrors backend balance engine order (date ASC, txn_id ASC) reversed,
-  // so the ledger column reads naturally: balance[row] - amount[row] = balance[next row]
-  filteredTransactions.sort((rowA, rowB) => {
+  // Separate pending from posted transactions
+  const pendingTransactions = filteredTransactions.filter(txn => txn.pending);
+  const postedTransactions = filteredTransactions.filter(txn => !txn.pending);
+  
+  // Sort helper: date descending, then transaction ID descending within same day
+  // Mirrors backend balance engine order (date ASC, txn_id ASC) reversed
+  const sortNewestFirst = (rowA, rowB) => {
     const dateComparison = rowB.date.localeCompare(rowA.date);
     if (dateComparison !== 0) return dateComparison;
     const idA = rowA.plaid_transaction_id || rowA.manual_transaction_id || '';
     const idB = rowB.plaid_transaction_id || rowB.manual_transaction_id || '';
     return idB.localeCompare(idA);
-  });
+  };
   
-  // Determine if we're in single account mode to show ledger column
+  postedTransactions.sort(sortNewestFirst);
+  pendingTransactions.sort(sortNewestFirst);
+  
+  // Compute projected ledger balances for pending transactions.
+  // Pending txns are excluded from backend balance history, so we project
+  // forward from the account's current_balance (which reflects all posted txns).
+  const pendingLedgerLookup = {};
   const showLedgerColumn = selectedAccountMode === 'single' && selectedAccountId;
+  
+  if (showLedgerColumn && pendingTransactions.length > 0) {
+    const selectedAccount = accounts.find(account => account.account_id === selectedAccountId);
+    const currentPostedBalance = selectedAccount ? selectedAccount.current_balance : 0;
+    
+    // Walk pending in balance-engine order (date ASC, txn_id ASC) to accumulate
+    const pendingAscending = [...pendingTransactions].reverse();
+    let runningProjected = currentPostedBalance;
+    pendingAscending.forEach(txn => {
+      // Negate from Plaid convention (positive=outflow) to ledger convention
+      runningProjected += (-txn.amount);
+      const lookupKey = txn.plaid_transaction_id || txn.manual_transaction_id;
+      if (lookupKey) {
+        pendingLedgerLookup[lookupKey] = runningProjected;
+      }
+    });
+  }
+  
+  // Build the combined rendering list: pending rows first, then posted
+  const hasPendingToShow = showPendingEnabled && pendingTransactions.length > 0;
+  const allRowTransactions = hasPendingToShow
+    ? [...pendingTransactions, ...postedTransactions]
+    : postedTransactions;
+  let pendingSectionEnded = !hasPendingToShow;
   
   let html = '<table><thead><tr>';
   html += '<th>Date</th>';
@@ -144,7 +180,6 @@ function renderTransactionTable() {
   // Add optional headers
   if (optionalFields.includes('merchant_name')) html += '<th>Merchant</th>';
   if (optionalFields.includes('payment_channel')) html += '<th>Channel</th>';
-  if (optionalFields.includes('pending')) html += '<th>Pending</th>';
   if (optionalFields.includes('check_number')) html += '<th>Check #</th>';
   if (optionalFields.includes('original_description')) html += '<th>Original Desc</th>';
   if (optionalFields.includes('authorized_date')) html += '<th>Auth Date</th>';
@@ -162,12 +197,43 @@ function renderTransactionTable() {
   html += '<th style="width: 40px;"></th>'; // Delete button column 
   // TODO: 3f: move delete button to be an icon in the description column to save horizontal space and avoid accidental clicks
 
-  html += '</tr></thead><tbody>';
+  html += '</tr></thead>';
+  
+  // Calculate column count for separator row
+  let colCount = 4; // Date, Bank, Description, Delete
+  if (!showLedgerColumn) colCount++; // Amount in normal position
+  if (optionalFields.includes('source')) colCount++;
+  colCount++; // Category
+  if (optionalFields.includes('merchant_name')) colCount++;
+  if (optionalFields.includes('payment_channel')) colCount++;
+  if (optionalFields.includes('check_number')) colCount++;
+  if (optionalFields.includes('original_description')) colCount++;
+  if (optionalFields.includes('authorized_date')) colCount++;
+  if (optionalFields.includes('authorized_datetime')) colCount++;
+  if (optionalFields.includes('personal_finance_category')) colCount++;
+  if (optionalFields.includes('user_memo')) colCount++;
+  if (showLedgerColumn) colCount += 2; // Amount + Balance Ledger
+  
+  // Open first tbody — pending if applicable, otherwise posted
+  if (hasPendingToShow) {
+    html += '<tbody class="pending-tbody">';
+  } else {
+    html += '<tbody>';
+  }
   
   // Track which transactions we've already rendered (split children)
   const renderedTxnIds = new Set();
   
-  filteredTransactions.forEach(txn => {
+  allRowTransactions.forEach(txn => {
+    // Insert separator row when transitioning from pending to posted section
+    if (!pendingSectionEnded && !txn.pending) {
+      pendingSectionEnded = true;
+      const pendingCount = pendingTransactions.length;
+      html += `<tr class="pending-separator-row"><td colspan="${colCount}">▲ ${pendingCount} Pending Transaction${pendingCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
+      html += '</tbody><tbody>'; // End pending tbody, start posted tbody
+    }
+    
+    const isPendingRow = !!txn.pending;
     // Skip if this is a split child that we'll render as part of a group
     if (txn.is_split && txn.transaction_id && txn.transaction_id.includes('_split_')) {
       return; // Split children are rendered as part of parent group
@@ -228,12 +294,13 @@ function renderTransactionTable() {
           }
           return true;
         }).length;
-        const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}`;
+        const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}${isPendingRow ? ' pending-row' : ''}`;
         
+        const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
         html += `<tr class="${rowClass}">
           <td>${escapeHtml(dateStr)}</td>
           <td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>
-          <td>${escapeHtml(split.name || '—')}</td>`;
+          <td>${pendingBadge}${escapeHtml(split.name || '—')}</td>`;
         
         // When ledger column is NOT shown, amount stays in normal position
         if (!showLedgerColumn) {
@@ -263,9 +330,6 @@ function renderTransactionTable() {
         }
         if (optionalFields.includes('payment_channel')) {
           html += `<td>${escapeHtml(split.payment_channel || '')}</td>`;
-        }
-        if (optionalFields.includes('pending')) {
-          html += `<td>${split.pending ? 'Yes' : 'No'}</td>`;
         }
         if (optionalFields.includes('check_number')) {
           html += `<td>${escapeHtml(split.check_number || '')}</td>`;
@@ -316,7 +380,9 @@ function renderTransactionTable() {
             html += `<td class="ledger-amount-cell">${amount}</td>`;
             // Top child shows the parent transaction's running balance
             const parentLookupKey = txn.plaid_transaction_id || txn.manual_transaction_id;
-            const parentRunningBalance = balanceHistoryLookup[parentLookupKey];
+            const parentRunningBalance = isPendingRow
+              ? pendingLedgerLookup[parentLookupKey]
+              : balanceHistoryLookup[parentLookupKey];
             if (parentRunningBalance !== undefined) {
               const formattedParentBalance = new Intl.NumberFormat('en-US', {
                 style: 'currency',
@@ -368,10 +434,13 @@ function renderTransactionTable() {
     }).format(displayAmount);
     
     // Look up running balance from the balance-history data fetched when account was selected
+    // For pending rows, use the projected balance computed from current_balance
     let ledgerBalanceHtml = '';
     if (showLedgerColumn) {
       const lookupKey = txn.plaid_transaction_id || txn.manual_transaction_id;
-      const runningBalance = balanceHistoryLookup[lookupKey];
+      const runningBalance = isPendingRow
+        ? pendingLedgerLookup[lookupKey]
+        : balanceHistoryLookup[lookupKey];
       if (runningBalance !== undefined) {
         const formattedBalance = new Intl.NumberFormat('en-US', {
           style: 'currency',
@@ -384,10 +453,11 @@ function renderTransactionTable() {
       }
     }
     
-    html += '<tr>';
+    const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
+    html += `<tr${isPendingRow ? ' class="pending-row"' : ''}>`;
     html += `<td>${dateStr}</td>`;
     html += `<td>${txn.bank_account}</td>`;
-    html += `<td>${txn.name || ''}</td>`;
+    html += `<td>${pendingBadge}${txn.name || ''}</td>`;
     
     // In all accounts view, add amount here; in single account view, it goes later
     if (!showLedgerColumn) {
@@ -452,7 +522,6 @@ function renderTransactionTable() {
     // Add optional cells
     if (optionalFields.includes('merchant_name')) html += `<td>${txn.merchant_name || ''}</td>`;
     if (optionalFields.includes('payment_channel')) html += `<td>${txn.payment_channel || ''}</td>`;
-    if (optionalFields.includes('pending')) html += `<td>${txn.pending ? 'Yes' : 'No'}</td>`;
     if (optionalFields.includes('check_number')) html += `<td>${txn.check_number || ''}</td>`;
     if (optionalFields.includes('original_description')) html += `<td>${txn.original_description || ''}</td>`;
     if (optionalFields.includes('authorized_date')) html += `<td>${txn.authorized_date || ''}</td>`;
