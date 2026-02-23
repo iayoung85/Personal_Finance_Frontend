@@ -94,6 +94,11 @@ $(document).ready(async function() {
     renderTransactionTable();
   });
 
+  // Re-render when show-pending toggle changes
+  $(document).on('change', '#show-pending-toggle', function() {
+    renderTransactionTable();
+  });
+
   // Manual categorize handler
   $(document).on('click', '.manual-category-save', function() {
     const txnId = $(this).data('txn-id');
