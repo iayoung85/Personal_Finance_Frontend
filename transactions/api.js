@@ -315,8 +315,7 @@ async function fetchBalanceHistory(accountId) {
 
     const lookup = {};
     historyRows.forEach(row => {
-      // Key by whichever transaction ID is present (plaid or manual)
-      const transactionKey = row.plaid_transaction_id || row.manual_transaction_id;
+      const transactionKey = row.transaction_id;
       if (transactionKey) {
         lookup[transactionKey] = parseFloat(row.running_balance);
       }
