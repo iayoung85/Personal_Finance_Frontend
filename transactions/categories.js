@@ -573,8 +573,7 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        user_category: categoryString,
-        plaid_account_id: accountId
+        user_category: categoryString
       })
     });
 
@@ -980,7 +979,7 @@ async function applyManualCategory(txnId, accountId) {
     const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/transactions/${encodeURIComponent(txnId)}/categorize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_category: selectedCategory, plaid_account_id: accountId })
+      body: JSON.stringify({ user_category: selectedCategory })
     });
     const data = await response.json();
     if (!response.ok) {
