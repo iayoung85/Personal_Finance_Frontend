@@ -110,7 +110,7 @@
         plaid_account_id: 'plaid_123',
         plaid_item_id: 'item_1',
         institution_name: 'Chase',
-        is_active: true,
+        is_archived: false,
         billed_products: ['transactions']
       },
       {
@@ -121,7 +121,7 @@
         current_balance: 12000.00,
         custom_name: 'Emergency Fund',
         source_type: 'manual',
-        is_active: true,
+        is_archived: false,
         billed_products: []
       },
       {
@@ -135,7 +135,7 @@
         plaid_account_id: 'plaid_456',
         plaid_item_id: 'item_2',
         institution_name: 'Capital One',
-        is_active: true,
+        is_archived: false,
         billed_products: ['transactions']
       },
       {
@@ -149,7 +149,7 @@
         plaid_account_id: 'plaid_789',
         plaid_item_id: 'item_3',
         institution_name: 'Vanguard',
-        is_active: true,
+        is_archived: false,
         billed_products: ['transactions']
       },
       {
@@ -163,7 +163,7 @@
         plaid_account_id: 'plaid_mortgage',
         plaid_item_id: 'item_4',
         institution_name: 'Wells Fargo',
-        is_active: true,
+        is_archived: false,
         billed_products: ['transactions']
       },
       {
@@ -177,7 +177,7 @@
         plaid_account_id: 'plaid_inactive',
         plaid_item_id: 'item_inactive',
         institution_name: 'Ally Bank',
-        is_active: true,
+        is_archived: false,
         billed_products: [] // Not activated
       }
     ];
@@ -291,11 +291,11 @@
 
       // Separate active and inactive accounts
       const activeAccounts = accounts.filter(a => 
-        a.is_active && (a.source_type !== 'plaid' || (a.billed_products && a.billed_products.includes('transactions')))
+        !a.is_archived && (a.source_type !== 'plaid' || (a.billed_products && a.billed_products.includes('transactions')))
       );
       
       const inactiveAccounts = accounts.filter(a => 
-        a.is_active && a.source_type === 'plaid' && (!a.billed_products || !a.billed_products.includes('transactions'))
+        !a.is_archived && a.source_type === 'plaid' && (!a.billed_products || !a.billed_products.includes('transactions'))
       );
 
       // Group active accounts by category

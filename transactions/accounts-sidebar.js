@@ -117,7 +117,7 @@ async function loadAccounts() {
       source_type: a.source_type || 'manual',
       mask: a.mask || null,
       last_updated: a.last_balance_update || a.last_updated || null,
-      is_active: a.is_active !== false,
+      is_archived: a.is_archived || false,
       billed_products: a.billed_products || [],
       available_products: a.available_products || []
     }))
