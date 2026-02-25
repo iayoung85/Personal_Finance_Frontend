@@ -117,12 +117,18 @@ function closeConfigModal() {
 }
 
 /**
- * Open the expense chart modal.
+ * Toggle the expense chart modal open/closed.
+ * Replaces the old openChartModal so the same 📊 button opens AND closes the chart.
  */
-function openChartModal() {
-  document.getElementById('chart-modal').classList.remove('hidden');
-  // Re-render chart when modal opens so canvas sizes correctly
-  renderCategoryChart();
+function toggleChartModal() {
+  const modal = document.getElementById('chart-modal');
+  if (modal.classList.contains('hidden')) {
+    modal.classList.remove('hidden');
+    // Re-render chart when modal opens so canvas sizes correctly
+    renderCategoryChart();
+  } else {
+    modal.classList.add('hidden');
+  }
 }
 
 /**

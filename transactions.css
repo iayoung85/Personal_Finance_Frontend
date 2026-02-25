@@ -726,6 +726,18 @@ tr:hover {
   border-color: #182742;
 }
 
+.chart-back-btn {
+  background: #f0e6d4;
+  color: #6b5a3e;
+  border-color: #d4c4a8;
+  font-size: 12px;
+  padding: 5px 12px;
+}
+
+.chart-back-btn:hover {
+  background: #e6d9c2;
+}
+
 .chart-container {
   position: relative;
   flex: 1;
@@ -1683,6 +1695,11 @@ tr:hover {
 .source-badge.manual {
   background: #c5d9f5;
   color: #1967d2;
+}
+
+.source-badge.opening-balance {
+  background: #fce4b8;
+  color: #8a6400;
 }
 
 /* Delete Button for Manual Transactions */

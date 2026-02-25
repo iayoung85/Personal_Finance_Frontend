@@ -2,84 +2,147 @@
 // transactions/chart.js — Category Chart Visualization
 // Aggregates filtered transactions by category and renders
 // a Chart.js pie chart with toggle between primary/detailed.
+// Supports drilldown: click a primary slice to see detailed
+// subcategories for that primary, with a "← Back" button.
 // ============================================================
 
 function switchChartView(mode) {
   chartViewMode = mode;
+  chartDrilldownPrimary = null; // Reset drilldown when switching view mode
   
   // Update button states
   document.getElementById('chart-primary-btn').classList.toggle('active', mode === 'primary');
   document.getElementById('chart-detailed-btn').classList.toggle('active', mode === 'detailed');
+  _updateDrilldownBackButton();
   
   // Re-render chart
   renderCategoryChart();
 }
 
-function aggregateCategoriesFromFilteredTransactions() {
-  // Get the same filtered transactions that the table uses
+/**
+ * Show/hide the drilldown "← Back" button based on current state.
+ */
+function _updateDrilldownBackButton() {
+  let backBtn = document.getElementById('chart-drilldown-back');
+  if (!backBtn) return;
+  
+  if (chartDrilldownPrimary) {
+    backBtn.classList.remove('hidden');
+    backBtn.textContent = `← Back from "${chartDrilldownPrimary}"`;
+  } else {
+    backBtn.classList.add('hidden');
+  }
+}
+
+/**
+ * Exit drilldown mode and return to top-level primary chart.
+ */
+function chartDrilldownBack() {
+  chartDrilldownPrimary = null;
+  chartViewMode = 'primary';
+  document.getElementById('chart-primary-btn').classList.add('active');
+  document.getElementById('chart-detailed-btn').classList.remove('active');
+  _updateDrilldownBackButton();
+  renderCategoryChart();
+}
+
+function _getFilteredTransactionsForChart() {
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
   const selectedAccounts = getSelectedAccounts();
   const hideTransfers = document.getElementById('hide-transfers').checked;
   
-  const filteredTransactions = transactions.filter(txn => {
-    // Filter by date range
-    if (txn.date < startDate || txn.date > endDate) {
-      return false;
-    }
-    
-    // Filter by selected accounts (use account_id for both Plaid and future custom accounts)
-    if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.account_id || txn.plaid_account_id)) {
-      return false;
-    }
-    
-    // Always exclude pending from chart aggregation
-    if (txn.pending) {
-      return false;
-    }
+  return transactions.filter(txn => {
+    if (txn.date < startDate || txn.date > endDate) return false;
+    if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.account_id || txn.plaid_account_id)) return false;
+    if (txn.pending) return false;
 
-    // Hide transfers if requested
     if (hideTransfers) {
       const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
-      if (/transfer/i.test(primaryCat)) {
-        return false;
-      }
+      if (/transfer/i.test(primaryCat)) return false;
     }
 
-    // Exclude income transactions from chart
     if (txn.personal_finance_category && txn.personal_finance_category.primary) {
       const primaryCat = txn.personal_finance_category.primary;
-      if (/income/i.test(primaryCat)) {
-        return false;
-      }
+      if (/income/i.test(primaryCat)) return false;
     }
     
     return true;
   });
-  
-  // Aggregate by category
+}
+
+function aggregateCategoriesFromFilteredTransactions() {
+  const filteredTransactions = _getFilteredTransactionsForChart();
   const categoryTotals = {};
 
   filteredTransactions.forEach(txn => {
-    // Use user_category — the final label after mappings, rules, and overrides.
-    // Falls back to Uncategorized if not yet categorized.
     const categoryKey = txn.user_category || 'Uncategorized';
-
-    // Sum amounts (use absolute value for visualization)
     const amount = Math.abs(txn.amount || 0);
     categoryTotals[categoryKey] = (categoryTotals[categoryKey] || 0) + amount;
   });
   
-  // Convert to array and sort by amount descending
-  const categoriesArray = Object.entries(categoryTotals)
+  return Object.entries(categoryTotals)
     .map(([category, total]) => ({ category, total }))
     .sort((a, b) => b.total - a.total);
-  
-  return categoriesArray;
+}
+
+/**
+ * Aggregate transactions by primary category only (for top-level pie).
+ * Returns array of { category, total } sorted by total descending.
+ */
+function _aggregateByPrimary() {
+  const filteredTransactions = _getFilteredTransactionsForChart();
+  const totals = {};
+
+  filteredTransactions.forEach(txn => {
+    const fullCategory = txn.user_category || 'Uncategorized';
+    const parsed = parseCategoryString(fullCategory);
+    const primaryKey = parsed.primary || 'Uncategorized';
+    const amount = Math.abs(txn.amount || 0);
+    totals[primaryKey] = (totals[primaryKey] || 0) + amount;
+  });
+
+  return Object.entries(totals)
+    .map(([category, total]) => ({ category, total }))
+    .sort((a, b) => b.total - a.total);
+}
+
+/**
+ * Aggregate only transactions whose primary category matches the drilldown,
+ * grouping by full user_category (primary: detailed).
+ */
+function _aggregateDetailedForPrimary(primaryCategory) {
+  const filteredTransactions = _getFilteredTransactionsForChart();
+  const totals = {};
+
+  filteredTransactions.forEach(txn => {
+    const fullCategory = txn.user_category || 'Uncategorized';
+    const parsed = parseCategoryString(fullCategory);
+    const txnPrimary = parsed.primary || 'Uncategorized';
+
+    if (txnPrimary !== primaryCategory) return;
+
+    // Group by the detailed part (or "Other" if no detailed)
+    const detailedKey = parsed.detailed || txnPrimary;
+    const amount = Math.abs(txn.amount || 0);
+    totals[detailedKey] = (totals[detailedKey] || 0) + amount;
+  });
+
+  return Object.entries(totals)
+    .map(([category, total]) => ({ category, total }))
+    .sort((a, b) => b.total - a.total);
 }
 
 function renderCategoryChart() {
-  const categoryData = aggregateCategoriesFromFilteredTransactions();
+  // Determine which data to show based on drilldown state
+  let categoryData;
+  if (chartDrilldownPrimary) {
+    categoryData = _aggregateDetailedForPrimary(chartDrilldownPrimary);
+  } else if (chartViewMode === 'primary') {
+    categoryData = _aggregateByPrimary();
+  } else {
+    categoryData = aggregateCategoriesFromFilteredTransactions();
+  }
   const canvas = document.getElementById('category-chart');
   const emptyState = document.getElementById('chart-empty-state');
   
@@ -106,10 +169,8 @@ function renderCategoryChart() {
     categoryChart.destroy();
   }
   
-  // Create new chart
-  // TODO: 3b: drilldown pie chart - click a slice to break it into subcategories.
-  // When clicking a slice, filter transactions to that user_category and re-render
-  // in a detailed breakdown. Add a "Back" button to return to the top-level view.
+  // Create chart with drilldown support — clicking a primary slice
+  // transitions to a detailed subcategory breakdown for that primary.
   const ctx = canvas.getContext('2d');
   categoryChart = new Chart(ctx, {
     type: 'pie',
@@ -125,6 +186,19 @@ function renderCategoryChart() {
     options: {
       responsive: true,
       maintainAspectRatio: true,
+      // Drilldown: clicking a primary slice drills into detailed subcategories
+      onClick: function(event, elements) {
+        if (!elements || elements.length === 0) return;
+        // Only allow drilldown from primary view (not already drilled down)
+        if (chartDrilldownPrimary) return;
+        if (chartViewMode !== 'primary') return;
+
+        const clickedIndex = elements[0].index;
+        const clickedLabel = labels[clickedIndex];
+        chartDrilldownPrimary = clickedLabel;
+        _updateDrilldownBackButton();
+        renderCategoryChart();
+      },
       plugins: {
         legend: {
           position: 'right',

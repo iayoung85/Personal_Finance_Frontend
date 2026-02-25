@@ -125,8 +125,8 @@ function renderTransactionTable() {
   const sortNewestFirst = (rowA, rowB) => {
     const dateComparison = rowB.date.localeCompare(rowA.date);
     if (dateComparison !== 0) return dateComparison;
-    const idA = rowA.plaid_transaction_id || rowA.manual_transaction_id || '';
-    const idB = rowB.plaid_transaction_id || rowB.manual_transaction_id || '';
+    const idA = rowA.transaction_id || '';
+    const idB = rowB.transaction_id || '';
     return idB.localeCompare(idA);
   };
   
@@ -147,9 +147,9 @@ function renderTransactionTable() {
     const pendingAscending = [...pendingTransactions].reverse();
     let runningProjected = currentPostedBalance;
     pendingAscending.forEach(txn => {
-      // Negate from Plaid convention (positive=outflow) to ledger convention
-      runningProjected += (-txn.amount);
-      const lookupKey = txn.plaid_transaction_id || txn.manual_transaction_id;
+      // Amount is already in ledger convention (positive=inflow, negative=outflow)
+      runningProjected += txn.amount;
+      const lookupKey = txn.transaction_id;
       if (lookupKey) {
         pendingLedgerLookup[lookupKey] = runningProjected;
       }
@@ -241,7 +241,8 @@ function renderTransactionTable() {
     
     // Check if this is a split parent (has splits array)
     if (txn.is_split && txn.splits && txn.splits.length > 0) {
-      const splitTransactionId = txn.splits[0]?.split_transaction_id || '';
+      // Use parent's unified transaction_id for split API calls (modify/delete)
+      const parentTxnId = txn.transaction_id || '';
       
       // Filter and render each split child as actual table rows
       let renderedSplitCount = 0;
@@ -272,8 +273,8 @@ function renderTransactionTable() {
           timeZone: 'UTC'
         });
         
-        // Negate for display so sign matches ledger convention
-        const displayAmount = -split.amount;
+        // Amount is already in ledger convention (positive=inflow, negative=outflow)
+        const displayAmount = split.amount;
         const amount = new Intl.NumberFormat('en-US', { 
           style: 'currency', 
           currency: split.iso_currency_code || 'USD' 
@@ -379,7 +380,7 @@ function renderTransactionTable() {
           if (showLedgerColumn) {
             html += `<td class="ledger-amount-cell">${amount}</td>`;
             // Top child shows the parent transaction's running balance
-            const parentLookupKey = txn.plaid_transaction_id || txn.manual_transaction_id;
+            const parentLookupKey = txn.transaction_id;
             const parentRunningBalance = isPendingRow
               ? pendingLedgerLookup[parentLookupKey]
               : balanceHistoryLookup[parentLookupKey];
@@ -396,8 +397,8 @@ function renderTransactionTable() {
           }
           html += `<td class="split-actions-cell">
             <span class="split-badge-inline">Split</span>
-            <button class="split-badge-btn split-modify-badge" onclick="modifySplitModal('${escapeHtml(splitTransactionId)}')" title="Modify splits">✎</button>
-            <button class="split-badge-btn split-delete-badge" onclick="handleDeleteSplit('${escapeHtml(splitTransactionId)}')" title="Delete splits">🗑</button>
+            <button class="split-badge-btn split-modify-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Modify splits">✎</button>
+            <button class="split-badge-btn split-delete-badge" onclick="handleDeleteSplit('${escapeHtml(parentTxnId)}')" title="Delete splits">🗑</button>
           </td>`;
         } else {
           // Non-top split children: show amount but dash for ledger
@@ -411,7 +412,7 @@ function renderTransactionTable() {
         html += `</tr>`;
       });
       
-      renderedTxnIds.add(txn.plaid_transaction_id || txn.manual_transaction_id);
+      renderedTxnIds.add(txn.transaction_id);
       return;
     }
 
@@ -425,9 +426,9 @@ function renderTransactionTable() {
       timeZone: 'UTC'
     });
     
-    // Negate for display so sign matches ledger convention:
+    // Amount is already in ledger convention:
     // positive = money in (deposits, refunds), negative = money out (purchases, charges)
-    const displayAmount = -txn.amount;
+    const displayAmount = txn.amount;
     const amount = new Intl.NumberFormat('en-US', { 
       style: 'currency', 
       currency: txn.iso_currency_code || 'USD' 
@@ -437,7 +438,7 @@ function renderTransactionTable() {
     // For pending rows, use the projected balance computed from current_balance
     let ledgerBalanceHtml = '';
     if (showLedgerColumn) {
-      const lookupKey = txn.plaid_transaction_id || txn.manual_transaction_id;
+      const lookupKey = txn.transaction_id;
       const runningBalance = isPendingRow
         ? pendingLedgerLookup[lookupKey]
         : balanceHistoryLookup[lookupKey];
@@ -465,14 +466,28 @@ function renderTransactionTable() {
     }
 
     // Determine source and transaction IDs
-    const isManual = !!txn.manual_transaction_id;
-    const txnId = txn.plaid_transaction_id || txn.manual_transaction_id || '';
-    const accountId = txn.plaid_account_id || '';
+    const isOpeningBalance = txn.source === 'opening_balance' || txn.source === 'manual_opening_balance';
+    const isManual = txn.source === 'manual' || isOpeningBalance;
+    const txnId = txn.transaction_id || '';
+    const accountId = txn.account_id || '';
     
     // Add source badge if source field is selected
     if (optionalFields.includes('source')) {
-      const sourceLabel = isManual ? 'Manual' : 'Plaid';
-      const sourceBadge = `<span class="source-badge ${isManual ? 'manual' : 'plaid'}" title="${isManual ? 'Added manually by user' : 'From Plaid'}">${sourceLabel}</span>`;
+      let sourceLabel, sourceCssClass, sourceTitle;
+      if (isOpeningBalance) {
+        sourceLabel = 'Opening Bal';
+        sourceCssClass = 'opening-balance';
+        sourceTitle = txn.source === 'manual_opening_balance' ? 'Auto-generated manual opening balance' : 'Opening balance';
+      } else if (txn.source === 'manual') {
+        sourceLabel = 'Manual';
+        sourceCssClass = 'manual';
+        sourceTitle = 'Added manually by user';
+      } else {
+        sourceLabel = 'Plaid';
+        sourceCssClass = 'plaid';
+        sourceTitle = 'From Plaid';
+      }
+      const sourceBadge = `<span class="source-badge ${sourceCssClass}" title="${sourceTitle}">${sourceLabel}</span>`;
       html += `<td>${sourceBadge}</td>`;
     }
     
@@ -494,29 +509,36 @@ function renderTransactionTable() {
     const currentFullCategory = buildCategoryString(currentParsed.primary, currentParsed.detailed);
 
     // Create combined category cell with autocomplete input + buttons
-    const overrideBadge = txn.is_override
-      ? `<span class="override-badge" title="This transaction has a manual override — rules will not change its category">Override <button class='clear-override' data-txn-id='${txnId}' onclick='clearOverride(event)'>X</button></span>`
-      : '';
-    
-    // Build split badge if transaction can be split
-    const splitBadge = (!txn.is_split) ? '' : `<span class="split-badge" title="This transaction is split">Split</span>`;
-    
-    const categoryCell = txnId ? `
-      <div class="category-cell">
-        <div class="category-display">${splitBadge}${overrideBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div>
-        <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
-          <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
-                 value="${escapeHtml(currentFullCategory)}" placeholder="Type to search categories…"
-                 autocomplete="off" spellcheck="false">
-          <div class="category-ac-list" data-txn-id="${txnId}"></div>
+    // Opening balance transactions have locked category — no overrides, rules, or splits allowed
+    let categoryCell;
+    if (isOpeningBalance) {
+      const openingBalBadge = '<span class="source-badge opening-balance" title="Opening balance — category is locked">Opening Bal</span>';
+      categoryCell = `<div class="category-cell"><div class="category-display">${openingBalBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
+    } else {
+      const overrideBadge = txn.is_override
+        ? `<span class="override-badge" title="This transaction has a manual override — rules will not change its category">Override <button class='clear-override' data-txn-id='${txnId}' onclick='clearOverride(event)'>X</button></span>`
+        : '';
+      
+      // Build split badge if transaction can be split
+      const splitBadge = (!txn.is_split) ? '' : `<span class="split-badge" title="This transaction is split">Split</span>`;
+      
+      categoryCell = txnId ? `
+        <div class="category-cell">
+          <div class="category-display">${splitBadge}${overrideBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div>
+          <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
+            <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
+                   value="${escapeHtml(currentFullCategory)}" placeholder="Type to search categories…"
+                   autocomplete="off" spellcheck="false">
+            <div class="category-ac-list" data-txn-id="${txnId}"></div>
+          </div>
+          <div class="category-buttons">
+            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
+            <button class="category-rule" data-txn-id="${txnId}" data-account-id="${accountId}">Rule</button>
+            <button class="category-split" data-txn-id="${txnId}" onclick="window.splitModalTxnId='${escapeHtml(txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(txnId)}')); return false;" title="Split this transaction">Split</button>
+          </div>
         </div>
-        <div class="category-buttons">
-          <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
-          <button class="category-rule" data-txn-id="${txnId}" data-account-id="${accountId}">Rule</button>
-          <button class="category-split" data-txn-id="${txnId}" onclick="window.splitModalTxnId='${escapeHtml(txnId)}'; openSplitModal(transactions.find(t => (t.plaid_transaction_id || t.manual_transaction_id) === '${escapeHtml(txnId)}')); return false;" title="Split this transaction">Split</button>
-        </div>
-      </div>
-    ` : '<span class="pill">N/A</span>';
+      ` : '<span class="pill">N/A</span>';
+    }
     html += `<td>${categoryCell}</td>`;
 
     // Add optional cells
@@ -573,15 +595,15 @@ function renderTransactionTable() {
       html += ledgerBalanceHtml;
     }
 
-    // Add delete button for manual transactions only
-    if (isManual) {
+    // Add delete button for manual transactions only (not opening balance or plaid)
+    if (txn.source === 'manual') {
       html += `
         <td style="text-align: center;">
           <button class="delete-transaction-btn" onclick="deleteManualTransaction('${escapeHtml(txnId)}')" title="Delete manual transaction">🗑</button>
         </td>
       `;
     } else {
-      html += '<td></td>'; // Empty cell for Plaid transactions
+      html += '<td></td>'; // Empty cell for Plaid and opening balance transactions
     }
 
     html += '</tr>';
@@ -615,15 +637,14 @@ async function saveTransactionMemo(transactionId, userMemo, buttonEl) {
 
   try {
     // Determine if this is a manual or Plaid transaction
-    const txn = transactions.find(t => (t.plaid_transaction_id || t.manual_transaction_id) === transactionId);
-    const isManual = txn && !!txn.manual_transaction_id;
+    const txn = transactions.find(t => t.transaction_id === transactionId);
+    const isManual = txn && (txn.source === 'manual' || txn.source === 'opening_balance' || txn.source === 'manual_opening_balance');
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/add-memo`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        plaid_transaction_id: !isManual ? transactionId : undefined,
-        manual_transaction_id: isManual ? transactionId : undefined,
+        transaction_id: transactionId,
         user_memo: trimmedMemo
       })
     });

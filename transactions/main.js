@@ -105,7 +105,7 @@ $(document).ready(async function() {
     const select = $(`.manual-category-select[data-txn-id="${txnId}"]`);
     const selectedCategory = select.val();
     const accountId = select.data('account-id');
-    const txn = transactions.find(t => (t.transaction_id || t.plaid_transaction_id) === txnId);
+    const txn = transactions.find(t => t.transaction_id === txnId);
     if (!txnId || !accountId) {
       showStatus('Unable to categorize: missing transaction or account id', 'error');
       return;

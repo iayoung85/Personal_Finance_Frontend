@@ -145,7 +145,7 @@ function renderInsightsPanel() {
   // Chart insight card — click opens chart modal
   html += `
     <div class="insight-card insight-chart-card"
-         onclick="openChartModal()"
+         onclick="toggleChartModal()"
          title="View expense breakdown chart">
       <div class="insight-icon">📊</div>
       <div class="insight-content">

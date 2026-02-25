@@ -130,9 +130,11 @@ async function loadAccounts() {
     console.debug('loadAccounts: mapped', accounts.length, 'accounts');
 
     // 3) For Plaid-linked accounts, fetch item-level product info for activation status
+    // Why connection_status not origin: origin is immutable birth record.
+    // Only actively linked accounts have a live plaid_item_id to query.
     const plaidItemIds = [...new Set(
       accounts
-        .filter(a => a.origin === 'plaid')
+        .filter(a => a.connection_status === 'linked')
         .map(a => a.plaid_item_id)
         .filter(Boolean)
     )];
@@ -215,7 +217,10 @@ function renderAccountsSidebar() {
 
   accounts.forEach(acc => {
     // Check if this account's Plaid item (if Plaid) has transactions billed
-    const isActive = acc.origin !== 'plaid' || acc.billed_products.includes('transactions');
+    // Why connection_status not origin: a converted plaid account (origin='plaid',
+    // connection_status='converted') operates as manual and should be active.
+    // Only actively-Plaid-linked accounts need billed_products check.
+    const isActive = acc.connection_status !== 'linked' || acc.billed_products.includes('transactions');
     
     if (isActive) {
       const cat = acc.account_category || 'asset';
@@ -381,7 +386,7 @@ function getSelectedAccounts() {
   if (selectedAccountMode === 'all') {
     // Return all account IDs (active only - Plaid items with transactions billed)
     return accounts
-      .filter(a => a.origin !== 'plaid' || a.billed_products.includes('transactions'))
+      .filter(a => a.connection_status !== 'linked' || a.billed_products.includes('transactions'))
       .map(a => a.account_id);
   } else if (selectedAccountMode === 'single' && selectedAccountId) {
     // Return single selected account

@@ -21,7 +21,6 @@ function openAddManualTransactionModal() {
   let defaultAccountId = '';
   
   accounts.forEach(account => {
-    // Use custom_name if available, otherwise use account_name, otherwise use institution_name + account_name
     const displayName = account.custom_name || account.account_name || account.institution_name || 'Unknown Account';
     const categoryLabel = account.account_category || '';
     
@@ -39,16 +38,24 @@ function openAddManualTransactionModal() {
 
   const formHtml = `
     <div style="display: grid; gap: 14px;">
+      <div id="manual-txn-error-banner" style="display:none; padding: 8px 12px; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 4px; color: #b91c1c; font-size: 13px;"></div>
       <div>
         <label style="display: block; font-weight: 500; margin-bottom: 6px;">Description *</label>
         <input id="manual-txn-name" type="text" placeholder="e.g., Coffee at local shop" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;" maxlength="128">
         <small style="color: #666; margin-top: 2px; display: block;">Brief description of transaction</small>
       </div>
       
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+      <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px;">
         <div>
           <label style="display: block; font-weight: 500; margin-bottom: 6px;">Amount *</label>
           <input id="manual-txn-amount" type="number" placeholder="0.00" step="0.01" min="0" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+        </div>
+        <div>
+          <label style="display: block; font-weight: 500; margin-bottom: 6px;">Type *</label>
+          <select id="manual-txn-type" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+            <option value="debit" selected>Debit (−)</option>
+            <option value="credit">Credit (+)</option>
+          </select>
         </div>
         <div>
           <label style="display: block; font-weight: 500; margin-bottom: 6px;">Date *</label>
@@ -94,6 +101,17 @@ function openAddManualTransactionModal() {
     ]
   });
   
+  // Wire up account selection to show advisory for plaid accounts
+  // and auto-set date to day before opening balance for plaid accounts
+  setTimeout(() => {
+    const accountSelect = document.getElementById('manual-txn-account');
+    if (accountSelect) {
+      accountSelect.addEventListener('change', _updateManualTxnDateConstraints);
+      // Trigger immediately if account is pre-selected
+      if (accountSelect.value) _updateManualTxnDateConstraints();
+    }
+  }, 50);
+  
   // Add Enter key listener for Create button
   setTimeout(() => {
     const inputs = document.querySelectorAll('#manual-txn-name, #manual-txn-amount, #manual-txn-date, #manual-txn-merchant, #manual-txn-memo');
@@ -109,41 +127,80 @@ function openAddManualTransactionModal() {
 }
 
 /**
+ * Show an inline validation error inside the manual transaction modal.
+ * Clears after 5 seconds automatically.
+ */
+function _showManualTxnError(message) {
+  const banner = document.getElementById('manual-txn-error-banner');
+  if (!banner) {
+    // Fallback to global status if modal is gone
+    showStatus(message, 'error');
+    return;
+  }
+  banner.textContent = message;
+  banner.style.display = 'block';
+  // Auto-clear after 5 seconds
+  clearTimeout(banner._clearTimer);
+  banner._clearTimer = setTimeout(() => { banner.style.display = 'none'; }, 5000);
+}
+
+/**
  * Save a new manual transaction via API
  */
 async function saveManualTransaction() {
   const name = document.getElementById('manual-txn-name').value.trim();
   const amount = parseFloat(document.getElementById('manual-txn-amount').value);
+  const txnType = document.getElementById('manual-txn-type').value;
   const date = document.getElementById('manual-txn-date').value;
   const accountId = document.getElementById('manual-txn-account').value;
   const merchant = document.getElementById('manual-txn-merchant').value.trim();
   const category = document.getElementById('manual-txn-category').value;
   const memo = document.getElementById('manual-txn-memo').value.trim();
 
-  // Validate required fields
+  // Validate required fields — show errors inline on the modal
   if (!name) {
-    showStatus('Description is required', 'error');
+    _showManualTxnError('Description is required');
     return;
   }
   if (!amount || amount <= 0 || isNaN(amount)) {
-    showStatus('Amount must be a positive number', 'error');
+    _showManualTxnError('Amount must be a positive number');
     return;
   }
   if (!date) {
-    showStatus('Date is required', 'error');
+    _showManualTxnError('Date is required');
     return;
   }
   if (!accountId) {
-    showStatus('Please select an account', 'error');
+    _showManualTxnError('Please select an account');
     return;
+  }
+
+  // Date validation depends on whether this is a plaid or offline account
+  const selectedAccount = accounts.find(account => account.account_id === accountId);
+  // Why connection_status not origin: origin is immutable (how the account was born),
+  // but connection_status reflects current lifecycle. A converted plaid account
+  // (connection_status='converted') now operates as manual — no date restriction.
+  const isActivelyLinkedToPlaid = selectedAccount && selectedAccount.connection_status === 'linked';
+  const openingBalanceTxn = transactions.find(
+    txn => txn.source === 'opening_balance' && txn.account_id === accountId
+  );
+
+  if (isActivelyLinkedToPlaid && openingBalanceTxn) {
+    // Plaid accounts: manual transactions MUST be before the opening balance date.
+    // Backend will auto-generate a manual_opening_balance to reconcile.
+    if (date >= openingBalanceTxn.date) {
+      _showManualTxnError(`Plaid account: date must be before the opening balance (${openingBalanceTxn.date}). Manual transactions in Plaid accounts are only for historical entries.`);
+      return;
+    }
   }
 
   try {
     const payload = {
       description: name,
       amount,
+      type: txnType,
       date,
-      account_id: accountId,  // Use unified account_id (works for both Plaid and manual accounts)
+      account_id: accountId,
       merchant_name: merchant || null,
       user_category: category || null,
       memo: memo || null
@@ -158,7 +215,7 @@ async function saveManualTransaction() {
     const data = await response.json();
 
     if (!response.ok) {
-      showStatus(data.error || 'Failed to create manual transaction', 'error');
+      _showManualTxnError(data.error || 'Failed to create manual transaction');
       return;
     }
 
@@ -175,7 +232,7 @@ async function saveManualTransaction() {
     const newTxn = data.transaction || {};
     
     // Ensure transaction has required fields for rendering
-    newTxn.manual_transaction_id = data.manual_transaction_id;
+    newTxn.transaction_id = data.transaction_id || newTxn.transaction_id;
     newTxn.account_id = accountId;
     newTxn.iso_currency_code = 'USD';
     newTxn.source = 'manual';
@@ -201,7 +258,7 @@ async function saveManualTransaction() {
     }
 
   } catch (error) {
-    showStatus(`Failed to create transaction: ${error.message}`, 'error');
+    _showManualTxnError(`Failed to create transaction: ${error.message}`);
   }
 }
 
@@ -235,4 +292,60 @@ async function deleteManualTransaction(manualTransactionId) {
   } catch (error) {
     showStatus(`Failed to delete transaction: ${error.message}`, 'error');
   }
+}
+
+/**
+ * Update date input and advisory when the user selects an account in the manual txn modal.
+ *
+ * Plaid accounts: manual transactions are for historical entries that occurred
+ * BEFORE the opening balance. Auto-set date to the day before the opening balance
+ * and set max date constraint. Backend generates a manual_opening_balance to reconcile.
+ *
+ * Offline/manual accounts: no date restriction. Date defaults to today.
+ */
+function _updateManualTxnDateConstraints() {
+  const accountSelect = document.getElementById('manual-txn-account');
+  const dateInput = document.getElementById('manual-txn-date');
+  if (!accountSelect || !dateInput) return;
+
+  const accountId = accountSelect.value;
+  if (!accountId) return;
+
+  const selectedAccount = accounts.find(account => account.account_id === accountId);
+
+  // Remove any existing advisory
+  const existingAdvisory = document.getElementById('manual-txn-plaid-advisory');
+  if (existingAdvisory) existingAdvisory.remove();
+
+  // Clear any previous constraints
+  dateInput.removeAttribute('min');
+  dateInput.removeAttribute('max');
+
+  // Find opening balance for this account
+  const openingBalanceTxn = transactions.find(
+    txn => txn.source === 'opening_balance' && txn.account_id === accountId
+  );
+
+  if (selectedAccount && selectedAccount.connection_status === 'linked') {
+    // Plaid account: manual transactions must be BEFORE opening balance.
+    // Auto-set date to 1 day before opening balance for convenience.
+    if (openingBalanceTxn) {
+      const openingDate = new Date(openingBalanceTxn.date + 'T00:00:00');
+      const dayBefore = new Date(openingDate);
+      dayBefore.setDate(dayBefore.getDate() - 1);
+      const dayBeforeStr = dayBefore.toISOString().split('T')[0];
+
+      dateInput.value = dayBeforeStr;
+      dateInput.setAttribute('max', dayBeforeStr);
+    }
+
+    const advisory = document.createElement('small');
+    advisory.id = 'manual-txn-plaid-advisory';
+    advisory.style.cssText = 'color: #b45309; display: block; margin-top: 6px; padding: 6px 8px; background: #fef3c7; border-radius: 4px; font-size: 11px;';
+    advisory.textContent = openingBalanceTxn
+      ? `Plaid account: Manual transactions must occur before the opening balance (${openingBalanceTxn.date}). The app will auto-generate a reconciling opening balance.`
+      : 'Plaid account: Manual transactions are only for historical entries before the earliest Plaid-downloaded transaction.';
+    accountSelect.parentElement.appendChild(advisory);
+  }
+  // Offline accounts: no constraints, date stays as today
 }

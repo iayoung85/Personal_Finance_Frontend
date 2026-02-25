@@ -456,7 +456,7 @@ function attachCategoryDropdownListeners() {
     }
 
     const parsed = parseCategoryString(resolved.value);
-    const txn = transactions.find(t => (t.transaction_id || t.plaid_transaction_id) === txnId);
+    const txn = transactions.find(t => t.transaction_id === txnId);
     openCategoryRuleModal(txn, parsed.primary, parsed.detailed, txnId, accountId);
   });
 }
@@ -588,7 +588,7 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
     
     // Update local array directly instead of full re-sync —
     // the backend already updated the encrypted_transactions table.
-    const txn = transactions.find(t => (t.transaction_id || t.plaid_transaction_id) === txnId);
+    const txn = transactions.find(t => t.transaction_id === txnId);
     if (txn) {
       txn.user_category = categoryString;
       txn.is_override = true;
@@ -632,7 +632,7 @@ async function clearOverride(event) {
     }
 
     // Update local transaction object
-    const txn = transactions.find(t => (t.transaction_id || t.plaid_transaction_id) === txnId);
+    const txn = transactions.find(t => t.transaction_id === txnId);
     if (txn) {
       txn.is_override = false;
       if (data.updated_category) {
@@ -993,7 +993,7 @@ async function applyManualCategory(txnId, accountId) {
 
     closeModal();
     // Update local array directly — backend already persisted the override
-    const txn = transactions.find(t => (t.transaction_id || t.plaid_transaction_id) === txnId);
+    const txn = transactions.find(t => t.transaction_id === txnId);
     if (txn) {
       txn.user_category = selectedCategory;
       txn.is_override = true;

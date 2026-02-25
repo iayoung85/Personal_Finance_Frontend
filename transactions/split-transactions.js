@@ -43,11 +43,11 @@ function openSplitModal(txn) {
 }
 
 // Open split modal for editing existing split
-async function modifySplitModal(splitTransactionId) {
+async function modifySplitModal(parentTransactionId) {
   try {
-    // Get split data from backend
+    // Get split data from backend using the parent's unified transaction_id
     const response = await authenticatedFetch(
-      `${BACKEND_URL}/api/transactions/split/${splitTransactionId}`
+      `${BACKEND_URL}/api/transactions/split/${parentTransactionId}`
     );
     
     if (!response.ok) {
@@ -62,12 +62,8 @@ async function modifySplitModal(splitTransactionId) {
       return;
     }
     
-    // Find parent transaction
-    const firstSplit = splits[0];
-    const parentId = firstSplit.split_transaction_id.replace('split_', '');
-    const parentTxn = transactions.find(t => 
-      t.plaid_transaction_id === parentId || t.manual_transaction_id === parentId
-    );
+    // Find parent transaction directly by unified transaction_id
+    const parentTxn = transactions.find(t => t.transaction_id === parentTransactionId);
     
     if (!parentTxn) {
       showStatus('Parent transaction not found', 'error');
@@ -411,15 +407,12 @@ async function handleSplitSubmit() {
     submitBtn.textContent = isEditingSplit ? 'Updating...' : 'Creating...';
     
     if (isEditingSplit) {
-      // Delete old splits, then create new ones
-      const splitTransactionId = currentSplitTransaction.splits?.[0]?.split_transaction_id;
-      if (splitTransactionId) {
-        await deleteSplitHelper(splitTransactionId);
-      }
+      // Delete old splits using the parent's transaction_id, then create new ones
+      await deleteSplitHelper(currentSplitTransaction.transaction_id);
     }
     
     // Create new splits
-    const txnId = currentSplitTransaction.plaid_transaction_id || currentSplitTransaction.manual_transaction_id;
+    const txnId = currentSplitTransaction.transaction_id;
     const response = await authenticatedFetch(
       `${BACKEND_URL}/api/transactions/split`,
       {

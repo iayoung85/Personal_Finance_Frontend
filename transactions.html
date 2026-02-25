@@ -94,7 +94,7 @@
         <div class="action-row">
           <div class="action-row-left">
             <button onclick="syncTransactions()" class="btn-action btn-sync">⟳ Re-sync</button>
-            <button onclick="openAddManualTransactionModal()" class="btn-action btn-manual-txn">+ Manual Txn</button>
+            <button onclick="openAddManualTransactionModal()" class="btn-action btn-manual-txn" title="Add a manual transaction. For Plaid accounts, use this only for historical transactions that occurred before the earliest Plaid-downloaded entry.">+ Manual Txn</button>
           </div>
           <div class="action-row-right">
             <button onclick="openConfigModal()" class="btn-action btn-config" title="Settings">⚙</button>
@@ -192,7 +192,7 @@
   </div>
 
   <!-- ═══ Chart Modal (expense breakdown) ═══ -->
-  <div id="chart-modal" class="modal-overlay hidden">
+  <div id="chart-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeChartModal()">
     <div class="modal modal-chart">
       <div class="modal-header">
         <h2>Expense Category Breakdown</h2>
@@ -202,6 +202,7 @@
         <div class="chart-toggle-buttons">
           <button id="chart-primary-btn" class="chart-toggle-btn active" onclick="switchChartView('primary')">Primary</button>
           <button id="chart-detailed-btn" class="chart-toggle-btn" onclick="switchChartView('detailed')">Detailed</button>
+          <button id="chart-drilldown-back" class="chart-toggle-btn chart-back-btn hidden" onclick="chartDrilldownBack()">← Back</button>
         </div>
         <div class="chart-container">
           <canvas id="category-chart"></canvas>

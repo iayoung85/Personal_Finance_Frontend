@@ -28,6 +28,7 @@ let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 // Chart state
 let categoryChart = null;
 let chartViewMode = 'primary'; // 'primary' or 'detailed'
+let chartDrilldownPrimary = null; // When non-null, chart shows detailed breakdown for this primary category
 
 // Pastel color palette for chart visualization
 const PASTEL_COLORS = [
