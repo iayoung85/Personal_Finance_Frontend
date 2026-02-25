@@ -108,13 +108,16 @@ async function loadAccounts() {
       account_id: a.account_id || null,
       plaid_account_id: a.plaid_account_id || null,
       plaid_item_id: a.plaid_item_id || a.item_id || null,
+      bank_id: a.bank_id || null,
+      bank_name: a.bank_name || null,
       institution_name: a.institution_name || a.bank_name || null,
       account_name: a.account_name || '',
       account_category: a.account_category || a.account_type || '',
       account_subcategory: a.account_subcategory || a.account_subtype || '',
       current_balance: parseFloat(a.current_balance) || 0,
       custom_name: a.custom_name || null,
-      source_type: a.source_type || 'manual',
+      origin: a.origin || 'manual',
+      connection_status: a.connection_status || 'manual',
       mask: a.mask || null,
       last_updated: a.last_balance_update || a.last_updated || null,
       is_archived: a.is_archived || false,
@@ -126,17 +129,17 @@ async function loadAccounts() {
     accounts = mappedAccounts;
     console.debug('loadAccounts: mapped', accounts.length, 'accounts');
 
-    // 3) For Plaid accounts, fetch item-level product info for activation status
-    const plaidAccountIds = [...new Set(
+    // 3) For Plaid-linked accounts, fetch item-level product info for activation status
+    const plaidItemIds = [...new Set(
       accounts
-        .filter(a => a.source_type === 'plaid')
+        .filter(a => a.origin === 'plaid')
         .map(a => a.plaid_item_id)
         .filter(Boolean)
     )];
 
-    if (plaidAccountIds.length > 0) {
+    if (plaidItemIds.length > 0) {
       const itemInfoResults = await Promise.all(
-        plaidAccountIds.map(async (itemId) => {
+        plaidItemIds.map(async (itemId) => {
           try {
             return await fetchItemInfo(itemId);
           } catch (err) {
@@ -212,7 +215,7 @@ function renderAccountsSidebar() {
 
   accounts.forEach(acc => {
     // Check if this account's Plaid item (if Plaid) has transactions billed
-    const isActive = acc.source_type !== 'plaid' || acc.billed_products.includes('transactions');
+    const isActive = acc.origin !== 'plaid' || acc.billed_products.includes('transactions');
     
     if (isActive) {
       const cat = acc.account_category || 'asset';
@@ -378,7 +381,7 @@ function getSelectedAccounts() {
   if (selectedAccountMode === 'all') {
     // Return all account IDs (active only - Plaid items with transactions billed)
     return accounts
-      .filter(a => a.source_type !== 'plaid' || a.billed_products.includes('transactions'))
+      .filter(a => a.origin !== 'plaid' || a.billed_products.includes('transactions'))
       .map(a => a.account_id);
   } else if (selectedAccountMode === 'single' && selectedAccountId) {
     // Return single selected account
@@ -434,6 +437,7 @@ function closeCreateManualAccountModal() {
   const modal = document.getElementById('create-manual-account-modal');
   modal.classList.add('hidden');
   // Clear form
+  document.getElementById('manual-bank-name').value = '';
   document.getElementById('manual-account-name').value = '';
   document.getElementById('manual-account-category').value = '';
   document.getElementById('manual-account-balance').value = '';
@@ -442,12 +446,19 @@ function closeCreateManualAccountModal() {
 }
 
 async function submitCreateManualAccount() {
+  const bankName = document.getElementById('manual-bank-name').value.trim();
   const name = document.getElementById('manual-account-name').value.trim();
   const category = document.getElementById('manual-account-category').value;
   const balance = parseFloat(document.getElementById('manual-account-balance').value);
   const errorDiv = document.getElementById('manual-account-error');
 
   // Validation
+  if (!bankName) {
+    errorDiv.textContent = 'Bank name is required';
+    errorDiv.style.display = 'block';
+    return;
+  }
+
   if (!name) {
     errorDiv.textContent = 'Account name is required';
     errorDiv.style.display = 'block';
@@ -473,6 +484,7 @@ async function submitCreateManualAccount() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        bank_name: bankName,
         account_name: name,
         account_category: category,
         opening_balance: balance
