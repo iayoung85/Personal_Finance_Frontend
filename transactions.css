@@ -2259,3 +2259,42 @@ tr:hover {
   border-bottom: 1px dashed #e0d5a0;
   letter-spacing: 0.5px;
 }
+
+/* ── Zone bookmark separators (plaid-synced / manual-historical) ── */
+.zone-separator td {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 0;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.zone-separator .zone-arrows {
+  font-size: 8px;
+  letter-spacing: 2px;
+  vertical-align: middle;
+}
+
+.zone-separator.plaid-zone td {
+  color: #5a7a3a;
+  background: linear-gradient(to right, #fff, #f0f7e6, #fff);
+  border-top: 1px dashed #b7d49a;
+  border-bottom: 1px dashed #b7d49a;
+}
+
+.zone-separator.plaid-zone .zone-arrows {
+  color: #7da85a;
+}
+
+.zone-separator.manual-zone td {
+  color: #6a6a8a;
+  background: linear-gradient(to right, #fff, #ededf5, #fff);
+  border-top: 1px dashed #b8b8d0;
+  border-bottom: 1px dashed #b8b8d0;
+}
+
+.zone-separator.manual-zone .zone-arrows {
+  color: #9696b5;
+}

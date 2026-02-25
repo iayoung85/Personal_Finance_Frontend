@@ -48,7 +48,7 @@ function openAddManualTransactionModal() {
       <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px;">
         <div>
           <label style="display: block; font-weight: 500; margin-bottom: 6px;">Amount *</label>
-          <input id="manual-txn-amount" type="number" placeholder="0.00" step="0.01" min="0" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+          <input id="manual-txn-amount" type="text" inputmode="decimal" placeholder="0.00" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
         </div>
         <div>
           <label style="display: block; font-weight: 500; margin-bottom: 6px;">Type *</label>
@@ -101,6 +101,21 @@ function openAddManualTransactionModal() {
     ]
   });
   
+  // --- Wire up smart +/− shorthand on the amount field ---
+  // Typing "+" before the number auto-selects Credit; no prefix = Debit.
+  // The dropdown is still the source of truth and can override the prefix.
+  // On blur, debits show a leading "−" for visual clarity; on focus it's stripped.
+  setTimeout(() => {
+    const amountInput = document.getElementById('manual-txn-amount');
+    const typeSelect  = document.getElementById('manual-txn-type');
+    if (amountInput && typeSelect) {
+      amountInput.addEventListener('input', () => _syncAmountPrefix(amountInput, typeSelect));
+      typeSelect.addEventListener('change', () => _syncTypeDropdown(amountInput, typeSelect));
+      amountInput.addEventListener('blur',  () => _decorateAmountOnBlur(amountInput, typeSelect));
+      amountInput.addEventListener('focus', () => _stripDecorationOnFocus(amountInput, typeSelect));
+    }
+  }, 50);
+
   // Wire up account selection to show advisory for plaid accounts
   // and auto-set date to day before opening balance for plaid accounts
   setTimeout(() => {
@@ -144,12 +159,63 @@ function _showManualTxnError(message) {
   banner._clearTimer = setTimeout(() => { banner.style.display = 'none'; }, 5000);
 }
 
+// ─── Amount / Type shorthand helpers ───────────────────────
+// Why four tiny functions instead of one: each maps to a single DOM event
+// (input, change, blur, focus), keeping concerns separate and easy to test.
+
+/** On every keystroke in the amount field: detect leading "+" to auto-set Credit */
+function _syncAmountPrefix(amountInput, typeSelect) {
+  const raw = amountInput.value;
+  if (raw.startsWith('+')) {
+    typeSelect.value = 'credit';
+  } else if (typeSelect.value === 'credit' && !raw.startsWith('+')) {
+    // User deleted the +, revert to debit
+    typeSelect.value = 'debit';
+  }
+}
+
+/** On dropdown change: enforce prefix consistency with the selected type */
+function _syncTypeDropdown(amountInput, typeSelect) {
+  const raw = amountInput.value;
+  if (typeSelect.value === 'debit') {
+    // Remove leading + or − if user switched back to debit
+    amountInput.value = raw.replace(/^[+\-−]/, '');
+  } else if (typeSelect.value === 'credit' && !raw.startsWith('+')) {
+    // Add + prefix for credit when missing
+    const stripped = raw.replace(/^[+\-−]/, '');
+    amountInput.value = stripped ? '+' + stripped : '+';
+  }
+}
+
+/** On blur: prepend "−" to a bare debit amount so the user sees the sign */
+function _decorateAmountOnBlur(amountInput, typeSelect) {
+  const raw = amountInput.value.trim();
+  if (!raw) return;
+  // Only decorate debits that don't already have a sign
+  if (typeSelect.value === 'debit' && !raw.startsWith('-') && !raw.startsWith('−')) {
+    const numericPart = raw.replace(/^[+]/, '');
+    if (numericPart && !isNaN(parseFloat(numericPart))) {
+      amountInput.value = '−' + numericPart;
+    }
+  }
+}
+
+/** On focus: strip leading decoration so the user edits a clean number */
+function _stripDecorationOnFocus(amountInput, typeSelect) {
+  const raw = amountInput.value;
+  if (typeSelect.value === 'debit') {
+    amountInput.value = raw.replace(/^[−\-]/, '');
+  }
+}
+
 /**
  * Save a new manual transaction via API
  */
 async function saveManualTransaction() {
   const name = document.getElementById('manual-txn-name').value.trim();
-  const amount = parseFloat(document.getElementById('manual-txn-amount').value);
+  // Strip any leading +/− decoration before parsing the absolute amount
+  const rawAmountStr = document.getElementById('manual-txn-amount').value.replace(/^[+\-−]/, '').trim();
+  const amount = parseFloat(rawAmountStr);
   const txnType = document.getElementById('manual-txn-type').value;
   const date = document.getElementById('manual-txn-date').value;
   const accountId = document.getElementById('manual-txn-account').value;
@@ -163,7 +229,7 @@ async function saveManualTransaction() {
     return;
   }
   if (!amount || amount <= 0 || isNaN(amount)) {
-    _showManualTxnError('Amount must be a positive number');
+    _showManualTxnError('Amount must be a positive number (sign is set by Type)');
     return;
   }
   if (!date) {

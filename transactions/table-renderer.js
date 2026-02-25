@@ -224,6 +224,16 @@ function renderTransactionTable() {
   // Track which transactions we've already rendered (split children)
   const renderedTxnIds = new Set();
   
+  // Pre-scan: check if both opening_balance and manual_opening_balance exist.
+  // When both are present we insert visual separators in the ledger to delineate
+  // the plaid-sync'd region from the manual-historical region.
+  const hasManualOB = showLedgerColumn && allRowTransactions.some(
+    txn => txn.source === 'manual_opening_balance'
+  );
+  // emittedPlaidSep / emittedManualSep: one-shot flags so each separator renders once
+  let emittedPlaidSep = false;
+  let emittedManualSep = false;
+  
   allRowTransactions.forEach(txn => {
     // Insert separator row when transitioning from pending to posted section
     if (!pendingSectionEnded && !txn.pending) {
@@ -234,6 +244,21 @@ function renderTransactionTable() {
     }
     
     const isPendingRow = !!txn.pending;
+
+    // --- Plaid / Manual-historical bookmark separators ---
+    // Only rendered when both opening_balance and manual_opening_balance exist.
+    // "Plaid-Synced" sits above the opening_balance row (= below plaid txns),
+    // "Manual Historical" sits below it (= above the manual txns).
+    if (hasManualOB && !isPendingRow) {
+      if (!emittedPlaidSep && txn.source === 'opening_balance') {
+        emittedPlaidSep = true;
+        html += `<tr class="zone-separator plaid-zone"><td colspan="${colCount}"><span class="zone-arrows">▲▲▲</span> plaid-synced <span class="zone-arrows">▲▲▲</span></td></tr>`;
+      }
+      if (!emittedManualSep && (txn.source === 'manual_opening_balance' || txn.source === 'manual')) {
+        emittedManualSep = true;
+        html += `<tr class="zone-separator manual-zone"><td colspan="${colCount}"><span class="zone-arrows">▼▼▼</span> manual historical <span class="zone-arrows">▼▼▼</span></td></tr>`;
+      }
+    }
     // Skip if this is a split child that we'll render as part of a group
     if (txn.is_split && txn.transaction_id && txn.transaction_id.includes('_split_')) {
       return; // Split children are rendered as part of parent group
