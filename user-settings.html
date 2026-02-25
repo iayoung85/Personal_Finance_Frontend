@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>User Settings - IAY Financial</title>
+  <link rel="icon" type="image/png" href="IAY favicon.png">
+  <link rel="stylesheet" href="user-settings.css">
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <main class="main-content">
+
+      <!-- Page Header -->
+      <div class="page-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+          <div>
+            <h1>User Settings</h1>
+            <p class="page-subtitle">Manage your account, security, and authentication settings</p>
+          </div>
+          <a href="index.html" class="btn btn-secondary" style="text-decoration: none;">← Back to Dashboard</a>
+        </div>
+      </div>
+
+      <!-- Settings Container -->
+      <div class="settings-wrapper">
+
+        <!-- Global banner shown when account deletion is pending -->
+        <div id="global-deletion-banner"></div>
+
+        <!-- Left Sidebar Navigation -->
+        <aside class="settings-menu">
+          <ul class="settings-nav">
+            <li><a href="#profile"   class="settings-link active" data-section="profile">Profile Details</a></li>
+            <li><a href="#password"  class="settings-link"        data-section="password">Change Password</a></li>
+            <li><a href="#twofa"     class="settings-link"        data-section="twofa">Two-Factor Auth</a></li>
+            <li><a href="#deletion"  class="settings-link"        data-section="deletion">Delete Account</a></li>
+          </ul>
+        </aside>
+
+        <!-- Main Settings Content -->
+        <section class="settings-content">
+
+          <!-- Profile Details Panel -->
+          <div id="profile" class="settings-panel active">
+            <div class="panel-header">
+              <h2>Profile Details</h2>
+              <p>Manage your personal information and email address</p>
+            </div>
+            <div id="profile-content">Loading...</div>
+          </div>
+
+          <!-- Change Password Panel -->
+          <div id="password" class="settings-panel hidden">
+            <div class="panel-header">
+              <h2>Change Password</h2>
+              <p>Update your password to keep your account secure</p>
+            </div>
+            <div id="password-content">Loading...</div>
+          </div>
+
+          <!-- Two-Factor Authentication Panel -->
+          <div id="twofa" class="settings-panel hidden">
+            <div class="panel-header">
+              <h2>Two-Factor Authentication</h2>
+              <p>Add an extra layer of security to your account</p>
+            </div>
+            <div id="twofa-content">Loading...</div>
+          </div>
+
+          <!-- Account Deletion Panel -->
+          <div id="deletion" class="settings-panel hidden">
+            <div class="panel-header">
+              <h2>Delete Account</h2>
+              <p>Permanently delete your account and all associated data</p>
+            </div>
+            <div id="deletion-content">Loading...</div>
+          </div>
+
+        </section>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Config must load before modules so BACKEND_URL is available -->
+  <script src="config.js"></script>
+
+  <!-- Load order: state → utils → api → section modules → main (last) -->
+  <script src="user-settings/state.js"></script>
+  <script src="user-settings/utils.js"></script>
+  <script src="user-settings/api.js"></script>
+  <script src="user-settings/nav.js"></script>
+  <script src="user-settings/profile.js"></script>
+  <script src="user-settings/password.js"></script>
+  <script src="user-settings/two-factor.js"></script>
+  <script src="user-settings/account-deletion.js"></script>
+  <script src="user-settings/main.js"></script>
+</body>
+</html>
