@@ -197,3 +197,184 @@ input:focus {
 .site-footer a:hover {
   text-decoration: underline;
 }
+
+/* ============================================================================
+   Banks listing — dashboard bank cards, badges, action buttons
+   ============================================================================ */
+
+.section-heading {
+  margin-bottom: 4px;
+}
+
+.bank-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.bank-card {
+  margin-bottom: 8px;
+  padding: 12px 16px;
+  background: #f7f9fc;
+  border: 1px solid #e3e7ef;
+  border-radius: 8px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bank-card-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.bank-icon {
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.bank-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bank-name {
+  font-weight: 600;
+  color: #333;
+  font-size: 15px;
+}
+
+.bank-meta {
+  font-size: 12px;
+  color: #888;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Connection status indicators */
+.conn-status {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.conn-status-linked {
+  color: #28a745;
+}
+
+.conn-status-converted {
+  color: #ffc107;
+}
+
+.conn-status-manual {
+  color: #6c757d;
+}
+
+/* Sync badges — only shown for linked banks */
+.sync-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.sync-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.sync-badge-transactions {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #c8e6c9;
+}
+
+.sync-badge-investments {
+  background: #e0f7fa;
+  color: #00838f;
+  border: 1px solid #b2ebf2;
+}
+
+/* Bank card action buttons */
+.bank-card-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.bank-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+
+.bank-btn:hover {
+  opacity: 0.85;
+}
+
+.bank-btn-refresh {
+  background: #28a745;
+  color: #fff;
+}
+
+.bank-btn-relink {
+  background: #17a2b8;
+  color: #fff;
+}
+
+.bank-btn-disconnect {
+  background: #dc3545;
+  color: #fff;
+}
+
+.banks-empty-state {
+  color: #666;
+  font-style: italic;
+  margin-bottom: 8px;
+}
+
+.banks-error {
+  color: #c33;
+}
+
+/* Connect buttons row */
+.connect-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.token-label {
+  font-weight: 600;
+}
+
+.token-label-txn {
+  color: #4caf50;
+}
+
+.token-label-inv {
+  color: #20c9e0;
+}
+
+.connect-note {
+  margin-top: 10px;
+  font-size: 0.9em;
+  color: #666;
+}

@@ -136,24 +136,37 @@
       <div id="webhook-alerts-container" style="margin: 15px 0;"></div>
 
       <div class="current-connections" id="current-connections">
-        <h2 style="margin-bottom: 4px;">Your Connected Banks</h2>
+        <h2 class="section-heading">Your Banks</h2>
         <div id="connections-list">Loading connected banks...</div>
       </div>
-      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-        <button id="link-button" class="btn btn-primary">Connect New Bank using <span style="color: #4caf50; font-weight: 600;">Transaction Token</span></button>
-        <button id="link-investment-button" class="btn btn-primary">Connect New Bank using <span style="color: #20c9e0; font-weight: 600;">Investment Token</span></button>
+      <div class="connect-buttons">
+        <button id="link-button" class="btn btn-primary">Connect New Bank using <span class="token-label token-label-txn">Transaction Token</span></button>
+        <button id="link-investment-button" class="btn btn-primary">Connect New Bank using <span class="token-label token-label-inv">Investment Token</span></button>
       </div>
-      <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
-        <strong>Note:</strong> Choose your initial connection type. After connecting, you can enable additional features (transactions for depository accounts or holdings for investments) from their respective views.
+      <p class="connect-note">
+        <strong>Note:</strong> You may create manual accounts from the
+        <a href="account.html">Accounts Management</a> page.
       </p>
     </div>
   </div>
 
 
-  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.4.2/zxcvbn.js"></script>
   <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
   <script src="config.js"></script>
-  <script src="index.js"></script>
+
+  <!-- Index page modules (load order matters: state → api → utils → views → main) -->
+  <script src="index/state.js"></script>
+  <script src="index/api.js"></script>
+  <script src="index/utils.js"></script>
+  <script src="index/auth-views.js"></script>
+  <script src="index/login.js"></script>
+  <script src="index/register.js"></script>
+  <script src="index/password-reset.js"></script>
+  <script src="index/two-factor.js"></script>
+  <script src="index/dashboard.js"></script>
+  <script src="index/connections-list.js"></script>
+  <script src="index/plaid-integration.js"></script>
+  <script src="index/main.js"></script>
 </body>
 </html>
