@@ -155,7 +155,7 @@ const IndexConnectionsList = (() => {
 
     try {
       // Update mode: pass itemId so backend generates an update-mode link token
-      const linkToken = await IndexApi.fetchLinkToken(itemId);
+      const linkToken = await IndexApi.fetchLinkToken({ itemId });
       const handler = Plaid.create({
         token: linkToken,
         onSuccess: async () => {
@@ -195,13 +195,16 @@ const IndexConnectionsList = (() => {
     }
 
     try {
-      // New link session (not update mode) — backend will associate new item with existing bank
-      const linkToken = await IndexApi.fetchLinkToken();
+      // Relink mode: pass bankId so backend scopes the link token to this bank's
+      // institution and products, and set_access_token reattaches the new Plaid
+      // item to the existing bank record (works for converted AND manual banks
+      // that have a valid institution_id).
+      const linkToken = await IndexApi.fetchLinkToken({ bankId });
       const handler = Plaid.create({
         token: linkToken,
         onSuccess: async (publicToken) => {
           try {
-            await IndexApi.exchangePublicToken(publicToken);
+            await IndexApi.exchangePublicToken(publicToken, bankId);
             invalidateItemInfoCache();
             IndexUtils.showMessage('dashboard-message', `✓ ${bankName} relinked successfully!`, 'success');
             loadBanks();

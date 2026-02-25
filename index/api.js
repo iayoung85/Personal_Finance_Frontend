@@ -154,10 +154,18 @@ const IndexApi = (() => {
 
   // ── Plaid connection endpoints ──────────────────────────
 
-  async function fetchLinkToken(itemId = null, mode = null) {
+  /**
+   * Create a Plaid Link token.
+   * @param {Object} options
+   * @param {string|null} options.itemId  - Pass for update mode (fix broken connection).
+   * @param {string|null} options.bankId  - Pass for relink mode (reconnect converted/manual bank).
+   * @param {string|null} options.mode    - 'investments_only' for investment-focused new connections.
+   */
+  async function fetchLinkToken({ itemId = null, bankId = null, mode = null } = {}) {
     let url = `${BACKEND_URL}/api/connections/create_link_token`;
     const params = [];
     if (itemId) params.push(`item_id=${encodeURIComponent(itemId)}`);
+    if (bankId) params.push(`bank_id=${encodeURIComponent(bankId)}`);
     if (mode) params.push(`mode=${encodeURIComponent(mode)}`);
     if (params.length) url += `?${params.join('&')}`;
 
@@ -170,11 +178,19 @@ const IndexApi = (() => {
     return data.link_token;
   }
 
-  async function exchangePublicToken(publicToken) {
+  /**
+   * Exchange Plaid public token for access token.
+   * @param {string} publicToken - From Plaid Link onSuccess callback.
+   * @param {string|null} relinkBankId - If relinking, the bank_id to reattach to.
+   */
+  async function exchangePublicToken(publicToken, relinkBankId = null) {
+    const body = { public_token: publicToken };
+    if (relinkBankId) body.bank_id = relinkBankId;
+
     const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/set_access_token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ public_token: publicToken }),
+      body: JSON.stringify(body),
     });
     const data = await response.json();
     if (!response.ok) {

@@ -27,7 +27,7 @@ const IndexPlaidIntegration = (() => {
     }
 
     try {
-      const linkToken = await IndexApi.fetchLinkToken(null, mode);
+      const linkToken = await IndexApi.fetchLinkToken({ mode });
       const handler = Plaid.create({
         token: linkToken,
         onSuccess: async (publicToken) => {
