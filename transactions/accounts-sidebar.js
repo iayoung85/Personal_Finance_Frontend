@@ -4,6 +4,26 @@
 // activation, renaming, and manual account creation.
 // ============================================================
 
+/**
+ * Build the human-readable display name for an account.
+ * Custom name takes priority and is shown as-is (user controls mask inclusion).
+ * Default format: <bank_name> - <account_name>(...<mask>)
+ */
+function _buildAccountDisplayName(acc) {
+  if (acc.custom_name) return acc.custom_name;
+
+  const bankPrefix = acc.bank_name || acc.institution_name || '';
+  const accountName = acc.account_name || 'Unknown Account';
+  const mask = acc.mask;
+
+  let nameWithMask = accountName;
+  if (mask && !accountName.includes(mask)) {
+    nameWithMask = `${accountName} (${mask})`;
+  }
+
+  return bankPrefix ? `${bankPrefix} - ${nameWithMask}` : nameWithMask;
+}
+
 async function refreshAccounts() {
   try {
     showStatus('Syncing accounts from Plaid...', 'info');
@@ -48,6 +68,7 @@ function toggleSidebar() {
 async function selectAccount(accountId) {
   selectedAccountMode = 'single';
   selectedAccountId = accountId;
+  localStorage.setItem('pf_selected_account', accountId);
   renderAccountsSidebar();
   // Fetch running balance data for the ledger column before rendering table
   await fetchBalanceHistory(accountId);
@@ -57,6 +78,7 @@ async function selectAccount(accountId) {
 function selectAllAccountsMode() {
   selectedAccountMode = 'all';
   selectedAccountId = null;
+  localStorage.removeItem('pf_selected_account');
   balanceHistoryLookup = {};
   renderAccountsSidebar();
   renderTransactionTable();
@@ -261,7 +283,7 @@ function renderAccountsSidebar() {
       html += `<div class="sidebar-group-title">${categoryLabels[cat] || cat}</div>`;
 
       grouped.active[cat].forEach(acc => {
-        const displayName = acc.custom_name || acc.account_name;
+        const displayName = _buildAccountDisplayName(acc);
         const currentBalance = acc.current_balance || 0;
         const balanceStr = new Intl.NumberFormat('en-US', { 
           style: 'currency', 
@@ -275,7 +297,7 @@ function renderAccountsSidebar() {
         html += `
           <div class="sidebar-account-item ${selectedClass}" onclick="selectAccount('${acc.account_id}')">
             <div class="sidebar-account-label">
-              <span>${displayName}</span>
+              <span title="${displayName}">${displayName}</span>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
               <div class="${balanceColorClass}">${balanceStr}</div>
@@ -423,6 +445,19 @@ async function promptRename(accountId, currentCustomName) {
     
     // Refresh accounts list
     await loadAccounts(true);
+
+    // Propagate updated display name into in-memory transactions so the
+    // table reflects the rename without a full re-fetch from the server.
+    const renamedAccount = accounts.find(a => a.account_id === accountId);
+    if (renamedAccount) {
+      const updatedDisplayName = _buildAccountDisplayName(renamedAccount);
+      transactions.forEach(txn => {
+        if (txn.account_id === accountId) {
+          txn.bank_account = updatedDisplayName;
+        }
+      });
+    }
+    renderTransactionTable();
     
   } catch (error) {
     console.error('Rename error:', error);

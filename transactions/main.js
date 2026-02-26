@@ -22,8 +22,15 @@ $(document).ready(async function() {
   // Load accounts and settings in parallel; keep checkboxes unchecked until both complete
   await Promise.all([loadAccounts(), loadSettings()]);
 
-  // After everything is ready, select only enabled accounts/banks
-  selectAllAccounts();
+  // Restore last-selected account from previous session, or default to all
+  const savedAccountId = localStorage.getItem('pf_selected_account');
+  const savedAccountExists = savedAccountId && accounts.some(a => a.account_id === savedAccountId);
+  if (savedAccountExists) {
+    await selectAccount(savedAccountId);
+  } else {
+    localStorage.removeItem('pf_selected_account');
+    selectAllAccounts();
+  }
 
   // Sync transactions with Plaid on page load (after accounts are loaded/selected)
   await autoSyncAndLoadTransactions();
