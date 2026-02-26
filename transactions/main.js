@@ -120,43 +120,5 @@ $(document).ready(async function() {
     openCategorizeModal(txn, selectedCategory, accountId, txnId);
   });
 
-  // Start date validation — enforce 90-day look-back limit
-  $('#start-date').on('blur', function() {
-    if (!this.value) return;
 
-    // Parse input as local date to avoid UTC issues
-    const parts = this.value.split('-');
-    const startDate = new Date(parts[0], parts[1] - 1, parts[2]);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const limitDate = new Date(today);
-    limitDate.setDate(today.getDate() - 90);
-
-    if (startDate < limitDate) {
-      // Format limitDate as YYYY-MM-DD in local time
-      const year = limitDate.getFullYear();
-      const month = String(limitDate.getMonth() + 1).padStart(2, '0');
-      const day = String(limitDate.getDate()).padStart(2, '0');
-
-      // Format for display (MM/DD/YYYY)
-      const displayDate = `${month}/${day}/${year}`;
-
-      this.value = `${year}-${month}-${day}`;
-
-      // Highlight input
-      $(this).css('border', '2px solid #ffc107');
-      $(this).css('background-color', '#fff3cd');
-
-      // Show warning status
-      showStatus(`${displayDate} is the earliest valid start date`, 'warning');
-
-      // Remove highlight after 3 seconds
-      setTimeout(() => {
-        $(this).css('border', '');
-        $(this).css('background-color', '');
-      }, 3000);
-    }
-  });
 });

@@ -63,37 +63,38 @@
       </div>
       <div class="modal-body">
         <div class="form-stack">
+          <!-- ── Bank Selection: single dropdown, clear choices ── -->
           <div class="form-field">
-            <label>Bank Type</label>
-            <div class="bank-type-toggle" id="bank-type-toggle">
-              <button type="button" class="toggle-btn active" data-mode="custom" onclick="onBankTypeToggle('custom')">Custom Bank</button>
-              <button type="button" class="toggle-btn" data-mode="official" onclick="onBankTypeToggle('official')">Official Bank</button>
+            <label for="new-acct-bank-select">Bank</label>
+            <select id="new-acct-bank-select" onchange="onBankSelectChange()">
+              <option value="">— Select a Bank —</option>
+            </select>
+          </div>
+
+          <!-- Custom bank name (shown only for "+ Create custom bank") -->
+          <div id="custom-bank-fields" class="hidden">
+            <div class="form-field">
+              <label for="new-acct-bank">New Bank Name</label>
+              <input type="text" id="new-acct-bank" placeholder="e.g., Piggy Bank, My Kid's Bank" autocomplete="off">
+              <div class="form-hint">This creates a new bank group for your account.</div>
             </div>
           </div>
 
-          <!-- Custom bank: free text input (existing behavior) -->
-          <div class="form-field" id="custom-bank-field">
-            <label for="new-acct-bank">Bank Name</label>
-            <input type="text" id="new-acct-bank" list="bank-datalist" placeholder="e.g., Piggy Bank, My Kid's Bank" autocomplete="off">
-            <datalist id="bank-datalist"></datalist>
-            <div class="form-hint">Accounts with the same bank name are grouped together. Type a new name to create a new bank.</div>
-          </div>
-
-          <!-- Official bank: curated dropdown + search fallback -->
-          <div class="form-field hidden" id="official-bank-field">
-            <label for="new-acct-official-bank">Select Institution</label>
-            <select id="new-acct-official-bank" onchange="onOfficialBankChange()">
-              <option value="">— Choose an institution —</option>
-            </select>
-            <div class="form-hint">Popular banks are listed above. Can't find yours? <a href="#" id="institution-search-trigger" onclick="showInstitutionSearch(event)">Search all 9,000+ institutions</a></div>
-
-            <!-- Search panel (hidden until triggered) -->
-            <div id="institution-search-panel" class="hidden" style="margin-top: 8px;">
-              <div class="institution-search-row">
-                <input type="text" id="institution-search-input" placeholder="Search by name…" autocomplete="off" />
-                <button type="button" class="btn-secondary btn-sm" onclick="searchInstitutions()">Search</button>
+          <!-- Official institution picker (shown only for "+ Use Official Institution") -->
+          <div id="official-institution-fields" class="hidden">
+            <div class="form-field">
+              <label for="new-acct-official-bank">Choose Institution</label>
+              <select id="new-acct-official-bank" onchange="onOfficialBankChange()">
+                <option value="">— Choose an institution —</option>
+              </select>
+              <div class="form-hint">Can't find yours? <a href="#" id="institution-search-trigger" onclick="showInstitutionSearch(event)">Search all 9,000+ institutions</a></div>
+              <div id="institution-search-panel" class="hidden" style="margin-top: 8px;">
+                <div class="institution-search-row">
+                  <input type="text" id="institution-search-input" placeholder="Search by name…" autocomplete="off" />
+                  <button type="button" class="btn-secondary btn-sm" onclick="searchInstitutions()">Search</button>
+                </div>
+                <div id="institution-search-results" class="institution-search-results"></div>
               </div>
-              <div id="institution-search-results" class="institution-search-results"></div>
             </div>
           </div>
           <div class="form-field">

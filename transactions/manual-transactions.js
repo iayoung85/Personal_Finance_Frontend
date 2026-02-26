@@ -332,6 +332,11 @@ async function saveManualTransaction() {
       localStorage.setItem('pf_transactions_cached_at', String(Date.now()));
     } catch (e) { /* non-fatal */ }
     
+    // Why: expand date filters so the newly created transaction (including
+    // historical ones and opening-balance entries) is immediately visible
+    // instead of silently falling outside the active date window.
+    _expandDateFiltersForTransaction(newTxn.date);
+    
     // Refresh table with new transaction visible
     renderTransactionTable();
     
@@ -434,4 +439,41 @@ function _updateManualTxnDateConstraints() {
     accountSelect.parentElement.appendChild(advisory);
   }
   // Offline accounts: no constraints, date stays as today
+}
+
+/**
+ * Expand the start/end date filter inputs if the given transaction date
+ * falls outside the currently visible range. This ensures newly created
+ * manual transactions (including historical entries and opening-balance
+ * transactions) are immediately visible to the user.
+ *
+ * @param {string} txnDate — ISO date string (YYYY-MM-DD) of the new transaction.
+ */
+function _expandDateFiltersForTransaction(txnDate) {
+  if (!txnDate) return;
+
+  const startInput = document.getElementById('start-date');
+  const endInput = document.getElementById('end-date');
+  if (!startInput || !endInput) return;
+
+  const currentStart = startInput.value; // YYYY-MM-DD string
+  const currentEnd = endInput.value;
+
+  let didExpand = false;
+
+  if (txnDate < currentStart) {
+    startInput.value = txnDate;
+    didExpand = true;
+  }
+
+  if (txnDate > currentEnd) {
+    endInput.value = txnDate;
+    didExpand = true;
+  }
+
+  // Re-render dynamic period buttons when the range changes so they
+  // reflect the new time span (e.g. year buttons for historical entries).
+  if (didExpand) {
+    renderDynamicPeriodButtons();
+  }
 }
