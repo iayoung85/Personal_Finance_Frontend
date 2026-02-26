@@ -2,10 +2,7 @@
 // user-settings/account-deletion.js — Account Deletion Panel
 // Handles deletion request, cancellation, resend, and the
 // email-link confirmation/cancellation token flows.
-//
-// BUG FIX: The original renderDeletionPendingBanner referenced
-// `response.ok` which was never in scope (only `data` is
-// returned from fetchDeletionStatus). Fixed below.
+
 // ============================================================
 
 /**

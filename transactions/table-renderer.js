@@ -46,10 +46,14 @@ function renderTransactionTable() {
       return false;
     }
 
-    // Hide transfers if requested (checks personal finance primary category)
+    // Hide transfers if requested (checks personal finance primary category,
+    // transfer_pair_id, and [AccountName] category notation)
     if (hideTransfers) {
       const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
       if (/transfer/i.test(primaryCat)) {
+        return false;
+      }
+      if (txn.transfer_pair_id || isTransferCategory(txn.user_category)) {
         return false;
       }
     }
@@ -230,9 +234,16 @@ function renderTransactionTable() {
   const hasManualOB = showLedgerColumn && allRowTransactions.some(
     txn => txn.source === 'manual_opening_balance'
   );
+  // Only label a zone "plaid-synced" when the account actually has plaid data
+  const hasPlaidTxns = allRowTransactions.some(
+    txn => txn.source === 'plaid'
+  );
   // emittedPlaidSep / emittedManualSep: one-shot flags so each separator renders once
   let emittedPlaidSep = false;
   let emittedManualSep = false;
+  // Tracks when the opening_balance row has been processed so the manual
+  // separator is placed AFTER it (not at the first manual txn encountered)
+  let passedOpeningBalance = false;
   
   allRowTransactions.forEach(txn => {
     // Insert separator row when transitioning from pending to posted section
@@ -245,18 +256,26 @@ function renderTransactionTable() {
     
     const isPendingRow = !!txn.pending;
 
-    // --- Plaid / Manual-historical bookmark separators ---
+    // --- Zone bookmark separators ---
     // Only rendered when both opening_balance and manual_opening_balance exist.
-    // "Plaid-Synced" sits above the opening_balance row (= below plaid txns),
-    // "Manual Historical" sits below it (= above the manual txns).
+    // "Plaid-Synced" sits ABOVE the opening_balance row (only when plaid txns exist).
+    // "Manual Historical" sits BELOW the opening_balance row.
+    // Why ordered this way: the manual-sep check must come first so it fires on
+    // the iteration AFTER we process the OB row (passedOpeningBalance is already
+    // true), before we'd ever re-enter the plaid-sep branch.
     if (hasManualOB && !isPendingRow) {
-      if (!emittedPlaidSep && txn.source === 'opening_balance') {
-        emittedPlaidSep = true;
-        html += `<tr class="zone-separator plaid-zone"><td colspan="${colCount}"><span class="zone-arrows">▲▲▲</span> plaid-synced <span class="zone-arrows">▲▲▲</span></td></tr>`;
-      }
-      if (!emittedManualSep && (txn.source === 'manual_opening_balance' || txn.source === 'manual')) {
+      // Emit "Manual Historical" right after the OB row, before the next transaction
+      if (passedOpeningBalance && !emittedManualSep) {
         emittedManualSep = true;
         html += `<tr class="zone-separator manual-zone"><td colspan="${colCount}"><span class="zone-arrows">▼▼▼</span> manual historical <span class="zone-arrows">▼▼▼</span></td></tr>`;
+      }
+      // Emit "Plaid-Synced" right before the OB row (only if plaid txns exist)
+      if (!emittedPlaidSep && txn.source === 'opening_balance') {
+        emittedPlaidSep = true;
+        if (hasPlaidTxns) {
+          html += `<tr class="zone-separator plaid-zone"><td colspan="${colCount}"><span class="zone-arrows">▲▲▲</span> plaid-synced <span class="zone-arrows">▲▲▲</span></td></tr>`;
+        }
+        passedOpeningBalance = true;
       }
     }
     // Skip if this is a split child that we'll render as part of a group
@@ -518,6 +537,7 @@ function renderTransactionTable() {
     
     // Parse current user_category to get primary and detailed
     let currentParsed = { primary: '', detailed: '' };
+    const isTransfer = isTransferCategory(txn.user_category) || !!txn.transfer_pair_id;
     if (txn.user_category) {
       currentParsed = parseCategoryString(txn.user_category);
     } else if (txn.personal_finance_category) {
@@ -530,8 +550,12 @@ function renderTransactionTable() {
       };
     }
 
-    // Build the current full category string for the autocomplete
-    const currentFullCategory = buildCategoryString(currentParsed.primary, currentParsed.detailed);
+    // Build the current full category string for the autocomplete.
+    // For transfers, use the raw [AccountName] string directly rather than
+    // feeding it through buildCategoryString which expects Primary: Detailed.
+    const currentFullCategory = isTransfer
+      ? (txn.user_category || '')
+      : buildCategoryString(currentParsed.primary, currentParsed.detailed);
 
     // Create combined category cell with autocomplete input + buttons
     // Opening balance transactions have locked category — no overrides, rules, or splits allowed
@@ -539,6 +563,28 @@ function renderTransactionTable() {
     if (isOpeningBalance) {
       const openingBalBadge = '<span class="source-badge opening-balance" title="Opening balance — category is locked">Opening Bal</span>';
       categoryCell = `<div class="category-cell"><div class="category-display">${openingBalBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
+    } else if (isTransfer) {
+      // Transfer transaction: show transfer badge with account name + unlink button
+      const transferAccountName = parseTransferAccountName(txn.user_category || '');
+      const transferDisplayHtml = transferAccountName
+        ? `<span class="transfer-badge" title="Transfer to/from ${escapeHtml(transferAccountName)}">&#x21C4; Transfer</span> ${escapeHtml(transferAccountName)}`
+        : `<span class="transfer-badge">&#x21C4; Transfer</span>`;
+
+      categoryCell = txnId ? `
+        <div class="category-cell">
+          <div class="category-display">${transferDisplayHtml}</div>
+          <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
+            <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
+                   value="${escapeHtml(currentFullCategory)}" placeholder="Type [ to reassign transfer…"
+                   autocomplete="off" spellcheck="false">
+            <div class="category-ac-list" data-txn-id="${txnId}"></div>
+          </div>
+          <div class="category-buttons">
+            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
+            <button class="transfer-unlink-btn" data-txn-id="${txnId}" onclick="unlinkTransfer('${escapeHtml(txnId)}')" title="Break this transfer pair">Unlink</button>
+          </div>
+        </div>
+      ` : '<span class="pill">N/A</span>';
     } else {
       const overrideBadge = txn.is_override
         ? `<span class="override-badge" title="This transaction has a manual override — rules will not change its category">Override <button class='clear-override' data-txn-id='${txnId}' onclick='clearOverride(event)'>X</button></span>`

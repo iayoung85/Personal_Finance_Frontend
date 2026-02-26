@@ -793,13 +793,7 @@ function exportJSON() {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
-// TODO: 1i: KEY DELIVERABLE - account balance snapshot export.
-// For a specific point in time, e.g. balance at end of last day of month.
-// Users export monthly balance summary to feed into external Excel budget system.
-// Backend needs a /api/accounts/snapshot-export endpoint that accepts a date param
-// and returns balance-at-date for each account (using Account_Balance_Snapshot or
-// calculate_account_balance as-of that date). Frontend adds an export option here
-// and in transactions.js to trigger this and download alongside holdings data.
+
 function copyCSV() {
   const csv = buildCSV();
   if (!csv) return;

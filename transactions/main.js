@@ -120,5 +120,32 @@ $(document).ready(async function() {
     openCategorizeModal(txn, selectedCategory, accountId, txnId);
   });
 
+  // Global hotkey for creating manual transactions: Ctrl+M (Windows/Linux) or Cmd+M (Mac)
+  $(document).on('keydown', function(event) {
+    // Only trigger if Ctrl/Cmd is pressed with M key (and not inside a focused input)
+    const isModifierKey = event.ctrlKey || event.metaKey;
+    const isMKey = event.key === 'm' || event.key === 'M';
+    const activeElement = document.activeElement;
+    
+    // Don't trigger if user is typing in an input or textarea (unless it's a modal form field)
+    const isInModalInput = activeElement && (
+      activeElement.id === 'manual-txn-name' ||
+      activeElement.id === 'manual-txn-amount' ||
+      activeElement.id === 'manual-txn-date' ||
+      activeElement.id === 'manual-txn-merchant' ||
+      activeElement.id === 'manual-txn-category' ||
+      activeElement.id === 'manual-txn-memo'
+    );
+    const isInNormalInput = activeElement && (
+      activeElement.tagName === 'INPUT' || 
+      activeElement.tagName === 'TEXTAREA' || 
+      activeElement.tagName === 'SELECT'
+    ) && !isInModalInput;
+    
+    if (isModifierKey && isMKey && !isInNormalInput) {
+      event.preventDefault();
+      openAddManualTransactionModal();
+    }
+  });
 
 });

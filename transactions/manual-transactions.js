@@ -7,8 +7,6 @@
  * Open modal to create a new manual transaction
  */
 function openAddManualTransactionModal() {
-  const categoryOptions = buildCategoryOptions('');
-  
   // Get today's date in local timezone (not UTC)
   const date = new Date();
   const year = date.getFullYear();
@@ -95,11 +93,11 @@ function openAddManualTransactionModal() {
 
       <div>
         <label style="display: block; font-weight: 500; margin-bottom: 6px;">Category (Optional)</label>
-        <select id="manual-txn-category" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
-          <option value="">— None (Auto-apply rules) —</option>
-          ${categoryOptions}
-        </select>
-        <small style="color: #666; margin-top: 2px; display: block;">If not selected, mappings and rules will be applied automatically</small>
+        <div style="position: relative;">
+          <input id="manual-txn-category" type="text" placeholder="Type to search, or [ for transfers" autocomplete="off" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+          <div id="manual-txn-category-list" class="category-ac-list" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 99999;"></div>
+        </div>
+        <small style="color: #666; margin-top: 2px; display: block;">If empty, mappings and rules will be applied automatically. Type <kbd>[</kbd> to assign as transfer.</small>
       </div>
 
       <div>
@@ -144,10 +142,13 @@ function openAddManualTransactionModal() {
       if (accountSelect.value) _updateManualTxnDateConstraints();
     }
   }, 50);
+
+  // Wire up category autocomplete (text input with dropdown suggestions)
+  setTimeout(() => _wireUpManualCategoryAutocomplete(), 50);
   
   // Add Enter key listener for Create button
   setTimeout(() => {
-    const inputs = document.querySelectorAll('#manual-txn-name, #manual-txn-amount, #manual-txn-date, #manual-txn-merchant, #manual-txn-memo');
+    const inputs = document.querySelectorAll('#manual-txn-name, #manual-txn-amount, #manual-txn-date, #manual-txn-merchant, #manual-txn-category, #manual-txn-memo');
     inputs.forEach(input => {
       input.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
@@ -339,6 +340,19 @@ async function saveManualTransaction() {
     
     // Refresh table with new transaction visible
     renderTransactionTable();
+
+    // If the category is bracket-notation transfer (e.g. "[Checking]"),
+    // trigger the transfer assignment flow to link/create a counterpart.
+    // This runs after the modal is closed so status messages are visible.
+    const newTxnId = data.transaction_id || newTxn.transaction_id;
+    if (category && isTransferCategory(category)) {
+      const transferAccountName = parseTransferAccountName(category);
+      const targetAccount = _findAccountByTransferName(transferAccountName);
+      if (targetAccount && newTxnId) {
+        await _applyTransferAssignment(newTxnId, accountId, targetAccount);
+        return; // _applyTransferAssignment already refreshes transactions
+      }
+    }
     
     // Fetch all transactions in background to ensure consistency and get bank_account names
     try {
@@ -394,6 +408,194 @@ async function deleteManualTransaction(manualTransactionId) {
  *
  * Offline/manual accounts: no date restriction. Date defaults to today.
  */
+
+// ─── Manual Transaction Category Autocomplete ──────────────
+// Why separate functions instead of reusing attachCategoryDropdownListeners():
+// The transaction-table autocomplete is jQuery-delegated with data-txn-id scoping.
+// The modal is ephemeral DOM that only exists while open, so direct addEventListener
+// binding is cleaner and avoids ID collisions with the table's autocomplete.
+
+/**
+ * Wire up category autocomplete for the manual transaction modal.
+ * Supports both regular category search and bracket-notation transfer accounts.
+ */
+function _wireUpManualCategoryAutocomplete() {
+  const input = document.getElementById('manual-txn-category');
+  const list = document.getElementById('manual-txn-category-list');
+  if (!input || !list) return;
+
+  input.addEventListener('input', () => {
+    _showManualCategoryDropdown(input, list);
+  });
+
+  // Show suggestions on focus if input already has text
+  input.addEventListener('focus', () => {
+    input.select();
+    if (input.value.trim()) {
+      _showManualCategoryDropdown(input, list);
+    }
+  });
+
+  input.addEventListener('keydown', (event) => {
+    const items = list.querySelectorAll('.category-ac-item');
+    const activeItem = list.querySelector('.category-ac-item.active');
+    const activeIndex = Array.from(items).indexOf(activeItem);
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      const nextIndex = Math.min(activeIndex + 1, items.length - 1);
+      items.forEach(item => item.classList.remove('active'));
+      if (items[nextIndex]) {
+        items[nextIndex].classList.add('active');
+        items[nextIndex].scrollIntoView({ block: 'nearest' });
+      }
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      const prevIndex = Math.max(activeIndex - 1, 0);
+      items.forEach(item => item.classList.remove('active'));
+      if (items[prevIndex]) {
+        items[prevIndex].classList.add('active');
+        items[prevIndex].scrollIntoView({ block: 'nearest' });
+      }
+    } else if (event.key === 'Tab') {
+      // Accept the highlighted (or first) suggestion if dropdown is open
+      const target = activeItem || items[0];
+      if (target) {
+        event.preventDefault();
+        input.value = target.dataset.value;
+        list.innerHTML = '';
+        list.style.display = 'none';
+      }
+    } else if (event.key === 'Escape') {
+      list.innerHTML = '';
+      list.style.display = 'none';
+    }
+    // Enter is handled by the global Enter-key listener that calls saveManualTransaction()
+  });
+
+  // Hide list on blur (small delay so mousedown on item fires first)
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      list.innerHTML = '';
+      list.style.display = 'none';
+    }, 200);
+  });
+
+  // Click on autocomplete item
+  list.addEventListener('mousedown', (event) => {
+    const item = event.target.closest('.category-ac-item');
+    if (item) {
+      event.preventDefault();
+      input.value = item.dataset.value;
+      list.innerHTML = '';
+      list.style.display = 'none';
+    }
+  });
+}
+
+/**
+ * Show filtered category/account suggestions in the manual transaction modal.
+ * Delegates to the transfer-account dropdown when query starts with "[".
+ */
+function _showManualCategoryDropdown(input, list) {
+  const query = (input.value || '').trim();
+  const queryLower = query.toLowerCase();
+
+  if (!query) {
+    list.innerHTML = '';
+    list.style.display = 'none';
+    return;
+  }
+
+  // Transfer mode: "[" prefix triggers account list for transfer assignment
+  if (query.startsWith('[')) {
+    _showManualTransferAccountDropdown(list, query);
+    return;
+  }
+
+  // Smart filtering: split on ":" to match primary/detailed independently
+  let matches;
+  if (queryLower.includes(':')) {
+    const [queryPrimary, queryDetailed] = queryLower.split(':').map(segment => segment.trim());
+    matches = (availableCategories || []).filter(cat => {
+      const lower = cat.toLowerCase();
+      const parts = lower.split(':').map(segment => segment.trim());
+      const primaryMatch = !queryPrimary || (parts[0] || '').includes(queryPrimary);
+      const detailedMatch = !queryDetailed || (parts[1] || '').includes(queryDetailed);
+      return primaryMatch && detailedMatch;
+    });
+  } else {
+    matches = (availableCategories || []).filter(cat =>
+      cat.toLowerCase().includes(queryLower)
+    );
+  }
+
+  const maxVisible = 10;
+  const shown = matches.slice(0, maxVisible);
+
+  if (shown.length === 0) {
+    list.innerHTML = '<div class="category-ac-empty">No matching categories</div>';
+    list.style.display = 'block';
+    return;
+  }
+
+  const html = shown.map((cat, index) => {
+    const highlighted = _highlightMatch(cat, query);
+    return `<div class="category-ac-item${index === 0 ? ' active' : ''}" data-value="${escapeHtml(cat)}">${highlighted}</div>`;
+  }).join('');
+
+  const overflow = matches.length > maxVisible
+    ? `<div class="category-ac-more">${matches.length - maxVisible} more\u2026</div>` : '';
+
+  list.innerHTML = html + overflow;
+  list.style.display = 'block';
+}
+
+/**
+ * Show transfer-account suggestions when user types "[" in the manual txn modal.
+ * Excludes the currently selected account (can't transfer to self).
+ */
+function _showManualTransferAccountDropdown(list, rawQuery) {
+  const accountQuery = rawQuery.slice(1).replace(/]$/, '').toLowerCase();
+
+  // Exclude the account selected in the modal's Account dropdown
+  const accountSelect = document.getElementById('manual-txn-account');
+  const currentAccountId = accountSelect ? accountSelect.value : null;
+
+  const matchingAccounts = accounts.filter(acc => {
+    if (acc.account_id === currentAccountId) return false;
+    if (acc.is_archived) return false;
+    if (!accountQuery) return true;
+    const displayName = _buildAccountDisplayName(acc).toLowerCase();
+    const rawName = (acc.account_name || '').toLowerCase();
+    return displayName.includes(accountQuery) || rawName.includes(accountQuery);
+  });
+
+  const maxVisible = 10;
+  const shown = matchingAccounts.slice(0, maxVisible);
+
+  if (shown.length === 0) {
+    list.innerHTML = '<div class="category-ac-empty">No matching accounts for transfer</div>';
+    list.style.display = 'block';
+    return;
+  }
+
+  const html = shown.map((acc, index) => {
+    const displayName = _buildAccountDisplayName(acc);
+    const transferValue = buildTransferCategory(displayName);
+    const typeBadge = `<span class="transfer-ac-type">${acc.account_category || 'account'}</span>`;
+    const highlighted = accountQuery ? _highlightMatch(displayName, accountQuery) : escapeHtml(displayName);
+    return `<div class="category-ac-item transfer-ac-item${index === 0 ? ' active' : ''}" data-value="${escapeHtml(transferValue)}" data-account-id="${escapeHtml(acc.account_id)}">`
+      + `<span class="transfer-ac-icon">\u21C4</span> ${highlighted} ${typeBadge}</div>`;
+  }).join('');
+
+  const overflow = matchingAccounts.length > maxVisible
+    ? `<div class="category-ac-more">${matchingAccounts.length - maxVisible} more accounts\u2026</div>` : '';
+
+  list.innerHTML = html + overflow;
+  list.style.display = 'block';
+}
+
 function _updateManualTxnDateConstraints() {
   const accountSelect = document.getElementById('manual-txn-account');
   const dateInput = document.getElementById('manual-txn-date');

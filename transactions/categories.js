@@ -5,14 +5,60 @@
 // function that touches category concepts lives here.
 // ============================================================
 
+// ───── Transfer Category Helpers ─────
+
+/**
+ * Check if a category string represents a transfer: [AccountName]
+ * Transfer categories are wrapped in square brackets to distinguish
+ * them from normal "Primary: Detailed" categories.
+ */
+function isTransferCategory(categoryStr) {
+  if (!categoryStr || typeof categoryStr !== 'string') return false;
+  const trimmed = categoryStr.trim();
+  return trimmed.startsWith('[') && trimmed.endsWith(']') && trimmed.length > 2;
+}
+
+/**
+ * Extract the account name from a transfer category string.
+ * "[My Checking Account]" → "My Checking Account"
+ */
+function parseTransferAccountName(categoryStr) {
+  if (!isTransferCategory(categoryStr)) return '';
+  return categoryStr.trim().slice(1, -1);
+}
+
+/**
+ * Build a transfer category string from an account name.
+ * "My Checking Account" → "[My Checking Account]"
+ */
+function buildTransferCategory(accountName) {
+  return `[${accountName}]`;
+}
+
+/**
+ * Find the account object that matches a transfer category display name.
+ * Searches by custom_name, account_name, and _buildAccountDisplayName.
+ */
+function _findAccountByTransferName(transferName) {
+  if (!transferName) return null;
+  const lower = transferName.toLowerCase();
+  return accounts.find(acc => {
+    if (acc.custom_name && acc.custom_name.toLowerCase() === lower) return true;
+    if (acc.account_name && acc.account_name.toLowerCase() === lower) return true;
+    if (_buildAccountDisplayName(acc).toLowerCase() === lower) return true;
+    return false;
+  }) || null;
+}
+
 // ───── Parsing & Formatting ─────
 
 /**
  * Parse a category string into primary and detailed components.
  * Handles multiple formats:
- * 1. Colon-separated: "Getting Around: Bikes and Scooters" → {primary: "Getting Around", detailed: "Bikes and Scooters"}
- * 2. Underscore-separated: "TRANSPORTATION_BIKES_AND_SCOOTERS" → {primary: "Transportation", detailed: "Bikes And Scooters"}
- * 3. Custom categories without separator: "bike stuff" → {primary: "bike stuff", detailed: ""}
+ * 1. Transfer notation: "[Account Name]" → {primary: "[Account Name]", detailed: "", isTransfer: true}
+ * 2. Colon-separated: "Getting Around: Bikes and Scooters" → {primary: "Getting Around", detailed: "Bikes and Scooters"}
+ * 3. Underscore-separated: "TRANSPORTATION_BIKES_AND_SCOOTERS" → {primary: "Transportation", detailed: "Bikes And Scooters"}
+ * 4. Custom categories without separator: "bike stuff" → {primary: "bike stuff", detailed: ""}
  */
 function parseCategoryString(categoryStr) {
   if (!categoryStr || typeof categoryStr !== 'string') {
@@ -20,6 +66,17 @@ function parseCategoryString(categoryStr) {
   }
 
   const trimmed = categoryStr.trim();
+
+  // Transfer category notation: [AccountName]
+  // Return early — transfers are not Primary: Detailed combos
+  if (isTransferCategory(trimmed)) {
+    return {
+      primary: trimmed,
+      detailed: '',
+      full: trimmed,
+      isTransfer: true
+    };
+  }
   
   // Check for colon-separated format (new format)
   if (trimmed.includes(':')) {
@@ -431,10 +488,16 @@ function attachCategoryDropdownListeners() {
     const input = $(`.category-autocomplete[data-txn-id="${txnId}"]`);
     const fullValue = (input.val() || '').trim();
 
-    // Validate against known categories
+    // Validate against known categories (or transfer accounts)
     const resolved = _resolveAutocompleteCategory(fullValue);
     if (resolved.error) {
       showStatus(resolved.error, 'warning');
+      return;
+    }
+
+    // Transfer assignment: user entered [AccountName]
+    if (resolved.isTransfer && resolved.account) {
+      _applyTransferAssignment(txnId, accountId, resolved.account);
       return;
     }
 
@@ -455,6 +518,12 @@ function attachCategoryDropdownListeners() {
       return;
     }
 
+    // Transfer categories cannot be saved as rules — transfers are per-transaction
+    if (resolved.isTransfer) {
+      showStatus('Transfer assignments cannot be saved as rules. Use Override to assign this transfer.', 'warning');
+      return;
+    }
+
     const parsed = parseCategoryString(resolved.value);
     const txn = transactions.find(t => t.transaction_id === txnId);
     openCategoryRuleModal(txn, parsed.primary, parsed.detailed, txnId, accountId);
@@ -464,10 +533,18 @@ function attachCategoryDropdownListeners() {
 // ===== Autocomplete helper: show filtered list =====
 function _showCategoryAutocomplete(input, query, txnId) {
   const list = $(`.category-ac-list[data-txn-id="${txnId}"]`);
-  const q = (query || '').toLowerCase().trim();
+  const q = (query || '').trim();
+  const qLower = q.toLowerCase();
 
   if (!q) {
     list.empty().hide();
+    return;
+  }
+
+  // Transfer mode: user typed "[" to initiate manual transfer assignment.
+  // Show account list instead of category list.
+  if (q.startsWith('[')) {
+    _showTransferAccountAutocomplete(list, q, txnId);
     return;
   }
 
@@ -475,8 +552,8 @@ function _showCategoryAutocomplete(input, query, txnId) {
   // - If query contains ':', split and match primary + detailed separately
   // - Otherwise match anywhere in the full string
   let matches;
-  if (q.includes(':')) {
-    const [qPrimary, qDetailed] = q.split(':').map(s => s.trim());
+  if (qLower.includes(':')) {
+    const [qPrimary, qDetailed] = qLower.split(':').map(s => s.trim());
     matches = (availableCategories || []).filter(cat => {
       const lower = cat.toLowerCase();
       const parts = lower.split(':').map(s => s.trim());
@@ -486,7 +563,7 @@ function _showCategoryAutocomplete(input, query, txnId) {
     });
   } else {
     matches = (availableCategories || []).filter(cat =>
-      cat.toLowerCase().includes(q)
+      cat.toLowerCase().includes(qLower)
     );
   }
 
@@ -511,6 +588,50 @@ function _showCategoryAutocomplete(input, query, txnId) {
   list.html(html + extra).show();
 }
 
+/**
+ * Show account list when user types "[" in the category autocomplete.
+ * Typing "[ch" narrows the list to accounts containing "ch".
+ * Selecting an item fills the input with "[Account Name]".
+ */
+function _showTransferAccountAutocomplete(list, rawQuery, txnId) {
+  // Strip the leading "[" and optional trailing "]" for search purposes
+  const accountQuery = rawQuery.slice(1).replace(/]$/, '').toLowerCase();
+  const currentTxn = transactions.find(txn => txn.transaction_id === txnId);
+  const currentAccountId = currentTxn ? (currentTxn.account_id || currentTxn.plaid_account_id) : null;
+
+  // Filter accounts: exclude the transaction's own account (can't transfer to self)
+  const matchingAccounts = accounts.filter(acc => {
+    if (acc.account_id === currentAccountId) return false;
+    if (acc.is_archived) return false;
+    if (!accountQuery) return true; // show all accounts when just "[" is typed
+    const displayName = _buildAccountDisplayName(acc).toLowerCase();
+    const accountName = (acc.account_name || '').toLowerCase();
+    return displayName.includes(accountQuery) || accountName.includes(accountQuery);
+  });
+
+  const maxShow = 10;
+  const shown = matchingAccounts.slice(0, maxShow);
+
+  if (shown.length === 0) {
+    list.html('<div class="category-ac-empty">No matching accounts for transfer</div>').show();
+    return;
+  }
+
+  const html = shown.map((acc, idx) => {
+    const displayName = _buildAccountDisplayName(acc);
+    const transferValue = buildTransferCategory(displayName);
+    const typeBadge = `<span class="transfer-ac-type">${acc.account_category || 'account'}</span>`;
+    const highlighted = accountQuery ? _highlightMatch(displayName, accountQuery) : escapeHtml(displayName);
+    return `<div class="category-ac-item transfer-ac-item${idx === 0 ? ' active' : ''}" data-value="${escapeHtml(transferValue)}" data-account-id="${escapeHtml(acc.account_id)}">`
+      + `<span class="transfer-ac-icon">\u21C4</span> ${highlighted} ${typeBadge}</div>`;
+  }).join('');
+
+  const extra = matchingAccounts.length > maxShow
+    ? `<div class="category-ac-more">${matchingAccounts.length - maxShow} more accounts\u2026</div>` : '';
+
+  list.html(html + extra).show();
+}
+
 // Highlight matching portions of the category string
 function _highlightMatch(text, query) {
   if (!query) return escapeHtml(text);
@@ -527,6 +648,16 @@ function _resolveAutocompleteCategory(value) {
   }
 
   const normalized = normalizeCategoryLabel(value);
+
+  // Transfer category: [AccountName] — validate the account exists
+  if (isTransferCategory(normalized)) {
+    const accountName = parseTransferAccountName(normalized);
+    const matchedAccount = _findAccountByTransferName(accountName);
+    if (matchedAccount) {
+      return { value: normalized, isTransfer: true, account: matchedAccount };
+    }
+    return { error: `No account named "${accountName}" found. Type [ to see available accounts.` };
+  }
 
   // Exact match (case-insensitive)
   const exact = (availableCategories || []).find(cat =>
@@ -609,6 +740,131 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
     } catch (e) { /* cache removal failure is non-fatal */ }
   } catch (error) {
     showStatus(`Failed to apply override: ${error.message}`, 'error');
+  }
+}
+
+// ───── Transfer Assignment ─────
+
+/**
+ * Handle manual transfer assignment when user enters [AccountName] in the
+ * category field and clicks Override.
+ *
+ * Flow:
+ * 1. Try to find an existing matching transaction in the target account via
+ *    the /transfers/candidates endpoint.
+ * 2. If a high-confidence candidate exists, link the pair directly.
+ * 3. If no candidate exists, create a counterpart transaction in the target
+ *    account and link them.
+ */
+async function _applyTransferAssignment(txnId, sourceAccountId, targetAccount) {
+  const targetAccountId = targetAccount.account_id;
+  const targetDisplayName = _buildAccountDisplayName(targetAccount);
+
+  showStatus(`Assigning transfer to ${targetDisplayName}…`, 'info');
+
+  try {
+    // Step 1: Look for candidate match in the target account
+    const candidatesResponse = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/transfers/candidates/${encodeURIComponent(txnId)}?target_account_id=${encodeURIComponent(targetAccountId)}`
+    );
+
+    if (!candidatesResponse.ok) {
+      const errorData = await candidatesResponse.json();
+      showStatus(errorData.error || 'Failed to find transfer candidates', 'error');
+      return;
+    }
+
+    const candidateData = await candidatesResponse.json();
+    const candidates = candidateData.candidates || [];
+
+    let result;
+
+    if (candidates.length > 0) {
+      // High-confidence candidate found — link directly
+      const bestCandidate = candidates[0];
+
+      const linkResponse = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transfers/link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transaction_id_a: txnId,
+          transaction_id_b: bestCandidate.transaction_id
+        })
+      });
+
+      if (!linkResponse.ok) {
+        const linkError = await linkResponse.json();
+        showStatus(linkError.error || 'Failed to link transfer pair', 'error');
+        return;
+      }
+
+      result = await linkResponse.json();
+      showStatus(`Transfer linked with existing transaction in ${targetDisplayName}`, 'success');
+    } else {
+      // No candidate — create a counterpart transaction and link
+      const createResponse = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transfers/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transaction_id: txnId,
+          target_account_id: targetAccountId
+        })
+      });
+
+      if (!createResponse.ok) {
+        const createError = await createResponse.json();
+        showStatus(createError.error || 'Failed to create transfer counterpart', 'error');
+        return;
+      }
+
+      result = await createResponse.json();
+    }
+
+    // Auto-uncheck "Hide Transfers" so the user can see the result of their
+    // manual transfer assignment. Without this, the new transfer pair would
+    // be immediately hidden by the filter, which is confusing.
+    const hideTransfersCheckbox = document.getElementById('hide-transfers');
+    const wasHidden = hideTransfersCheckbox && hideTransfersCheckbox.checked;
+    if (wasHidden) {
+      hideTransfersCheckbox.checked = false;
+    }
+
+    // Refresh transactions to pick up the new transfer pair
+    await fetchAllTransactions(true);
+
+    // Build a descriptive status message
+    const unhideNote = wasHidden ? ' ("Hide Transfers" unchecked so you can see it)' : '';
+    showStatus(`Transfer paired with ${targetDisplayName}${unhideNote}`, 'success');
+    setTimeout(() => clearStatus(), 5000);
+
+  } catch (error) {
+    showStatus(`Transfer assignment failed: ${error.message}`, 'error');
+  }
+}
+
+/**
+ * Unlink a transfer pair. The source transaction reverts to uncategorized
+ * and the counterpart (if auto-created) may be left for user cleanup.
+ */
+async function unlinkTransfer(txnId) {
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transfers/unlink`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transaction_id: txnId })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      showStatus(errorData.error || 'Failed to unlink transfer', 'error');
+      return;
+    }
+
+    showStatus('Transfer pair unlinked', 'success');
+    await fetchAllTransactions(true);
+    setTimeout(() => clearStatus(), 3000);
+  } catch (error) {
+    showStatus(`Failed to unlink transfer: ${error.message}`, 'error');
   }
 }
 
