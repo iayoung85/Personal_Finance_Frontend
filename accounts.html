@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Accounts - Personal Finance</title>
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+  <link rel="icon" type="image/png" href="IAY favicon.png">
+  <link rel="stylesheet" href="accounts.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="page-header">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button id="sidebar-toggle" class="sidebar-toggle" onclick="toggleSidebar()">☰ Accounts</button>
+          <a href="index.html" class="back-link">← Back to Dashboard</a>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <a href="transactions.html" class="back-link" style="color: #1967d2;">View Transactions →</a>
+          <a href="investments.html" class="back-link" style="color: #28a745;">View Investments →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content Wrapper -->
+    <div class="main-wrapper">
+      <!-- Two-Column Sidebar -->
+      <aside class="accounts-sidebar" id="accounts-sidebar">
+        <!-- Filter / Search -->
+        <div class="sidebar-search">
+          <input type="text" id="sidebar-filter" placeholder="Search banks or accounts…" oninput="onSidebarFilterChange()">
+        </div>
+        <div class="sidebar-columns">
+          <!-- Bank List (left column) -->
+          <div class="sidebar-col sidebar-banks" id="bank-list"></div>
+          <!-- Account List (right column) -->
+          <div class="sidebar-col sidebar-accounts" id="account-list"></div>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <div class="main-content" id="main-content">
+        <div class="empty-state-prompt">
+          <div class="empty-state-icon">🏦</div>
+          <h2>Select a bank or account</h2>
+          <p>Choose an item from the sidebar to view its details and available actions.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Create Manual Account Modal ═══ -->
+  <div id="create-account-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Create Manual Account</h2>
+        <button class="modal-close" onclick="closeCreateAccountModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-stack">
+          <div class="form-field">
+            <label for="new-acct-bank">Bank</label>
+            <input type="text" id="new-acct-bank" list="bank-datalist" placeholder="e.g., Chase, Piggy Bank" autocomplete="off">
+            <datalist id="bank-datalist"></datalist>
+            <div class="form-hint">Accounts with the same bank name are grouped together. Type a new name to create a new bank.</div>
+          </div>
+          <div class="form-field">
+            <label for="new-acct-name">Account Name</label>
+            <input type="text" id="new-acct-name" placeholder="e.g., Emergency Fund">
+          </div>
+          <div class="form-field">
+            <label for="new-acct-category">Account Category</label>
+            <select id="new-acct-category" onchange="onNewAccountCategoryChange()">
+              <option value="">— Select Category —</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="new-acct-subcategory">Subcategory</label>
+            <select id="new-acct-subcategory">
+              <option value="">— Optional —</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <div class="form-field" style="flex: 1;">
+              <label for="new-acct-balance">Opening Balance</label>
+              <input type="number" id="new-acct-balance" placeholder="0.00" step="0.01" value="0">
+            </div>
+            <div class="form-field" style="flex: 1;">
+              <label for="new-acct-balance-date">Balance Date</label>
+              <input type="date" id="new-acct-balance-date">
+            </div>
+          </div>
+          <div class="form-field">
+            <label for="new-acct-currency">Currency</label>
+            <input type="text" id="new-acct-currency" value="USD" maxlength="3" style="width: 80px;">
+          </div>
+          <div class="form-field">
+            <label for="new-acct-notes">Notes</label>
+            <textarea id="new-acct-notes" rows="2" placeholder="Optional notes…"></textarea>
+          </div>
+          <div id="create-account-error" class="form-error hidden"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeCreateAccountModal()">Cancel</button>
+        <button class="btn-primary" onclick="submitCreateAccount()">Create Account</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Confirmation Modal (reusable for destructive actions) ═══ -->
+  <div id="confirm-modal" class="modal-overlay hidden">
+    <div class="modal modal-confirm">
+      <div class="modal-header">
+        <h2 id="confirm-modal-title">Confirm Action</h2>
+        <button class="modal-close" onclick="closeConfirmModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-modal-message"></p>
+        <div id="confirm-modal-typed" class="confirm-typed-section hidden">
+          <label id="confirm-modal-typed-label">Type the name to confirm:</label>
+          <input type="text" id="confirm-modal-typed-input" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeConfirmModal()">Cancel</button>
+        <button id="confirm-modal-btn" class="btn-danger" onclick="executeConfirmedAction()">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Reset Account Modal ═══ -->
+  <div id="reset-account-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Reset Account</h2>
+        <button class="modal-close" onclick="closeResetAccountModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="reset-modal-description"></p>
+        <div id="reset-manual-fields" class="form-stack hidden">
+          <div class="form-field">
+            <label for="reset-new-balance">New Opening Balance</label>
+            <input type="number" id="reset-new-balance" step="0.01" placeholder="0.00">
+          </div>
+          <div class="form-field">
+            <label for="reset-new-date">Opening Balance Date</label>
+            <input type="date" id="reset-new-date">
+          </div>
+        </div>
+        <div id="reset-account-error" class="form-error hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeResetAccountModal()">Cancel</button>
+        <button class="btn-danger" onclick="submitResetAccount()">Reset Account</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status toast -->
+  <div id="status-toast" class="status-toast hidden"></div>
+
+  <!-- Script includes (order matters: config → state → api → utils → modules → main) -->
+  <script src="config.js"></script>
+  <script src="accounts/state.js"></script>
+  <script src="accounts/api.js"></script>
+  <script src="accounts/utils.js"></script>
+  <script src="accounts/sidebar.js"></script>
+  <script src="accounts/account-detail.js"></script>
+  <script src="accounts/bank-detail.js"></script>
+  <script src="accounts/main.js"></script>
+</body>
+</html>

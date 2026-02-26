@@ -44,12 +44,7 @@ Codes use onion-layer prioritization:
 
 | Code | Location | Description |
 |------|----------|-------------|
-| ~~1h~~ | ~~`transactions/table-renderer.js`~~ | ~~Frontend ledger column — display running balance per account in transaction table~~ **DONE (2-C)** — `fetchBalanceHistory()` in api.js loads `Account_Balance_History` on single-account select; `balanceHistoryLookup` map in state.js; table-renderer resolves per-row running balance. **FIX (2-C-patch)**: Migrated all frontend ID references from `plaid_transaction_id`/`manual_transaction_id` to unified `transaction_id` — ledger lookup, sort keys, memo save, category override/rule, split modal, manual txn creation. This was broken after the unified transaction model migration. |
-| 1i | `transactions/export.js` and `investments.js:794` | **KEY DELIVERABLE**: Month-end balance snapshot export — export button in bottom bar generates account-by-account balance summary. Parallel implementation on investments page. |
-| ~~1j~~ | ~~`transactions.js` (all)~~ | ~~**Modularize transactions.js** — break 4 500-line monolith into 16 focused files per blueprint file map. Delete 3 duplicate function pairs, separate API from DOM. Prerequisite for all other Phase 2 frontend work.~~ **DONE (2-A)** |
-| ~~1k~~ | ~~`transactions.html` / `transactions.css`~~ | ~~**Layout restructure** — config → modal, filters → persistent top strip, scroll pane (75-85% viewport) with sticky table header, export bar along bottom. Matches blueprint spatial model.~~ **DONE (2-B)** |
-| ~~1l~~ | ~~`transactions/table-renderer.js`~~ | ~~**Pending transactions table** — when Show Pending enabled, render pending txns in muted rows above posted with "Pending" badge, separator row, projected ledger balances.~~ **DONE (2-D)** |
-| ~~1m~~ | ~~`transactions/insights.js` / `transactions/chart.js`~~ | ~~**Insight chart interaction** — clicking same button shows the graph and makes it go away. no need for user to move mouse to click the x to close the modal; primary slice click drills into detailed subcategories (absorbs backlog item 3b).~~ **DONE (2-F)** — `toggleChartModal()` replaces `openChartModal()` for click-on/click-off. Chart drilldown: click a primary slice to see detailed subcategories. "← Back" button returns to top-level. Opening balance transactions get locked category/description, distinct "Opening Bal" badge, no delete button. Manual txn date validation against opening balance date. Plaid account advisory in manual txn modal. |
+
 
 ### Tier 2 — Important
 
@@ -61,8 +56,7 @@ Codes use onion-layer prioritization:
 
 | Code | Location | Description |
 |------|----------|-------------|
-| ~~3b~~ | ~~`transactions.js:2800`~~ | ~~Drilldown pie chart~~ **PROMOTED to 1m** — absorbed into Phase 2 insight chart interaction per blueprint requirements. |
-| ~~3c~~ | ~~`transactions.html:115`~~ | ~~Move manual transactions button outside config-section~~ **RESOLVED by 2-B** — layout restructure moves manual transaction button to action row above scroll pane. |
+
 | 3d | `transactions/` | Frontend transaction search bar (UI complement to backend 2g) |
 | 3e | `investments.js:523` | Filter holdings by securities category |
 | 3f | `transactions/table-renderer.js` | Move delete button to icon in description column |
@@ -119,9 +113,7 @@ Broke the monolithic `transactions.js` (4 500 lines) into the module map defined
 - Remove dead variables (`synced`, `syncing` appear unused).
 - Separate mixed API+DOM functions into a pure API call in `api.js` and an orchestrating wrapper in the owning module.
 
-#### 2-B. Layout restructure (Done)
 
-Rearranged the page to match the blueprint's spatial model. Config panel replaced with modal, filters moved to persistent top strip, chart moved to modal triggered from insight card, export bar pinned to bottom with three export groups.
 
 | Change | Detail |
 |--------|--------|
@@ -178,20 +170,17 @@ Rearranged the page to match the blueprint's spatial model. Config panel replace
 
 | Step | Depends on | Deliverable |
 |------|-----------|------------|
-| ~~2-A (modularize)~~ | ~~—~~ | ~~16 clean files, zero duplicate functions, identical runtime behavior~~ **DONE** |
-| ~~2-B (layout)~~ | ~~2-A~~ | ~~New spatial layout matching blueprint, config modal, filter strip, export bar~~ **DONE** |
-| ~~2-C (ledger)~~ | ~~2-A, 2-B~~ | ~~Running balance column in single-account view~~ **DONE** (patched: unified transaction_id migration) |
-| ~~2-D (pending)~~ | ~~2-A, 2-B~~ | ~~Separate pending table above scroll pane~~ **DONE** |
+
 | 2-E (snapshot export) | 2-A, 2-B | Month-end balance export buttons in export bar |
-| ~~2-F (chart interaction)~~ | ~~2-A, 2-B~~ | ~~Hover/persist/drilldown chart on insight cards~~ **DONE** — click toggle, primary→detailed drilldown with back button |
+
 | 2-G (investment txns) | 2-C | Synthetic investment transactions for balance history |
 
 ### Frontend Next Steps
 
 | Step | Depends on | Deliverable |
 |------|-----------|------------|
-| 2-E (snapshot export) | 2-A, 2-B | Month-end balance export buttons in export bar |
-| ~~2-F (chart interaction)~~ | ~~2-A, 2-B~~ | ~~Hover/persist/drilldown chart on insight cards~~ **DONE** |
+
+
 | 2-G (investment txns) | 2-C | Synthetic investment transactions for balance history |
 | Transaction search UI (3d) | — | Client-side search bar filtering across all transaction fields (no backend needed) |
 | Account management page (2h) | — | New page for account names, categories, settings |
