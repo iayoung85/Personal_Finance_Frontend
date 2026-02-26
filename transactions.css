@@ -216,6 +216,7 @@ h1 {
 }
 
 .sidebar-create-btn {
+  display: block;
   width: 100%;
   margin-top: 12px;
   padding: 10px;
@@ -226,6 +227,9 @@ h1 {
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
+  text-decoration: none;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .sidebar-create-btn:hover {

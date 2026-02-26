@@ -144,7 +144,9 @@ async function loadAccounts() {
       last_updated: a.last_balance_update || a.last_updated || null,
       is_archived: a.is_archived || false,
       billed_products: a.billed_products || [],
-      available_products: a.available_products || []
+      available_products: a.available_products || [],
+      // Backend-authoritative boundary for manual txn date guard (Problem 5 alignment)
+      earliest_plaid_transaction_date: a.earliest_plaid_transaction_date || null,
     }))
     .filter(a => a.account_id); // Filter out any without account_id
 
@@ -342,11 +344,11 @@ function renderAccountsSidebar() {
     html += '</div>';
   }
 
-  // ===== CREATE MANUAL ACCOUNT BUTTON =====
+  // ===== CREATE MANUAL ACCOUNT LINK =====
   html += `
-    <button class="sidebar-create-btn" onclick="openCreateManualAccountModal()">
+    <a href="accounts.html#create-account" class="sidebar-create-btn">
       + Create Manual Account
-    </button>
+    </a>
   `;
 
   container.innerHTML = html;
@@ -462,94 +464,5 @@ async function promptRename(accountId, currentCustomName) {
   } catch (error) {
     console.error('Rename error:', error);
     showStatus(`Failed to rename account: ${error.message}`, 'error');
-  }
-}
-
-// ===== Manual Account Creation =====
-
-function openCreateManualAccountModal() {
-  const modal = document.getElementById('create-manual-account-modal');
-  modal.classList.remove('hidden');
-  document.getElementById('manual-account-name').focus();
-}
-
-function closeCreateManualAccountModal() {
-  const modal = document.getElementById('create-manual-account-modal');
-  modal.classList.add('hidden');
-  // Clear form
-  document.getElementById('manual-bank-name').value = '';
-  document.getElementById('manual-account-name').value = '';
-  document.getElementById('manual-account-category').value = '';
-  document.getElementById('manual-account-balance').value = '';
-  document.getElementById('manual-account-error').textContent = '';
-  document.getElementById('manual-account-error').style.display = 'none';
-}
-
-async function submitCreateManualAccount() {
-  const bankName = document.getElementById('manual-bank-name').value.trim();
-  const name = document.getElementById('manual-account-name').value.trim();
-  const category = document.getElementById('manual-account-category').value;
-  const balance = parseFloat(document.getElementById('manual-account-balance').value);
-  const errorDiv = document.getElementById('manual-account-error');
-
-  // Validation
-  if (!bankName) {
-    errorDiv.textContent = 'Bank name is required';
-    errorDiv.style.display = 'block';
-    return;
-  }
-
-  if (!name) {
-    errorDiv.textContent = 'Account name is required';
-    errorDiv.style.display = 'block';
-    return;
-  }
-
-  if (!category) {
-    errorDiv.textContent = 'Please select an account category';
-    errorDiv.style.display = 'block';
-    return;
-  }
-
-  if (isNaN(balance)) {
-    errorDiv.textContent = 'Starting balance must be a valid number';
-    errorDiv.style.display = 'block';
-    return;
-  }
-
-  try {
-    showStatus('Creating manual account...', 'info');
-
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bank_name: bankName,
-        account_name: name,
-        account_category: category,
-        opening_balance: balance
-      })
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      errorDiv.textContent = data.error || 'Failed to create account';
-      errorDiv.style.display = 'block';
-      return;
-    }
-
-    closeCreateManualAccountModal();
-    showStatus(`Account "${name}" created successfully`, 'success');
-
-    // Reload accounts to show new account in sidebar
-    await loadAccounts();
-    selectAllAccounts();
-
-    setTimeout(() => clearStatus(), 2000);
-
-  } catch (error) {
-    errorDiv.textContent = `Error: ${error.message}`;
-    errorDiv.style.display = 'block';
   }
 }

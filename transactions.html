@@ -211,50 +211,6 @@
     </div>
   </div>
 
-  <!-- Create Manual Account Modal -->
-  <div id="create-manual-account-modal" class="modal-overlay hidden">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>Create Manual Account</h2>
-        <button class="modal-close" onclick="closeCreateManualAccountModal()">✕</button>
-      </div>
-      <div class="modal-body">
-        <div style="display: flex; flex-direction: column; gap: 15px;">
-          <div>
-            <label style="display: block; margin-bottom: 6px; font-weight: 500;">Bank Name</label>
-            <input type="text" id="manual-bank-name" placeholder="e.g., Chase, My Piggy Bank" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
-            <div style="font-size: 12px; color: #888; margin-top: 4px;">Accounts with the same bank name are grouped together.</div>
-          </div>
-          <div>
-            <label style="display: block; margin-bottom: 6px; font-weight: 500;">Account Name</label>
-            <input type="text" id="manual-account-name" placeholder="e.g., My Savings" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
-          </div>
-          <div>
-            <label style="display: block; margin-bottom: 6px; font-weight: 500;">Account Category</label>
-            <select id="manual-account-category" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
-              <option value="">— Select Category —</option>
-              <option value="depository">Depository (Checking, Savings)</option>
-              <option value="credit">Credit (Credit Card)</option>
-              <option value="investment">Investment (Stocks, Bonds, ETFs)</option>
-              <option value="loan">Loan (Mortgage, Personal Loan)</option>
-              <option value="asset">Asset (Other Assets)</option>
-              <option value="liability">Liability (Other Liabilities)</option>
-            </select>
-          </div>
-          <div>
-            <label style="display: block; margin-bottom: 6px; font-weight: 500;">Starting Balance</label>
-            <input type="number" id="manual-account-balance" placeholder="0.00" step="0.01" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
-          </div>
-          <div id="manual-account-error" style="color: #d32f2f; font-size: 14px; display: none;"></div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="secondary" onclick="closeCreateManualAccountModal()">Cancel</button>
-        <button onclick="submitCreateManualAccount()">Create Account</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Split Transaction Modal -->
   <div id="split-modal" class="modal-overlay hidden">
     <div class="modal">

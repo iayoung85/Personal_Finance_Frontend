@@ -20,12 +20,30 @@ function openAddManualTransactionModal() {
   let accountOptions = '<option value="">— Select Account —</option>';
   let defaultAccountId = '';
   
-  accounts.forEach(account => {
-    const displayName = account.custom_name || account.account_name || account.institution_name || 'Unknown Account';
-    const categoryLabel = account.account_category || '';
-    
-    accountOptions += `<option value="${escapeHtml(account.account_id)}">${escapeHtml(displayName)} (${escapeHtml(categoryLabel)})</option>`;
-  });
+  // Group accounts: offline/manual first, then linked with a visual badge.
+  // This makes it clear which accounts have date restrictions for manual txns.
+  const offlineAccounts = accounts.filter(a => a.connection_status !== 'linked');
+  const linkedAccounts = accounts.filter(a => a.connection_status === 'linked');
+
+  if (offlineAccounts.length > 0) {
+    accountOptions += '<optgroup label="Offline / Manual Accounts">';
+    offlineAccounts.forEach(account => {
+      const displayName = account.custom_name || account.account_name || account.institution_name || 'Unknown Account';
+      const categoryLabel = account.account_category || '';
+      accountOptions += `<option value="${escapeHtml(account.account_id)}">${escapeHtml(displayName)} (${escapeHtml(categoryLabel)})</option>`;
+    });
+    accountOptions += '</optgroup>';
+  }
+
+  if (linkedAccounts.length > 0) {
+    accountOptions += '<optgroup label="🔗 Plaid-Linked (historical only)">';
+    linkedAccounts.forEach(account => {
+      const displayName = account.custom_name || account.account_name || account.institution_name || 'Unknown Account';
+      const categoryLabel = account.account_category || '';
+      accountOptions += `<option value="${escapeHtml(account.account_id)}">${escapeHtml(displayName)} (${escapeHtml(categoryLabel)})</option>`;
+    });
+    accountOptions += '</optgroup>';
+  }
   
   // If in single account mode, default to that account
   if (selectedAccountMode === 'single' && selectedAccountId) {
@@ -247,15 +265,17 @@ async function saveManualTransaction() {
   // but connection_status reflects current lifecycle. A converted plaid account
   // (connection_status='converted') now operates as manual — no date restriction.
   const isActivelyLinkedToPlaid = selectedAccount && selectedAccount.connection_status === 'linked';
-  const openingBalanceTxn = transactions.find(
-    txn => txn.source === 'opening_balance' && txn.account_id === accountId
-  );
 
-  if (isActivelyLinkedToPlaid && openingBalanceTxn) {
-    // Plaid accounts: manual transactions MUST be before the opening balance date.
+  // Use backend-authoritative earliest plaid transaction date (Problem 5 alignment).
+  // The backend guards against dates >= earliest_plaid_date, so the frontend must
+  // use the same boundary rather than the opening_balance date (which may differ).
+  const earliestPlaidDate = selectedAccount && selectedAccount.earliest_plaid_transaction_date;
+
+  if (isActivelyLinkedToPlaid && earliestPlaidDate) {
+    // Plaid accounts: manual transactions MUST be before the earliest plaid transaction.
     // Backend will auto-generate a manual_opening_balance to reconcile.
-    if (date >= openingBalanceTxn.date) {
-      _showManualTxnError(`Plaid account: date must be before the opening balance (${openingBalanceTxn.date}). Manual transactions in Plaid accounts are only for historical entries.`);
+    if (date >= earliestPlaidDate) {
+      _showManualTxnError(`Plaid account: date must be before the earliest plaid transaction (${earliestPlaidDate}). Manual transactions in Plaid accounts are only for historical entries.`);
       return;
     }
   }
@@ -387,17 +407,17 @@ function _updateManualTxnDateConstraints() {
   dateInput.removeAttribute('min');
   dateInput.removeAttribute('max');
 
-  // Find opening balance for this account
-  const openingBalanceTxn = transactions.find(
-    txn => txn.source === 'opening_balance' && txn.account_id === accountId
-  );
+  // Use backend-authoritative earliest plaid transaction date (Problem 5 alignment).
+  // This matches the backend's guard in create_manual_transaction_record which
+  // checks txn_date >= earliest_plaid_date, not the opening_balance date.
+  const earliestPlaidDate = selectedAccount && selectedAccount.earliest_plaid_transaction_date;
 
   if (selectedAccount && selectedAccount.connection_status === 'linked') {
-    // Plaid account: manual transactions must be BEFORE opening balance.
-    // Auto-set date to 1 day before opening balance for convenience.
-    if (openingBalanceTxn) {
-      const openingDate = new Date(openingBalanceTxn.date + 'T00:00:00');
-      const dayBefore = new Date(openingDate);
+    // Plaid account: manual transactions must be BEFORE earliest plaid transaction.
+    // Auto-set date to 1 day before that boundary for convenience.
+    if (earliestPlaidDate) {
+      const boundaryDate = new Date(earliestPlaidDate + 'T00:00:00');
+      const dayBefore = new Date(boundaryDate);
       dayBefore.setDate(dayBefore.getDate() - 1);
       const dayBeforeStr = dayBefore.toISOString().split('T')[0];
 
@@ -408,8 +428,8 @@ function _updateManualTxnDateConstraints() {
     const advisory = document.createElement('small');
     advisory.id = 'manual-txn-plaid-advisory';
     advisory.style.cssText = 'color: #b45309; display: block; margin-top: 6px; padding: 6px 8px; background: #fef3c7; border-radius: 4px; font-size: 11px;';
-    advisory.textContent = openingBalanceTxn
-      ? `Plaid account: Manual transactions must occur before the opening balance (${openingBalanceTxn.date}). The app will auto-generate a reconciling opening balance.`
+    advisory.textContent = earliestPlaidDate
+      ? `Plaid account: Manual transactions must occur before the earliest plaid transaction (${earliestPlaidDate}). The app will auto-generate a reconciling opening balance.`
       : 'Plaid account: Manual transactions are only for historical entries before the earliest Plaid-downloaded transaction.';
     accountSelect.parentElement.appendChild(advisory);
   }

@@ -45,6 +45,12 @@ $(document).ready(async function () {
   const todayStr = new Date().toISOString().split('T')[0];
   const balanceDateInput = document.getElementById('new-acct-balance-date');
   if (balanceDateInput) balanceDateInput.value = todayStr;
+
+  // 5. Check if navigating from transactions page with #create-account hash
+  if (window.location.hash === '#create-account') {
+    openCreateAccountModal();
+    window.history.replaceState(null, '', 'accounts.html');
+  }
 });
 
 // ── Data Reload Helper ───────────────────────────────────────
