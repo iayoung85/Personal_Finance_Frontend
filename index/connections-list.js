@@ -100,6 +100,8 @@ const IndexConnectionsList = (() => {
   function _renderActionButtons(bank) {
     const isLinked = bank.connection_status === 'linked';
     const isConverted = bank.connection_status === 'converted';
+    const isManual = bank.connection_status === 'manual';
+    const hasInstitution = !!bank.institution_id;
     const bankIdAttr = bank.bank_id.replace(/'/g, "\\'");
     const nameAttr = (bank.custom_name || bank.bank_name || 'Unknown Bank').replace(/'/g, "\\'");
     const itemIdAttr = (bank.plaid_item_id || '').replace(/'/g, "\\'");
@@ -121,12 +123,18 @@ const IndexConnectionsList = (() => {
         `onclick="IndexConnectionsList.handleRefresh('${itemIdAttr}', '${nameAttr}', '${itemStatusAttr}')">` +
         `${refreshLabel}</button>`
       );
-    } else if (isConverted) {
-      // Converted bank: offer to relink via a new Plaid link session
+    } else if (isConverted || (isManual && hasInstitution)) {
+      // Bank can be (re-)linked via Plaid if it has an institution_id.
+      // This covers scenario 7 (manual → linked) and converted → linked.
+      const linkLabel = isConverted ? '🔗 Relink' : '🔗 Link to Plaid';
+      const linkTitle = isConverted
+        ? 'Reconnect to Plaid'
+        : 'Connect this bank to Plaid for automatic syncing';
+
       buttons.push(
-        `<button class="bank-btn bank-btn-relink" title="Reconnect to Plaid" ` +
+        `<button class="bank-btn bank-btn-relink" title="${linkTitle}" ` +
         `onclick="IndexConnectionsList.handleRelink('${bankIdAttr}', '${nameAttr}')">` +
-        `🔗 Relink</button>`
+        `${linkLabel}</button>`
       );
     }
 
@@ -204,9 +212,19 @@ const IndexConnectionsList = (() => {
         token: linkToken,
         onSuccess: async (publicToken) => {
           try {
-            await IndexApi.exchangePublicToken(publicToken, bankId);
+            const exchangeResult = await IndexApi.exchangePublicToken(publicToken, bankId);
             invalidateItemInfoCache();
-            IndexUtils.showMessage('dashboard-message', `✓ ${bankName} relinked successfully!`, 'success');
+
+            // Check if pass 4 flagged accounts for user-driven matching
+            const relinkDetails = exchangeResult.relink_details || {};
+            const pendingMatching = relinkDetails.pending_account_matching;
+
+            if (pendingMatching && pendingMatching.needed) {
+              _showAccountMatchingModal(bankId, bankName, pendingMatching);
+            } else {
+              IndexUtils.showMessage('dashboard-message', `✓ ${bankName} relinked successfully!`, 'success');
+            }
+
             loadBanks();
           } catch (exchangeError) {
             IndexUtils.showMessage('dashboard-message', 'Error: ' + exchangeError.message, 'error');
@@ -302,6 +320,186 @@ const IndexConnectionsList = (() => {
     } catch (disconnectError) {
       IndexUtils.showMessage('dashboard-message', 'Error: ' + disconnectError.message, 'error');
     }
+  }
+
+  // ── Account Matching Modal (pass 4 UI) ────────────────
+
+  /**
+   * Show the account matching modal after a relink where automatic matching
+   * couldn't resolve all accounts (pass 4 flagged pending_account_matching).
+   *
+   * Renders one row per existing (orphaned) account with a dropdown to pick
+   * the matching Plaid account — or "No match" to leave it as-is.
+   *
+   * @param {string} bankId - The bank being relinked.
+   * @param {string} bankName - Display name for messages.
+   * @param {Object} pendingMatching - Backend's pending_account_matching payload:
+   *   { existing_candidates: [...], plaid_candidates: [...] }
+   */
+  function _showAccountMatchingModal(bankId, bankName, pendingMatching) {
+    const overlay = document.getElementById('account-matching-overlay');
+    const body = document.getElementById('matching-modal-body');
+    const confirmBtn = document.getElementById('matching-confirm-btn');
+    const skipBtn = document.getElementById('matching-skip-btn');
+    const title = document.getElementById('matching-modal-title');
+
+    if (!overlay || !body) return;
+
+    title.textContent = `Match Accounts — ${bankName}`;
+
+    const existingCandidates = pendingMatching.existing_candidates || [];
+    const plaidCandidates = pendingMatching.plaid_candidates || [];
+
+    // Build rows — one per existing orphaned account
+    const rowsHtml = existingCandidates.map((existingAccount, rowIndex) => {
+      const displayName = existingAccount.custom_name || existingAccount.account_name || 'Unknown';
+      const categoryLabel = [existingAccount.account_category, existingAccount.account_subcategory]
+        .filter(Boolean)
+        .join(' / ');
+      const balanceFormatted = _formatCurrency(existingAccount.current_balance);
+
+      // Build dropdown options from Plaid candidates
+      const plaidOptions = plaidCandidates.map((plaidAccount, plaidIndex) => {
+        const plaidLabel = plaidAccount.plaid_name || plaidAccount.account_name || 'Unknown';
+        const plaidMask = plaidAccount.plaid_mask ? ` (••${plaidAccount.plaid_mask})` : '';
+        const plaidType = [plaidAccount.plaid_type, plaidAccount.plaid_subtype]
+          .filter(Boolean)
+          .join('/');
+        const plaidBalance = _formatCurrency(plaidAccount.current_balance);
+        return `<option value="${plaidIndex}">${plaidLabel}${plaidMask} — ${plaidType} — ${plaidBalance}</option>`;
+      }).join('');
+
+      return `
+        <div class="matching-pair-row" data-row-index="${rowIndex}">
+          <div class="matching-existing-card">
+            <div class="card-name">${displayName}</div>
+            <div class="card-meta">${categoryLabel} · ${existingAccount.origin || 'manual'}</div>
+            <div class="card-balance">Balance: ${balanceFormatted}</div>
+          </div>
+          <div class="matching-arrow">→</div>
+          <div class="matching-plaid-select">
+            <select data-row="${rowIndex}">
+              <option value="">— No match —</option>
+              ${plaidOptions}
+            </select>
+            <div class="plaid-option-detail">Select the Plaid account this corresponds to</div>
+          </div>
+        </div>`;
+    }).join('');
+
+    body.innerHTML = rowsHtml;
+
+    // Enable confirm button when at least one match is selected
+    const selects = body.querySelectorAll('select');
+    const _updateConfirmState = () => {
+      const hasAnyMatch = Array.from(selects).some(selectElement => selectElement.value !== '');
+      confirmBtn.disabled = !hasAnyMatch;
+    };
+    selects.forEach(selectElement => selectElement.addEventListener('change', _updateConfirmState));
+
+    // Wire up buttons
+    confirmBtn.onclick = () => _handleConfirmMatches(bankId, bankName, existingCandidates, plaidCandidates);
+    skipBtn.onclick = () => _closeAccountMatchingModal(bankName, /* skipped */ true);
+
+    overlay.style.display = 'flex';
+  }
+
+  /**
+   * Collect the user's match selections and POST to confirm-account-matching.
+   */
+  async function _handleConfirmMatches(bankId, bankName, existingCandidates, plaidCandidates) {
+    const body = document.getElementById('matching-modal-body');
+    const confirmBtn = document.getElementById('matching-confirm-btn');
+    if (!body) return;
+
+    const selects = body.querySelectorAll('select');
+    const matches = [];
+    const usedPlaidIndices = new Set();
+
+    selects.forEach((selectElement, rowIndex) => {
+      const plaidIndex = selectElement.value;
+      if (plaidIndex === '') return; // "No match" selected
+
+      const plaidIndexNum = parseInt(plaidIndex, 10);
+      if (usedPlaidIndices.has(plaidIndexNum)) {
+        // Duplicate — same Plaid account picked for multiple existing accounts
+        IndexUtils.showMessage(
+          'dashboard-message',
+          'Each Plaid account can only be matched to one existing account. Please fix duplicates.',
+          'error',
+        );
+        return;
+      }
+      usedPlaidIndices.add(plaidIndexNum);
+
+      matches.push({
+        existing_account_id: existingCandidates[rowIndex].account_id,
+        plaid_account_id: plaidCandidates[plaidIndexNum].account_id,
+      });
+    });
+
+    if (!matches.length) {
+      _closeAccountMatchingModal(bankName, /* skipped */ true);
+      return;
+    }
+
+    // Disable button while processing
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Processing…';
+
+    try {
+      const confirmResult = await IndexApi.confirmAccountMatching(bankId, matches);
+      _closeAccountMatchingModal(bankName, /* skipped */ false);
+      IndexUtils.showMessage(
+        'dashboard-message',
+        `✓ ${bankName} relinked! ${confirmResult.matches_processed || 0} account(s) merged, ` +
+        `${confirmResult.transactions_moved || 0} transactions migrated.`,
+        'success',
+      );
+      loadBanks();
+    } catch (confirmError) {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Confirm Matches';
+      IndexUtils.showMessage('dashboard-message', 'Error: ' + confirmError.message, 'error');
+    }
+  }
+
+  /**
+   * Close the account matching modal and show an appropriate message.
+   */
+  function _closeAccountMatchingModal(bankName, skipped) {
+    const overlay = document.getElementById('account-matching-overlay');
+    if (overlay) overlay.style.display = 'none';
+
+    // Reset button state
+    const confirmBtn = document.getElementById('matching-confirm-btn');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Confirm Matches';
+    }
+
+    if (skipped) {
+      IndexUtils.showMessage(
+        'dashboard-message',
+        `✓ ${bankName} relinked successfully! (Account matching skipped — ` +
+        `you can manually merge accounts later from the Accounts page.)`,
+        'success',
+      );
+    }
+  }
+
+  /**
+   * Format a balance value for display.
+   * @param {string|number} value - The balance value.
+   * @returns {string} Formatted currency string.
+   */
+  function _formatCurrency(value) {
+    const numericValue = parseFloat(value) || 0;
+    return numericValue.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+    });
   }
 
   return {

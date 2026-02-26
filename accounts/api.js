@@ -117,6 +117,36 @@ async function apiFetchCategories() {
 }
 
 /**
+ * Fetch curated list of popular institutions for the official bank dropdown.
+ * No auth required — reference data.
+ */
+async function apiFetchPopularInstitutions() {
+  const url = `${BACKEND_URL}/api/accounts/reference/popular-institutions`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('Failed to fetch popular institutions');
+  }
+  const data = await response.json();
+  return data.institutions || [];
+}
+
+/**
+ * Search institutions by name substring.
+ * No auth required — reference data.
+ * @param {string} query - Search term (min 2 characters)
+ */
+async function apiSearchInstitutions(query) {
+  const url = `${BACKEND_URL}/api/accounts/reference/search-institutions?q=${encodeURIComponent(query)}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to search institutions');
+  }
+  const data = await response.json();
+  return data.institutions || [];
+}
+
+/**
  * Get a single account's full detail.
  */
 async function apiFetchAccountDetail(accountId) {

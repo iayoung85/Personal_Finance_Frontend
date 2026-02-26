@@ -227,6 +227,29 @@ const IndexApi = (() => {
     return { ok: response.ok, data };
   }
 
+  /**
+   * Confirm user-driven account matching after a relink.
+   * @param {string} bankId - The bank_id whose accounts are being matched.
+   * @param {Array<{existing_account_id: string, plaid_account_id: string}>} matches
+   *   Each element pairs an orphaned existing account with a Plaid account.
+   * @returns {Promise<Object>} Reconciliation stats from the backend.
+   */
+  async function confirmAccountMatching(bankId, matches) {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/accounts/banks/${encodeURIComponent(bankId)}/confirm-account-matching`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matches }),
+      },
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to confirm account matching');
+    }
+    return data;
+  }
+
   // ── Expose for other modules ────────────────────────────
 
   return {
@@ -242,5 +265,6 @@ const IndexApi = (() => {
     exchangePublicToken,
     refreshItemAccounts,
     removeBank,
+    confirmAccountMatching,
   };
 })();
