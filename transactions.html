@@ -127,19 +127,17 @@
           <div class="export-group">
             <span class="export-group-label">Balance Summary</span>
             <div class="export-buttons">
-              <!-- TODO: 2-E — Month-end balance snapshot export buttons -->
-              <button class="btn-export" disabled title="Coming soon">JSON</button>
-              <button class="btn-export" disabled title="Coming soon">CSV</button>
-              <button class="btn-export" disabled title="Coming soon">Copy CSV</button>
+              <button onclick="exportBalanceSnapshotJSON()" class="btn-export">JSON</button>
+              <button onclick="downloadBalanceSnapshotCSV()" class="btn-export">CSV</button>
+              <button onclick="copyBalanceSnapshotCSV()" class="btn-export">Copy CSV</button>
             </div>
           </div>
           <div class="export-group">
             <span class="export-group-label">Category Summary</span>
             <div class="export-buttons">
-              <!-- TODO: 2-E — Category summary export buttons -->
-              <button class="btn-export" disabled title="Coming soon">JSON</button>
-              <button class="btn-export" disabled title="Coming soon">CSV</button>
-              <button class="btn-export" disabled title="Coming soon">Copy CSV</button>
+              <button onclick="exportCategorySummaryJSON()" class="btn-export">JSON</button>
+              <button onclick="downloadCategorySummaryCSV()" class="btn-export">CSV</button>
+              <button onclick="copyCategorySummaryCSV()" class="btn-export">Copy CSV</button>
             </div>
           </div>
         </div>
