@@ -10,21 +10,15 @@
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
   <link rel="icon" type="image/png" href="IAY favicon.png">
   <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="nav-sidebar.css">
   <link rel="stylesheet" href="accounts.css">
 </head>
-<body>
+<body data-nav-mode="persistent" data-nav-page="accounts">
   <div class="container">
-    <!-- Header -->
+    <!-- Page Header with data-sidebar toggle -->
     <div class="page-header">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <button id="sidebar-toggle" class="sidebar-toggle" onclick="toggleSidebar()">☰ Accounts</button>
-          <a href="index.html" class="back-link">← Back to Dashboard</a>
-        </div>
-        <div style="display: flex; gap: 12px; align-items: center;">
-          <a href="transactions.html" class="back-link" style="color: #1967d2;">View Transactions →</a>
-          <a href="investments.html" class="back-link" style="color: #28a745;">View Investments →</a>
-        </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <button id="sidebar-toggle" class="sidebar-toggle" onclick="toggleSidebar()">☰ Accounts</button>
       </div>
     </div>
 
@@ -196,6 +190,7 @@
 
   <!-- Script includes (order matters: config → state → api → utils → modules → main) -->
   <script src="config.js"></script>
+  <script src="nav-sidebar.js"></script>
   <script src="accounts/state.js"></script>
   <script src="accounts/api.js"></script>
   <script src="accounts/utils.js"></script>

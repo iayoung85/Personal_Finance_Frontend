@@ -9,9 +9,10 @@
   <title>IAY Financial LLC</title>
   <link rel="icon" type="image/png" href="IAY favicon.png">
   <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="nav-sidebar.css">
   <link rel="stylesheet" href="index.css">
 </head>
-<body>
+<body data-nav-page="dashboard">
   <div class="container">
     <img src="IAY consulting.png" alt="IAY Consulting" class="logo">
     
@@ -123,13 +124,6 @@
       <div class="user-info">
         <p><strong>Email:</strong> <span id="user-email"></span></p>
         <p><strong>Name:</strong> <span id="user-name"></span></p>
-        <button class="logout-btn" onclick="window.location.href='user-settings.html'" style="margin-left: 10px; background: #6c757d;">User Settings</button>
-        <button class="logout-btn" onclick="window.location.href='categories.html'" style="margin-left: 10px; background: #6c757d;">View Categories</button>
-        <button class="logout-btn" onclick="window.location.href='accounts.html'" style="margin-left: 10px; background: #1967d2;">Manage Accounts</button>
-        <button class="logout-btn" onclick="window.location.href='transactions.html'" style="margin-left: 10px; background: #28a745;">View Transactions</button>
-        <button class="logout-btn" onclick="window.location.href='bills.html'" style="margin-left: 10px; background: #e67e22;">Manage Bills</button>
-        <button class="logout-btn" onclick="window.location.href='investments.html'" style="margin-left: 10px; background: #17a2b8;">View Investments</button>
-        <button class="logout-btn" onclick="logout()">Logout</button>
       </div>
       
       <div id="dashboard-deletion-banner"></div>
@@ -295,6 +289,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.4.2/zxcvbn.js"></script>
   <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
   <script src="config.js"></script>
+  <script src="nav-sidebar.js"></script>
 
   <!-- Index page modules (load order matters: state → api → utils → views → main) -->
   <script src="index/state.js"></script>

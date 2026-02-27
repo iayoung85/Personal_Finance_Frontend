@@ -23,6 +23,12 @@ function showTwoFactorLogin() {
 }
 
 function showDashboard() {
+  // Why: sidebar only appears after authentication, not on login/register views
+  document.body.setAttribute('data-nav-mode', 'persistent');
+  if (typeof initNavSidebar === 'function' && !document.getElementById('nav-sidebar')) {
+    initNavSidebar();
+  }
+
   IndexUtils.switchToView('dashboard-view');
 
   const user = IndexState.getCurrentUser();
@@ -39,5 +45,12 @@ function showDashboard() {
 
 function logout() {
   IndexState.clearAll();
+  // Why: remove sidebar when returning to auth views
+  document.body.removeAttribute('data-nav-mode');
+  const existingSidebar = document.getElementById('nav-sidebar');
+  if (existingSidebar) existingSidebar.remove();
+  document.getElementById('nav-sidebar-overlay')?.remove();
+  document.getElementById('nav-hamburger')?.remove();
+
   showLogin();
 }

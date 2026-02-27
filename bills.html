@@ -10,21 +10,12 @@
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
   <link rel="icon" type="image/png" href="IAY favicon.png">
   <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="nav-sidebar.css">
   <link rel="stylesheet" href="transactions.css">
   <link rel="stylesheet" href="bills.css">
 </head>
-<body>
+<body data-nav-mode="persistent" data-nav-page="bills">
   <div class="container">
-    <!-- Header -->
-    <div class="page-header">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <a href="index.html" class="back-link">← Back to Dashboard</a>
-        <div style="display: flex; gap: 12px; align-items: center;">
-          <a href="transactions.html" class="back-link" style="color: #1967d2;">View Transactions →</a>
-          <a href="accounts.html" class="back-link" style="color: #28a745;">Manage Accounts →</a>
-        </div>
-      </div>
-    </div>
 
     <h1>Manage Bills</h1>
     <p style="color: #666; margin-top: -8px;">Create and manage your recurring bills and scheduled payments</p>
@@ -191,6 +182,7 @@
   </div>
 
   <script src="config.js"></script>
+  <script src="nav-sidebar.js"></script>
   <script src="bills.js"></script>
 </body>
 </html>

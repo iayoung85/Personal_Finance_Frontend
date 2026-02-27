@@ -63,54 +63,11 @@ body {
    ============================================ */
 .settings-wrapper {
   display: flex;
+  flex-direction: column;
   gap: 30px;
-  max-width: 1200px;
+  max-width: 900px;
   margin: 0 auto;
   width: 100%;
-}
-
-/* ============================================
-   SETTINGS MENU (Left Sidebar)
-   ============================================ */
-.settings-menu {
-  flex-shrink: 0;
-  width: 200px;
-}
-
-.settings-nav {
-  list-style: none;
-  background: var(--bg-surface);
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--border-primary);
-}
-
-.settings-link {
-  display: block;
-  padding: 14px 20px;
-  color: var(--text-secondary);
-  text-decoration: none;
-  transition: all 0.3s;
-  border-left: 3px solid transparent;
-  font-size: 14px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.settings-link:last-child {
-  border-bottom: none;
-}
-
-.settings-link:hover {
-  background: var(--bg-hover);
-  color: var(--text-bright);
-}
-
-.settings-link.active {
-  background: var(--bg-surface-elevated);
-  color: var(--accent-link);
-  border-left-color: var(--accent-primary);
-  font-weight: 600;
 }
 
 /* ============================================
@@ -344,15 +301,6 @@ button {
     gap: 20px;
   }
 
-  .settings-menu {
-    width: 160px;
-  }
-
-  .settings-link {
-    padding: 12px 15px;
-    font-size: 13px;
-  }
-
   .page-header {
     padding: 20px;
   }
@@ -392,40 +340,6 @@ button {
   .settings-wrapper {
     flex-direction: column;
     gap: 0;
-  }
-
-  .settings-menu {
-    width: 100%;
-    margin-bottom: 20px;
-  }
-
-  .settings-nav {
-    display: flex;
-    flex-wrap: wrap;
-  }
-
-  .settings-link {
-    flex: 1;
-    min-width: 150px;
-    border: 1px solid var(--border-primary);
-    border-left: none;
-    border-bottom: none;
-    padding: 10px 12px;
-    font-size: 12px;
-    text-align: center;
-  }
-
-  .settings-link:nth-child(5n+1) {
-    border-left: 1px solid var(--border-primary);
-  }
-
-  .settings-link:nth-child(n+4) {
-    border-top: 1px solid var(--border-primary);
-  }
-
-  .settings-link.active {
-    border-left: 1px solid var(--accent-primary);
-    background: var(--bg-surface-elevated);
   }
 
   .settings-panel {
@@ -486,12 +400,6 @@ button {
 
   .form-group {
     margin-bottom: 15px;
-  }
-
-  .settings-link {
-    min-width: 140px;
-    padding: 8px 10px;
-    font-size: 11px;
   }
 
   .btn {

@@ -1,31 +1,29 @@
 // ============================================================
 // user-settings/nav.js — Settings Navigation
-// Handles left-sidebar menu rendering and panel switching.
-// No network calls in this module.
+// Panel switching is now handled by the shared nav-sidebar.js
+// which calls loadSectionContent() when sub-nav items are
+// clicked. This module retains the dispatcher and handles
+// initial panel selection based on URL hash.
 // ============================================================
 
 /**
- * Attaches click handlers to all sidebar nav links.
- * Switches active panel and loads its content on click.
+ * Initializes the settings page by selecting the correct panel
+ * based on the URL hash. The shared nav sidebar handles all
+ * click-based panel switching.
  */
 function setupSettingsMenu() {
-  $('.settings-link').on('click', function(e) {
-    e.preventDefault();
-    const section = $(this).data('section');
+  const hash = window.location.hash.replace('#', '') || 'profile';
+  const validSections = ['profile', 'password', 'twofa', 'deletion'];
 
-    // Update active state in sidebar
-    $('.settings-link').removeClass('active');
-    $(this).addClass('active');
+  // Why: fallback to profile if hash is invalid or empty
+  const section = validSections.includes(hash) ? hash : 'profile';
 
-    // Swap visible panel
-    $('.settings-panel').removeClass('active').addClass('hidden');
-    $(`#${section}`).removeClass('hidden').addClass('active');
+  // Show the correct panel
+  $('.settings-panel').removeClass('active').addClass('hidden');
+  $(`#${section}`).removeClass('hidden').addClass('active');
 
-    // Delegate content loading to the appropriate module
-    loadSectionContent(section);
-
-    window.scrollTo(0, 0);
-  });
+  // Load its content
+  loadSectionContent(section);
 }
 
 /**

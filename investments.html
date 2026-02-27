@@ -10,15 +10,12 @@
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
   <link rel="icon" type="image/png" href="IAY favicon.png">
   <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="nav-sidebar.css">
   <link rel="stylesheet" href="transactions.css">
   <link rel="stylesheet" href="investments.css">
 </head>
-<body>
+<body data-nav-mode="collapsed" data-nav-page="investments">
   <div class="container">
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-      <a href="index.html" class="back-link">← Back to Dashboard</a>
-      <a href="transactions.html" class="back-link" style="color: #28a745;">View Transactions →</a>
-    </div>
     
     <h1>Investment Holdings Viewer</h1>
     <!-- TODO: 4b: Investments.html should mirror transactions.html more closely with main content wrapper, accounts sidebar, and holdings table. Customized for investments. -->
@@ -70,6 +67,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
   <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
   <script src="config.js"></script>
+  <script src="nav-sidebar.js"></script>
   <script src="investments.js"></script>
 </body>
 </html>

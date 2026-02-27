@@ -1,0 +1,360 @@
+/* ============================================================
+   categories.css — Styles specific to the Categories page.
+   Loaded after transactions.css which provides base layout
+   (.container, .card, .modal-overlay, .back-link, etc.)
+   Dark theme: all colors use CSS custom properties from theme.css
+   ============================================================ */
+
+/* ── Global Dark-Mode Input / Select Fix ───────────────────
+   transactions.css only styles input[type="date"] and select
+   with padding/border but not background/color.  Text & number
+   inputs inherit browser white-box defaults.  Fix them here.
+   ───────────────────────────────────────────────────────────── */
+
+input[type="text"],
+input[type="number"],
+input[type="search"],
+input[type="email"],
+input[type="url"],
+textarea {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="search"]:focus,
+input[type="email"]:focus,
+input[type="url"]:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent-link);
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+input[type="text"]::placeholder,
+input[type="number"]::placeholder,
+input[type="search"]::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+select {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--accent-link);
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+select option {
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+}
+
+/* ── Page Subtitle ─────────────────────────────────────────── */
+.page-subtitle {
+  color: var(--text-secondary);
+  margin-top: -8px;
+  font-size: 14px;
+}
+
+/* ── Top Navigation Bar ────────────────────────────────────── */
+.page-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-link-success {
+  color: var(--color-success) !important;
+}
+
+/* ── Action Toolbar ────────────────────────────────────────── */
+.action-toolbar {
+  display: flex;
+  gap: 12px;
+  margin: 20px 0;
+  flex-wrap: wrap;
+}
+
+.action-toolbar button {
+  padding: 10px 20px;
+  font-weight: 500;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: white;
+  font-size: 13px;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.action-toolbar button:hover {
+  opacity: 0.9;
+}
+
+.action-toolbar button:active {
+  transform: scale(0.98);
+}
+
+.btn-check {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.btn-recategorize {
+  background: var(--color-success-muted);
+  color: white;
+}
+
+.btn-delete-overrides {
+  background: var(--color-danger-muted);
+  color: white;
+}
+
+.btn-advanced {
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary) !important;
+}
+
+.btn-advanced:hover {
+  background: var(--bg-hover) !important;
+}
+
+/* ── CSV Guide Box ─────────────────────────────────────────── */
+.csv-guide {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: var(--bg-surface-elevated);
+  border-radius: 4px;
+  border-left: 4px solid var(--accent-primary);
+}
+
+.csv-guide h4 {
+  margin-top: 0;
+  color: var(--text-heading);
+}
+
+.csv-guide p {
+  font-size: 0.9em;
+  margin: 8px 0;
+  color: var(--text-secondary);
+}
+
+.csv-guide code {
+  background: var(--bg-inset);
+  color: var(--accent-orange);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.csv-guide .csv-warning {
+  color: var(--color-danger);
+}
+
+/* ── CSV Cards Grid ────────────────────────────────────────── */
+.csv-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 700px) {
+  .csv-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.csv-action-card {
+  padding: 15px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-surface-elevated);
+}
+
+.csv-action-card h4 {
+  margin-top: 0;
+  color: var(--text-heading);
+}
+
+.csv-action-card p {
+  font-size: 0.9em;
+  color: var(--text-secondary);
+}
+
+.csv-action-card .btn-full {
+  width: 100%;
+  padding: 12px;
+  font-weight: 500;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: white;
+  font-size: 14px;
+}
+
+.btn-download-csv {
+  background: var(--color-success-muted);
+}
+
+.btn-download-csv:hover {
+  background: var(--color-success);
+}
+
+.btn-upload-csv {
+  background: var(--accent-primary);
+}
+
+.btn-upload-csv:hover {
+  background: var(--accent-primary-hover);
+}
+
+.csv-file-name {
+  font-size: 0.85em;
+  color: var(--text-secondary);
+  margin-top: 5px;
+  display: block;
+}
+
+/* ── CSV Preview / Feedback Containers ─────────────────────── */
+.csv-preview-box {
+  display: none;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: var(--bg-inset);
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+}
+
+.csv-preview-box h4 {
+  margin-top: 0;
+  color: var(--text-heading);
+}
+
+.csv-preview-content {
+  font-size: 0.85em;
+  font-family: monospace;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  padding: 10px;
+  border-radius: 3px;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.csv-errors-box {
+  display: none;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: 4px;
+}
+
+.csv-errors-box h4 {
+  color: var(--color-danger);
+  margin-top: 0;
+}
+
+.csv-errors-box .csv-errors-list {
+  color: var(--color-danger);
+  font-size: 0.9em;
+}
+
+.csv-success-box {
+  display: none;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
+  border-radius: 4px;
+}
+
+.csv-success-box h4 {
+  color: var(--color-success);
+  margin-top: 0;
+}
+
+.csv-success-box .csv-success-content {
+  color: var(--color-success);
+  font-size: 0.9em;
+}
+
+/* ── Migration Section ─────────────────────────────────────── */
+.migration-box select {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.migration-box input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ── Overrides Table ───────────────────────────────────────── */
+.overrides-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.overrides-table th,
+.overrides-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+
+.overrides-table th {
+  background: var(--table-header-bg);
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: left;
+}
+
+/* ── Rule Form Polish ──────────────────────────────────────── */
+.rule-form input,
+.rule-form select {
+  min-height: 36px;
+}
+
+/* ── Card Section Spacing ──────────────────────────────────── */
+#custom-categories-card,
+#rules-card,
+#overrides-card,
+#migrations-card,
+#audit-card,
+#advanced-csv-card {
+  margin-top: 16px;
+}
+
+/* ── Disabled Upload Button ────────────────────────────────── */
+#csv-upload-btn:disabled {
+  background: var(--bg-input);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+#csv-upload-btn:not(:disabled) {
+  background: var(--color-success-muted);
+  cursor: pointer;
+}

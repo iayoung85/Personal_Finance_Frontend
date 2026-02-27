@@ -126,6 +126,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  color: var(--text-primary);
 }
 
 .sidebar-bank-item:hover,

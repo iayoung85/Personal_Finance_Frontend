@@ -11,23 +11,15 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <link rel="icon" type="image/png" href="IAY favicon.png">
   <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="nav-sidebar.css">
   <link rel="stylesheet" href="transactions.css">
 </head>
-<body>
+<body data-nav-mode="collapsed" data-nav-page="transactions">
   <div class="container">
-    <!-- Header with Hamburger Toggle for Mobile -->
+    <!-- Header with Hamburger Toggle for accounts data-sidebar -->
     <div class="page-header">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <button id="sidebar-toggle" class="sidebar-toggle" onclick="toggleSidebar()">☰ Accounts</button>
-          <a href="index.html" class="back-link">← Back to Dashboard</a>
-        </div>
-        <div style="display: flex; gap: 12px; align-items: center;">
-          <a href="accounts.html" class="back-link" style="color: #1967d2;">Manage Accounts →</a>
-          <a href="categories.html" class="back-link" style="color: #6366f1;">Manage Categories →</a>
-          <a href="bills.html" class="back-link" style="color: #e67e22;">Manage Bills →</a>
-          <a href="investments.html" class="back-link" style="color: #28a745;">View Investments →</a>
-        </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <button id="sidebar-toggle" class="sidebar-toggle" onclick="toggleSidebar()">☰ Accounts</button>
       </div>
     </div>
     
@@ -281,6 +273,7 @@
   </div>
 
   <script src="config.js"></script>
+  <script src="nav-sidebar.js"></script>
 
   <!-- Modularised transactions scripts (Phase 2-A) -->
   <!-- state.js MUST load first (shared variable declarations) -->

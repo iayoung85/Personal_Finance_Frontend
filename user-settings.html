@@ -9,21 +9,19 @@
   <title>User Settings - IAY Financial</title>
   <link rel="icon" type="image/png" href="IAY favicon.png">
   <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="nav-sidebar.css">
   <link rel="stylesheet" href="user-settings.css">
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
 </head>
-<body>
+<body data-nav-mode="persistent" data-nav-page="user-settings">
   <div class="app-container">
     <main class="main-content">
 
       <!-- Page Header -->
       <div class="page-header">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
-          <div>
-            <h1>User Settings</h1>
-            <p class="page-subtitle">Manage your account, security, and authentication settings</p>
-          </div>
-          <a href="index.html" class="btn btn-secondary" style="text-decoration: none;">← Back to Dashboard</a>
+        <div>
+          <h1>User Settings</h1>
+          <p class="page-subtitle">Manage your account, security, and authentication settings</p>
         </div>
       </div>
 
@@ -32,16 +30,6 @@
 
         <!-- Global banner shown when account deletion is pending -->
         <div id="global-deletion-banner"></div>
-
-        <!-- Left Sidebar Navigation -->
-        <aside class="settings-menu">
-          <ul class="settings-nav">
-            <li><a href="#profile"   class="settings-link active" data-section="profile">Profile Details</a></li>
-            <li><a href="#password"  class="settings-link"        data-section="password">Change Password</a></li>
-            <li><a href="#twofa"     class="settings-link"        data-section="twofa">Two-Factor Auth</a></li>
-            <li><a href="#deletion"  class="settings-link"        data-section="deletion">Delete Account</a></li>
-          </ul>
-        </aside>
 
         <!-- Main Settings Content -->
         <section class="settings-content">
@@ -90,6 +78,7 @@
 
   <!-- Config must load before modules so BACKEND_URL is available -->
   <script src="config.js"></script>
+  <script src="nav-sidebar.js"></script>
 
   <!-- Load order: state → utils → api → section modules → main (last) -->
   <script src="user-settings/state.js"></script>

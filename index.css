@@ -25,6 +25,12 @@ body {
   padding: 40px;
 }
 
+/* Why: when nav sidebar is present (after login), widen the
+   dashboard container so bank connections list has room */
+body[data-nav-mode="persistent"] .container {
+  max-width: 800px;
+}
+
 .logo {
   display: block;
   margin: 0 auto 20px auto;
