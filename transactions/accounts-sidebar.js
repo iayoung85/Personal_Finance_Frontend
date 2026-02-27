@@ -220,7 +220,8 @@ function renderAccountsSidebar() {
   const totalBalance = accounts.reduce((sum, acc) => sum + (acc.current_balance || 0), 0);
   const totalBalanceStr = new Intl.NumberFormat('en-US', { 
     style: 'currency', 
-    currency: 'USD' 
+    currency: 'USD',
+    maximumFractionDigits: 0
   }).format(totalBalance);
 
   // Group accounts by category
@@ -274,7 +275,7 @@ function renderAccountsSidebar() {
   html += `
     <div class="sidebar-all-accounts ${allAccountsClass}" onclick="selectAllAccountsMode()">
       <div style="font-weight: 600; margin-bottom: 4px;">⊕ All Accounts</div>
-      <div style="font-size: 12px; color: #2e7d32; font-weight: 500;">Total: ${totalBalanceStr}</div>
+      <div style="font-size: 12px; color: var(--color-success); font-weight: 500;">Total: ${totalBalanceStr}</div>
     </div>
   `;
 
@@ -286,10 +287,16 @@ function renderAccountsSidebar() {
 
       grouped.active[cat].forEach(acc => {
         const displayName = _buildAccountDisplayName(acc);
+        // Split trailing mask suffix e.g. "(9002)" so it never gets ellipsis-clipped.
+        // \d{3,6} — only match real account number masks (3-6 digits), not words like "(old)"
+        const maskMatch = displayName.match(/^(.*?)(\s*\(\d{3,6}\))$/);
+        const displayNameMain = maskMatch ? maskMatch[1] : displayName;
+        const displayNameSuffix = maskMatch ? maskMatch[2] : '';
         const currentBalance = acc.current_balance || 0;
         const balanceStr = new Intl.NumberFormat('en-US', { 
           style: 'currency', 
-          currency: 'USD' 
+          currency: 'USD',
+          maximumFractionDigits: 0
         }).format(currentBalance);
         const balanceColorClass = currentBalance < 0 ? 'sidebar-account-balance-negative' : 'sidebar-account-balance';
 
@@ -298,16 +305,15 @@ function renderAccountsSidebar() {
 
         html += `
           <div class="sidebar-account-item ${selectedClass}" onclick="selectAccount('${acc.account_id}')">
+            <button class="secondary" title="Rename account"
+                    style="padding: 0 5px; font-size: 12px; align-self: stretch; min-width: unset; flex-shrink: 0; border-radius: 2px 0 0 2px; margin-left: -1px;"
+                    onclick="event.stopPropagation(); promptRename('${acc.account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
+              ✏
+            </button>
             <div class="sidebar-account-label">
-              <span title="${displayName}">${displayName}</span>
+              <span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span><span class="sidebar-account-mask">${displayNameSuffix}</span>
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <div class="${balanceColorClass}">${balanceStr}</div>
-              <button class="secondary" style="padding: 2px 6px; font-size: 10px;" 
-                      onclick="event.stopPropagation(); promptRename('${acc.account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
-                Rename
-              </button>
-            </div>
+            <div class="${balanceColorClass}">${balanceStr}</div>
           </div>
         `;
       });

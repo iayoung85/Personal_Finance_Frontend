@@ -1,5 +1,5 @@
 /* ============================================
-   GLOBAL STYLES & LAYOUT -- Dark Theme
+   GLOBAL STYLES & LAYOUT
    ============================================ */
 * {
   margin: 0;
@@ -9,9 +9,9 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: var(--gradient-auth);
+  background: linear-gradient(135deg, #182742 0%, #3D1A2E 100%);
   min-height: 100vh;
-  color: var(--text-primary);
+  color: #333;
 }
 
 /* ============================================
@@ -38,22 +38,21 @@ body {
    PAGE HEADER
    ============================================ */
 .page-header {
-  background: var(--bg-surface);
+  background: white;
   border-radius: 12px;
   padding: 30px;
   margin-bottom: 30px;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--border-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .page-header h1 {
   font-size: 32px;
-  color: var(--text-heading);
+  color: #182742;
   margin-bottom: 8px;
 }
 
 .page-subtitle {
-  color: var(--text-secondary);
+  color: #666;
   font-size: 14px;
   margin: 0;
 }
@@ -79,22 +78,21 @@ body {
 
 .settings-nav {
   list-style: none;
-  background: var(--bg-surface);
+  background: white;
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--border-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .settings-link {
   display: block;
   padding: 14px 20px;
-  color: var(--text-secondary);
+  color: #666;
   text-decoration: none;
   transition: all 0.3s;
   border-left: 3px solid transparent;
   font-size: 14px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .settings-link:last-child {
@@ -102,14 +100,14 @@ body {
 }
 
 .settings-link:hover {
-  background: var(--bg-hover);
-  color: var(--text-bright);
+  background: #f9f9f9;
+  color: #182742;
 }
 
 .settings-link.active {
-  background: var(--bg-surface-elevated);
-  color: var(--accent-link);
-  border-left-color: var(--accent-primary);
+  background: #f0f0f0;
+  color: #182742;
+  border-left-color: #182742;
   font-weight: 600;
 }
 
@@ -122,12 +120,11 @@ body {
 }
 
 .settings-panel {
-  background: var(--bg-surface);
+  background: white;
   border-radius: 12px;
   padding: 30px;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   display: none;
-  border: 1px solid var(--border-primary);
 }
 
 .settings-panel.active {
@@ -153,17 +150,17 @@ body {
 .panel-header {
   margin-bottom: 25px;
   padding-bottom: 15px;
-  border-bottom: 1px solid var(--border-primary);
+  border-bottom: 1px solid #e0e0e0;
 }
 
 .panel-header h2 {
   font-size: 24px;
-  color: var(--text-heading);
+  color: #182742;
   margin-bottom: 5px;
 }
 
 .panel-header p {
-  color: var(--text-secondary);
+  color: #666;
   font-size: 14px;
   margin: 0;
 }
@@ -171,7 +168,7 @@ body {
 .site-footer {
   margin-top: 30px;
   text-align: center;
-  color: var(--text-muted);
+  color: #f5f5f5;
 }
 
 .site-footer nav {
@@ -182,14 +179,13 @@ body {
 }
 
 .site-footer a {
-  color: var(--text-muted);
+  color: #f5f5f5;
   text-decoration: none;
   font-size: 13px;
 }
 
 .site-footer a:hover {
   text-decoration: underline;
-  color: var(--text-secondary);
 }
 
 /* ============================================
@@ -202,7 +198,7 @@ body {
 label {
   display: block;
   margin-bottom: 8px;
-  color: var(--text-primary);
+  color: #333;
   font-weight: 500;
   font-size: 14px;
 }
@@ -214,13 +210,11 @@ textarea,
 select {
   width: 100%;
   padding: 12px;
-  border: 2px solid var(--border-primary);
+  border: 2px solid #e0e0e0;
   border-radius: 6px;
   font-size: 14px;
   transition: border-color 0.3s;
   font-family: inherit;
-  background: var(--bg-input);
-  color: var(--text-primary);
 }
 
 input[type="text"]:focus,
@@ -229,14 +223,14 @@ input[type="password"]:focus,
 textarea:focus,
 select:focus {
   outline: none;
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px var(--accent-focus);
+  border-color: #182742;
+  box-shadow: 0 0 0 3px rgba(24, 39, 66, 0.1);
 }
 
 input[type="text"]:disabled,
 input[type="email"]:disabled {
-  background: var(--bg-surface-elevated);
-  color: var(--text-muted);
+  background: #f5f5f5;
+  color: #999;
   cursor: not-allowed;
 }
 
@@ -261,35 +255,34 @@ button {
 }
 
 .btn-primary {
-  background: var(--accent-primary);
-  color: #ffffff;
+  background: #182742;
+  color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent-primary-hover);
+  background: #3D1A2E;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 122, 204, 0.3);
+  box-shadow: 0 4px 12px rgba(24, 39, 66, 0.3);
 }
 
 .btn-secondary {
-  background: var(--bg-surface-elevated);
-  color: var(--text-primary);
-  border: 1px solid var(--border-primary);
+  background: #f5f5f5;
+  color: #333;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: var(--bg-hover);
+  background: #e0e0e0;
 }
 
 .btn-danger {
-  background: var(--color-danger);
-  color: #ffffff;
+  background: #dc3545;
+  color: white;
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: var(--color-danger-muted);
+  background: #c82333;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(244, 71, 71, 0.3);
+  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
 }
 
 .btn:disabled {
@@ -311,27 +304,27 @@ button {
 }
 
 .message.error {
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
-  border: 1px solid var(--color-danger-border);
+  background: #fee;
+  color: #c33;
+  border: 1px solid #fcc;
 }
 
 .message.success {
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  border: 1px solid var(--color-success-border);
+  background: #efe;
+  color: #3c3;
+  border: 1px solid #cfc;
 }
 
 .message.warning {
-  background: var(--color-warning-bg);
-  color: var(--color-warning);
-  border: 1px solid var(--color-warning-border);
+  background: #ffeaa7;
+  color: #d68f00;
+  border: 1px solid #ffd93d;
 }
 
 .message.info {
-  background: var(--color-info-bg);
-  color: var(--color-info);
-  border: 1px solid var(--color-info-border);
+  background: #e3f2fd;
+  color: #1976d2;
+  border: 1px solid #bbdefb;
 }
 
 /* ============================================
@@ -407,7 +400,7 @@ button {
   .settings-link {
     flex: 1;
     min-width: 150px;
-    border: 1px solid var(--border-primary);
+    border: 1px solid #e0e0e0;
     border-left: none;
     border-bottom: none;
     padding: 10px 12px;
@@ -416,16 +409,16 @@ button {
   }
 
   .settings-link:nth-child(5n+1) {
-    border-left: 1px solid var(--border-primary);
+    border-left: 1px solid #e0e0e0;
   }
 
   .settings-link:nth-child(n+4) {
-    border-top: 1px solid var(--border-primary);
+    border-top: 1px solid #e0e0e0;
   }
 
   .settings-link.active {
-    border-left: 1px solid var(--accent-primary);
-    background: var(--bg-surface-elevated);
+    border-left: 1px solid #182742;
+    background: #f0f0f0;
   }
 
   .settings-panel {
@@ -514,26 +507,26 @@ button {
 }
 
 .text-muted {
-  color: var(--text-muted);
+  color: #999;
   font-size: 13px;
 }
 
 .text-error {
-  color: var(--color-danger);
+  color: #dc3545;
 }
 
 .text-success {
-  color: var(--color-success);
+  color: #28a745;
 }
 
 .divider {
-  border-top: 1px solid var(--border-primary);
+  border-top: 1px solid #e0e0e0;
   margin: 20px 0;
 }
 
 .card {
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-primary);
+  background: #f9f9f9;
+  border: 1px solid #e0e0e0;
   border-radius: 6px;
   padding: 15px;
   margin-bottom: 15px;
@@ -548,14 +541,14 @@ button {
 
 .card-title {
   font-weight: 600;
-  color: var(--text-heading);
+  color: #333;
   margin: 0;
 }
 
 .loading {
   text-align: center;
   padding: 40px 20px;
-  color: var(--text-muted);
+  color: #999;
 }
 
 .loading::after {
@@ -563,8 +556,8 @@ button {
   display: inline-block;
   width: 20px;
   height: 20px;
-  border: 3px solid var(--border-subtle);
-  border-top: 3px solid var(--accent-primary);
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #182742;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-left: 10px;

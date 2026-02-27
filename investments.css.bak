@@ -1,4 +1,4 @@
-/* Inherits from transactions.css -- Dark theme variables from theme.css */
+/* Inherits from transactions.css */
 
 /* Flat list layout for investment accounts */
 .account-list {
@@ -25,8 +25,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: var(--bg-surface-elevated);
-  border-bottom: 1px solid var(--border-subtle);
+  background: #f9f9f9;
+  border-bottom: 1px solid #e9e9e9;
   min-height: 40px;
 }
 
@@ -40,20 +40,20 @@
 
 .account-row .bank-name {
   font-weight: 500;
-  color: var(--text-heading);
+  color: #333;
   min-width: 150px;
 }
 
 .account-row .account-name {
-  color: var(--text-secondary);
+  color: #666;
   flex: 1;
 }
 
 .item-group .activate-btn {
   align-self: stretch;
   min-width: 100px;
-  background-color: var(--color-success);
-  color: var(--text-inverse);
+  background-color: #28a745;
+  color: white;
   border: none;
   padding: 8px 16px;
   border-radius: 4px;
@@ -65,29 +65,27 @@
 }
 
 .item-group .activate-btn:hover {
-  background-color: var(--color-success-muted);
+  background-color: #218838;
 }
 
 .item-group .activate-btn:disabled {
-  background-color: var(--bg-input);
-  color: var(--text-muted);
+  background-color: #ccc;
   cursor: not-allowed;
 }
 
 .holding-group-header {
-  background-color: var(--table-header-bg);
+  background-color: #f8f9fa;
   font-weight: bold;
   cursor: pointer;
-  color: var(--text-primary);
 }
 
 .holding-group-header:hover {
-  background-color: var(--bg-hover);
+  background-color: #e9ecef;
 }
 
 .holding-detail-row {
-  background-color: var(--bg-surface);
-  display: none;
+  background-color: #fff;
+  display: none; /* Hidden by default */
 }
 
 .holding-detail-row.expanded {
@@ -95,8 +93,8 @@
 }
 
 .holding-detail-row td {
-  padding-left: 40px;
-  color: var(--text-secondary);
+  padding-left: 40px; /* Indent detail rows */
+  color: #555;
   font-size: 0.95em;
 }
 
@@ -112,11 +110,11 @@
 }
 
 .positive-gain {
-  color: var(--color-positive);
+  color: #28a745;
 }
 
 .negative-gain {
-  color: var(--color-negative);
+  color: #dc3545;
 }
 
 .account-status-item {
@@ -124,7 +122,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid #eee;
 }
 
 .account-status-item:last-child {
@@ -139,15 +137,14 @@
 }
 
 .status-active {
-  background-color: var(--badge-success-bg);
-  color: var(--badge-success-text);
+  background-color: #d4edda;
+  color: #155724;
 }
 
 .status-inactive {
-  background-color: var(--badge-danger-bg);
-  color: var(--badge-danger-text);
+  background-color: #f8d7da;
+  color: #721c24;
 }
-
 /* Action bar above table */
 .action-bar {
   display: flex;
@@ -155,7 +152,7 @@
   align-items: center;
   margin: 20px 0;
   padding: 12px;
-  background: var(--bg-surface-elevated);
+  background: #f9f9f9;
   border-radius: 4px;
   flex-wrap: wrap;
 }

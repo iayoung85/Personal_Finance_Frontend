@@ -1,0 +1,160 @@
+/* ============================================================
+   theme.css — VS Code Dark+ Inspired Dark Theme
+   ============================================================
+   Single source of truth for all colors. Every page-specific
+   stylesheet references these variables, so changing the
+   palette here changes the entire app.
+   ============================================================ */
+
+:root {
+  /* ── Page & Surface Backgrounds ──────────────────────────── */
+  --bg-page:              #1e1e1e;
+  --bg-surface:           #252526;
+  --bg-surface-elevated:  #2d2d2d;
+  --bg-inset:             #1e1e1e;   /* recessed areas like table alt rows */
+  --bg-input:             #3c3c3c;
+  --bg-hover:             #2a2d2e;
+  --bg-selected:          #04395e;
+  --bg-sidebar:           #252526;
+  --bg-overlay:           rgba(0, 0, 0, 0.65);
+  --bg-tooltip:           #383838;
+
+  /* ── Text ────────────────────────────────────────────────── */
+  --text-primary:         #cccccc;
+  --text-secondary:       #999999;
+  --text-muted:           #6e7681;
+  --text-bright:          #e8e8e8;
+  --text-heading:         #e0e0e0;
+  --text-inverse:         #1e1e1e;
+
+  /* ── Borders ─────────────────────────────────────────────── */
+  --border-primary:       #474747;
+  --border-subtle:        #3c3c3c;
+  --border-strong:        #6e7681;
+
+  /* ── Brand / Accent ──────────────────────────────────────── */
+  --accent-primary:       #007acc;
+  --accent-primary-hover: #1177bb;
+  --accent-link:          #3794ff;
+  --accent-focus:         rgba(0, 122, 204, 0.5);
+  --accent-purple:        #c586c0;
+  --accent-orange:        #ce9178;
+
+  /* ── Semantic (status) ───────────────────────────────────── */
+  --color-success:        #4ec9b0;
+  --color-success-muted:  #2e7d5b;
+  --color-success-bg:     rgba(78, 201, 176, 0.12);
+  --color-success-border: rgba(78, 201, 176, 0.30);
+
+  --color-danger:         #f44747;
+  --color-danger-muted:   #c24a4a;
+  --color-danger-bg:      rgba(244, 71, 71, 0.12);
+  --color-danger-border:  rgba(244, 71, 71, 0.30);
+
+  --color-warning:        #cca700;
+  --color-warning-bg:     rgba(204, 167, 0, 0.12);
+  --color-warning-border: rgba(204, 167, 0, 0.30);
+
+  --color-info:           #3794ff;
+  --color-info-bg:        rgba(55, 148, 255, 0.12);
+  --color-info-border:    rgba(55, 148, 255, 0.30);
+
+  /* ── Money (gain / loss) ─────────────────────────────────── */
+  --color-positive:       #4ec9b0;
+  --color-negative:       #f44747;
+
+  /* ── Shadows ─────────────────────────────────────────────── */
+  --shadow-sm:            0 2px 4px rgba(0, 0, 0, 0.4);
+  --shadow-md:            0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg:            0 10px 40px rgba(0, 0, 0, 0.6);
+
+  /* ── Table ───────────────────────────────────────────────── */
+  --table-header-bg:      #2d2d2d;
+  --table-row-alt:        #262626;
+  --table-row-hover:      #2a2d2e;
+  --table-border:         #3c3c3c;
+
+  /* ── Scrollbar ───────────────────────────────────────────── */
+  --scrollbar-bg:         transparent;
+  --scrollbar-thumb:      #424242;
+  --scrollbar-thumb-hover:#4f4f4f;
+
+  /* ── Auth page gradient ──────────────────────────────────── */
+  --gradient-auth:        linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #1e1e1e 100%);
+
+  /* ── Badge palette (keep vibrant on dark) ────────────────── */
+  --badge-plaid-bg:       #3a3a4a;
+  --badge-plaid-text:     #c9c9d9;
+  --badge-manual-bg:      #1e3a5f;
+  --badge-manual-text:    #7cb5ec;
+  --badge-success-bg:     rgba(78, 201, 176, 0.18);
+  --badge-success-text:   #4ec9b0;
+  --badge-danger-bg:      rgba(244, 71, 71, 0.18);
+  --badge-danger-text:    #f44747;
+  --badge-warning-bg:     rgba(204, 167, 0, 0.18);
+  --badge-warning-text:   #cca700;
+  --badge-info-bg:        rgba(55, 148, 255, 0.18);
+  --badge-info-text:      #3794ff;
+  --badge-purple-bg:      rgba(197, 134, 192, 0.18);
+  --badge-purple-text:    #c586c0;
+}
+
+
+/* ============================================================
+   GLOBAL DARK DEFAULTS
+   Applied to common elements across all pages.
+   ============================================================ */
+
+/* Scrollbar styling (webkit) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+::-webkit-scrollbar-corner {
+  background: var(--bg-page);
+}
+
+/* Selection highlight */
+::selection {
+  background: rgba(0, 122, 204, 0.4);
+  color: #fff;
+}
+
+/* Universal hidden class */
+.hidden {
+  display: none !important;
+}
+
+/* ── Shared footer (appears on every page) ─────────────────── */
+.site-footer {
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.site-footer a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.site-footer a:hover {
+  color: var(--accent-link);
+  text-decoration: underline;
+}

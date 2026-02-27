@@ -4,6 +4,16 @@
 // No business logic, no network calls.
 // ============================================================
 
+// System-generated bookkeeping transaction source types.
+// Mirror of SYSTEM_TRANSACTION_SOURCES in transactions_models.py.
+// These rows are internal to the balance engine and must be excluded from
+// all user-facing charts, insights, category lists, and aggregations.
+const SYSTEM_SOURCES = new Set([
+  'opening_balance',
+  'manual_opening_balance',
+  'reconciliation',
+]);
+
 function escapeHtml(str) {
   return String(str || '')
     .replace(/&/g, '&amp;')

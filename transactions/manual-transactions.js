@@ -54,56 +54,56 @@ function openAddManualTransactionModal() {
 
   const formHtml = `
     <div style="display: grid; gap: 14px;">
-      <div id="manual-txn-error-banner" style="display:none; padding: 8px 12px; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 4px; color: #b91c1c; font-size: 13px;"></div>
+      <div id="manual-txn-error-banner" style="display:none; padding: 8px 12px; background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); border-radius: 4px; color: var(--color-danger); font-size: 13px;"></div>
       <div>
         <label style="display: block; font-weight: 500; margin-bottom: 6px;">Description *</label>
-        <input id="manual-txn-name" type="text" placeholder="e.g., Coffee at local shop" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;" maxlength="128">
-        <small style="color: #666; margin-top: 2px; display: block;">Brief description of transaction</small>
+        <input id="manual-txn-name" type="text" placeholder="e.g., Coffee at local shop" class="modal-input" maxlength="128">
+        <small style="color: var(--text-muted); margin-top: 2px; display: block;">Brief description of transaction</small>
       </div>
       
       <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px;">
         <div>
           <label style="display: block; font-weight: 500; margin-bottom: 6px;">Amount *</label>
-          <input id="manual-txn-amount" type="text" inputmode="decimal" placeholder="0.00" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+          <input id="manual-txn-amount" type="text" inputmode="decimal" placeholder="0.00" class="modal-input">
         </div>
         <div>
           <label style="display: block; font-weight: 500; margin-bottom: 6px;">Type *</label>
-          <select id="manual-txn-type" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+          <select id="manual-txn-type" class="modal-input">
             <option value="debit" selected>Debit (−)</option>
             <option value="credit">Credit (+)</option>
           </select>
         </div>
         <div>
           <label style="display: block; font-weight: 500; margin-bottom: 6px;">Date *</label>
-          <input id="manual-txn-date" type="date" value="${today}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+          <input id="manual-txn-date" type="date" value="${today}" class="modal-input">
         </div>
       </div>
 
       <div>
         <label style="display: block; font-weight: 500; margin-bottom: 6px;">Account *</label>
-        <select id="manual-txn-account" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+        <select id="manual-txn-account" class="modal-input">
           ${accountOptions}
         </select>
       </div>
 
       <div>
         <label style="display: block; font-weight: 500; margin-bottom: 6px;">Merchant (Optional)</label>
-        <input id="manual-txn-merchant" type="text" placeholder="e.g., Starbucks" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;" maxlength="128">
+        <input id="manual-txn-merchant" type="text" placeholder="e.g., Starbucks" class="modal-input" maxlength="128">
       </div>
 
       <div>
         <label style="display: block; font-weight: 500; margin-bottom: 6px;">Category (Optional)</label>
         <div style="position: relative;">
-          <input id="manual-txn-category" type="text" placeholder="Type to search, or [ for transfers" autocomplete="off" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;">
+          <input id="manual-txn-category" type="text" placeholder="Type to search, or [ for transfers" autocomplete="off" class="modal-input">
           <div id="manual-txn-category-list" class="category-ac-list" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 99999;"></div>
         </div>
-        <small style="color: #666; margin-top: 2px; display: block;">If empty, mappings and rules will be applied automatically. Type <kbd>[</kbd> to assign as transfer.</small>
+        <small style="color: var(--text-muted); margin-top: 2px; display: block;">If empty, mappings and rules will be applied automatically. Type <kbd>[</kbd> to assign as transfer.</small>
       </div>
 
       <div>
         <label style="display: block; font-weight: 500; margin-bottom: 6px;">Memo (Optional)</label>
-        <input id="manual-txn-memo" type="text" placeholder="Add a note" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px;" maxlength="256">
-        <small style="color: #666; margin-top: 2px; display: block;">Additional notes about this transaction</small>
+        <input id="manual-txn-memo" type="text" placeholder="Add a note" class="modal-input" maxlength="256">
+        <small style="color: var(--text-muted); margin-top: 2px; display: block;">Additional notes about this transaction</small>
       </div>
     </div>
   `;
@@ -634,10 +634,10 @@ function _updateManualTxnDateConstraints() {
 
     const advisory = document.createElement('small');
     advisory.id = 'manual-txn-plaid-advisory';
-    advisory.style.cssText = 'color: #b45309; display: block; margin-top: 6px; padding: 6px 8px; background: #fef3c7; border-radius: 4px; font-size: 11px;';
+    advisory.style.cssText = 'color: var(--color-warning); display: block; margin-top: 6px; padding: 6px 8px; background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); border-radius: 4px; font-size: 11px;';
     advisory.textContent = earliestPlaidDate
-      ? `Plaid account: Manual transactions must occur before the earliest plaid transaction (${earliestPlaidDate}). The app will auto-generate a reconciling opening balance.`
-      : 'Plaid account: Manual transactions are only for historical entries before the earliest Plaid-downloaded transaction.';
+      ? `⚠ Linked account — date capped at ${earliestPlaidDate}. An opening balance will be auto-created.`
+      : '⚠ Linked account — historical entries only (before first Plaid import).';
     accountSelect.parentElement.appendChild(advisory);
   }
   // Offline accounts: no constraints, date stays as today

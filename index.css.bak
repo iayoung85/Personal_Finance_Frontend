@@ -6,7 +6,7 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: var(--gradient-auth);
+  background: linear-gradient(135deg, #182742 0%, #3D1A2E 100%);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -17,9 +17,9 @@ body {
 }
 
 .container {
-  background: var(--bg-surface);
+  background: white;
   border-radius: 12px;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
   max-width: 450px;
   width: 100%;
   padding: 40px;
@@ -34,13 +34,13 @@ body {
 }
 
 h1 {
-  color: var(--text-primary);
+  color: #333;
   margin-bottom: 10px;
   font-size: 28px;
 }
 
 .subtitle {
-  color: var(--text-secondary);
+  color: #666;
   margin-bottom: 30px;
   font-size: 14px;
 }
@@ -52,7 +52,7 @@ h1 {
 label {
   display: block;
   margin-bottom: 8px;
-  color: var(--text-primary);
+  color: #333;
   font-weight: 500;
   font-size: 14px;
 }
@@ -60,7 +60,7 @@ label {
 input {
   width: 100%;
   padding: 12px;
-  border: 2px solid var(--border-primary);
+  border: 2px solid #e0e0e0;
   border-radius: 6px;
   font-size: 14px;
   transition: border-color 0.3s;
@@ -68,7 +68,7 @@ input {
 
 input:focus {
   outline: none;
-  border-color: var(--accent-primary);
+  border-color: #667eea;
 }
 
 .btn {
@@ -84,23 +84,23 @@ input:focus {
 }
 
 .btn-primary {
-  background: var(--accent-primary);
+  background: #182742;
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent-primary-hover);
+  background: #3D1A2E;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,122,204,0.3);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
 .btn-secondary {
-  background: var(--bg-page);
-  color: var(--text-primary);
+  background: #f5f5f5;
+  color: #333;
 }
 
 .btn-secondary:hover {
-  background: var(--bg-hover);
+  background: #e0e0e0;
 }
 
 .btn:disabled {
@@ -111,7 +111,7 @@ input:focus {
 .btn-link {
   background: none;
   border: none;
-  color: var(--accent-link);
+  color: #182742;
   cursor: pointer;
   text-decoration: underline;
   font-size: 14px;
@@ -126,15 +126,15 @@ input:focus {
 }
 
 .message.error {
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
-  border: 1px solid var(--color-danger-border);
+  background: #fee;
+  color: #c33;
+  border: 1px solid #fcc;
 }
 
 .message.success {
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  border: 1px solid var(--color-success-border);
+  background: #efe;
+  color: #3c3;
+  border: 1px solid #cfc;
 }
 
 .hidden {
@@ -142,7 +142,7 @@ input:focus {
 }
 
 .user-info {
-  background: var(--bg-surface-elevated);
+  background: #f8f9fa;
   padding: 15px;
   border-radius: 6px;
   margin-bottom: 20px;
@@ -150,16 +150,16 @@ input:focus {
 
 .user-info p {
   margin: 5px 0;
-  color: var(--text-secondary);
+  color: #555;
   font-size: 14px;
 }
 
 .user-info strong {
-  color: var(--text-primary);
+  color: #333;
 }
 
 .logout-btn {
-  background: var(--color-danger);
+  background: #dc3545;
   color: white;
   padding: 8px 16px;
   border: none;
@@ -170,13 +170,13 @@ input:focus {
 }
 
 .logout-btn:hover {
-  background: var(--color-danger-muted);
+  background: #c82333;
 }
 
 .site-footer {
   margin-top: 6px;
   text-align: center;
-  color: var(--text-muted);
+  color: #e5e5e5;
   max-width: 450px;
   width: 100%;
 }
@@ -189,7 +189,7 @@ input:focus {
 }
 
 .site-footer a {
-  color: var(--text-muted);
+  color: #f5f5f5;
   text-decoration: none;
   font-size: 13px;
 }
@@ -203,11 +203,7 @@ input:focus {
    ============================================================================ */
 
 .section-heading {
-  color: var(--text-heading);
-  font-weight: 600;
-  border-bottom: 2px solid var(--border-primary);
-  padding-bottom: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 4px;
 }
 
 .bank-list {
@@ -219,8 +215,8 @@ input:focus {
 .bank-card {
   margin-bottom: 8px;
   padding: 12px 16px;
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-primary);
+  background: #f7f9fc;
+  border: 1px solid #e3e7ef;
   border-radius: 8px;
   display: flex;
   align-items: flex-start;
@@ -250,13 +246,13 @@ input:focus {
 
 .bank-name {
   font-weight: 600;
-  color: var(--text-primary);
+  color: #333;
   font-size: 15px;
 }
 
 .bank-meta {
   font-size: 12px;
-  color: var(--text-muted);
+  color: #888;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -270,15 +266,15 @@ input:focus {
 }
 
 .conn-status-linked {
-  color: var(--color-success);
+  color: #28a745;
 }
 
 .conn-status-converted {
-  color: var(--color-warning);
+  color: #ffc107;
 }
 
 .conn-status-manual {
-  color: var(--text-muted);
+  color: #6c757d;
 }
 
 /* Sync badges — only shown for linked banks */
@@ -298,15 +294,15 @@ input:focus {
 }
 
 .sync-badge-transactions {
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  border: 1px solid var(--color-success-border);
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #c8e6c9;
 }
 
 .sync-badge-investments {
-  background: var(--color-info-bg);
-  color: var(--color-info);
-  border: 1px solid var(--color-info-border);
+  background: #e0f7fa;
+  color: #00838f;
+  border: 1px solid #b2ebf2;
 }
 
 /* Bank card action buttons */
@@ -334,28 +330,28 @@ input:focus {
 }
 
 .bank-btn-refresh {
-  background: var(--color-success);
-  color: #ffffff;
+  background: #28a745;
+  color: #fff;
 }
 
 .bank-btn-relink {
-  background: var(--color-info);
-  color: #ffffff;
+  background: #17a2b8;
+  color: #fff;
 }
 
 .bank-btn-disconnect {
-  background: var(--color-danger);
-  color: #ffffff;
+  background: #dc3545;
+  color: #fff;
 }
 
 .banks-empty-state {
-  color: var(--text-secondary);
+  color: #666;
   font-style: italic;
   margin-bottom: 8px;
 }
 
 .banks-error {
-  color: var(--color-danger);
+  color: #c33;
 }
 
 /* Connect buttons row */
@@ -370,15 +366,15 @@ input:focus {
 }
 
 .token-label-txn {
-  color: var(--color-success);
+  color: #4caf50;
 }
 
 .token-label-inv {
-  color: var(--color-info);
+  color: #20c9e0;
 }
 
 .connect-note {
   margin-top: 10px;
   font-size: 0.9em;
-  color: var(--text-secondary);
+  color: #666;
 }

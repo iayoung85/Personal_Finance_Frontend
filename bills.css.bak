@@ -2,10 +2,9 @@
    bills.css — Styles specific to the Bills management page.
    Loaded after transactions.css which provides base styles
    (.container, .modal-overlay, .back-link, table, etc.)
-   Dark theme: all colors use CSS custom properties from theme.css
    ============================================================ */
 
-/* ── Status Bar ───────────────────────────────────────────── */
+/* ── Status Bar ─────────────────────────────────────── */
 .status-bar {
   padding: 10px 14px;
   border-radius: 4px;
@@ -13,37 +12,36 @@
   margin-bottom: 12px;
   transition: opacity 0.3s;
 }
-.status-bar.success { background: var(--color-success-bg); color: var(--color-success); border: 1px solid var(--color-success-border); }
-.status-bar.error   { background: var(--color-danger-bg);  color: var(--color-danger);  border: 1px solid var(--color-danger-border); }
-.status-bar.info    { background: var(--color-info-bg);    color: var(--color-info);    border: 1px solid var(--color-info-border); }
+.status-bar.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+.status-bar.error   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+.status-bar.info    { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
 
-/* ── Bills Table ──────────────────────────────────────────── */
+/* ── Bills Table ────────────────────────────────────── */
 #bills-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
 }
 #bills-table th {
-  background: var(--table-header-bg);
+  background: #f8f9fa;
   padding: 10px 8px;
   text-align: left;
   font-weight: 600;
-  color: var(--text-secondary);
-  border-bottom: 2px solid var(--border-primary);
+  color: #555;
+  border-bottom: 2px solid #dee2e6;
   white-space: nowrap;
 }
 #bills-table td {
   padding: 10px 8px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid #eee;
   vertical-align: middle;
 }
 #bills-table tr:hover {
-  background: var(--bg-hover);
+  background: #f8f9fa;
 }
 #bills-table tr.bill-inactive {
   opacity: 0.5;
 }
-
 /* Direction badges */
 .dir-badge {
   display: inline-block;
@@ -52,31 +50,30 @@
   font-size: 11px;
   font-weight: 600;
 }
-.dir-badge.out { background: var(--color-danger-bg); color: var(--color-danger); }
-.dir-badge.in  { background: var(--color-success-bg); color: var(--color-success); }
+.dir-badge.out { background: #ffeef0; color: #d63031; }
+.dir-badge.in  { background: #e8f5e9; color: #27ae60; }
 
 /* Amount colouring in table */
-.amount-out { color: var(--color-negative); }
-.amount-in  { color: var(--color-positive); font-weight: 500; }
+.amount-out { color: #d63031; }
+.amount-in  { color: #27ae60; font-weight: 500; }
 
 /* Action buttons in table rows */
 .bill-action-btn {
   background: none;
-  border: 1px solid var(--border-primary);
+  border: 1px solid #ddd;
   border-radius: 3px;
   padding: 4px 8px;
   cursor: pointer;
   font-size: 12px;
   margin-right: 4px;
-  color: var(--text-primary);
 }
-.bill-action-btn:hover { background: var(--bg-hover); }
-.bill-action-btn.delete { color: var(--color-danger); border-color: var(--color-danger-border); }
-.bill-action-btn.delete:hover { background: var(--color-danger-bg); }
-.bill-action-btn.toggle-active { color: var(--accent-orange); border-color: rgba(206, 145, 120, 0.3); }
-.bill-action-btn.toggle-active:hover { background: rgba(206, 145, 120, 0.12); }
+.bill-action-btn:hover { background: #f0f0f0; }
+.bill-action-btn.delete { color: #d63031; border-color: #f5c6cb; }
+.bill-action-btn.delete:hover { background: #ffeef0; }
+.bill-action-btn.toggle-active { color: #e67e22; border-color: #fdebd0; }
+.bill-action-btn.toggle-active:hover { background: #fef5e7; }
 
-/* ── Bill Modal ───────────────────────────────────────────── */
+/* ── Bill Modal ─────────────────────────────────────── */
 .bill-modal {
   width: min(900px, 94vw) !important;
   max-height: 90vh;
@@ -102,9 +99,9 @@
 .bill-freq-col h4,
 .bill-details-col h4 {
   margin: 0 0 8px 0;
-  color: var(--text-heading);
+  color: #333;
   font-size: 14px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid #eee;
   padding-bottom: 6px;
 }
 
@@ -116,7 +113,7 @@
   font-weight: 500;
   margin-bottom: 4px;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: #444;
 }
 .bill-field input[type="text"],
 .bill-field input[type="number"],
@@ -124,19 +121,17 @@
 .bill-field select {
   width: 100%;
   padding: 7px 8px;
-  border: 1px solid var(--border-primary);
+  border: 1px solid #ddd;
   border-radius: 3px;
   font-size: 13px;
   box-sizing: border-box;
-  background: var(--bg-input);
-  color: var(--text-primary);
 }
 .bill-field small {
   font-size: 11px;
-  color: var(--text-muted);
+  color: #888;
 }
 
-/* ── Category Autocomplete Dropdown ───────────────────── */
+/* ── Category Autocomplete Dropdown ─────────────────────── */
 .bill-category-ac-list {
   display: none;
   position: absolute;
@@ -144,11 +139,11 @@
   left: 0;
   right: 0;
   z-index: 200;
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-primary);
+  background: white;
+  border: 1px solid #d1d5db;
   border-top: none;
   border-radius: 0 0 4px 4px;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
   max-height: 220px;
   overflow-y: auto;
 }
@@ -156,36 +151,35 @@
   padding: 6px 10px;
   font-size: 12px;
   cursor: pointer;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid #f3f4f6;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text-primary);
 }
 .bill-category-ac-item:last-child {
   border-bottom: none;
 }
 .bill-category-ac-item.active,
 .bill-category-ac-item:hover {
-  background: var(--bg-selected);
-  color: var(--accent-link);
+  background: #eef2ff;
+  color: #4338ca;
 }
 .bill-category-ac-item strong {
-  color: var(--accent-link);
+  color: #6366f1;
   font-weight: 700;
 }
 .bill-category-ac-empty {
   padding: 8px 10px;
   font-size: 12px;
-  color: var(--text-muted);
+  color: #999;
   font-style: italic;
 }
 .bill-category-ac-more {
   padding: 4px 10px;
   font-size: 11px;
-  color: var(--text-muted);
+  color: #888;
   text-align: center;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid #f3f4f6;
 }
 
 /* Day-of-week selector (M T W T F S S buttons) */
@@ -197,52 +191,52 @@
 .dow-btn {
   width: 32px;
   height: 32px;
-  border: 1px solid var(--border-primary);
+  border: 1px solid #ddd;
   border-radius: 4px;
-  background: var(--bg-input);
+  background: #fff;
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: #555;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.dow-btn:hover { background: var(--bg-hover); }
+.dow-btn:hover { background: #f0f0f0; }
 .dow-btn.active {
-  background: var(--accent-orange);
-  color: var(--text-inverse);
-  border-color: var(--accent-orange);
+  background: #e67e22;
+  color: #fff;
+  border-color: #e67e22;
 }
 
-/* ── Bill Error Banner ────────────────────────────────────── */
+/* ── Bill Error Banner ──────────────────────────────── */
 .bill-error-banner {
   padding: 8px 12px;
-  background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger-border);
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
   border-radius: 4px;
-  color: var(--color-danger);
+  color: #b91c1c;
   font-size: 13px;
   margin-bottom: 12px;
 }
 
-/* ── Preview Section ──────────────────────────────────────── */
+/* ── Preview Section ────────────────────────────────── */
 .bill-preview-section {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 2px solid var(--border-primary);
+  border-top: 2px solid #eee;
 }
 .bill-preview-section h4 {
   margin: 0 0 8px 0;
-  color: var(--text-heading);
+  color: #333;
   font-size: 14px;
 }
 .bill-preview-summary {
-  background: var(--bg-surface-elevated);
+  background: #f8f9fa;
   border-radius: 4px;
   padding: 10px 14px;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: #555;
   line-height: 1.5;
   margin-bottom: 8px;
 }
@@ -254,44 +248,40 @@
 }
 .bill-preview-dates .preview-date-item {
   padding: 4px 8px;
-  background: var(--bg-inset);
-  border: 1px solid var(--border-subtle);
+  background: #fff;
+  border: 1px solid #eee;
   border-radius: 3px;
   display: flex;
   justify-content: space-between;
 }
 .bill-preview-dates .preview-date-item .date-label {
-  color: var(--text-primary);
+  color: #333;
   font-weight: 500;
 }
 .bill-preview-dates .preview-date-item .date-amount {
-  color: var(--text-muted);
+  color: #888;
 }
 
-/* ── Inline interval row ──────────────────────────────────── */
+/* ── Inline interval row ────────────────────────────── */
 .freq-inline-row {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-bottom: 8px;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: #555;
 }
 .freq-inline-row input[type="number"] {
   width: 60px;
   padding: 5px 6px;
-  border: 1px solid var(--border-primary);
+  border: 1px solid #ddd;
   border-radius: 3px;
   font-size: 13px;
   text-align: center;
-  background: var(--bg-input);
-  color: var(--text-primary);
 }
 .freq-inline-row select {
   padding: 5px 6px;
-  border: 1px solid var(--border-primary);
+  border: 1px solid #ddd;
   border-radius: 3px;
   font-size: 13px;
-  background: var(--bg-input);
-  color: var(--text-primary);
 }
