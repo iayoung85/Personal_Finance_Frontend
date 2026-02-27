@@ -43,16 +43,16 @@ function generateCSV() {
 
   let csv = 'Date,Bank/Account,Description,Amount';
   
-  // Add optional headers
+  // Add optional headers — values must match .field-checkbox values in transactions.html
   if (optionalFields.includes('merchant_name')) csv += ',Merchant';
-  if (optionalFields.includes('category')) csv += ',Category (Primary),Category (Detailed),Confidence';
-  if (optionalFields.includes('user_category')) csv += ',User Category';
+  if (optionalFields.includes('personal_finance_category')) csv += ',Category (Primary),Category (Detailed),Confidence';
   if (optionalFields.includes('payment_channel')) csv += ',Channel';
-  if (optionalFields.includes('pending')) csv += ',Pending';
   if (optionalFields.includes('check_number')) csv += ',Check #';
   if (optionalFields.includes('original_description')) csv += ',Original Desc';
   if (optionalFields.includes('authorized_date')) csv += ',Auth Date';
   if (optionalFields.includes('authorized_datetime')) csv += ',Auth Time';
+  if (optionalFields.includes('user_memo')) csv += ',Memo';
+  if (optionalFields.includes('source')) csv += ',Source';
   
   csv += '\n';
 
@@ -71,7 +71,7 @@ function generateCSV() {
     
     // Add optional fields
     if (optionalFields.includes('merchant_name')) csv += `,"${(txn.merchant_name || '').replace(/"/g, '""')}"`;
-    if (optionalFields.includes('category')) {
+    if (optionalFields.includes('personal_finance_category')) {
          // Use new personal_finance_category if available
          const pfc = txn.personal_finance_category;
          if (pfc) {
@@ -98,9 +98,7 @@ function generateCSV() {
            csv += `,"${(cat || '').replace(/"/g, '""')}","",""`;
          }
     }
-    if (optionalFields.includes('user_category')) csv += `,"${(txn.user_category || 'Uncategorized').replace(/"/g, '""')}"`;
     if (optionalFields.includes('payment_channel')) csv += `,"${(txn.payment_channel || '').replace(/"/g, '""')}"`;
-    if (optionalFields.includes('pending')) csv += `,${txn.pending ? 'Yes' : 'No'}`;
     if (optionalFields.includes('check_number')) csv += `,"${(txn.check_number || '').replace(/"/g, '""')}"`;
     if (optionalFields.includes('original_description')) csv += `,"${(txn.original_description || '').replace(/"/g, '""')}"`;
     if (optionalFields.includes('authorized_date')) csv += `,"${(txn.authorized_date || '').replace(/"/g, '""')}"`;
@@ -120,6 +118,8 @@ function generateCSV() {
         }
         csv += `,"${authTime}"`;
     }
+    if (optionalFields.includes('user_memo')) csv += `,"${(txn.user_memo || '').replace(/"/g, '""')}"`;
+    if (optionalFields.includes('source')) csv += `,"${(txn.source || '').replace(/"/g, '""')}"`;
     
     csv += '\n';
   });

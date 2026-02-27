@@ -24,6 +24,7 @@
         <div style="display: flex; gap: 12px; align-items: center;">
           <a href="accounts.html" class="back-link" style="color: #1967d2;">Manage Accounts →</a>
           <a href="categories.html" class="back-link" style="color: #6366f1;">Manage Categories →</a>
+          <a href="bills.html" class="back-link" style="color: #e67e22;">Manage Bills →</a>
           <a href="investments.html" class="back-link" style="color: #28a745;">View Investments →</a>
         </div>
       </div>
@@ -55,12 +56,12 @@
             </div>
 
             <div class="filter-group filter-group-categories">
-              <select id="filter-primary-category" onchange="onFilterPrimaryChange()">
-                <option value="">— All Categories —</option>
-              </select>
-              <select id="filter-detailed-category" onchange="onFilterDetailedChange()">
-                <option value="">— All Detailed —</option>
-              </select>
+              <div class="category-filter-wrap">
+                <input type="text" id="filter-category-input"
+                       placeholder="Filter by category…"
+                       autocomplete="off" spellcheck="false">
+                <div id="filter-category-ac-list" class="category-ac-list filter-ac-list"></div>
+              </div>
               <button onclick="clearCategoryFilters()" class="btn-quick-range">Clear</button>
             </div>
 
@@ -181,6 +182,19 @@
             <label><input type="checkbox" class="field-checkbox" value="user_memo"> Memo</label>
             <label><input type="checkbox" class="field-checkbox" value="source"> Source (Plaid/Manual)</label>
           </div>
+        </div>
+        <!-- Bills Ahead -->
+        <div class="config-section">
+          <h3>Bills Ahead</h3>
+          <p style="font-size: 13px; color: #666; margin-bottom: 8px;">How many upcoming bill occurrences to show per bill in the scheduled transactions block.</p>
+          <select id="bills-upcoming-count" style="width: 80px; padding: 4px 8px; font-size: 14px;">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="6">6</option>
+            <option value="12">12</option>
+          </select>
         </div>
       </div>
       <div class="modal-footer">

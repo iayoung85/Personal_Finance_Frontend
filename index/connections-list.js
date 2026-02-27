@@ -154,6 +154,11 @@ const IndexConnectionsList = (() => {
    * Refresh a linked bank:
    *  - Broken item (error/needs_update/permission_revoked): open Plaid Link in update mode
    *  - Healthy item: open Plaid Link in update mode (lets user update sharing permissions)
+   *
+   * After Plaid Link completes, refreshes accounts and checks if any newly
+   * added accounts match existing manual accounts for the same institution.
+   * If matches are found, shows the account matching modal so the user can
+   * merge them instead of having duplicates.
    */
   async function handleRefresh(itemId, bankName, itemStatus) {
     if (!IndexState.getAuthToken()) {
@@ -171,7 +176,25 @@ const IndexConnectionsList = (() => {
             const refreshResult = await IndexApi.refreshItemAccounts(itemId);
             if (refreshResult.ok) {
               invalidateItemInfoCache(itemId);
-              IndexUtils.showMessage('dashboard-message', `✓ ${bankName} refreshed successfully!`, 'success');
+
+              // Check if the refresh detected manual accounts that might match
+              // newly added Plaid accounts (cross-bank matching for update mode)
+              const pendingMatching = refreshResult.data?.pending_account_matching;
+              const targetBankId = refreshResult.data?.bank_id;
+              const targetBankName = refreshResult.data?.bank_name || bankName;
+
+              if (pendingMatching && pendingMatching.needed && targetBankId) {
+                IndexUtils.showMessage(
+                  'dashboard-message',
+                  `✓ ${bankName} refreshed! We found existing accounts that may match — please review.`,
+                  'success',
+                );
+                _showAccountMatchingModal(targetBankId, targetBankName, pendingMatching);
+              } else {
+                const newCount = refreshResult.data?.new_accounts_count || 0;
+                const countMsg = newCount > 0 ? ` (${newCount} new account${newCount > 1 ? 's' : ''} added)` : '';
+                IndexUtils.showMessage('dashboard-message', `✓ ${bankName} refreshed successfully!${countMsg}`, 'success');
+              }
             } else {
               IndexUtils.showMessage('dashboard-message', `✓ ${bankName} refreshed, but failed to sync accounts`, 'success');
             }
@@ -452,7 +475,7 @@ const IndexConnectionsList = (() => {
       _closeAccountMatchingModal(bankName, /* skipped */ false);
       IndexUtils.showMessage(
         'dashboard-message',
-        `✓ ${bankName} relinked! ${confirmResult.matches_processed || 0} account(s) merged, ` +
+        `✓ ${bankName} updated! ${confirmResult.matches_processed || 0} account(s) merged, ` +
         `${confirmResult.transactions_moved || 0} transactions migrated.`,
         'success',
       );
@@ -481,7 +504,7 @@ const IndexConnectionsList = (() => {
     if (skipped) {
       IndexUtils.showMessage(
         'dashboard-message',
-        `✓ ${bankName} relinked successfully! (Account matching skipped — ` +
+        `✓ ${bankName} updated successfully! (Account matching skipped — ` +
         `you can manually merge accounts later from the Accounts page.)`,
         'success',
       );

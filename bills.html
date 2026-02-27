@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Manage Bills - Personal Finance</title>
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+  <link rel="icon" type="image/png" href="IAY favicon.png">
+  <link rel="stylesheet" href="transactions.css">
+  <link rel="stylesheet" href="bills.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="page-header">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <a href="index.html" class="back-link">← Back to Dashboard</a>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <a href="transactions.html" class="back-link" style="color: #1967d2;">View Transactions →</a>
+          <a href="accounts.html" class="back-link" style="color: #28a745;">Manage Accounts →</a>
+        </div>
+      </div>
+    </div>
+
+    <h1>Manage Bills</h1>
+    <p style="color: #666; margin-top: -8px;">Create and manage your recurring bills and scheduled payments</p>
+
+    <!-- Status Bar -->
+    <div id="status-bar" class="status-bar hidden"></div>
+
+    <!-- Action Bar -->
+    <div style="display: flex; gap: 12px; margin: 16px 0; align-items: center;">
+      <button id="create-bill-btn" onclick="openBillModal()" style="padding: 10px 20px; background: #e67e22; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+        + New Bill
+      </button>
+      <span id="bill-count" style="color: #888; font-size: 13px;"></span>
+    </div>
+
+    <!-- Bills Table -->
+    <div id="bills-table-container">
+      <div class="loading" id="bills-loading">Loading bills...</div>
+      <div id="bills-empty" class="empty-state" style="display: none;">
+        <p>No bills created yet.</p>
+        <p style="font-size: 14px;">Click <strong>+ New Bill</strong> to add your first recurring bill.</p>
+      </div>
+      <table id="bills-table" style="display: none;">
+        <thead>
+          <tr>
+            <th>Next Payment</th>
+            <th>Direction</th>
+            <th>Description</th>
+            <th>Amount</th>
+            <th>Frequency</th>
+            <th>Account</th>
+            <th>Category</th>
+            <th>Dest. Account</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="bills-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══ Bill Create/Edit Modal ═══ -->
+  <div id="bill-modal-overlay" class="modal-overlay hidden" onclick="if(event.target===this)closeBillModal()">
+    <div class="modal bill-modal">
+      <div class="modal-header">
+        <h3 id="bill-modal-title">New Bill</h3>
+        <button class="modal-close" onclick="closeBillModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <!-- Error banner -->
+        <div id="bill-error-banner" class="bill-error-banner" style="display: none;"></div>
+
+        <!-- Top half: frequency (left) + details (right) -->
+        <div class="bill-form-top">
+          <!-- LEFT COLUMN: Frequency Settings -->
+          <div class="bill-freq-col">
+            <h4>Frequency Settings</h4>
+
+            <div class="bill-field">
+              <label for="bill-frequency">Frequency</label>
+              <select id="bill-frequency" onchange="onFrequencyChange()">
+                <option value="once">Once</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly" selected>Monthly</option>
+                <option value="twice_monthly">Twice a Month</option>
+                <option value="yearly">Yearly</option>
+                <option value="twice_yearly">Twice a Year</option>
+              </select>
+            </div>
+
+            <!-- Dynamic frequency options container -->
+            <div id="freq-options"></div>
+
+            <!-- End condition (shared by all except "once") -->
+            <div id="end-condition-section" class="bill-field">
+              <label for="bill-end-type">Ends</label>
+              <select id="bill-end-type" onchange="onEndTypeChange()">
+                <option value="never">Never</option>
+                <option value="on_date">On Date</option>
+                <option value="after_occurrences">After X Occurrences</option>
+              </select>
+              <div id="end-date-input" style="display: none; margin-top: 8px;">
+                <input type="date" id="bill-end-date">
+              </div>
+              <div id="end-occurrences-input" style="display: none; margin-top: 8px;">
+                <input type="number" id="bill-max-occurrences" min="1" max="999" value="12" style="width: 80px;">
+                <span style="color: #666; font-size: 13px; margin-left: 4px;">occurrences</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT COLUMN: Transaction Details -->
+          <div class="bill-details-col">
+            <h4>Payment Details</h4>
+
+            <div class="bill-field">
+              <label for="bill-account">Account *</label>
+              <select id="bill-account">
+                <option value="">— Select Account —</option>
+              </select>
+            </div>
+
+            <div class="bill-field">
+              <label for="bill-description">Description *</label>
+              <input type="text" id="bill-description" placeholder="e.g., Rent, Netflix, Paycheck" maxlength="500">
+            </div>
+
+            <div class="bill-field" style="display: grid; grid-template-columns: 1fr auto; gap: 8px;">
+              <div>
+                <label for="bill-amount">Default Amount *</label>
+                <input type="text" id="bill-amount" inputmode="decimal" placeholder="0.00">
+              </div>
+              <div>
+                <label for="bill-type">Type</label>
+                <select id="bill-type" style="min-width: 100px;">
+                  <option value="debit" selected>Debit (−)</option>
+                  <option value="credit">Credit (+)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="bill-field">
+              <label>
+                <input type="checkbox" id="bill-amount-variable" style="margin-right: 6px;">
+                Amount varies (match by name/date only, ignore amount)
+              </label>
+              <small style="color: #888; display: block; margin-top: 2px;">
+                Useful for income or bills where the amount changes each cycle
+              </small>
+            </div>
+
+            <div class="bill-field">
+              <label for="bill-category">Category</label>
+              <input type="text" id="bill-category" placeholder="Type to search, or [ for transfers" autocomplete="off">
+              <small style="color: #666;">Type <kbd>[</kbd> to mark as transfer to another account</small>
+            </div>
+
+            <div class="bill-field">
+              <label for="bill-memo">Memo</label>
+              <input type="text" id="bill-memo" placeholder="Optional note" maxlength="256">
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom half: Preview -->
+        <div class="bill-preview-section">
+          <h4>Schedule Preview</h4>
+          <div id="bill-preview-summary" class="bill-preview-summary">
+            Select a frequency and fill in the details above to see a preview.
+          </div>
+          <div id="bill-preview-dates" class="bill-preview-dates"></div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeBillModal()">Cancel</button>
+        <button id="bill-submit-btn" onclick="saveBill()">Create Bill</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="bills.js"></script>
+</body>
+</html>

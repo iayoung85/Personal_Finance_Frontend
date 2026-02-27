@@ -679,3 +679,118 @@ function _expandDateFiltersForTransaction(txnDate) {
     renderDynamicPeriodButtons();
   }
 }
+
+
+// ============================================================================
+// SCHEDULED / MISSING / MATCHED TRANSACTION ACTIONS
+// ============================================================================
+
+/**
+ * Unmatch a scheduled↔plaid pairing, reverting the scheduled row to 'missing'.
+ * Called from the Unmatch button in the category cell of matched transactions.
+ */
+async function unmatchScheduledTransaction(transactionId) {
+  if (!confirm('Undo this match? The scheduled transaction will revert to "missing" status.')) {
+    return;
+  }
+
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/unmatch_scheduled/${encodeURIComponent(transactionId)}`,
+      { method: 'POST' }
+    );
+
+    if (!response.ok) {
+      const data = await response.json();
+      showStatus(data.error || 'Failed to unmatch transaction', 'error');
+      return;
+    }
+
+    showStatus('Match undone — transaction reverted to missing', 'success');
+
+    // Invalidate cache and refresh
+    try {
+      localStorage.removeItem('pf_cached_transactions');
+      localStorage.removeItem('pf_transactions_cached_at');
+    } catch (cacheError) { /* non-fatal */ }
+
+    await fetchAllTransactions(true);
+
+  } catch (networkError) {
+    showStatus(`Failed to unmatch: ${networkError.message}`, 'error');
+  }
+}
+
+/**
+ * Resolve (delete) a missing scheduled transaction — dismiss the alert.
+ * Called from the ✖ button in the action column of missing transactions.
+ */
+async function resolveMissingTransaction(transactionId) {
+  if (!confirm('Dismiss this missing transaction? It will be removed permanently.')) {
+    return;
+  }
+
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/resolve_missing/${encodeURIComponent(transactionId)}`,
+      { method: 'DELETE' }
+    );
+
+    if (!response.ok) {
+      const data = await response.json();
+      showStatus(data.error || 'Failed to resolve missing transaction', 'error');
+      return;
+    }
+
+    showStatus('Missing transaction resolved', 'success');
+
+    try {
+      localStorage.removeItem('pf_cached_transactions');
+      localStorage.removeItem('pf_transactions_cached_at');
+    } catch (cacheError) { /* non-fatal */ }
+
+    await fetchAllTransactions(true);
+
+  } catch (networkError) {
+    showStatus(`Failed to resolve: ${networkError.message}`, 'error');
+  }
+}
+
+/**
+ * Skip a bill occurrence by calling the Bills API skip endpoint.
+ * Called from the ⏭ button in the action column of scheduled bill transactions.
+ */
+async function skipBillOccurrence(billId, occurrenceDate) {
+  if (!confirm(`Skip the bill occurrence on ${occurrenceDate}?`)) {
+    return;
+  }
+
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/bills/${encodeURIComponent(billId)}/skip`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: occurrenceDate })
+      }
+    );
+
+    if (!response.ok) {
+      const data = await response.json();
+      showStatus(data.error || 'Failed to skip occurrence', 'error');
+      return;
+    }
+
+    showStatus('Bill occurrence skipped', 'success');
+
+    try {
+      localStorage.removeItem('pf_cached_transactions');
+      localStorage.removeItem('pf_transactions_cached_at');
+    } catch (cacheError) { /* non-fatal */ }
+
+    await fetchAllTransactions(true);
+
+  } catch (networkError) {
+    showStatus(`Failed to skip occurrence: ${networkError.message}`, 'error');
+  }
+}

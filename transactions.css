@@ -1655,6 +1655,101 @@ tr:hover {
   border-top: 1px solid #f3f4f6;
 }
 
+/* ── Category Filter Text Box (filter strip) ──────────────── */
+
+.category-filter-wrap {
+  position: relative;
+  display: inline-block;
+  min-width: 200px;
+}
+
+#filter-category-input {
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 13px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: white;
+  box-sizing: border-box;
+}
+
+#filter-category-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+#filter-category-input::placeholder {
+  color: #aaa;
+  font-style: italic;
+}
+
+.filter-ac-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.14);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.filter-ac-section-label {
+  padding: 5px 10px 3px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.filter-ac-item {
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 1px solid #f3f4f6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-ac-item:last-child {
+  border-bottom: none;
+}
+
+.filter-ac-item.active,
+.filter-ac-item:hover {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.filter-ac-item strong {
+  color: #6366f1;
+  font-weight: 700;
+}
+
+.filter-ac-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #999;
+  font-style: italic;
+}
+
+.filter-ac-more {
+  padding: 4px 10px;
+  font-size: 11px;
+  color: #888;
+  text-align: center;
+  border-top: 1px solid #f3f4f6;
+}
+
 .category-buttons {
   display: inline-flex;
   gap: 2px;
@@ -1764,6 +1859,171 @@ tr:hover {
 .source-badge.opening-balance {
   background: #fce4b8;
   color: #8a6400;
+}
+
+.source-badge.scheduled {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.source-badge.missing {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.source-badge.matched {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.source-badge.orphaned {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+.source-badge.reconciliation {
+  background: #e5e7eb;
+  color: #4b5563;
+  font-style: italic;
+}
+
+/* ── Row styles for new transaction types ── */
+
+.scheduled-row {
+  opacity: 0.78;
+}
+
+.scheduled-row td {
+  color: #4338ca;
+  background: #f5f7ff;
+  border-bottom-color: #e0e7ff;
+}
+
+.missing-row {
+  opacity: 0.80;
+}
+
+.missing-row td {
+  color: #991b1b;
+  background: #fef8f8;
+  border-bottom-color: #fecaca;
+}
+
+.matched-row td {
+  background: #f0fdf4;
+  border-bottom-color: #bbf7d0;
+}
+
+.orphaned-row {
+  opacity: 0.60;
+}
+
+.orphaned-row td {
+  color: #6b21a8;
+  background: #faf5ff;
+  border-bottom-color: #e9d5ff;
+  font-style: italic;
+}
+
+/* ── Block tbody backgrounds ── */
+
+.scheduled-tbody {
+  background: #f8f9ff;
+}
+
+.missing-tbody {
+  background: #fefafa;
+}
+
+/* ── Block separator rows ── */
+
+.scheduled-separator-row td {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4338ca;
+  background: linear-gradient(to right, #fff, #e8ebff, #fff);
+  padding: 4px 0;
+  border-top: 1px dashed #a5b4fc;
+  border-bottom: 1px dashed #a5b4fc;
+  letter-spacing: 0.5px;
+}
+
+.missing-separator-row td {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #991b1b;
+  background: linear-gradient(to right, #fff, #feeaea, #fff);
+  padding: 4px 0;
+  border-top: 1px dashed #fca5a5;
+  border-bottom: 1px dashed #fca5a5;
+  letter-spacing: 0.5px;
+}
+
+/* ── Action buttons for new types ── */
+
+.skip-occurrence-btn {
+  background: none;
+  border: none;
+  color: #4338ca;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 6px;
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.skip-occurrence-btn:hover {
+  background: #e0e7ff;
+  border-radius: 3px;
+}
+
+.resolve-missing-btn {
+  background: none;
+  border: none;
+  color: #dc3545;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.resolve-missing-btn:hover {
+  color: #bb2d3b;
+  background: #fee2e2;
+  border-radius: 3px;
+}
+
+.unmatch-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid #065f46;
+  background: #d1fae5;
+  color: #065f46;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.unmatch-btn:hover {
+  background: #a7f3d0;
+}
+
+.bill-edit-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid #3730a3;
+  background: #e0e7ff;
+  color: #3730a3;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.bill-edit-btn:hover {
+  background: #c7d2fe;
 }
 
 /* Delete Button for Manual Transactions */

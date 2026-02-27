@@ -205,7 +205,8 @@ const IndexApi = (() => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ item_id: itemId }),
     });
-    return { ok: response.ok };
+    const data = await response.json().catch(() => ({}));
+    return { ok: response.ok, data };
   }
 
   /**

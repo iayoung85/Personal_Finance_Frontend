@@ -88,6 +88,10 @@ function _buildAccountDetailHtml(account) {
           <span class="metadata-label">Created</span>
           <span class="metadata-value">${account.created_at ? new Date(account.created_at).toLocaleDateString() : '—'}</span>
         </div>
+        <div class="metadata-item">
+          <span class="metadata-label">Transactions</span>
+          <span class="metadata-value">${account.transaction_count !== undefined ? account.transaction_count.toLocaleString() : '—'}</span>
+        </div>
       </div>
 
       <!-- Classification Table -->

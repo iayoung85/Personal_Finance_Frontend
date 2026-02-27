@@ -22,7 +22,8 @@ async function saveSettings() {
       timezone: timezone,
       hide_transfers: hideTransfers,
       show_overrides_only: showOverridesOnly,
-      show_pending: document.getElementById('show-pending-toggle').checked
+      show_pending: document.getElementById('show-pending-toggle').checked,
+      bills_upcoming_count: parseInt(document.getElementById('bills-upcoming-count').value, 10) || 1
     };
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transaction_viewer_settings`, {
@@ -90,4 +91,8 @@ function applySettings(settings) {
   // Apply show_pending setting (default to false if not set)
   const showPending = settings.show_pending !== undefined ? settings.show_pending : false;
   document.getElementById('show-pending-toggle').checked = showPending;
+
+  // Apply bills_upcoming_count setting (default to 1 if not set)
+  const billsUpcomingCount = settings.bills_upcoming_count !== undefined ? settings.bills_upcoming_count : 1;
+  document.getElementById('bills-upcoming-count').value = String(billsUpcomingCount);
 }

@@ -40,7 +40,7 @@ $(document).ready(async function() {
 
   // Load available categories for manual categorization dropdown
   await loadAvailableCategories();
-  populateCategoryFilterDropdowns();
+  initCategoryFilterInput();
   renderTransactionTable();
 
   // ── Delegated event handlers ──────────────────────────────
@@ -81,8 +81,9 @@ $(document).ready(async function() {
     }
   });
 
-  // Re-render on date range change
+  // Re-render on date range change and save custom date to localStorage
   $(document).on('input change', '#start-date, #end-date', function() {
+    _saveDateRangeToStorage('custom');
     renderTransactionTable();
   });
 

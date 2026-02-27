@@ -112,6 +112,10 @@ function logout() {
   localStorage.removeItem('pf_cached_categories');
   localStorage.removeItem('pf_cached_taxonomy');
   localStorage.removeItem('pf_categories_cached_at');
+  // Clear date range memory on logout
+  localStorage.removeItem('pf_date_range_preset');
+  localStorage.removeItem('pf_date_range_start');
+  localStorage.removeItem('pf_date_range_end');
   token = null;
   refreshToken = null;
   currentUser = null;
@@ -128,12 +132,9 @@ async function performSync(accountIds, startDate, endDate, activate = false, for
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      start_date: startDate,
-      end_date: endDate,
-      account_ids: accountIds,
       activate: activate,
       force: force,
-      sync_all: 'True'
+      sync_all: true
     })
   });
   
@@ -188,6 +189,7 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
   if (cacheValid && !forceNetwork) {
     try {
       transactions = JSON.parse(cachedData);
+      autoExtendEndDateForScheduled();
       renderTransactionTable();
       renderDynamicPeriodButtons();
       showStatus(`Loaded ${transactions.length} transactions from cache. Checking for updates...`, 'info');
@@ -206,13 +208,14 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
     
     const syncData = await performSync(selectedAccounts, startDate, endDate, false, forceNetwork);
     
-    // Determine if we need to fetch from DB
-    const shouldFetchFromDB = !cacheValid || syncData.synced_count > 0 || forceNetwork;
+    // Determine if we need to fetch from DB based on actual backend response fields
+    const totalChanges = (syncData.added_count || 0) + (syncData.modified_count || 0) + (syncData.removed_count || 0);
+    const shouldFetchFromDB = !cacheValid || totalChanges > 0 || forceNetwork;
     
     if (shouldFetchFromDB) {
       // No cache OR sync returned changes OR force requested → fetch from DB
-      let successMsg = syncData.synced_count > 0 
-        ? `Synced ${syncData.synced_count} transactions (${syncData.new_count || 0} new, ${syncData.updated_count || 0} updated)`
+      let successMsg = totalChanges > 0 
+        ? `Synced ${totalChanges} transactions (${syncData.added_count || 0} new, ${syncData.modified_count || 0} updated, ${syncData.removed_count || 0} removed)`
         : 'Sync complete, loading transactions...';
       showStatus(successMsg, 'info');
       
@@ -272,6 +275,7 @@ async function fetchAllTransactions(forceNetwork = false) {
       // localStorage might be full — not fatal
     }
     
+    autoExtendEndDateForScheduled(); // Extend end-date to show all scheduled future txns
     renderTransactionTable();
     renderDynamicPeriodButtons(); // Update period buttons when transactions change
     showStatus(`Loaded ${transactions.length} total transactions (filters applied on frontend)`, 'success');

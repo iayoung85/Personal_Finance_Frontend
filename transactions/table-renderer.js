@@ -120,9 +120,36 @@ function renderTransactionTable() {
     return;
   }
   
-  // Separate pending from posted transactions
-  const pendingTransactions = filteredTransactions.filter(txn => txn.pending);
-  const postedTransactions = filteredTransactions.filter(txn => !txn.pending);
+  // Separate transactions into blocks per blueprint structure:
+  // 1. Scheduled future (source='scheduled', status='future')
+  // 2. Missing (source='scheduled', status='missing')
+  // 3. Pending (pending=true)
+  // 4. Cleared/posted (everything else)
+  // In All Accounts view: hide OB, MOB, reconciliation, orphaned
+  const isAllAccounts = selectedAccountMode === 'all';
+
+  const scheduledFuture = [];
+  const missingTransactions = [];
+  const pendingTransactions = [];
+  const postedTransactions = [];
+
+  filteredTransactions.forEach(txn => {
+    // All Accounts view: hide system rows and orphaned
+    if (isAllAccounts) {
+      if (txn.source === 'opening_balance' || txn.source === 'manual_opening_balance' || txn.source === 'reconciliation') return;
+      if (txn.source === 'manual' && txn.status === 'missing') return; // orphaned
+    }
+
+    if (txn.source === 'scheduled' && txn.status === 'future') {
+      scheduledFuture.push(txn);
+    } else if (txn.source === 'scheduled' && txn.status === 'missing') {
+      missingTransactions.push(txn);
+    } else if (txn.pending) {
+      pendingTransactions.push(txn);
+    } else {
+      postedTransactions.push(txn);
+    }
+  });
   
   // Sort helper: date descending, then transaction ID descending within same day
   // Mirrors backend balance engine order (date ASC, txn_id ASC) reversed
@@ -133,7 +160,14 @@ function renderTransactionTable() {
     const idB = rowB.transaction_id || '';
     return idB.localeCompare(idA);
   };
-  
+
+  // Scheduled future: nearest date at top (ascending order)
+  scheduledFuture.sort((rowA, rowB) => {
+    const dateComp = rowA.date.localeCompare(rowB.date);
+    if (dateComp !== 0) return dateComp;
+    return (rowA.transaction_id || '').localeCompare(rowB.transaction_id || '');
+  });
+  missingTransactions.sort(sortNewestFirst);
   postedTransactions.sort(sortNewestFirst);
   pendingTransactions.sort(sortNewestFirst);
   
@@ -160,11 +194,21 @@ function renderTransactionTable() {
     });
   }
   
-  // Build the combined rendering list: pending rows first, then posted
+  // Build the combined rendering list following the blueprint block order:
+  // scheduled future → missing → pending → cleared/posted
   const hasPendingToShow = showPendingEnabled && pendingTransactions.length > 0;
-  const allRowTransactions = hasPendingToShow
-    ? [...pendingTransactions, ...postedTransactions]
-    : postedTransactions;
+  const hasScheduledToShow = scheduledFuture.length > 0;
+  const hasMissingToShow = missingTransactions.length > 0;
+
+  const allRowTransactions = [
+    ...scheduledFuture,
+    ...missingTransactions,
+    ...(hasPendingToShow ? pendingTransactions : []),
+    ...postedTransactions,
+  ];
+  // Block boundary tracking flags
+  let scheduledSectionEnded = !hasScheduledToShow;
+  let missingSectionEnded = !hasMissingToShow;
   let pendingSectionEnded = !hasPendingToShow;
   
   let html = '<table><thead><tr>';
@@ -218,8 +262,12 @@ function renderTransactionTable() {
   if (optionalFields.includes('user_memo')) colCount++;
   if (showLedgerColumn) colCount += 2; // Amount + Balance Ledger
   
-  // Open first tbody — pending if applicable, otherwise posted
-  if (hasPendingToShow) {
+  // Open first tbody based on which block comes first
+  if (hasScheduledToShow) {
+    html += '<tbody class="scheduled-tbody">';
+  } else if (hasMissingToShow) {
+    html += '<tbody class="missing-tbody">';
+  } else if (hasPendingToShow) {
     html += '<tbody class="pending-tbody">';
   } else {
     html += '<tbody>';
@@ -246,24 +294,50 @@ function renderTransactionTable() {
   let passedOpeningBalance = false;
   
   allRowTransactions.forEach(txn => {
-    // Insert separator row when transitioning from pending to posted section
-    if (!pendingSectionEnded && !txn.pending) {
+    const isScheduledRow = txn.source === 'scheduled' && txn.status === 'future';
+    const isMissingRow = txn.source === 'scheduled' && txn.status === 'missing';
+    const isPendingRow = !!txn.pending;
+
+    // --- Block boundary separators ---
+    // Separator: end of scheduled block → start of missing or pending or posted
+    if (!scheduledSectionEnded && !isScheduledRow) {
+      scheduledSectionEnded = true;
+      const schedCount = scheduledFuture.length;
+      html += `<tr class="scheduled-separator-row"><td colspan="${colCount}">▲ ${schedCount} Scheduled Transaction${schedCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
+      html += '</tbody>';
+      if (isMissingRow) {
+        html += '<tbody class="missing-tbody">';
+      } else if (isPendingRow) {
+        html += '<tbody class="pending-tbody">';
+      } else {
+        html += '<tbody>';
+      }
+    }
+
+    // Separator: end of missing block → start of pending or posted
+    if (!missingSectionEnded && !isMissingRow && !isScheduledRow) {
+      missingSectionEnded = true;
+      const missCount = missingTransactions.length;
+      html += `<tr class="missing-separator-row"><td colspan="${colCount}">▲ ${missCount} Missing Transaction${missCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
+      html += '</tbody>';
+      if (isPendingRow) {
+        html += '<tbody class="pending-tbody">';
+      } else {
+        html += '<tbody>';
+      }
+    }
+
+    // Separator: end of pending block → start of posted
+    if (!pendingSectionEnded && !isPendingRow && !isScheduledRow && !isMissingRow) {
       pendingSectionEnded = true;
       const pendingCount = pendingTransactions.length;
       html += `<tr class="pending-separator-row"><td colspan="${colCount}">▲ ${pendingCount} Pending Transaction${pendingCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
-      html += '</tbody><tbody>'; // End pending tbody, start posted tbody
+      html += '</tbody><tbody>';
     }
-    
-    const isPendingRow = !!txn.pending;
 
-    // --- Zone bookmark separators ---
-    // Only rendered when both opening_balance and manual_opening_balance exist.
-    // "Plaid-Synced" sits ABOVE the opening_balance row (only when plaid txns exist).
-    // "Manual Historical" sits BELOW the opening_balance row.
-    // Why ordered this way: the manual-sep check must come first so it fires on
-    // the iteration AFTER we process the OB row (passedOpeningBalance is already
-    // true), before we'd ever re-enter the plaid-sep branch.
-    if (hasManualOB && !isPendingRow) {
+    // --- Zone bookmark separators (plaid-synced / manual-historical) ---
+    // Only rendered in single-account view when both OB and manual OB exist.
+    if (hasManualOB && !isPendingRow && !isScheduledRow && !isMissingRow) {
       // Emit "Manual Historical" right after the OB row, before the next transaction
       if (passedOpeningBalance && !emittedManualSep) {
         emittedManualSep = true;
@@ -498,8 +572,27 @@ function renderTransactionTable() {
       }
     }
     
+    // Determine source and transaction IDs — must be declared BEFORE
+    // they are referenced in the row CSS class builder below.
+    const isOpeningBalance = txn.source === 'opening_balance' || txn.source === 'manual_opening_balance';
+    const isScheduled = txn.source === 'scheduled' && txn.status === 'future';
+    const isMissing = txn.source === 'scheduled' && txn.status === 'missing';
+    const isMatched = txn.status === 'matched';
+    const isOrphaned = txn.source === 'manual' && txn.status === 'missing';
+    const isBill = !!txn.is_bill;
+    const isManual = txn.source === 'manual' || isOpeningBalance;
+    const txnId = txn.transaction_id || '';
+    const accountId = txn.account_id || '';
+
     const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
-    html += `<tr${isPendingRow ? ' class="pending-row"' : ''}>`;
+    // Build row CSS class based on transaction type
+    let rowCssClass = '';
+    if (isScheduledRow) rowCssClass = 'scheduled-row';
+    else if (isMissingRow) rowCssClass = 'missing-row';
+    else if (isMatched) rowCssClass = 'matched-row';
+    else if (isOrphaned) rowCssClass = 'orphaned-row';
+    else if (isPendingRow) rowCssClass = 'pending-row';
+    html += `<tr${rowCssClass ? ` class="${rowCssClass}"` : ''}>`;
     html += `<td>${dateStr}</td>`;
     html += `<td>${txn.bank_account}</td>`;
     html += `<td>${pendingBadge}${txn.name || ''}</td>`;
@@ -508,12 +601,6 @@ function renderTransactionTable() {
     if (!showLedgerColumn) {
       html += `<td>${amount}</td>`;
     }
-
-    // Determine source and transaction IDs
-    const isOpeningBalance = txn.source === 'opening_balance' || txn.source === 'manual_opening_balance';
-    const isManual = txn.source === 'manual' || isOpeningBalance;
-    const txnId = txn.transaction_id || '';
-    const accountId = txn.account_id || '';
     
     // Add source badge if source field is selected
     if (optionalFields.includes('source')) {
@@ -522,10 +609,30 @@ function renderTransactionTable() {
         sourceLabel = 'Opening Bal';
         sourceCssClass = 'opening-balance';
         sourceTitle = txn.source === 'manual_opening_balance' ? 'Auto-generated manual opening balance' : 'Opening balance';
+      } else if (isScheduled) {
+        sourceLabel = isBill ? 'Bill' : 'Scheduled';
+        sourceCssClass = 'scheduled';
+        sourceTitle = isBill ? 'Upcoming bill payment' : 'Scheduled future transaction';
+      } else if (isMissing) {
+        sourceLabel = 'Missing';
+        sourceCssClass = 'missing';
+        sourceTitle = 'Expected payment not yet matched to a plaid transaction';
+      } else if (isMatched) {
+        sourceLabel = 'Matched';
+        sourceCssClass = 'matched';
+        sourceTitle = 'Scheduled transaction matched with a plaid transaction';
+      } else if (isOrphaned) {
+        sourceLabel = 'Orphaned';
+        sourceCssClass = 'orphaned';
+        sourceTitle = 'Manual transaction orphaned after account re-link';
       } else if (txn.source === 'manual') {
         sourceLabel = 'Manual';
         sourceCssClass = 'manual';
         sourceTitle = 'Added manually by user';
+      } else if (txn.source === 'reconciliation') {
+        sourceLabel = 'Reconcil.';
+        sourceCssClass = 'reconciliation';
+        sourceTitle = 'Auto-generated balance reconciliation';
       } else {
         sourceLabel = 'Plaid';
         sourceCssClass = 'plaid';
@@ -563,6 +670,65 @@ function renderTransactionTable() {
     if (isOpeningBalance) {
       const openingBalBadge = '<span class="source-badge opening-balance" title="Opening balance — category is locked">Opening Bal</span>';
       categoryCell = `<div class="category-cell"><div class="category-display">${openingBalBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
+    } else if (isScheduled) {
+      // Scheduled/bill transactions: show bill badge + category, memo editable, category overrideable
+      const billBadge = isBill
+        ? `<span class="source-badge scheduled" title="From bill: ${escapeHtml(txn.name || '')}">📅 Bill</span>`
+        : '<span class="source-badge scheduled" title="Scheduled future transaction">📅 Scheduled</span>';
+      categoryCell = txnId ? `
+        <div class="category-cell">
+          <div class="category-display">${billBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div>
+          <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
+            <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
+                   value="${escapeHtml(currentFullCategory)}" placeholder="Type to search categories…"
+                   autocomplete="off" spellcheck="false">
+            <div class="category-ac-list" data-txn-id="${txnId}"></div>
+          </div>
+          <div class="category-buttons">
+            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
+            ${isBill ? `<button class="bill-edit-btn" data-bill-id="${escapeHtml(txn.bill_id || '')}" title="Edit this bill">Edit Bill</button>` : ''}
+          </div>
+        </div>
+      ` : `<div class="category-cell"><div class="category-display">${billBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
+    } else if (isMissing) {
+      // Missing transactions: show missing badge + category, allow match or delete
+      const missingBadge = '<span class="source-badge missing" title="Expected payment not found">⚠ Missing</span>';
+      categoryCell = txnId ? `
+        <div class="category-cell">
+          <div class="category-display">${missingBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div>
+          <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
+            <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
+                   value="${escapeHtml(currentFullCategory)}" placeholder="Type to search categories…"
+                   autocomplete="off" spellcheck="false">
+            <div class="category-ac-list" data-txn-id="${txnId}"></div>
+          </div>
+          <div class="category-buttons">
+            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
+          </div>
+        </div>
+      ` : `<div class="category-cell"><div class="category-display">${missingBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
+    } else if (isMatched) {
+      // Matched transactions: show matched badge + unmatch button
+      const matchedBadge = '<span class="source-badge matched" title="Matched: scheduled transaction linked to plaid transaction">✓ Matched</span>';
+      categoryCell = txnId ? `
+        <div class="category-cell">
+          <div class="category-display">${matchedBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div>
+          <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
+            <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
+                   value="${escapeHtml(currentFullCategory)}" placeholder="Type to search categories…"
+                   autocomplete="off" spellcheck="false">
+            <div class="category-ac-list" data-txn-id="${txnId}"></div>
+          </div>
+          <div class="category-buttons">
+            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
+            <button class="unmatch-btn" data-txn-id="${txnId}" onclick="unmatchScheduledTransaction('${escapeHtml(txnId)}')" title="Undo match — revert to missing + unhide plaid transaction">Unmatch</button>
+          </div>
+        </div>
+      ` : `<div class="category-cell"><div class="category-display">${matchedBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
+    } else if (isOrphaned) {
+      // Orphaned transactions: show orphan badge, category locked
+      const orphanBadge = '<span class="source-badge orphaned" title="Orphaned manual transaction — occurred in linked date range after re-link">⚡ Orphaned</span>';
+      categoryCell = `<div class="category-cell"><div class="category-display">${orphanBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
     } else if (isTransfer) {
       // Transfer transaction: show transfer badge with account name + unlink button
       const transferAccountName = parseTransferAccountName(txn.user_category || '');
@@ -666,15 +832,32 @@ function renderTransactionTable() {
       html += ledgerBalanceHtml;
     }
 
-    // Add delete button for manual transactions only (not opening balance or plaid)
-    if (txn.source === 'manual') {
+    // Action column: context-sensitive buttons per transaction type
+    if (isScheduled && isBill && txn.bill_id) {
+      // Scheduled bill occurrence: skip this occurrence via Bills API
+      html += `
+        <td style="text-align: center;">
+          <button class="skip-occurrence-btn" onclick="skipBillOccurrence('${escapeHtml(txn.bill_id)}', '${escapeHtml(txn.date)}')" title="Skip this bill occurrence">⏭</button>
+        </td>
+      `;
+    } else if (isMissing) {
+      // Missing transaction: resolve (delete from DB)
+      html += `
+        <td style="text-align: center;">
+          <button class="resolve-missing-btn" onclick="resolveMissingTransaction('${escapeHtml(txnId)}')" title="Mark as resolved — remove this missing transaction">✖</button>
+        </td>
+      `;
+    } else if (isScheduled || isMatched || isOrphaned || isOpeningBalance) {
+      // No direct delete for scheduled pseudo-txns, matched, orphaned, or opening balance
+      html += '<td></td>';
+    } else if (txn.source === 'manual') {
       html += `
         <td style="text-align: center;">
           <button class="delete-transaction-btn" onclick="deleteManualTransaction('${escapeHtml(txnId)}')" title="Delete manual transaction">🗑</button>
         </td>
       `;
     } else {
-      html += '<td></td>'; // Empty cell for Plaid and opening balance transactions
+      html += '<td></td>'; // Plaid transactions — no action
     }
 
     html += '</tr>';
