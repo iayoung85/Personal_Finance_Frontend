@@ -131,6 +131,57 @@
   color: #888;
 }
 
+/* ── Category Autocomplete Dropdown ─────────────────────── */
+.bill-category-ac-list {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.bill-category-ac-item {
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f3f4f6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bill-category-ac-item:last-child {
+  border-bottom: none;
+}
+.bill-category-ac-item.active,
+.bill-category-ac-item:hover {
+  background: #eef2ff;
+  color: #4338ca;
+}
+.bill-category-ac-item strong {
+  color: #6366f1;
+  font-weight: 700;
+}
+.bill-category-ac-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #999;
+  font-style: italic;
+}
+.bill-category-ac-more {
+  padding: 4px 10px;
+  font-size: 11px;
+  color: #888;
+  text-align: center;
+  border-top: 1px solid #f3f4f6;
+}
+
 /* Day-of-week selector (M T W T F S S buttons) */
 .dow-buttons {
   display: flex;

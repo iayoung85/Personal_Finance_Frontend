@@ -158,7 +158,10 @@
 
             <div class="bill-field">
               <label for="bill-category">Category</label>
-              <input type="text" id="bill-category" placeholder="Type to search, or [ for transfers" autocomplete="off">
+              <div style="position: relative;">
+                <input type="text" id="bill-category" placeholder="Type to search, or [ for transfers" autocomplete="off">
+                <div id="bill-category-ac-list" class="bill-category-ac-list"></div>
+              </div>
               <small style="color: #666;">Type <kbd>[</kbd> to mark as transfer to another account</small>
             </div>
 

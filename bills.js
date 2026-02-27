@@ -18,6 +18,7 @@ let idleTimeout = null;
 // ── App State ───────────────────────────────────────────────
 let allBills = [];
 let allAccounts = [];
+let allCategories = [];
 let editingBillId = null; // null = creating, string = editing
 
 /**
@@ -358,6 +359,9 @@ function openBillModal(billId = null) {
 
   // Show modal
   document.getElementById('bill-modal-overlay').classList.remove('hidden');
+
+  // Wire up category autocomplete
+  _wireUpBillCategoryAutocomplete();
 
   // Render frequency options for the current selection
   onFrequencyChange();
@@ -1183,6 +1187,225 @@ function _stripDecorationOnFocus(amountInput) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// CATEGORY AUTOCOMPLETE
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Fetch available categories from the backend (or localStorage cache).
+ * Populates the module-level allCategories array for autocomplete.
+ */
+async function _fetchCategories() {
+  const CACHE_KEY = 'pf_cached_categories';
+  const TS_KEY = 'pf_categories_cached_at';
+  const MAX_AGE_MS = 30 * 60 * 1000;
+
+  // Try cache first — categories change rarely
+  const cachedAt = localStorage.getItem(TS_KEY);
+  const cacheAge = cachedAt ? (Date.now() - parseInt(cachedAt)) : Infinity;
+  if (cacheAge < MAX_AGE_MS) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || '[]');
+      if (cached.length > 0) return cached;
+    } catch (_parseError) { /* fall through to network */ }
+  }
+
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/available`);
+    if (response.ok) {
+      const data = await response.json();
+      const categories = data.available_categories || [];
+      // Cache for future use
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(categories));
+        localStorage.setItem(TS_KEY, String(Date.now()));
+      } catch (_storageError) { /* non-critical */ }
+      return categories;
+    }
+  } catch (fetchError) {
+    console.error('Failed to fetch categories:', fetchError);
+  }
+  return [];
+}
+
+/**
+ * Highlight matching substring in category text for autocomplete display.
+ */
+function _highlightCategoryMatch(text, query) {
+  if (!query) return escapeHtml(text);
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${escapedQuery})`, 'gi');
+  return escapeHtml(text).replace(regex, '<strong>$1</strong>');
+}
+
+/**
+ * Wire up category autocomplete for the bill modal.
+ * Supports regular category search and bracket-notation transfer accounts.
+ */
+function _wireUpBillCategoryAutocomplete() {
+  const input = document.getElementById('bill-category');
+  const list = document.getElementById('bill-category-ac-list');
+  if (!input || !list) return;
+
+  // Clone to remove any previously-attached listeners (modal reuse)
+  const freshInput = input.cloneNode(true);
+  input.parentNode.replaceChild(freshInput, input);
+
+  freshInput.addEventListener('input', () => {
+    _showBillCategoryDropdown(freshInput, list);
+  });
+
+  freshInput.addEventListener('focus', () => {
+    freshInput.select();
+    if (freshInput.value.trim()) {
+      _showBillCategoryDropdown(freshInput, list);
+    }
+  });
+
+  freshInput.addEventListener('keydown', (event) => {
+    const items = list.querySelectorAll('.bill-category-ac-item');
+    const activeItem = list.querySelector('.bill-category-ac-item.active');
+    const activeIndex = Array.from(items).indexOf(activeItem);
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      const nextIndex = Math.min(activeIndex + 1, items.length - 1);
+      items.forEach(item => item.classList.remove('active'));
+      if (items[nextIndex]) {
+        items[nextIndex].classList.add('active');
+        items[nextIndex].scrollIntoView({ block: 'nearest' });
+      }
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      const prevIndex = Math.max(activeIndex - 1, 0);
+      items.forEach(item => item.classList.remove('active'));
+      if (items[prevIndex]) {
+        items[prevIndex].classList.add('active');
+        items[prevIndex].scrollIntoView({ block: 'nearest' });
+      }
+    } else if (event.key === 'Tab' || event.key === 'Enter') {
+      const target = activeItem || items[0];
+      if (target) {
+        event.preventDefault();
+        freshInput.value = target.dataset.value;
+        list.innerHTML = '';
+        list.style.display = 'none';
+      }
+    } else if (event.key === 'Escape') {
+      list.innerHTML = '';
+      list.style.display = 'none';
+    }
+  });
+
+  freshInput.addEventListener('blur', () => {
+    setTimeout(() => {
+      list.innerHTML = '';
+      list.style.display = 'none';
+    }, 200);
+  });
+
+  list.addEventListener('mousedown', (event) => {
+    const item = event.target.closest('.bill-category-ac-item');
+    if (item) {
+      event.preventDefault();
+      freshInput.value = item.dataset.value;
+      list.innerHTML = '';
+      list.style.display = 'none';
+    }
+  });
+}
+
+/**
+ * Show filtered category suggestions (or transfer account list on "[").
+ */
+function _showBillCategoryDropdown(input, list) {
+  const query = (input.value || '').trim();
+  const queryLower = query.toLowerCase();
+
+  if (!query) {
+    list.innerHTML = '';
+    list.style.display = 'none';
+    return;
+  }
+
+  // Transfer mode: "[" prefix triggers account list for transfer assignment
+  if (query.startsWith('[')) {
+    _showBillTransferAccountDropdown(list, query);
+    return;
+  }
+
+  // Smart filtering: split on ":" to match primary/detailed independently
+  let matches;
+  if (queryLower.includes(':')) {
+    const [queryPrimary, queryDetailed] = queryLower.split(':').map(segment => segment.trim());
+    matches = (allCategories || []).filter(cat => {
+      const lower = cat.toLowerCase();
+      const parts = lower.split(':').map(segment => segment.trim());
+      const primaryMatch = !queryPrimary || (parts[0] || '').includes(queryPrimary);
+      const detailedMatch = !queryDetailed || (parts[1] || '').includes(queryDetailed);
+      return primaryMatch && detailedMatch;
+    });
+  } else {
+    matches = (allCategories || []).filter(cat =>
+      cat.toLowerCase().includes(queryLower)
+    );
+  }
+
+  const maxVisible = 10;
+  const shown = matches.slice(0, maxVisible);
+
+  if (shown.length === 0) {
+    list.innerHTML = '<div class="bill-category-ac-empty">No matching categories</div>';
+    list.style.display = 'block';
+    return;
+  }
+
+  const html = shown.map((cat, index) => {
+    const highlighted = _highlightCategoryMatch(cat, query);
+    return `<div class="bill-category-ac-item${index === 0 ? ' active' : ''}" data-value="${escapeHtml(cat)}">${highlighted}</div>`;
+  }).join('');
+
+  const overflow = matches.length > maxVisible
+    ? `<div class="bill-category-ac-more">${matches.length - maxVisible} more\u2026</div>` : '';
+
+  list.innerHTML = html + overflow;
+  list.style.display = 'block';
+}
+
+/**
+ * Show transfer-account suggestions when user types "[" in the bill category field.
+ * Excludes the currently selected bill account (can't transfer to self).
+ */
+function _showBillTransferAccountDropdown(list, rawQuery) {
+  const accountQuery = rawQuery.slice(1).replace(/]$/, '').toLowerCase();
+  const currentAccountId = document.getElementById('bill-account')?.value || null;
+
+  const matchingAccounts = allAccounts.filter(acct => {
+    if (acct.account_id === currentAccountId) return false;
+    if (!accountQuery) return true;
+    return acct.display_name.toLowerCase().includes(accountQuery);
+  });
+
+  const maxVisible = 10;
+  const shown = matchingAccounts.slice(0, maxVisible);
+
+  if (shown.length === 0) {
+    list.innerHTML = '<div class="bill-category-ac-empty">No matching accounts for transfer</div>';
+    list.style.display = 'block';
+    return;
+  }
+
+  const html = shown.map((acct, index) => {
+    const displayName = acct.display_name;
+    const transferValue = `[${displayName}]`;
+    const highlighted = accountQuery ? _highlightCategoryMatch(displayName, accountQuery) : escapeHtml(displayName);
+    return `<div class="bill-category-ac-item${index === 0 ? ' active' : ''}" data-value="${escapeHtml(transferValue)}">${highlighted}</div>`;
+  }).join('');
+
+  list.innerHTML = html;
+  list.style.display = 'block';
+}
+
 // INITIALIZATION
 // ══════════════════════════════════════════════════════════════
 
@@ -1197,13 +1420,15 @@ $(document).ready(function () {
     resetIdleTimeout();
 
     try {
-      // Fetch accounts and bills in parallel
-      const [accountsResult, billsResult] = await Promise.all([
+      // Fetch accounts, bills, and categories in parallel
+      const [accountsResult, billsResult, categoriesResult] = await Promise.all([
         fetchAccounts(),
-        fetchBills()
+        fetchBills(),
+        _fetchCategories()
       ]);
       allAccounts = accountsResult;
       allBills = billsResult;
+      allCategories = categoriesResult;
       renderBillsTable();
     } catch (initError) {
       console.error('Failed to initialize bills page:', initError);
