@@ -168,7 +168,7 @@ async function fetchAccounts() {
     (bank.accounts || []).forEach(account => {
       flatAccounts.push({
         account_id: account.account_id,
-        display_name: `${bankName} - ${account.custom_name || account.name || account.official_name || 'Account'} (${account.mask || '****'})`,
+        display_name: `${bankName} - ${account.custom_name || account.account_name || 'Account'} (${account.mask || '****'})`,
         bank_name: bankName
       });
     });
