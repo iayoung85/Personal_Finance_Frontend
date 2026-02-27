@@ -10,279 +10,332 @@
   <link rel="icon" type="image/png" href="IAY favicon.png">
   <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="nav-sidebar.css">
-  <link rel="stylesheet" href="transactions.css">
   <link rel="stylesheet" href="categories.css">
 </head>
 <body data-nav-mode="persistent" data-nav-page="categories">
-  <div class="container">
+  <div class="app-container">
+    <main class="main-content">
 
-    <h1>Category Management</h1>
-    <p class="page-subtitle">Configure mappings, rules, and category migrations</p>
-
-    <div class="card category-preview">
-      <div class="card-header">
-        <h3>Category Output Preview</h3>
-        <span class="panel-note">Instantly see the final categories users will get.</span>
-      </div>
-      <div class="preview-grid">
-        <div class="preview-pane">
-          <div class="preview-header">
-            <span>Primary categories</span>
-            <span id="primary-selected-count" class="preview-count"></span>
-          </div>
-          <div id="primary-category-list" class="preview-list"></div>
-        </div>
-        <div class="preview-pane">
-          <div class="preview-header">
-            <span>Detailed categories</span>
-            <span id="detailed-count" class="preview-count"></span>
-          </div>
-          <div id="detailed-category-list" class="preview-list"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Action Buttons -->
-    <div class="action-toolbar">
-      <button onclick="checkBrokenRules(true)" class="btn-check">
-        🔍 Check for Broken Rules
-      </button>
-      <button onclick="recategorizeAllTransactions()" class="btn-recategorize">
-        🔄 Recategorize All Transactions
-      </button>
-      <button onclick="deleteAllOverrides()" class="btn-delete-overrides">
-        🗑️ Delete All Overrides
-      </button>
-      <button onclick="toggleAdvancedMode()" class="btn-advanced">
-        ⚙️ Advanced Mode (CSV)
-      </button>
-    </div>
-
-    <!-- Category Management Panel -->
-    <div id="categorization-panel" class="categorization-panel">
-      <div class="panel-header">
-        <h2>Mappings → Rules → Overrides</h2>
-        <span class="panel-note">Manage your category taxonomy and rules</span>
-      </div>
-
-      <div class="card" id="custom-categories-card">
-        <div class="card-header">
-          <h3>Custom Categories</h3>
-          <span class="panel-note">Step 1: Define your custom categories first</span>
-        </div>
-        <div class="custom-category-form">
-          <div class="custom-field">
-            <label for="custom-primary-input">Create New Primary category</label>
-            <input id="custom-primary-input" type="text" placeholder="e.g., Home Services">
-          </div>
-          <div class="custom-field detailed-categories-container">
-            <div class="detailed-categories-header">
-              <label>Detailed categories (required)</label>
-              <button type="button" class="secondary add-detailed-btn" onclick="addDetailedCategoryField()">+ Add Detailed</button>
-            </div>
-            <div id="detailed-categories-list" class="detailed-categories-list">
-              <!-- Dynamic detailed category inputs will be added here -->
-            </div>
-          </div>
-          <button type="button" onclick="addCustomCategoryGroup()">Add Categories</button>
-        </div>
-        
-        <!-- Custom Categories Filter View -->
-        <div class="preview-grid" style="margin-top: 20px;">
-          <div class="preview-pane">
-            <div class="preview-header">
-              <span>Primary categories</span>
-              <span id="custom-primary-selected-count" class="preview-count"></span>
-            </div>
-            <div id="custom-primary-category-list" class="preview-list"></div>
-          </div>
-          <div class="preview-pane">
-            <div class="preview-header">
-              <span>Detailed categories</span>
-              <span id="custom-detailed-count" class="preview-count"></span>
-            </div>
-            <div id="custom-detailed-category-list" class="preview-list"></div>
-          </div>
+      <!-- Page Header -->
+      <div class="page-header">
+        <div>
+          <h1>Category Management</h1>
+          <p class="page-subtitle">Configure mappings, rules, and category migrations</p>
         </div>
       </div>
 
-      <div class="categorization-grid">
-        <div class="card" id="mapping-card">
-          <div class="card-header">
-            <h3>Plaid Category Mappings</h3>
-            <div class="card-actions">
-              <input id="mapping-filter" type="text" placeholder="Filter mappings...">
-              <button class="secondary" onclick="refreshCategorizationData()">Refresh</button>
-              <button onclick="saveCategoryMappings()">Save Mappings</button>
+      <!-- Status message (shared across all panels) -->
+      <div id="status-message"></div>
+
+      <!-- Panel Container -->
+      <div class="categories-wrapper">
+        <section class="categories-content">
+
+          <!-- ═══════════════════════════════════════════════
+               Panel 1: Category Preview
+               ═══════════════════════════════════════════════ -->
+          <div id="preview" class="categories-panel active">
+            <div class="panel-header">
+              <h2>My Categories</h2>
+              <p>Live view of your primary and detailed categories</p>
             </div>
-          </div>
-          <div class="mapping-split-grid">
-            <div class="mapping-panel">
-              <div class="mapping-panel-header">
-                <h4>Primary Plaid Category Mappings</h4>
-                <span class="panel-note">Remap a plaid primary once and all detailed categories follow.</span>
+
+            <div class="card category-preview">
+              <div class="card-header">
+                <h3>Category Output Preview</h3>
+                <span class="panel-note">Instantly see the final categories users will get.</span>
               </div>
-              <div id="primary-mappings-list" class="mapping-list"></div>
-            </div>
-            <div class="mapping-panel">
-              <div class="mapping-panel-header">
-                <div class="mapping-panel-title">
-                  <h4>Detailed Plaid Category Mappings</h4>
-                  <select id="detailed-mapping-primary-filter"></select>
+              <div class="preview-grid">
+                <div class="preview-pane">
+                  <div class="preview-header">
+                    <span>Primary categories</span>
+                    <span id="primary-selected-count" class="preview-count"></span>
+                  </div>
+                  <div id="primary-category-list" class="preview-list"></div>
                 </div>
-                <span class="panel-note">Override any specific detailed plaid category.</span>
+                <div class="preview-pane">
+                  <div class="preview-header">
+                    <span>Detailed categories</span>
+                    <span id="detailed-count" class="preview-count"></span>
+                  </div>
+                  <div id="detailed-category-list" class="preview-list"></div>
+                </div>
               </div>
-              <div id="mappings-list" class="mapping-list"></div>
+            </div>
+
+            <!-- Custom Categories -->
+            <div class="card" id="custom-categories-card">
+              <div class="card-header">
+                <h3>Custom Categories</h3>
+                <span class="panel-note">Define your custom primary + detailed categories</span>
+              </div>
+              <div class="custom-category-form">
+                <div class="custom-field">
+                  <label for="custom-primary-input">Create New Primary category</label>
+                  <input id="custom-primary-input" type="text" placeholder="e.g., Home Services">
+                </div>
+                <div class="custom-field detailed-categories-container">
+                  <div class="detailed-categories-header">
+                    <label>Detailed categories (required)</label>
+                    <button type="button" class="secondary add-detailed-btn" onclick="addDetailedCategoryField()">+ Add Detailed</button>
+                  </div>
+                  <div id="detailed-categories-list" class="detailed-categories-list"></div>
+                </div>
+                <button type="button" onclick="addCustomCategoryGroup()">Add Categories</button>
+              </div>
+
+              <div class="preview-grid" style="margin-top: 20px;">
+                <div class="preview-pane">
+                  <div class="preview-header">
+                    <span>Primary categories</span>
+                    <span id="custom-primary-selected-count" class="preview-count"></span>
+                  </div>
+                  <div id="custom-primary-category-list" class="preview-list"></div>
+                </div>
+                <div class="preview-pane">
+                  <div class="preview-header">
+                    <span>Detailed categories</span>
+                    <span id="custom-detailed-count" class="preview-count"></span>
+                  </div>
+                  <div id="custom-detailed-category-list" class="preview-list"></div>
+                </div>
+              </div>
             </div>
           </div>
 
-        </div>
-      </div>
+          <!-- ═══════════════════════════════════════════════
+               Panel 2: Mappings
+               ═══════════════════════════════════════════════ -->
+          <div id="mappings" class="categories-panel hidden">
+            <div class="panel-header">
+              <h2>Plaid Category Mappings</h2>
+              <p>Map Plaid's taxonomy to your personal category labels</p>
+            </div>
 
-      <div class="card" id="rules-card">
-        <div class="card-header">
-          <h3>Rules</h3>
-        </div>
-        <div class="rule-form">
-          <input id="rule-name" type="text" placeholder="Rule name">
-          <select id="rule-match-type">
-            <option value="name_contains">Description contains</option>
-            <option value="merchant_contains">Merchant contains</option>
-            <option value="amount_range">Amount range</option>
-            <option value="regex">Regular expression (advanced)</option>
-          </select>
-          <input id="rule-match-value" type="text" placeholder="Match value">
-          <select id="rule-target-category"></select>
-          <input id="rule-priority" type="number" placeholder="Priority" value="0">
-          <label class="inline-checkbox"><input id="rule-case-sensitive" type="checkbox"> Case sensitive</label>
-          <label class="inline-checkbox"><input id="rule-active" type="checkbox" checked> Active</label>
-          <button id="rule-save-btn" onclick="saveRule()">Create Rule</button>
-          <button id="rule-cancel-btn" class="secondary hidden" onclick="cancelRuleEdit()">Cancel</button>
-        </div>
-        <div id="rules-table" class="rules-table"></div>
-      </div>
-
-      <div class="card" id="overrides-card">
-        <div class="card-header">
-          <h3>Transaction Overrides</h3>
-          <span class="panel-note">Manual categorizations applied to individual transactions</span>
-        </div>
-        <div id="overrides-table" class="overrides-table"></div>
-      </div>
-
-      <div class="card" id="migrations-card">
-        <div class="card-header">
-          <h3>Category Migrations</h3>
-          <button class="secondary" onclick="showMigrationsHelp()" style="font-size: 12px; padding: 4px 8px;">Help</button>
-        </div>
-        <div class="migration-grid">
-          <div class="migration-box">
-            <h4>Rename</h4>
-            <select id="rename-old"></select>
-            <input id="rename-new" type="text" placeholder="New category">
-            <button class="secondary" onclick="confirmRename()">Rename</button>
-          </div>
-          <div class="migration-box">
-            <h4>Merge</h4>
-            <div id="merge-source-list" class="merge-list"></div>
-            <select id="merge-target"></select>
-            <button class="secondary" onclick="confirmMerge()">Merge</button>
+            <div class="card" id="mapping-card">
+              <div class="card-header">
+                <h3>Plaid Category Mappings</h3>
+                <div class="card-actions">
+                  <input id="mapping-filter" type="text" placeholder="Filter mappings...">
+                  <button class="secondary" onclick="refreshCategorizationData()">Refresh</button>
+                  <button onclick="saveCategoryMappings()">Save Mappings</button>
+                </div>
+              </div>
+              <div class="mapping-split-grid">
+                <div class="mapping-panel">
+                  <div class="mapping-panel-header">
+                    <h4>Primary Plaid Category Mappings</h4>
+                    <span class="panel-note">Remap a plaid primary once and all detailed categories follow.</span>
+                  </div>
+                  <div id="primary-mappings-list" class="mapping-list"></div>
+                </div>
+                <div class="mapping-panel">
+                  <div class="mapping-panel-header">
+                    <div class="mapping-panel-title">
+                      <h4>Detailed Plaid Category Mappings</h4>
+                      <select id="detailed-mapping-primary-filter"></select>
+                    </div>
+                    <span class="panel-note">Override any specific detailed plaid category.</span>
+                  </div>
+                  <div id="mappings-list" class="mapping-list"></div>
+                </div>
+              </div>
+            </div>
           </div>
 
-        </div>
-      </div>
+          <!-- ═══════════════════════════════════════════════
+               Panel 3: Rules Engine
+               ═══════════════════════════════════════════════ -->
+          <div id="rules" class="categories-panel hidden">
+            <div class="panel-header">
+              <h2>Rules Engine</h2>
+              <p>Pattern-based rules that auto-categorize transactions by description, merchant, or amount</p>
+            </div>
 
-      <div class="card" id="audit-card">
-        <div class="card-header">
-          <h3>Audit Log</h3>
-          <button class="secondary" onclick="refreshMigrationLog()">Refresh</button>
-        </div>
-        <div id="audit-log" class="audit-log"></div>
-      </div>
-
-      <!-- Advanced Mode: CSV Management -->
-      <div class="card" id="advanced-csv-card" style="display: none;">
-        <div class="card-header">
-          <h3>Advanced Mode: CSV Category Management</h3>
-          <span class="panel-note">For advanced users: Download, edit, and upload your entire category configuration as CSV</span>
-        </div>
-        
-        <div class="csv-guide">
-          <h4>CSV Format Guide (3 Columns)</h4>
-          <p>
-            <strong>Header:</strong> <code>action,source_category,target_category</code>
-          </p>
-          <p>
-            <strong>MAPPING:</strong> Plaid category to user label<br>
-            Example: <code>MAPPING,BANK_FEES_ATM_FEES,Bank Fees: Atm Fees</code>
-          </p>
-          <p>
-            <strong>SET_CUSTOM:</strong> Custom category (leave source_category empty)<br>
-            Example: <code>SET_CUSTOM,,Pet Expenses: Dog Food</code>
-          </p>
-          <p>
-            <strong>EXISTING_RULES_RETARGET:</strong> Migrate rules to new category<br>
-            Example: <code>EXISTING_RULES_RETARGET,Old: Category,New: Category</code>
-          </p>
-          <p>
-            <strong>EXISTING_OVERRIDES_RETARGET:</strong> Migrate overrides to new category<br>
-            Example: <code>EXISTING_OVERRIDES_RETARGET,Old: Category,New: Category</code>
-          </p>
-          <p class="csv-warning">
-            <strong>Important:</strong> All target values must follow format <code>Primary: Detailed</code><br>
-            <strong>Migration:</strong> When changing categories, you MUST retarget existing rules/overrides!
-          </p>
-        </div>
-
-        <div class="csv-cards-grid">
-          <!-- Download Section -->
-          <div class="csv-action-card">
-            <h4>Download Starting Point CSV</h4>
-            <p>Export your current mappings and custom categories to edit locally.</p>
-            <button onclick="downloadCategoriesCSV()" class="btn-full btn-download-csv">
-              📥 Download CSV
-            </button>
-          </div>
-
-          <!-- Upload Section -->
-          <div class="csv-action-card">
-            <h4>Upload Updated CSV</h4>
-            <p>Upload your edited CSV to apply new mappings and custom categories.</p>
-            <div style="margin-bottom: 10px;">
-              <input type="file" id="csv-file-input" accept=".csv" class="hidden">
-              <button onclick="document.getElementById('csv-file-input').click()" class="btn-full btn-upload-csv">
-                📤 Choose CSV File
+            <div class="panel-actions">
+              <button onclick="checkBrokenRules(true)" class="btn-check">
+                🔍 Check for Broken Rules
               </button>
-              <span id="csv-file-name" class="csv-file-name">No file selected</span>
             </div>
-            <button id="csv-upload-btn" onclick="uploadCategoriesCSV()" disabled class="btn-full">
-              Upload CSV
-            </button>
+
+            <div class="card" id="rules-card">
+              <div class="card-header">
+                <h3>Rules</h3>
+              </div>
+              <div class="rule-form">
+                <input id="rule-name" type="text" placeholder="Rule name">
+                <select id="rule-match-type">
+                  <option value="name_contains">Description contains</option>
+                  <option value="merchant_contains">Merchant contains</option>
+                  <option value="amount_range">Amount range</option>
+                  <option value="regex">Regular expression (advanced)</option>
+                </select>
+                <input id="rule-match-value" type="text" placeholder="Match value">
+                <select id="rule-target-category"></select>
+                <input id="rule-priority" type="number" placeholder="Priority" value="0">
+                <label class="inline-checkbox"><input id="rule-case-sensitive" type="checkbox"> Case sensitive</label>
+                <label class="inline-checkbox"><input id="rule-active" type="checkbox" checked> Active</label>
+                <button id="rule-save-btn" onclick="saveRule()">Create Rule</button>
+                <button id="rule-cancel-btn" class="secondary hidden" onclick="cancelRuleEdit()">Cancel</button>
+              </div>
+              <div id="rules-table" class="rules-table"></div>
+            </div>
           </div>
-        </div>
 
-        <!-- File Preview -->
-        <div id="csv-preview-container" class="csv-preview-box">
-          <h4>File Preview</h4>
-          <div id="csv-preview-content" class="csv-preview-content"></div>
-        </div>
+          <!-- ═══════════════════════════════════════════════
+               Panel 4: Overrides
+               ═══════════════════════════════════════════════ -->
+          <div id="overrides" class="categories-panel hidden">
+            <div class="panel-header">
+              <h2>Transaction Overrides</h2>
+              <p>Manual one-off category assignments that take highest priority in the pipeline</p>
+            </div>
 
-        <!-- Validation Errors -->
-        <div id="csv-errors-container" class="csv-errors-box">
-          <h4>Validation Errors</h4>
-          <div id="csv-errors-list" class="csv-errors-list"></div>
-        </div>
+            <div class="panel-actions">
+              <button onclick="deleteAllOverrides()" class="btn-delete-overrides">
+                🗑️ Delete All Overrides
+              </button>
+            </div>
 
-        <!-- Upload Success Message -->
-        <div id="csv-success-container" class="csv-success-box">
-          <h4>✓ Upload Successful</h4>
-          <div id="csv-success-content" class="csv-success-content"></div>
-        </div>
+            <div class="card" id="overrides-card">
+              <div class="card-header">
+                <h3>Override Summary</h3>
+                <span class="panel-note">Manual categorizations applied to individual transactions</span>
+              </div>
+              <div id="overrides-table" class="overrides-table"></div>
+            </div>
+          </div>
+
+          <!-- ═══════════════════════════════════════════════
+               Panel 5: Bulk Actions
+               ═══════════════════════════════════════════════ -->
+          <div id="bulk-actions" class="categories-panel hidden">
+            <div class="panel-header">
+              <h2>Bulk Actions</h2>
+              <p>Recategorize transactions, rename or merge categories, and view the audit log</p>
+            </div>
+
+            <div class="panel-actions">
+              <button onclick="recategorizeAllTransactions()" class="btn-recategorize">
+                🔄 Recategorize All Transactions
+              </button>
+            </div>
+
+            <div class="card" id="migrations-card">
+              <div class="card-header">
+                <h3>Category Migrations</h3>
+                <button class="secondary" onclick="showMigrationsHelp()" style="font-size: 12px; padding: 4px 8px;">Help</button>
+              </div>
+              <div class="migration-grid">
+                <div class="migration-box">
+                  <h4>Rename</h4>
+                  <select id="rename-old"></select>
+                  <input id="rename-new" type="text" placeholder="New category">
+                  <button class="secondary" onclick="confirmRename()">Rename</button>
+                </div>
+                <div class="migration-box">
+                  <h4>Merge</h4>
+                  <div id="merge-source-list" class="merge-list"></div>
+                  <select id="merge-target"></select>
+                  <button class="secondary" onclick="confirmMerge()">Merge</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" id="audit-card">
+              <div class="card-header">
+                <h3>Audit Log</h3>
+                <button class="secondary" onclick="refreshMigrationLog()">Refresh</button>
+              </div>
+              <div id="audit-log" class="audit-log"></div>
+            </div>
+          </div>
+
+          <!-- ═══════════════════════════════════════════════
+               Panel 6: Advanced / CSV
+               ═══════════════════════════════════════════════ -->
+          <div id="advanced" class="categories-panel hidden">
+            <div class="panel-header">
+              <h2>Advanced Mode: CSV</h2>
+              <p>Download, edit, and upload your entire category configuration as CSV</p>
+            </div>
+
+            <div class="card" id="advanced-csv-card">
+              <div class="csv-guide">
+                <h4>CSV Format Guide (3 Columns)</h4>
+                <p>
+                  <strong>Header:</strong> <code>action,source_category,target_category</code>
+                </p>
+                <p>
+                  <strong>MAPPING:</strong> Plaid category to user label<br>
+                  Example: <code>MAPPING,BANK_FEES_ATM_FEES,Bank Fees: Atm Fees</code>
+                </p>
+                <p>
+                  <strong>SET_CUSTOM:</strong> Custom category (leave source_category empty)<br>
+                  Example: <code>SET_CUSTOM,,Pet Expenses: Dog Food</code>
+                </p>
+                <p>
+                  <strong>EXISTING_RULES_RETARGET:</strong> Migrate rules to new category<br>
+                  Example: <code>EXISTING_RULES_RETARGET,Old: Category,New: Category</code>
+                </p>
+                <p>
+                  <strong>EXISTING_OVERRIDES_RETARGET:</strong> Migrate overrides to new category<br>
+                  Example: <code>EXISTING_OVERRIDES_RETARGET,Old: Category,New: Category</code>
+                </p>
+                <p class="csv-warning">
+                  <strong>Important:</strong> All target values must follow format <code>Primary: Detailed</code><br>
+                  <strong>Migration:</strong> When changing categories, you MUST retarget existing rules/overrides!
+                </p>
+              </div>
+
+              <div class="csv-cards-grid">
+                <div class="csv-action-card">
+                  <h4>Download Starting Point CSV</h4>
+                  <p>Export your current mappings and custom categories to edit locally.</p>
+                  <button onclick="downloadCategoriesCSV()" class="btn-full btn-download-csv">
+                    📥 Download CSV
+                  </button>
+                </div>
+                <div class="csv-action-card">
+                  <h4>Upload Updated CSV</h4>
+                  <p>Upload your edited CSV to apply new mappings and custom categories.</p>
+                  <div style="margin-bottom: 10px;">
+                    <input type="file" id="csv-file-input" accept=".csv" class="hidden">
+                    <button onclick="document.getElementById('csv-file-input').click()" class="btn-full btn-upload-csv">
+                      📤 Choose CSV File
+                    </button>
+                    <span id="csv-file-name" class="csv-file-name">No file selected</span>
+                  </div>
+                  <button id="csv-upload-btn" onclick="uploadCategoriesCSV()" disabled class="btn-full">
+                    Upload CSV
+                  </button>
+                </div>
+              </div>
+
+              <div id="csv-preview-container" class="csv-preview-box">
+                <h4>File Preview</h4>
+                <div id="csv-preview-content" class="csv-preview-content"></div>
+              </div>
+
+              <div id="csv-errors-container" class="csv-errors-box">
+                <h4>Validation Errors</h4>
+                <div id="csv-errors-list" class="csv-errors-list"></div>
+              </div>
+
+              <div id="csv-success-container" class="csv-success-box">
+                <h4>✓ Upload Successful</h4>
+                <div id="csv-success-content" class="csv-success-content"></div>
+              </div>
+            </div>
+          </div>
+
+        </section>
       </div>
-    </div>
 
+    </main>
   </div>
 
+  <!-- Modal -->
   <div id="modal-overlay" class="modal-overlay hidden">
     <div class="modal">
       <div class="modal-header">

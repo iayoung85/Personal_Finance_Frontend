@@ -1,16 +1,69 @@
 /* ============================================================
-   categories.css — Styles specific to the Categories page.
-   Loaded after transactions.css which provides base layout
-   (.container, .card, .modal-overlay, .back-link, etc.)
+   categories.css — Self-contained styles for the Categories page.
+   No dependency on transactions.css.
    Dark theme: all colors use CSS custom properties from theme.css
    ============================================================ */
 
-/* ── Global Dark-Mode Input / Select Fix ───────────────────
-   transactions.css only styles input[type="date"] and select
-   with padding/border but not background/color.  Text & number
-   inputs inherit browser white-box defaults.  Fix them here.
-   ───────────────────────────────────────────────────────────── */
+/* ── Base Element Styles ───────────────────────────────────── */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  margin: 0;
+  padding: 10px;
+  background: var(--bg-page);
+  color: var(--text-primary);
+}
 
+h1 {
+  margin-top: 0;
+  color: var(--text-primary);
+}
+
+button {
+  padding: 10px 20px;
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button:hover {
+  background: var(--accent-primary-hover);
+}
+
+button:disabled {
+  background: var(--bg-input);
+  cursor: not-allowed;
+}
+
+button.secondary {
+  background: var(--bg-surface-elevated);
+}
+
+button.secondary:hover {
+  background: var(--bg-hover);
+}
+
+label {
+  display: block;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+
+input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+input[type="date"], select {
+  padding: 5px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  margin-right: 4px;
+  font-size: 13px;
+}
+
+/* ── Dark-Mode Form Inputs ─────────────────────────────────── */
 input[type="text"],
 input[type="number"],
 input[type="search"],
@@ -68,33 +121,199 @@ select option {
   color: var(--text-primary);
 }
 
-/* ── Page Subtitle ─────────────────────────────────────────── */
+/* ── Table Base Styles ─────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+thead {
+  position: sticky;
+  top: 0;
+  background: var(--bg-surface-elevated);
+  z-index: 10;
+}
+
+th {
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 2px solid var(--border-primary);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+}
+
+tr:nth-child(even) {
+  background: var(--bg-surface-elevated);
+}
+
+tr:hover {
+  background: var(--bg-hover);
+}
+
+/* ── Utility Classes ───────────────────────────────────────── */
+.hidden {
+  display: none !important;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-secondary);
+}
+
+.pill {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: var(--bg-selected);
+  color: var(--text-primary);
+  font-size: 11px;
+  margin-right: 4px;
+}
+
+/* ── Status Messages ───────────────────────────────────────── */
+.status-message {
+  padding: 12px;
+  margin-top: 12px;
+  border-radius: 4px;
+}
+
+.status-message.success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  border: 1px solid var(--color-success-border);
+}
+
+.status-message.error {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border: 1px solid var(--color-danger-border);
+}
+
+.status-message.info {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+  border: 1px solid var(--color-info-border);
+}
+
+.status-message.warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  border: 1px solid var(--color-warning-border);
+}
+
+/* ── App Layout (mirrors user-settings layout) ─────────────── */
+.app-container {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  max-width: 1200px;
+  width: 100%;
+}
+
+/* ── Page Header ───────────────────────────────────────────── */
+.page-header {
+  background: var(--bg-surface);
+  border-radius: 12px;
+  padding: 30px;
+  margin-bottom: 30px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-primary);
+}
+
+.page-header h1 {
+  font-size: 32px;
+  color: var(--text-heading);
+  margin-bottom: 8px;
+}
+
 .page-subtitle {
   color: var(--text-secondary);
   margin-top: -8px;
   font-size: 14px;
 }
 
-/* ── Top Navigation Bar ────────────────────────────────────── */
-.page-nav {
+/* ── Categories Wrapper & Content ──────────────────────────── */
+.categories-wrapper {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 30px;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
 }
 
-.nav-link-success {
-  color: var(--color-success) !important;
+.categories-content {
+  flex: 1;
+  min-width: 0;
 }
 
-/* ── Action Toolbar ────────────────────────────────────────── */
-.action-toolbar {
+/* ── Panel Show / Hide ─────────────────────────────────────── */
+.categories-panel {
+  display: none;
+}
+
+.categories-panel.active {
+  display: block;
+  animation: catPanelFadeIn 0.3s ease-in;
+}
+
+@keyframes catPanelFadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Panel Header (section titles) ─────────────────────────── */
+.panel-header {
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.panel-header h2 {
+  font-size: 24px;
+  color: var(--text-heading);
+  margin-bottom: 5px;
+}
+
+.panel-header p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin: 0;
+}
+
+/* ── Panel-level Action Buttons ────────────────────────────── */
+.panel-actions {
   display: flex;
   gap: 12px;
-  margin: 20px 0;
+  margin-bottom: 20px;
   flex-wrap: wrap;
 }
 
-.action-toolbar button {
+.panel-actions button {
   padding: 10px 20px;
   font-weight: 500;
   border: none;
@@ -105,14 +324,444 @@ select option {
   transition: opacity 0.15s, transform 0.1s;
 }
 
-.action-toolbar button:hover {
+.panel-actions button:hover {
   opacity: 0.9;
 }
 
-.action-toolbar button:active {
+.panel-actions button:active {
   transform: scale(0.98);
 }
 
+/* ── Card System ───────────────────────────────────────────── */
+.card {
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--bg-surface);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.panel-note {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-surface-elevated);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+/* Override card appearance inside panels for elevated look */
+.categories-panel .card {
+  margin-top: 16px;
+  background: var(--bg-surface);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-primary);
+}
+
+.categories-panel .card:first-of-type {
+  margin-top: 0;
+}
+
+/* ── Preview Panel (My Categories) ─────────────────────────── */
+.category-preview {
+  margin-bottom: 16px;
+  background: var(--bg-surface-elevated);
+}
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.preview-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 160px;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.preview-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-selected);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+/* FIX #3: Lock preview list height so the panel never causes
+   page-level scrolling.  Lists scroll internally instead. */
+.preview-list {
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  overflow-y: auto;
+  max-height: 200px;
+}
+
+.preview-item {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.preview-item:last-child {
+  border-bottom: none;
+}
+
+.preview-item.selected {
+  background: var(--bg-selected);
+  color: var(--accent-link);
+  font-weight: 600;
+}
+
+.preview-item .pill {
+  background: var(--badge-info-bg);
+  color: rgba(99,102,241,0.8);
+}
+
+.preview-item.disabled {
+  cursor: default;
+  color: var(--text-muted);
+}
+
+/* ── Mapping Panel ─────────────────────────────────────────── */
+.mapping-split-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.mapping-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mapping-panel-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mapping-panel-header h4 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.mapping-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mapping-panel-title select {
+  padding: 6px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-size: 12px;
+  min-width: 200px;
+}
+
+.mapping-list {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+}
+
+/* FIX #1: Use equal columns so the dropdown + clear button fit
+   comfortably inside the half-width mapping panels. Allow grid
+   children to shrink below their intrinsic content size. */
+.mapping-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  align-items: center;
+}
+
+.mapping-row > * {
+  min-width: 0;
+}
+
+.mapping-row select {
+  width: 100%;
+}
+
+.mapping-row:last-child {
+  border-bottom: none;
+}
+
+.mapping-key {
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mapping-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.mapping-add select,
+.mapping-add input {
+  flex: 1 1 220px;
+}
+
+/* ── Custom Categories Form ────────────────────────────────── */
+.custom-category-form {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(300px, 2fr) auto;
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.custom-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.custom-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.custom-field input {
+  padding: 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.detailed-categories-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detailed-categories-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.add-detailed-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-primary);
+}
+
+.add-detailed-btn:hover {
+  background: var(--bg-hover);
+}
+
+.detailed-categories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detailed-field-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.detailed-field-row input {
+  flex: 1;
+  padding: 7px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.remove-detailed-btn {
+  padding: 4px 10px;
+  font-size: 16px;
+  line-height: 1;
+  background: var(--color-danger);
+  color: white;
+  border: none;
+  min-width: 32px;
+}
+
+.remove-detailed-btn:hover {
+  background: var(--color-danger-muted);
+}
+
+.custom-category-form > button {
+  align-self: start;
+  margin-top: 22px;
+}
+
+@media (max-width: 900px) {
+  .custom-category-form {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-category-form > button {
+    width: 100%;
+    margin-top: 0;
+  }
+}
+
+/* ── Rules Engine ──────────────────────────────────────────── */
+.rule-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.rule-form input,
+.rule-form select {
+  min-height: 36px;
+}
+
+.inline-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.rules-table table,
+.audit-log table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.rules-table th,
+.rules-table td,
+.audit-log th,
+.audit-log td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+
+.rules-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rules-actions button {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+/* ── Bulk Actions ──────────────────────────────────────────── */
+.migration-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.migration-box {
+  border: 1px dashed var(--border-primary);
+  padding: 12px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.migration-box select {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.migration-box input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.merge-list {
+  max-height: 140px;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 6px;
+  background: var(--bg-surface-elevated);
+}
+
+.merge-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.audit-log {
+  max-height: 240px;
+  overflow: auto;
+}
+
+/* ── Overrides Table ───────────────────────────────────────── */
+.overrides-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.overrides-table th,
+.overrides-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+
+.overrides-table th {
+  background: var(--table-header-bg);
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: left;
+}
+
+/* ── Action Button Classes ─────────────────────────────────── */
 .btn-check {
   background: var(--accent-primary);
   color: white;
@@ -136,6 +785,105 @@ select option {
 
 .btn-advanced:hover {
   background: var(--bg-hover) !important;
+}
+
+/* ── Top Navigation Bar ────────────────────────────────────── */
+.page-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-link-success {
+  color: var(--color-success) !important;
+}
+
+/* ── Modal ─────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--bg-surface);
+  border-radius: 8px;
+  width: min(640px, 92vw);
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.modal-body {
+  padding: 16px;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.modal-input:focus {
+  outline: none;
+  border-color: var(--accent-link);
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+.modal-input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.modal-input option {
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+}
+
+.modal-actions {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal-close {
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 18px;
+  padding: 4px 8px;
+}
+
+.modal-close:hover {
+  background: var(--bg-page);
 }
 
 /* ── CSV Guide Box ─────────────────────────────────────────── */
@@ -300,51 +1048,15 @@ select option {
   font-size: 0.9em;
 }
 
-/* ── Migration Section ─────────────────────────────────────── */
-.migration-box select {
-  width: 100%;
-  margin-bottom: 8px;
-}
+/* ── Responsive: stack category layouts on narrow screens ──── */
+@media (max-width: 1100px) {
+  .preview-grid {
+    grid-template-columns: 1fr;
+  }
 
-.migration-box input[type="text"] {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* ── Overrides Table ───────────────────────────────────────── */
-.overrides-table table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.overrides-table th,
-.overrides-table td {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 12px;
-}
-
-.overrides-table th {
-  background: var(--table-header-bg);
-  color: var(--text-secondary);
-  font-weight: 600;
-  text-align: left;
-}
-
-/* ── Rule Form Polish ──────────────────────────────────────── */
-.rule-form input,
-.rule-form select {
-  min-height: 36px;
-}
-
-/* ── Card Section Spacing ──────────────────────────────────── */
-#custom-categories-card,
-#rules-card,
-#overrides-card,
-#migrations-card,
-#audit-card,
-#advanced-csv-card {
-  margin-top: 16px;
+  .mapping-split-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── Disabled Upload Button ────────────────────────────────── */

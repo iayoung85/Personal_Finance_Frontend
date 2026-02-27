@@ -168,7 +168,12 @@ function showStatus(message, type = 'info') {
   if (!container) {
     const statusElement = document.createElement('div');
     statusElement.id = 'status-message';
-    document.body.insertBefore(statusElement, document.querySelector('.container'));
+    const mainContent = document.querySelector('.main-content') || document.querySelector('.container');
+    if (mainContent) {
+      mainContent.prepend(statusElement);
+    } else {
+      document.body.appendChild(statusElement);
+    }
   }
   const statusElement = document.getElementById('status-message');
   statusElement.className = `status-message ${type}`;

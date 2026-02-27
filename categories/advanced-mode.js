@@ -3,14 +3,13 @@
 // file preview, upload, download, error & success display
 // ============================================================
 
+/**
+ * Legacy toggle — kept as no-op for backward compatibility.
+ * The CSV card is now always visible inside its own "Advanced / CSV"
+ * panel, so toggling is handled by the sidebar sub-nav instead.
+ */
 function toggleAdvancedMode() {
-  const advancedCard = document.getElementById('advanced-csv-card');
-  if (advancedCard.style.display === 'none') {
-    advancedCard.style.display = 'block';
-    clearCSVDisplay();
-  } else {
-    advancedCard.style.display = 'none';
-  }
+  // No-op: panel switching is handled by nav-sidebar.js
 }
 
 function clearCSVDisplay() {

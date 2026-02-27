@@ -23,7 +23,20 @@ const NAV_SIDEBAR_ITEMS = [
   { id: 'investments',  label: 'Investments',  icon: '📈', href: 'investments.html' },
   { id: 'accounts',     label: 'Accounts',     icon: '🏦', href: 'accounts.html' },
   { id: 'bills',        label: 'Bills',        icon: '📋', href: 'bills.html' },
-  { id: 'categories',   label: 'Categories',   icon: '🏷️', href: 'categories.html' },
+  {
+    id: 'categories',
+    label: 'Categories',
+    icon: '🏷️',
+    href: 'categories.html',
+    children: [
+      { id: 'cat-preview',    label: 'My Categories',      section: 'preview' },
+      { id: 'cat-mappings',   label: 'Mappings',           section: 'mappings' },
+      { id: 'cat-rules',      label: 'Rules Engine',       section: 'rules' },
+      { id: 'cat-overrides',  label: 'Overrides',          section: 'overrides' },
+      { id: 'cat-bulk',       label: 'Bulk Actions',       section: 'bulk-actions' },
+      { id: 'cat-advanced',   label: 'Advanced / CSV',     section: 'advanced' },
+    ]
+  },
 ];
 
 const NAV_SIDEBAR_FOOTER_ITEMS = [
@@ -94,9 +107,9 @@ function _buildNavLink(item, currentPage) {
     html += `<ul class="nav-sidebar-subnav${isParentActive ? ' expanded' : ''}">`;
 
     for (const child of item.children) {
-      // Why: on the user-settings page, default to profile if no explicit sub-page is set
-      const isChildActive = currentPage === 'user-settings' &&
-        _getActiveSettingsSection() === child.section;
+      // Why: highlight the active sub-nav child for whichever page owns this group
+      const isChildActive = currentPage === item.id &&
+        _getActiveSection(currentPage) === child.section;
       html += `<li>`;
       html += `<a class="nav-sidebar-link${isChildActive ? ' active' : ''}" `;
       html += `data-nav-id="${child.id}" data-section="${child.section}" `;
@@ -122,13 +135,24 @@ function _buildNavLink(item, currentPage) {
 }
 
 /**
- * Determines which settings sub-section is active based on
- * the URL hash or defaults to 'profile'.
+ * Maps each page that has sub-nav panels to its default section.
+ * Why: lets us detect the active child without hard-coding page
+ * names in every helper.
  */
-function _getActiveSettingsSection() {
-  if (_detectCurrentPage() !== 'user-settings') return null;
+const _PANEL_PAGE_DEFAULTS = {
+  'user-settings': 'profile',
+  'categories':    'preview',
+};
+
+/**
+ * Determines which sub-section is active for the current page
+ * based on the URL hash, falling back to the page's default.
+ */
+function _getActiveSection(pageId) {
+  const defaultSection = _PANEL_PAGE_DEFAULTS[pageId];
+  if (!defaultSection) return null;
   const hash = window.location.hash.replace('#', '');
-  return hash || 'profile';
+  return hash || defaultSection;
 }
 
 
@@ -225,10 +249,11 @@ function _attachNavSidebarEvents() {
       return;
     }
 
-    // Sub-nav item on the user-settings page — switch panel without navigation
-    if (link.dataset.section && _detectCurrentPage() === 'user-settings') {
+    // Sub-nav item on a page with panels — switch panel without navigation
+    const currentPageId = _detectCurrentPage();
+    if (link.dataset.section && _PANEL_PAGE_DEFAULTS[currentPageId]) {
       event.preventDefault();
-      _switchSettingsPanel(link.dataset.section);
+      _switchPanel(link.dataset.section, currentPageId);
       _closeNavSidebar();
       return;
     }
@@ -280,19 +305,26 @@ function _toggleSubNav(parentLink) {
 
 
 /**
- * Switches the visible settings panel and updates active states
- * in both the sidebar sub-nav and the page's own settings
- * panels. This replaces the old settings-menu sidebar behavior.
+ * Switches the visible panel and updates active states in
+ * both the sidebar sub-nav and the page's panel elements.
+ * Works for any page that declares panels (user-settings,
+ * categories, etc.).
  */
-function _switchSettingsPanel(section) {
+function _switchPanel(section, pageId) {
   // Update sub-nav active state
   const subNavLinks = document.querySelectorAll('.nav-sidebar-subnav .nav-sidebar-link');
   subNavLinks.forEach(link => {
     link.classList.toggle('active', link.dataset.section === section);
   });
 
-  // Switch visible panel (matches user-settings.html panel structure)
-  const panels = document.querySelectorAll('.settings-panel');
+  // Why: each page uses its own panel class so styles don't collide
+  const panelClassMap = {
+    'user-settings': '.settings-panel',
+    'categories':    '.categories-panel',
+  };
+  const panelSelector = panelClassMap[pageId] || '.settings-panel';
+
+  const panels = document.querySelectorAll(panelSelector);
   panels.forEach(panel => {
     if (panel.id === section) {
       panel.classList.remove('hidden');
@@ -303,7 +335,7 @@ function _switchSettingsPanel(section) {
     }
   });
 
-  // Load section content if loadSectionContent exists (from user-settings/nav.js)
+  // Notify the page so it can lazy-load section content
   if (typeof loadSectionContent === 'function') {
     loadSectionContent(section);
   }
