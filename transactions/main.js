@@ -43,6 +43,13 @@ $(document).ready(async function() {
   initCategoryFilterInput();
   renderTransactionTable();
 
+  // Initialize right-click context menu on transaction rows
+  initContextMenu();
+
+  // If returning from categories.html after creating a category for a
+  // pending manual transaction, auto-submit it now that the page is ready.
+  await _submitPendingManualTransaction();
+
   // ── Delegated event handlers ──────────────────────────────
 
   // Re-render table when optional field checkboxes toggle
@@ -85,7 +92,8 @@ $(document).ready(async function() {
   $(document).on('click', '.bill-edit-btn', function() {
     const billId = $(this).data('bill-id');
     if (billId) {
-      // Navigate to bills page with bill ID so the edit modal can open
+      // Tell bills.html to return here after the edit is saved
+      sessionStorage.setItem('pf_return_url', 'transactions.html');
       window.location.href = `bills.html?edit=${encodeURIComponent(billId)}`;
     } else {
       showStatus('Unable to edit bill: missing bill ID', 'error');

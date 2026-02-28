@@ -433,6 +433,7 @@ async function addCustomCategoryGroup() {
 
   let successCount = 0;
   const errors = [];
+  const successfulCategories = [];
 
   if (detailedValues.length && (customCategories || []).includes(primary)) {
     await deleteCategory(primary, 'delete');
@@ -451,6 +452,7 @@ async function addCustomCategoryGroup() {
         continue;
       }
       successCount += 1;
+      successfulCategories.push(categoryName);
     } catch (networkError) {
       errors.push(networkError.message || `Failed to add ${categoryName}`);
     }
@@ -468,6 +470,11 @@ async function addCustomCategoryGroup() {
       : `Added ${successCount} ${successCount === 1 ? 'category' : 'categories'}.`;
     showStatus(message, errors.length ? 'warning' : 'success');
     await loadCategorizationData(true);
+
+    // If a pending manual transaction is waiting for a category,
+    // track what we just created and offer to redirect back.
+    _handlePendingTxnAfterCategoryCreate(successfulCategories);
+
     setTimeout(() => clearStatus(), 2500);
   } else {
     showStatus(errors[0] || 'Failed to add categories', 'error');
@@ -476,4 +483,108 @@ async function addCustomCategoryGroup() {
 
 async function addCustomCategory() {
   return addCustomCategoryGroup();
+}
+
+// ─── Pending manual-transaction round-trip helpers ─────────
+// Why these live here: they fire immediately after addCustomCategoryGroup
+// succeeds, while the user is still on categories.html. They track which
+// categories were created during this "redirect session" and, once the
+// user is done, assign one to the pending transaction and navigate back.
+
+/**
+ * After categories are created, check if a pending manual transaction
+ * exists. If so, accumulate new categories and either auto-assign
+ * (1 total) or show a picker (multiple).
+ */
+function _handlePendingTxnAfterCategoryCreate(justCreatedCategories) {
+  if (!sessionStorage.getItem('pf_pending_manual_txn')) return;
+  if (!justCreatedCategories.length) return;
+
+  // Accumulate across multiple "Add Categories" clicks in this redirect session
+  const existing = JSON.parse(sessionStorage.getItem('pf_pending_txn_new_categories') || '[]');
+  const allNewCategories = [...existing, ...justCreatedCategories];
+  sessionStorage.setItem('pf_pending_txn_new_categories', JSON.stringify(allNewCategories));
+
+  if (allNewCategories.length === 1) {
+    // Single category — auto-assign and redirect immediately
+    _assignPendingTxnCategoryAndRedirect(allNewCategories[0]);
+  } else {
+    // Multiple categories created — ask which one to use
+    _showPendingTxnCategoryPicker(allNewCategories);
+  }
+}
+
+/**
+ * Render a floating overlay asking the user which of their newly created
+ * categories to assign to the pending manual transaction.
+ */
+function _showPendingTxnCategoryPicker(allNewCategories) {
+  // Remove any existing picker overlay (in case they click "Add Categories" again)
+  const existingOverlay = document.getElementById('pending-txn-category-picker');
+  if (existingOverlay) existingOverlay.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'pending-txn-category-picker';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+
+  const radioRows = allNewCategories.map((categoryName, index) => `
+    <label style="display:block;padding:8px 12px;cursor:pointer;border-radius:4px;margin-bottom:4px;background:var(--color-surface-hover,#f5f5f5);">
+      <input type="radio" name="pending-txn-cat-choice" value="${index}"
+        ${index === 0 ? 'checked' : ''} style="margin-right:8px;">
+      ${categoryName}
+    </label>
+  `).join('');
+
+  const card = document.createElement('div');
+  card.style.cssText = 'background:var(--color-surface,#fff);border-radius:8px;padding:24px;max-width:420px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.2);';
+  card.innerHTML = `
+    <h3 style="margin:0 0 12px;font-size:16px;">Which category for your transaction?</h3>
+    <p style="margin:0 0 16px;font-size:13px;color:var(--text-muted,#666);">
+      You created multiple categories. Choose which one to assign to the pending manual transaction.
+    </p>
+    <div style="max-height:240px;overflow-y:auto;margin-bottom:16px;">${radioRows}</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button type="button" id="pending-txn-cat-skip"
+        style="padding:8px 16px;border:1px solid var(--border-color,#ccc);background:transparent;border-radius:4px;cursor:pointer;">
+        Skip (no category)
+      </button>
+      <button type="button" id="pending-txn-cat-confirm"
+        style="padding:8px 16px;background:var(--color-primary);color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:500;">
+        Confirm &amp; Return
+      </button>
+    </div>
+  `;
+
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+
+  document.getElementById('pending-txn-cat-confirm').addEventListener('click', () => {
+    const selectedRadio = document.querySelector('input[name="pending-txn-cat-choice"]:checked');
+    const chosenCategory = selectedRadio ? allNewCategories[parseInt(selectedRadio.value, 10)] : allNewCategories[0];
+    _assignPendingTxnCategoryAndRedirect(chosenCategory);
+  });
+
+  document.getElementById('pending-txn-cat-skip').addEventListener('click', () => {
+    _assignPendingTxnCategoryAndRedirect(null);
+  });
+}
+
+/**
+ * Write the chosen category into the pending transaction in sessionStorage,
+ * mark it as resolved, clean up redirect-session keys, and navigate back.
+ */
+function _assignPendingTxnCategoryAndRedirect(category) {
+  const pendingRaw = sessionStorage.getItem('pf_pending_manual_txn');
+  if (!pendingRaw) return;
+
+  const pending = JSON.parse(pendingRaw);
+  pending.category = category;
+  pending.categoryResolved = true;
+  sessionStorage.setItem('pf_pending_manual_txn', JSON.stringify(pending));
+
+  // Clean up keys that are only needed during this redirect session
+  sessionStorage.removeItem('pf_pending_txn_new_categories');
+  sessionStorage.removeItem('pf_prefill_custom_category');
+
+  window.location.href = 'transactions.html';
 }

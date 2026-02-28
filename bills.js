@@ -380,6 +380,7 @@ function openBillModal(billId = null) {
 
   // Auto-update preview when fields change
   setTimeout(_wireUpLivePreview, 80);
+  setTimeout(_wireUpBillDateAutoCorrection, 90);
 }
 
 function closeBillModal() {
@@ -488,6 +489,9 @@ function onFrequencyChange() {
     window._billEditData = null;
   }
 
+  // Frequency options re-render date inputs, so re-bind correction handlers.
+  _wireUpBillDateAutoCorrection();
+
   updatePreview();
 }
 
@@ -507,7 +511,7 @@ function _renderOnceOptions(editData, today) {
   return `
     <div class="bill-field">
       <label for="bill-start-date">Payment Date</label>
-      <input type="date" id="bill-start-date" value="${startDate}" onchange="updatePreview()">
+      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
     </div>`;
 }
 
@@ -522,7 +526,7 @@ function _renderDailyOptions(editData, today) {
     </div>
     <div class="bill-field">
       <label for="bill-start-date">Starting</label>
-      <input type="date" id="bill-start-date" value="${startDate}" onchange="updatePreview()">
+      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
     </div>`;
 }
 
@@ -546,7 +550,7 @@ function _renderWeeklyOptions(editData, today) {
     </div>
     <div class="bill-field">
       <label for="bill-start-date">Starting</label>
-      <input type="date" id="bill-start-date" value="${startDate}" onchange="onWeeklyStartDateChange(); updatePreview()">
+      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="onWeeklyStartDateChange(); updatePreview()">
     </div>
     <div class="bill-field">
       <label>Day of Week</label>
@@ -580,7 +584,7 @@ function _renderMonthlyOptions(editData, today) {
   return `
     <div class="bill-field">
       <label for="bill-start-date">Starting Month</label>
-      <input type="date" id="bill-start-date" value="${startDate}" onchange="updatePreview()">
+      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
     </div>
     <div class="freq-inline-row">
       <span>On the</span>
@@ -619,7 +623,7 @@ function _renderTwiceMonthlyOptions(editData, today) {
     </div>
     <div class="bill-field">
       <label for="bill-start-date">Starting Month</label>
-      <input type="date" id="bill-start-date" value="${startDate}" onchange="updatePreview()">
+      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
     </div>
     <div class="freq-inline-row">
       <span>Every</span>
@@ -634,7 +638,7 @@ function _renderYearlyOptions(editData, today) {
   return `
     <div class="bill-field">
       <label for="bill-start-date">Payment Date</label>
-      <input type="date" id="bill-start-date" value="${startDate}" onchange="updatePreview()">
+      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
     </div>
     <div class="freq-inline-row">
       <span>Every</span>
@@ -650,11 +654,11 @@ function _renderTwiceYearlyOptions(editData, today) {
   return `
     <div class="bill-field">
       <label for="bill-start-date">First Payment Date</label>
-      <input type="date" id="bill-start-date" value="${startDate}" onchange="updatePreview()">
+      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
     </div>
     <div class="bill-field">
       <label for="bill-second-date">Second Payment Date</label>
-      <input type="date" id="bill-second-date" value="${secondDate}" onchange="updatePreview()">
+      <input type="text" id="bill-second-date" value="${secondDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
     </div>
     <div class="freq-inline-row">
       <span>Every</span>
@@ -749,6 +753,172 @@ function _dateToStr(date) {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+// ── Date Input Auto-Correction (Idiot-Proofing) ─────────────
+
+/**
+ * Bind auto-correction listeners to bill modal date inputs.
+ * Applies to start/second/end date fields and survives frequency re-renders.
+ */
+function _wireUpBillDateAutoCorrection() {
+  const modal = document.getElementById('bill-modal-overlay');
+  if (!modal) return;
+
+  const dateSelectors = ['#bill-start-date', '#bill-second-date', '#bill-end-date'];
+
+  dateSelectors.forEach(selector => {
+    const input = modal.querySelector(selector);
+    if (!input) return;
+    if (input.dataset.autocorrectBound === '1') return;
+
+    input.dataset.autocorrectBound = '1';
+
+    // Create a wrapper div for the input and calendar button
+    if (input.parentElement && !input.parentElement.classList.contains('date-input-wrapper')) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'date-input-wrapper';
+      wrapper.style.display = 'inline-flex';
+      wrapper.style.alignItems = 'center';
+      wrapper.style.gap = '4px';
+      input.parentElement.insertBefore(wrapper, input);
+      wrapper.appendChild(input);
+
+      // Add calendar icon button
+      const calendarBtn = document.createElement('button');
+      calendarBtn.type = 'button';
+      calendarBtn.className = 'calendar-picker-btn';
+      calendarBtn.innerHTML = '📅';
+      calendarBtn.title = 'Pick a date';
+      calendarBtn.style.background = 'none';
+      calendarBtn.style.border = 'none';
+      calendarBtn.style.cursor = 'pointer';
+      calendarBtn.style.fontSize = '18px';
+      calendarBtn.style.padding = '4px 8px';
+      calendarBtn.onclick = (e) => {
+        e.preventDefault();
+        _openDatePicker(input);
+      };
+      wrapper.appendChild(calendarBtn);
+    }
+
+    // Keep a copy of raw user typing for browsers that clear invalid date values.
+    input.addEventListener('input', () => {
+      input.dataset.rawTypedDate = input.value || '';
+    });
+
+    // Auto-select all text on focus so the user can immediately type a new date
+    input.addEventListener('focus', () => input.select());
+
+    const maybeCorrect = () => _autoCorrectBillDateInput(input);
+    input.addEventListener('blur', maybeCorrect);
+    input.addEventListener('change', maybeCorrect);
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        maybeCorrect();
+      }
+    });
+  });
+}
+
+/**
+ * If a date is invalid (e.g. 2026-02-29), roll it forward to the
+ * equivalent valid calendar date using Date constructor normalization.
+ */
+function _autoCorrectBillDateInput(inputEl) {
+  if (!inputEl) return;
+
+  const rawValue = (inputEl.value || inputEl.dataset.rawTypedDate || '').trim();
+  if (!rawValue) return;
+
+  const parsedDate = _parseDateWithRollover(rawValue);
+  if (!parsedDate) return;
+
+  const normalized = _dateToStr(parsedDate);
+  if (inputEl.value !== normalized) {
+    inputEl.value = normalized;
+  }
+
+  inputEl.dataset.rawTypedDate = '';
+  updatePreview();
+}
+
+/**
+ * Parse date input in multiple formats: YYYYMMDD, YYYY-MM-DD, M/D/YYYY.
+ * Uses Date(year, month-1, day) so invalid dates roll forward naturally
+ * (e.g. 2026-02-29 -> 2026-03-01).
+ */
+function _parseDateWithRollover(rawDate) {
+  // Format: YYYYMMDD (e.g. 20260301)
+  const compactMatch = rawDate.match(/^(\d{8})$/);
+  if (compactMatch) {
+    const year = parseInt(compactMatch[1].substring(0, 4), 10);
+    const month = parseInt(compactMatch[1].substring(4, 6), 10);
+    const day = parseInt(compactMatch[1].substring(6, 8), 10);
+    if (month < 1 || month > 12 || day < 1) return null;
+    const parsed = new Date(year, month - 1, day);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  // Format: YYYY-MM-DD (e.g. 2026-03-01)
+  const isoMatch = rawDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1], 10);
+    const month = parseInt(isoMatch[2], 10);
+    const day = parseInt(isoMatch[3], 10);
+    if (month < 1 || month > 12 || day < 1) return null;
+    const parsed = new Date(year, month - 1, day);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  // Format: M/D/YYYY (e.g. 3/1/2026)
+  const usMatch = rawDate.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (usMatch) {
+    const month = parseInt(usMatch[1], 10);
+    const day = parseInt(usMatch[2], 10);
+    const year = parseInt(usMatch[3], 10);
+    if (month < 1 || month > 12 || day < 1) return null;
+    const parsed = new Date(year, month - 1, day);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  return null;
+}
+
+// ── Calendar Date Picker ────────────────────────────────────
+
+/**
+ * Open a native date picker for a given input element.
+ * Converts the input's value to YYYY-MM-DD, opens the picker, and syncs back.
+ */
+function _openDatePicker(inputEl) {
+  if (!inputEl) return;
+
+  // Try to parse the current value into a date
+  const currentValue = inputEl.value.trim();
+  let currentDate = new Date();
+  if (currentValue) {
+    const parsed = _parseDateWithRollover(currentValue);
+    if (parsed) currentDate = parsed;
+  }
+
+  // Create a hidden date input for the native picker
+  const tempInput = document.createElement('input');
+  tempInput.type = 'date';
+  tempInput.value = _dateToStr(currentDate);
+  tempInput.style.display = 'none';
+
+  // When user picks a date, sync it back to the original input
+  tempInput.addEventListener('change', () => {
+    inputEl.value = tempInput.value;
+    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  document.body.appendChild(tempInput);
+  tempInput.click();
+
+  // Clean up after a short delay
+  setTimeout(() => tempInput.remove(), 100);
 }
 
 // ── Live Preview ────────────────────────────────────────────
@@ -1143,6 +1313,20 @@ async function saveBill() {
     _invalidateTransactionCache();
     closeBillModal();
     await reloadBills();
+
+    // Redirect back to the referring page if one was recorded before navigating here.
+    if (window._returnUrl) {
+      window.location.href = window._returnUrl;
+      return;
+    }
+
+    // Legacy: redirect back after create-from-transactions context-menu flow.
+    if (!editingBillId && window._returnToTransactionsAfterCreate) {
+      window._returnToTransactionsAfterCreate = false;
+      window.location.href = 'transactions.html';
+      return;
+    }
+
     setTimeout(clearStatus, 3000);
   } catch (saveError) {
     _showBillError(saveError.message);
@@ -1434,6 +1618,12 @@ $(document).ready(function () {
       // If navigated here from transactions with ?edit=<bill_id>, auto-open the edit modal
       const urlParams = new URLSearchParams(window.location.search);
       const editBillId = urlParams.get('edit');
+
+      // Read the generic return URL set by any referring page before navigating here.
+      // Consumed once on init so a page refresh doesn't stale-redirect.
+      window._returnUrl = sessionStorage.getItem('pf_return_url') || null;
+      sessionStorage.removeItem('pf_return_url');
+
       if (editBillId) {
         const billExists = allBills.some(findBill => findBill.bill_id === editBillId);
         if (billExists) {
@@ -1443,6 +1633,57 @@ $(document).ready(function () {
         }
         // Clean up the URL so a refresh doesn't re-trigger
         window.history.replaceState({}, '', 'bills.html');
+      }
+
+      // If navigated here from transactions with ?prefill=<base64>, auto-open the
+      // create modal with transaction data pre-filled so user only needs to set
+      // frequency/recurrence and submit.
+      const prefillParam = urlParams.get('prefill');
+      if (prefillParam && !editBillId) {
+        try {
+          const returnFlag = sessionStorage.getItem('pf_return_to_transactions_after_bill_create');
+          window._returnToTransactionsAfterCreate = returnFlag === '1';
+          sessionStorage.removeItem('pf_return_to_transactions_after_bill_create');
+
+          const prefillData = JSON.parse(atob(prefillParam));
+          openBillModal(); // create mode (no bill_id)
+          // Populate fields from the transaction data after the modal is rendered
+          setTimeout(() => {
+            if (prefillData.description) {
+              document.getElementById('bill-description').value = prefillData.description;
+            }
+            if (prefillData.amount) {
+              document.getElementById('bill-amount').value = Math.abs(prefillData.amount).toFixed(2);
+            }
+            if (prefillData.type) {
+              document.getElementById('bill-type').value = prefillData.type;
+            }
+            if (prefillData.account_id) {
+              document.getElementById('bill-account').value = prefillData.account_id;
+            }
+            if (prefillData.user_category) {
+              document.getElementById('bill-category').value = prefillData.user_category;
+            }
+            if (prefillData.merchant_name) {
+              // Store merchant in memo since bills don't have a merchant field
+              const memoEl = document.getElementById('bill-memo');
+              if (memoEl && !memoEl.value) {
+                memoEl.value = prefillData.merchant_name;
+              }
+            }
+
+            // The modal opens with an initial preview before prefill values are injected.
+            // Force a second preview render so the summary amount reflects prefilled data.
+            updatePreview();
+          }, 60);
+        } catch (prefillError) {
+          console.warn('Failed to parse prefill data:', prefillError);
+        }
+        window.history.replaceState({}, '', 'bills.html');
+      } else {
+        // Ensure stale redirect state doesn't leak into normal bills usage.
+        window._returnToTransactionsAfterCreate = false;
+        sessionStorage.removeItem('pf_return_to_transactions_after_bill_create');
       }
     } catch (initError) {
       console.error('Failed to initialize bills page:', initError);

@@ -169,11 +169,12 @@ function renderTransactionTable() {
     return idB.localeCompare(idA);
   };
 
-  // Scheduled future: nearest date at top (ascending order)
+  // Scheduled future: furthest date at top (descending order) — agrees with the
+  // overall table sort direction where oldest rows sink to the bottom.
   scheduledFuture.sort((rowA, rowB) => {
-    const dateComp = rowA.date.localeCompare(rowB.date);
+    const dateComp = rowB.date.localeCompare(rowA.date);
     if (dateComp !== 0) return dateComp;
-    return (rowA.transaction_id || '').localeCompare(rowB.transaction_id || '');
+    return (rowB.transaction_id || '').localeCompare(rowA.transaction_id || '');
   });
   missingTransactions.sort(sortNewestFirst);
   postedTransactions.sort(sortNewestFirst);
@@ -604,7 +605,10 @@ function renderTransactionTable() {
     else if (isMatched) rowCssClass = 'matched-row';
     else if (isOrphaned) rowCssClass = 'orphaned-row';
     else if (isPendingRow) rowCssClass = 'pending-row';
-    html += `<tr${rowCssClass ? ` class="${rowCssClass}"` : ''}>`;
+
+    // Data attributes for the context menu to read without re-scanning the transactions array
+    const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-name="${escapeHtml(txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}"`;
+    html += `<tr${rowCssClass ? ` class="${rowCssClass}"` : ''}${rowDataAttrs}>`;
     html += `<td>${dateStr}</td>`;
     html += `<td>${txn.bank_account}</td>`;
     html += `<td>${pendingBadge}${txn.name || ''}</td>`;

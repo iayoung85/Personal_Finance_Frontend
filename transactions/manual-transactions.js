@@ -161,6 +161,209 @@ function openAddManualTransactionModal() {
 }
 
 /**
+ * Open modal to edit an existing manual transaction.
+ * Reuses the same form layout as the create modal with fields pre-populated.
+ * Calls PUT /api/transactions/manual/<id> on submit instead of POST.
+ *
+ * Why a separate function instead of parameterising openAddManualTransactionModal:
+ * the create modal has plaid-account date advisory logic, account-selection wiring,
+ * and hotkey-to-keep-open flows that don't apply to editing. Keeping them separate
+ * avoids an ever-growing tangle of if-else branches in one 200-line function.
+ */
+function openEditManualTransactionModal(transactionId) {
+  const txn = transactions.find(findTxn => findTxn.transaction_id === transactionId);
+  if (!txn) {
+    showStatus('Transaction not found', 'error');
+    return;
+  }
+
+  // Resolve the display name for the account (read-only in edit mode)
+  const txnAccount = accounts.find(findAccount => findAccount.account_id === txn.account_id);
+  const accountDisplayName = txnAccount
+    ? (txnAccount.custom_name || txnAccount.account_name || txnAccount.institution_name || 'Unknown')
+    : (txn.bank_account || 'Unknown');
+
+  // Pre-populate values
+  const absAmount = Math.abs(txn.amount || 0).toFixed(2);
+  const txnType = (txn.amount || 0) >= 0 ? 'credit' : 'debit';
+  const txnDate = txn.date || '';
+  const txnName = txn.name || '';
+  const txnMerchant = txn.merchant_name || '';
+  const txnCategory = txn.user_category || '';
+  const txnMemo = txn.user_memo || '';
+
+  const formHtml = `
+    <div style="display: grid; gap: 14px;">
+      <div id="manual-txn-error-banner" style="display:none; padding: 8px 12px; background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); border-radius: 4px; color: var(--color-danger); font-size: 13px;"></div>
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Description *</label>
+        <input id="manual-txn-name" type="text" value="${escapeHtml(txnName)}" class="modal-input" maxlength="128">
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px;">
+        <div>
+          <label style="display: block; font-weight: 500; margin-bottom: 6px;">Amount *</label>
+          <input id="manual-txn-amount" type="text" inputmode="decimal" value="${absAmount}" class="modal-input">
+        </div>
+        <div>
+          <label style="display: block; font-weight: 500; margin-bottom: 6px;">Type *</label>
+          <select id="manual-txn-type" class="modal-input">
+            <option value="debit"${txnType === 'debit' ? ' selected' : ''}>Debit (−)</option>
+            <option value="credit"${txnType === 'credit' ? ' selected' : ''}>Credit (+)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display: block; font-weight: 500; margin-bottom: 6px;">Date *</label>
+          <input id="manual-txn-date" type="date" value="${txnDate}" class="modal-input">
+        </div>
+      </div>
+
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Account</label>
+        <input type="text" value="${escapeHtml(accountDisplayName)}" class="modal-input" disabled style="opacity: 0.6; cursor: not-allowed;">
+        <small style="color: var(--text-muted); margin-top: 2px; display: block;">Account cannot be changed on existing transactions</small>
+      </div>
+
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Merchant (Optional)</label>
+        <input id="manual-txn-merchant" type="text" value="${escapeHtml(txnMerchant)}" class="modal-input" maxlength="128">
+      </div>
+
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Category (Optional)</label>
+        <div style="position: relative;">
+          <input id="manual-txn-category" type="text" value="${escapeHtml(txnCategory)}" placeholder="Type to search, or [ for transfers" autocomplete="off" class="modal-input">
+          <div id="manual-txn-category-list" class="category-ac-list" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 99999;"></div>
+        </div>
+      </div>
+
+      <div>
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Memo (Optional)</label>
+        <input id="manual-txn-memo" type="text" value="${escapeHtml(txnMemo)}" placeholder="Add a note" class="modal-input" maxlength="256">
+      </div>
+    </div>
+  `;
+
+  openModal({
+    title: 'Edit Transaction',
+    body: formHtml,
+    actions: [
+      { label: 'Cancel', className: 'secondary', onClick: closeModal },
+      { label: 'Save Changes', onClick: () => _updateManualTransaction(transactionId, txn.account_id) }
+    ]
+  });
+
+  // Wire up the same amount prefix helpers
+  setTimeout(() => {
+    const amountInput = document.getElementById('manual-txn-amount');
+    const typeSelect = document.getElementById('manual-txn-type');
+    if (amountInput && typeSelect) {
+      amountInput.addEventListener('input', () => _syncAmountPrefix(amountInput, typeSelect));
+      typeSelect.addEventListener('change', () => _syncTypeDropdown(amountInput, typeSelect));
+      amountInput.addEventListener('blur', () => _decorateAmountOnBlur(amountInput, typeSelect));
+      amountInput.addEventListener('focus', () => _stripDecorationOnFocus(amountInput, typeSelect));
+    }
+  }, 50);
+
+  // Wire up category autocomplete
+  setTimeout(() => _wireUpManualCategoryAutocomplete(), 50);
+
+  // Enter key listener saves changes
+  setTimeout(() => {
+    const inputs = document.querySelectorAll('#manual-txn-name, #manual-txn-amount, #manual-txn-date, #manual-txn-merchant, #manual-txn-category, #manual-txn-memo');
+    inputs.forEach(input => {
+      input.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          _updateManualTransaction(transactionId, txn.account_id);
+        }
+      });
+    });
+  }, 50);
+}
+
+/**
+ * Send PUT request to update manual transaction, refresh UI on success.
+ */
+async function _updateManualTransaction(transactionId, accountId) {
+  const name = document.getElementById('manual-txn-name').value.trim();
+  const rawAmountStr = document.getElementById('manual-txn-amount').value.replace(/^[+\-−]/, '').trim();
+  const amount = parseFloat(rawAmountStr);
+  const txnType = document.getElementById('manual-txn-type').value;
+  const date = document.getElementById('manual-txn-date').value;
+  const merchant = document.getElementById('manual-txn-merchant').value.trim();
+  const category = document.getElementById('manual-txn-category').value;
+  const memo = document.getElementById('manual-txn-memo').value.trim();
+
+  // Validate required fields
+  if (!name) {
+    _showManualTxnError('Description is required');
+    return;
+  }
+  if (!amount || amount <= 0 || isNaN(amount)) {
+    _showManualTxnError('Amount must be a positive number');
+    return;
+  }
+  if (!date) {
+    _showManualTxnError('Date is required');
+    return;
+  }
+
+  // Category validation: must match an existing category or be a bracket transfer
+  if (category && !isTransferCategory(category)) {
+    const isKnownCategory = (availableCategories || []).some(
+      knownCat => knownCat.toLowerCase() === category.toLowerCase()
+    );
+    if (!isKnownCategory) {
+      _showManualTxnCategoryError(category, { mode: 'edit', transactionId, accountId });
+      return;
+    }
+  }
+
+  try {
+    const payload = {
+      description: name,
+      amount,
+      type: txnType,
+      date,
+      merchant_name: merchant || null,
+      user_category: category || null,
+      memo: memo || null,
+    };
+
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(transactionId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      _showManualTxnError(data.error || 'Failed to update transaction');
+      return;
+    }
+
+    closeModal();
+    showStatus('Transaction updated successfully', 'success');
+
+    // Invalidate cache and refresh
+    try {
+      localStorage.removeItem('pf_cached_transactions');
+      localStorage.removeItem('pf_transactions_cached_at');
+    } catch (cacheError) { /* non-fatal */ }
+
+    await fetchAllTransactions(true);
+
+  } catch (error) {
+    _showManualTxnError(`Failed to update: ${error.message}`);
+  }
+}
+
+/**
  * Show an inline validation error inside the manual transaction modal.
  * Clears after 5 seconds automatically.
  */
@@ -176,6 +379,166 @@ function _showManualTxnError(message) {
   // Auto-clear after 5 seconds
   clearTimeout(banner._clearTimer);
   banner._clearTimer = setTimeout(() => { banner.style.display = 'none'; }, 5000);
+}
+
+/**
+ * Show category-specific validation error with an option to create a new
+ * category. If the user entered text in "Primary: Detailed" format, we
+ * offer to take them to categories.html with the form prepopulated.
+ * If it lacks the colon separator, we tell them the required format.
+ */
+function _showManualTxnCategoryError(badCategory, context = {}) {
+  const banner = document.getElementById('manual-txn-error-banner');
+  if (!banner) {
+    showStatus('Unknown category — please pick from autocomplete or create it in Categories.', 'error');
+    return;
+  }
+
+  const hasColon = badCategory.includes(':');
+  const formatHint = hasColon
+    ? ''
+    : ' Categories must follow the <strong>Primary: Detailed</strong> format (e.g. "Food: Groceries").';
+
+  banner.innerHTML = `
+    <div>"<strong>${escapeHtml(badCategory)}</strong>" is not in your category list.${formatHint}</div>
+    <div style="margin-top: 6px;">
+      Would you like to create it?
+      <button type="button" id="manual-txn-create-cat-btn"
+        style="margin-left: 8px; padding: 4px 12px; background: var(--color-primary); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">
+        Create Category
+      </button>
+    </div>
+  `;
+  banner.style.display = 'block';
+
+  // Clear any existing auto-hide timer since user needs to interact
+  clearTimeout(banner._clearTimer);
+
+  document.getElementById('manual-txn-create-cat-btn').addEventListener('click', () => {
+    // Why: save entire form state so the transaction can be auto-submitted
+    // after the user creates the category on categories.html. This avoids
+    // forcing the user to re-enter all fields after a round-trip.
+    const pendingTxn = {
+      mode: context.mode || 'create',
+      transactionId: context.transactionId || null,
+      categoryResolved: false,
+      description: document.getElementById('manual-txn-name').value.trim(),
+      amount: document.getElementById('manual-txn-amount').value.replace(/^[+\-−]/, '').trim(),
+      type: document.getElementById('manual-txn-type').value,
+      date: document.getElementById('manual-txn-date').value,
+      accountId: context.accountId || document.getElementById('manual-txn-account')?.value || null,
+      merchant: document.getElementById('manual-txn-merchant').value.trim(),
+      category: badCategory,
+      memo: document.getElementById('manual-txn-memo').value.trim(),
+    };
+
+    sessionStorage.setItem('pf_pending_manual_txn', JSON.stringify(pendingTxn));
+    // Clear any previously tracked categories from an earlier redirect session
+    sessionStorage.removeItem('pf_pending_txn_new_categories');
+    sessionStorage.setItem('pf_prefill_custom_category', badCategory);
+    sessionStorage.setItem('pf_return_url', 'transactions.html');
+    window.location.href = 'categories.html#preview';
+  });
+}
+
+/**
+ * Auto-submit a pending manual transaction that was saved to sessionStorage
+ * before a round-trip to categories.html. Called on page load — only fires
+ * if the categories page resolved the category (set categoryResolved: true).
+ *
+ * Why a separate function instead of reusing saveManualTransaction():
+ * saveManualTransaction reads from DOM inputs; this reads from sessionStorage
+ * because the modal isn't open on page load.
+ */
+async function _submitPendingManualTransaction() {
+  const pendingRaw = sessionStorage.getItem('pf_pending_manual_txn');
+  if (!pendingRaw) return;
+
+  let pending;
+  try {
+    pending = JSON.parse(pendingRaw);
+  } catch (_parseError) {
+    sessionStorage.removeItem('pf_pending_manual_txn');
+    return;
+  }
+
+  // Only auto-submit if the categories page assigned a valid category
+  if (!pending.categoryResolved) return;
+
+  // Clean up immediately to prevent duplicate submissions on refresh
+  sessionStorage.removeItem('pf_pending_manual_txn');
+  sessionStorage.removeItem('pf_pending_txn_new_categories');
+  sessionStorage.removeItem('pf_return_url');
+
+  const payload = {
+    description: pending.description,
+    amount: parseFloat(pending.amount),
+    type: pending.type,
+    date: pending.date,
+    merchant_name: pending.merchant || null,
+    user_category: pending.category || null,
+    memo: pending.memo || null,
+  };
+
+  try {
+    if (pending.mode === 'edit') {
+      const response = await authenticatedFetch(
+        `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(pending.transactionId)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        showStatus(data.error || 'Failed to update transaction with new category', 'error');
+        return;
+      }
+      showStatus(`Transaction updated with category: ${pending.category}`, 'success');
+
+    } else {
+      // Create mode — POST with account_id
+      payload.account_id = pending.accountId;
+      const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        showStatus(data.error || 'Failed to create transaction', 'error');
+        return;
+      }
+
+      const appliedCategory = data.transaction?.user_category;
+      const successMsg = appliedCategory
+        ? `Manual transaction created (category: ${appliedCategory})`
+        : 'Manual transaction created successfully';
+      showStatus(successMsg, 'success');
+
+      // Add to in-memory array for immediate UI update
+      const newTxn = data.transaction || {};
+      newTxn.transaction_id = data.transaction_id || newTxn.transaction_id;
+      newTxn.account_id = pending.accountId;
+      newTxn.iso_currency_code = 'USD';
+      newTxn.source = 'manual';
+      transactions.unshift(newTxn);
+
+      _expandDateFiltersForTransaction(newTxn.date);
+    }
+
+    // Refresh from server for consistency
+    try {
+      localStorage.removeItem('pf_cached_transactions');
+      localStorage.removeItem('pf_transactions_cached_at');
+    } catch (_cacheError) { /* non-fatal */ }
+    await fetchAllTransactions(true);
+    renderTransactionTable();
+
+  } catch (networkError) {
+    showStatus(`Failed to submit transaction: ${networkError.message}`, 'error');
+  }
 }
 
 // ─── Amount / Type shorthand helpers ───────────────────────
@@ -258,6 +621,20 @@ async function saveManualTransaction() {
   if (!accountId) {
     _showManualTxnError('Please select an account');
     return;
+  }
+
+  // Category validation: if the user typed something, it must match an existing
+  // category or be a valid bracket-notation transfer (e.g. "[Checking]").
+  // Why: our categorization schema is tightly controlled — arbitrary strings
+  // would bypass mappings/rules and create orphan categories.
+  if (category && !isTransferCategory(category)) {
+    const isKnownCategory = (availableCategories || []).some(
+      knownCat => knownCat.toLowerCase() === category.toLowerCase()
+    );
+    if (!isKnownCategory) {
+      _showManualTxnCategoryError(category, { mode: 'create' });
+      return;
+    }
   }
 
   // Date validation depends on whether this is a plaid or offline account

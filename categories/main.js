@@ -58,6 +58,10 @@ document.addEventListener('DOMContentLoaded', async function initCategoriesPage(
   // Activate the correct panel from the URL hash (default: preview)
   const initialSection = window.location.hash.replace('#', '') || 'preview';
   _activateInitialPanel(initialSection);
+
+  // If another page (e.g. transactions manual-txn modal) sent us a category
+  // to pre-create, populate the custom category form with it.
+  _applyPrefillCustomCategory();
 });
 
 /**
@@ -83,4 +87,39 @@ function _activateInitialPanel(section) {
   subNavLinks.forEach(link => {
     link.classList.toggle('active', link.dataset.section === section);
   });
+}
+
+/**
+ * If sessionStorage contains a prefill category (set by another page),
+ * populate the Custom Category form on the "My Categories" panel.
+ * Handles both "Primary: Detailed" and bare strings gracefully —
+ * bare strings go into the primary field with a hint to add details.
+ */
+function _applyPrefillCustomCategory() {
+  const rawCategory = sessionStorage.getItem('pf_prefill_custom_category');
+  if (!rawCategory) return;
+  sessionStorage.removeItem('pf_prefill_custom_category');
+
+  const parts = parseCategoryName(rawCategory);
+  const primaryInput = document.getElementById('custom-primary-input');
+  if (!primaryInput) return;
+
+  if (parts.primary) {
+    primaryInput.value = parts.primary;
+  }
+
+  // Clear existing detailed fields and add the prefilled one (or an empty row)
+  clearDetailedCategoryFields();
+  if (parts.detailed) {
+    addDetailedCategoryField(parts.detailed);
+  } else {
+    addDetailedCategoryField();
+    showStatus('Category must be "Primary: Detailed" format — enter a detailed name below.', 'warning');
+  }
+
+  // Scroll the custom-categories card into view so the user sees the prefilled form
+  const customCard = document.getElementById('custom-categories-card');
+  if (customCard) {
+    customCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
