@@ -209,6 +209,11 @@ function initNavSidebar() {
 
   // Attach event listeners
   _attachNavSidebarEvents();
+
+  // Why: when the user clicked a nav link on the previous page we
+  // flagged the sidebar to stay visible so the transition doesn't
+  // feel abrupt. Open it now and let mouseleave close it.
+  _maybeKeepSidebarOpen();
 }
 
 
@@ -258,9 +263,11 @@ function _attachNavSidebarEvents() {
       return;
     }
 
-    // Normal link — close sidebar if in collapsed mode, then navigate
-    // (default <a> behaviour handles navigation)
-    _closeNavSidebar();
+    // Normal link — flag the sidebar to stay open on the next page
+    // so it remains visible until the user moves their mouse away.
+    // Why: closing immediately feels jarring when navigating between
+    // persistent and collapsed pages; this lets the user orient.
+    sessionStorage.setItem('nav-sidebar-keep-open', 'true');
   });
 }
 
@@ -285,6 +292,40 @@ function _closeNavSidebar() {
 
   if (sidebar) sidebar.classList.remove('open');
   if (overlay) overlay.classList.remove('visible');
+  sessionStorage.removeItem('nav-sidebar-keep-open');
+}
+
+
+/**
+ * If the previous page flagged "keep-open", auto-open the sidebar
+ * in collapsed mode and close it once the mouse leaves.
+ * Why: provides a smooth visual bridge when navigating from a
+ * persistent-sidebar page to a collapsed-sidebar page.
+ */
+function _maybeKeepSidebarOpen() {
+  const shouldKeepOpen = sessionStorage.getItem('nav-sidebar-keep-open');
+  if (!shouldKeepOpen) return;
+
+  const navMode = document.body.getAttribute('data-nav-mode');
+  if (navMode !== 'collapsed') {
+    // Persistent pages already show the sidebar — just clear the flag.
+    sessionStorage.removeItem('nav-sidebar-keep-open');
+    return;
+  }
+
+  const sidebar = document.getElementById('nav-sidebar');
+  const overlay = document.getElementById('nav-sidebar-overlay');
+  if (!sidebar) return;
+
+  // Open the sidebar immediately on load
+  sidebar.classList.add('open');
+  if (overlay) overlay.classList.add('visible');
+
+  // Close when the mouse leaves the sidebar area
+  sidebar.addEventListener('mouseleave', function _autoClose() {
+    _closeNavSidebar();
+    sidebar.removeEventListener('mouseleave', _autoClose);
+  });
 }
 
 
