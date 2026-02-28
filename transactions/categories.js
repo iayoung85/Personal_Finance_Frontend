@@ -424,8 +424,13 @@ function attachCategoryDropdownListeners() {
         if (currentValue) {
           const resolved = _resolveAutocompleteCategory(currentValue);
           if (!resolved.error) {
-            // Valid category found, move focus to memo
+            // Valid category — apply the override automatically, then move
+            // focus to memo so the user can keep tabbing through the row.
             e.preventDefault();
+            const overrideBtn = $(input).closest('.category-cell').find('.category-override');
+            if (overrideBtn.length) {
+              overrideBtn.click();
+            }
             const memoInput = $(input).closest('tr').find('.memo-input');
             if (memoInput.length) {
               memoInput.focus();
@@ -829,8 +834,9 @@ async function _applyTransferAssignment(txnId, sourceAccountId, targetAccount) {
       hideTransfersCheckbox.checked = false;
     }
 
-    // Refresh transactions to pick up the new transfer pair
-    await fetchAllTransactions(true);
+    // Refresh transactions and sidebar balances — the counterpart
+    // transaction changes the target account's balance.
+    await Promise.all([fetchAllTransactions(true), loadAccounts()]);
 
     // Build a descriptive status message
     const unhideNote = wasHidden ? ' ("Hide Transfers" unchecked so you can see it)' : '';
@@ -861,7 +867,9 @@ async function unlinkTransfer(txnId) {
     }
 
     showStatus('Transfer pair unlinked', 'success');
-    await fetchAllTransactions(true);
+    // Refresh both transactions and sidebar balances — the unlinked
+    // counterpart may have changed a different account's balance.
+    await Promise.all([fetchAllTransactions(true), loadAccounts()]);
     setTimeout(() => clearStatus(), 3000);
   } catch (error) {
     showStatus(`Failed to unlink transfer: ${error.message}`, 'error');

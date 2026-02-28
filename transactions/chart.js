@@ -50,7 +50,6 @@ function _getFilteredTransactionsForChart() {
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
   const selectedAccounts = getSelectedAccounts();
-  const hideTransfers = document.getElementById('hide-transfers').checked;
   
   return transactions.filter(txn => {
     if (txn.date < startDate || txn.date > endDate) return false;
@@ -61,10 +60,9 @@ function _getFilteredTransactionsForChart() {
     // Use txn.source (a controlled backend enum) not user_category which is user-editable.
     if (SYSTEM_SOURCES.has(txn.source)) return false;
 
-    if (hideTransfers) {
-      const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
-      if (/transfer/i.test(primaryCat)) return false;
-    }
+    // Transfers are always excluded from the expense chart — they aren't expenses
+    const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
+    if (/transfer/i.test(primaryCat)) return false;
 
     if (txn.personal_finance_category && txn.personal_finance_category.primary) {
       const primaryCat = txn.personal_finance_category.primary;
@@ -183,7 +181,7 @@ function renderCategoryChart() {
       datasets: [{
         data: data,
         backgroundColor: colors,
-        borderColor: '#ffffff',
+        borderColor: 'rgba(30, 30, 30, 0.6)',
         borderWidth: 2
       }]
     },
@@ -206,13 +204,16 @@ function renderCategoryChart() {
       plugins: {
         legend: {
           position: 'right',
+          // Disable slice toggling when clicking legend items
+          onClick: function() { return; },
           labels: {
-            padding: 10,
+            color: '#d4d4d4',
+            padding: 12,
             font: {
-              size: 9.5
+              size: 12
             },
-            boxWidth: 12,
-            maxWidth: 160,
+            boxWidth: 14,
+            maxWidth: 200,
             generateLabels: function(chart) {
               const data = chart.data;
               if (data.labels.length && data.datasets.length) {
@@ -231,6 +232,7 @@ function renderCategoryChart() {
                   return {
                     text: `${displayLabel} (${percentage}%)`,
                     fillStyle: dataset.backgroundColor[i],
+                    fontColor: '#d4d4d4',
                     hidden: false,
                     index: i
                   };

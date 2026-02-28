@@ -562,6 +562,10 @@ function _showManualTransferAccountDropdown(list, rawQuery) {
   const accountSelect = document.getElementById('manual-txn-account');
   const currentAccountId = accountSelect ? accountSelect.value : null;
 
+  // Read the date from the modal — used to warn about illegal plaid-range targets
+  const dateInput = document.getElementById('manual-txn-date');
+  const txnDate = dateInput ? dateInput.value : null;
+
   const matchingAccounts = accounts.filter(acc => {
     if (acc.account_id === currentAccountId) return false;
     if (acc.is_archived) return false;
@@ -585,8 +589,19 @@ function _showManualTransferAccountDropdown(list, rawQuery) {
     const transferValue = buildTransferCategory(displayName);
     const typeBadge = `<span class="transfer-ac-type">${acc.account_category || 'account'}</span>`;
     const highlighted = accountQuery ? _highlightMatch(displayName, accountQuery) : escapeHtml(displayName);
+
+    // Warn when the counterpart transaction date would fall inside a plaid-synced block.
+    // The counterpart inherits the same date — if the target is linked and the date
+    // is on or after its earliest plaid transaction, it's illegal.
+    let warningHtml = '';
+    if (txnDate && acc.connection_status === 'linked' && acc.earliest_plaid_transaction_date) {
+      if (txnDate >= acc.earliest_plaid_transaction_date) {
+        warningHtml = '<span class="transfer-ac-warning" title="Date falls in this account\'s Plaid-synced range — transfer counterpart cannot be created here for this date" style="color:var(--color-warning);margin-left:4px;font-size:11px;">⚠ date conflict</span>';
+      }
+    }
+
     return `<div class="category-ac-item transfer-ac-item${index === 0 ? ' active' : ''}" data-value="${escapeHtml(transferValue)}" data-account-id="${escapeHtml(acc.account_id)}">`
-      + `<span class="transfer-ac-icon">\u21C4</span> ${highlighted} ${typeBadge}</div>`;
+      + `<span class="transfer-ac-icon">\u21C4</span> ${highlighted} ${typeBadge}${warningHtml}</div>`;
   }).join('');
 
   const overflow = matchingAccounts.length > maxVisible

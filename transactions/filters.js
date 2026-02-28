@@ -105,15 +105,26 @@ function setEarliestToDate() {
     start.setDate(start.getDate() - 90);
   }
   
-  const end = new Date();
   document.getElementById('start-date').value = _formatDateLocal(start);
-  document.getElementById('end-date').value = _formatDateLocal(end);
+  // Reset end-date to encompass all future/scheduled transactions.
+  // Without this, a stale end-date from a previous filter (e.g. "last month")
+  // would cut off current and future transactions.
+  document.getElementById('end-date').value = _formatDateLocal(_latestTransactionDate());
   _saveDateRangeToStorage('earliest');
   renderTransactionTable();
 }
 
 function setMonthToDate() {
-  _applyMonthToDate();
+  const start = new Date();
+  const today = new Date();
+  if (today.getDate() === 1) {
+    start.setMonth(start.getMonth() - 1);
+  } else {
+    start.setDate(1);
+  }
+  document.getElementById('start-date').value = _formatDateLocal(start);
+  // Reset end-date to encompass all future/scheduled transactions.
+  document.getElementById('end-date').value = _formatDateLocal(_latestTransactionDate());
   _saveDateRangeToStorage('mtd');
   renderTransactionTable();
 }
@@ -158,6 +169,25 @@ function toggleChartModal() {
  */
 function closeChartModal() {
   document.getElementById('chart-modal').classList.add('hidden');
+}
+
+// ===== Helper: latest transaction date =====
+
+/**
+ * Returns a Date representing the latest transaction date across all loaded
+ * transactions (including scheduled/future). Falls back to today if no
+ * transactions are loaded. Used by quick-range shortcuts (earliest, MTD) to
+ * guarantee the end-date always encompasses future bills.
+ */
+function _latestTransactionDate() {
+  let latestDateStr = null;
+  if (transactions && transactions.length > 0) {
+    latestDateStr = transactions.reduce((latest, txn) => {
+      if (!latest || txn.date > latest) return txn.date;
+      return latest;
+    }, null);
+  }
+  return latestDateStr ? new Date(latestDateStr) : new Date();
 }
 
 // ===== Dynamic Period Buttons =====

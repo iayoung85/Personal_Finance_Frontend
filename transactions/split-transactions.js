@@ -5,6 +5,33 @@
 // declared in state.js so they're shared across modules.
 // ============================================================
 
+/**
+ * Parse a split amount string, applying the parent transaction's sign
+ * convention when the user omits an explicit +/- prefix.
+ *
+ * Rules:
+ *   - Explicit "+" or "-" prefix: use that sign with the parsed magnitude.
+ *   - No sign prefix: inherit the parent transaction's sign.
+ *     (parent negative → entered value becomes negative, parent positive → positive)
+ *   - Returns NaN for unparseable input.
+ */
+function _parseSplitAmount(rawValue, parentAmount) {
+  const trimmed = (rawValue || '').trim().replace(/[$,]/g, '');
+  if (!trimmed) return NaN;
+
+  const hasExplicitSign = trimmed.startsWith('+') || trimmed.startsWith('-');
+  const magnitude = parseFloat(trimmed.replace(/^[+-]/, ''));
+  if (isNaN(magnitude)) return NaN;
+
+  if (hasExplicitSign) {
+    // User explicitly chose the sign
+    return trimmed.startsWith('-') ? -magnitude : magnitude;
+  }
+
+  // No sign given — inherit the parent's direction
+  return parentAmount < 0 ? -magnitude : magnitude;
+}
+
 // Open split modal for creating a new split
 function openSplitModal(txn) {
   currentSplitTransaction = txn;
@@ -124,7 +151,7 @@ function addSplitRow(amount = '', category = '', memo = '') {
   rowDiv.innerHTML = `
     <div>
       <div class="split-row-label">Amount</div>
-      <input type="number" step="0.01" value="${amount}" placeholder="0.00" class="split-amount-input" 
+      <input type="text" inputmode="decimal" value="${amount}" placeholder="0.00" class="split-amount-input" 
              onchange="updateSplitValidation()" oninput="updateSplitValidation()">
     </div>
     <div>
@@ -317,23 +344,31 @@ function updateSplitValidation() {
     const categoryInput = row.querySelector('.split-category-autocomplete');
     
     if (amountInput && amountInput.value && categoryInput && categoryInput.value) {
-      const amount = parseFloat(amountInput.value) || 0;
-      splitSum += amount;
-      validCount++;
+      const amount = _parseSplitAmount(amountInput.value, originalAmount);
+      if (!isNaN(amount)) {
+        splitSum += amount;
+        validCount++;
+      }
     }
   });
   
+  const currencyCode = currentSplitTransaction.iso_currency_code || 'USD';
+  const currencyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: currencyCode });
+
   // Update sum display
-  const sumFormatted = new Intl.NumberFormat('en-US', { 
-    style: 'currency', 
-    currency: currentSplitTransaction.iso_currency_code || 'USD' 
-  }).format(splitSum);
-  
+  const sumFormatted = currencyFormatter.format(splitSum);
   const remaining = originalAmount - splitSum;
-  const remainingFormatted = new Intl.NumberFormat('en-US', { 
-    style: 'currency', 
-    currency: currentSplitTransaction.iso_currency_code || 'USD' 
-  }).format(remaining);
+  const remainingFormatted = currencyFormatter.format(remaining);
+  
+  document.getElementById('split-sum').textContent = sumFormatted;
+  document.getElementById('split-remaining').textContent = remainingFormatted;
+  
+  // Update the sign-convention hint so users know what bare numbers mean
+  const hintElement = document.getElementById('split-sign-hint');
+  if (hintElement) {
+    const direction = originalAmount < 0 ? 'debit (−)' : 'credit (+)';
+    hintElement.textContent = `Amounts without a sign are treated as ${direction}. Use + or − to override.`;
+  }
   
   document.getElementById('split-sum').textContent = sumFormatted;
   document.getElementById('split-remaining').textContent = remainingFormatted;
@@ -387,7 +422,7 @@ async function handleSplitSubmit() {
       
       if (amountInput && amountInput.value && categoryInput && categoryInput.value) {
         const split = {
-          amount: parseFloat(amountInput.value),
+          amount: _parseSplitAmount(amountInput.value, currentSplitTransaction.amount),
           category: categoryInput.value,
         };
         if (memoInput && memoInput.value) {

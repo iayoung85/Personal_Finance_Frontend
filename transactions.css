@@ -4,6 +4,7 @@ body {
   padding: 10px;
   background: var(--bg-page);
   color: var(--text-primary);
+  overflow: hidden;
 }
 .container {
   max-width: 2000px;
@@ -12,6 +13,11 @@ body {
   padding: 12px 20px;
   border-radius: 8px;
   box-shadow: var(--shadow-sm);
+  /* Lock to viewport so flex children scroll internally instead of growing */
+  height: calc(100vh - 24px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 h1 {
   margin-top: 0;
@@ -43,8 +49,8 @@ h1 {
 .main-wrapper {
   display: flex;
   gap: 20px;
-  min-height: calc(100vh - 120px);
-  height: calc(100vh - 120px);
+  flex: 1;
+  min-height: 0;
 }
 
 .accounts-sidebar {
@@ -55,10 +61,8 @@ h1 {
   overflow-y: auto;
   padding: 12px;
   flex-shrink: 0;
-  position: sticky;
-  top: 20px;
-  align-self: flex-start;
-  max-height: calc(100vh - 140px);
+  /* Stretch full height of main-wrapper so it lines up with the export bar */
+  align-self: stretch;
 }
 
 .sidebar-content {
@@ -633,7 +637,6 @@ tr:hover {
   flex: 1;
   overflow-y: auto;
   min-height: 200px;
-  max-height: calc(100vh - 400px);
   border: 1px solid var(--border-primary);
   border-radius: 6px;
   background: var(--bg-surface);
@@ -668,9 +671,10 @@ tr:hover {
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-primary);
   border-radius: 4px;
-  margin-top: 0;
+  margin-top: auto;
   flex-wrap: wrap;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .export-group {
@@ -1614,6 +1618,48 @@ tr:hover {
   box-shadow: 0 0 0 2px var(--accent-focus);
 }
 
+/* ── Memo inline input & save button ── */
+.memo-input {
+  font-size: 11px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-primary);
+  border-radius: 2px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  width: 100%;
+  min-width: 100px;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.memo-input:focus {
+  outline: none;
+  border-color: var(--accent-link);
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+.memo-input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.memo-save {
+  padding: 2px 6px;
+  font-size: 10px;
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.memo-save:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-link);
+}
+
 /* Autocomplete wrapper */
 .category-autocomplete-wrap {
   position: relative;
@@ -2097,34 +2143,33 @@ tr:hover {
 /* Split Badge */
 .split-badge {
   display: inline-block;
-  background: var(--accent-purple);
-  color: white;
+  background: var(--bg-surface-elevated);
+  color: var(--accent-link);
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 12px;
   font-weight: 600;
   margin-right: 6px;
   white-space: nowrap;
+  border: 1px solid var(--border-strong);
 }
 
 /* Split Transaction Group Styling */
 
-/* Split child rows - style them with borders */
+/* Split child rows - subtle left-border highlight to group them */
 .split-child-row {
-  background: rgba(139,92,246,0.06) !important;
-  border-left: 2px solid var(--accent-purple) !important;
-  border-right: 2px solid var(--accent-purple) !important;
-  border-bottom: 1px solid rgba(197,134,192,0.2) !important;
+  background: rgba(55, 148, 255, 0.04) !important;
+  border-left: 2px solid var(--accent-link) !important;
+  border-right: 1px solid var(--border-subtle) !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
 }
 
 .split-child-row.split-first {
-  border-top: 2px solid var(--accent-purple) !important;
-  border-radius: 6px 6px 0 0;
+  border-top: 1px solid var(--border-primary) !important;
 }
 
 .split-child-row.split-last {
-  border-bottom: 2px solid var(--accent-purple) !important;
-  border-radius: 0 0 6px 6px;
+  border-bottom: 1px solid var(--border-primary) !important;
 }
 
 .split-child-row td {
@@ -2144,19 +2189,20 @@ tr:hover {
 
 .split-badge-inline {
   display: inline-block;
-  background: var(--accent-purple);
-  color: white;
+  background: var(--bg-surface-elevated);
+  color: var(--accent-link);
   padding: 2px 6px;
   border-radius: 3px;
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
+  border: 1px solid var(--border-strong);
 }
 
 .split-badge-btn {
   background: var(--bg-surface);
-  border: 1px solid var(--accent-purple);
-  color: var(--accent-purple);
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
   padding: 2px 4px;
   font-size: 10px;
   cursor: pointer;
@@ -2171,7 +2217,9 @@ tr:hover {
 }
 
 .split-badge-btn:hover {
-  background: rgba(197,134,192,0.15);
+  background: var(--bg-hover);
+  border-color: var(--accent-link);
+  color: var(--accent-link);
 }
 
 .split-delete-badge {
@@ -2188,14 +2236,14 @@ tr:hover {
   display: flex;
   gap: 8px;
   padding: 12px;
-  background: var(--badge-purple-bg);
-  border-top: 1px solid var(--accent-purple);
+  background: var(--bg-surface-elevated);
+  border-top: 1px solid var(--border-primary);
   justify-content: flex-end;
 }
 
 .split-modify-btn, .split-delete-btn {
   background: none;
-  border: 1px solid var(--accent-purple);
+  border: 1px solid var(--border-strong);
   cursor: pointer;
   padding: 6px 12px;
   font-size: 14px;
@@ -2208,13 +2256,13 @@ tr:hover {
 }
 
 .split-modify-btn {
-  color: var(--accent-purple);
+  color: var(--accent-link);
   background: var(--bg-surface);
 }
 
 .split-modify-btn:hover {
-  background: rgba(197,134,192,0.15);
-  border-color: rgba(197,134,192,0.5);
+  background: var(--bg-hover);
+  border-color: var(--accent-link);
 }
 
 .split-delete-btn {
@@ -2268,13 +2316,13 @@ tr:hover {
 
 .split-category-ac-item:hover,
 .split-category-ac-item.active {
-  background: var(--badge-purple-bg);
-  color: var(--accent-purple);
+  background: var(--bg-selected);
+  color: var(--text-bright);
 }
 
 .split-category-ac-item strong {
   font-weight: 600;
-  color: var(--accent-purple);
+  color: var(--accent-link);
 }
 
 /* Split Original Transaction Display */
@@ -2381,6 +2429,13 @@ tr:hover {
   display: none;
 }
 
+.split-sign-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  font-style: italic;
+}
+
 /* Split Rows */
 .split-rows {
   display: flex;
@@ -2415,12 +2470,19 @@ tr:hover {
   border-radius: 4px;
   font-size: 14px;
   box-sizing: border-box;
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.split-row input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .split-row input:focus {
   outline: none;
-  border-color: var(--accent-purple);
-  box-shadow: 0 0 0 3px rgba(197,134,192,0.2);
+  border-color: var(--accent-link);
+  box-shadow: 0 0 0 2px var(--accent-focus);
 }
 
 .split-row select {
@@ -2429,14 +2491,15 @@ tr:hover {
   border: 1px solid var(--border-primary);
   border-radius: 4px;
   font-size: 14px;
-  background: var(--bg-surface);
+  background: var(--bg-input);
+  color: var(--text-primary);
   box-sizing: border-box;
 }
 
 .split-row select:focus {
   outline: none;
-  border-color: var(--accent-purple);
-  box-shadow: 0 0 0 3px rgba(197,134,192,0.2);
+  border-color: var(--accent-link);
+  box-shadow: 0 0 0 2px var(--accent-focus);
 }
 
 .split-row-remove {
@@ -2465,19 +2528,23 @@ tr:hover {
   width: 100%;
   padding: 12px;
   margin-top: 12px;
-  background: var(--badge-purple-bg);
-  color: var(--accent-purple);
-  border: 1px dashed var(--accent-purple);
+  background: var(--bg-surface-elevated);
+  color: var(--accent-link);
+  border: 1px dashed var(--border-strong);
   font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
 }
 
 .split-add-row-btn:hover {
-  background: rgba(197,134,192,0.15);
+  background: var(--bg-hover);
+  border-color: var(--accent-link);
 }
 
 .split-submit-btn {
   padding: 10px 20px;
-  background: var(--accent-purple);
+  background: var(--accent-primary);
   color: white;
   border: none;
   border-radius: 4px;
@@ -2487,11 +2554,12 @@ tr:hover {
 }
 
 .split-submit-btn:hover:not(:disabled) {
-  background: rgba(197,134,192,0.8);
+  background: var(--accent-primary-hover);
 }
 
 .split-submit-btn:disabled {
   background: var(--bg-input);
+  color: var(--text-muted);
   cursor: not-allowed;
 }
 

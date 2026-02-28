@@ -133,6 +133,9 @@ function renderTransactionTable() {
   const pendingTransactions = [];
   const postedTransactions = [];
 
+  // Today in YYYY-MM-DD for comparing against txn.date strings
+  const _todayDateStr = _formatDateLocal(new Date());
+
   filteredTransactions.forEach(txn => {
     // All Accounts view: hide system rows and orphaned
     if (isAllAccounts) {
@@ -146,6 +149,11 @@ function renderTransactionTable() {
       missingTransactions.push(txn);
     } else if (txn.pending) {
       pendingTransactions.push(txn);
+    } else if (txn.date > _todayDateStr && txn.source === 'manual') {
+      // Manual transactions with future dates belong above the scheduled
+      // separator — they are effectively user-created scheduled entries
+      // until their date arrives.
+      scheduledFuture.push(txn);
     } else {
       postedTransactions.push(txn);
     }
@@ -294,16 +302,20 @@ function renderTransactionTable() {
   let passedOpeningBalance = false;
   
   allRowTransactions.forEach(txn => {
-    const isScheduledRow = txn.source === 'scheduled' && txn.status === 'future';
+    // isFutureBlockRow: true for ANY transaction that belongs above the
+    // future/cleared separator — scheduled bills AND manual transactions
+    // with dates after today. Used only for block-boundary logic.
+    const isFutureBlockRow = (txn.source === 'scheduled' && txn.status === 'future')
+      || (txn.date > _todayDateStr && txn.source === 'manual');
     const isMissingRow = txn.source === 'scheduled' && txn.status === 'missing';
     const isPendingRow = !!txn.pending;
 
     // --- Block boundary separators ---
-    // Separator: end of scheduled block → start of missing or pending or posted
-    if (!scheduledSectionEnded && !isScheduledRow) {
+    // Separator: end of future block → start of missing or pending or posted
+    if (!scheduledSectionEnded && !isFutureBlockRow) {
       scheduledSectionEnded = true;
       const schedCount = scheduledFuture.length;
-      html += `<tr class="scheduled-separator-row"><td colspan="${colCount}">▲ ${schedCount} Scheduled Transaction${schedCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
+      html += `<tr class="scheduled-separator-row"><td colspan="${colCount}">▲ ${schedCount} Future Transaction${schedCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
       html += '</tbody>';
       if (isMissingRow) {
         html += '<tbody class="missing-tbody">';
@@ -315,7 +327,7 @@ function renderTransactionTable() {
     }
 
     // Separator: end of missing block → start of pending or posted
-    if (!missingSectionEnded && !isMissingRow && !isScheduledRow) {
+    if (!missingSectionEnded && !isMissingRow && !isFutureBlockRow) {
       missingSectionEnded = true;
       const missCount = missingTransactions.length;
       html += `<tr class="missing-separator-row"><td colspan="${colCount}">▲ ${missCount} Missing Transaction${missCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
@@ -328,7 +340,7 @@ function renderTransactionTable() {
     }
 
     // Separator: end of pending block → start of posted
-    if (!pendingSectionEnded && !isPendingRow && !isScheduledRow && !isMissingRow) {
+    if (!pendingSectionEnded && !isPendingRow && !isFutureBlockRow && !isMissingRow) {
       pendingSectionEnded = true;
       const pendingCount = pendingTransactions.length;
       html += `<tr class="pending-separator-row"><td colspan="${colCount}">▲ ${pendingCount} Pending Transaction${pendingCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
@@ -337,7 +349,7 @@ function renderTransactionTable() {
 
     // --- Zone bookmark separators (plaid-synced / manual-historical) ---
     // Only rendered in single-account view when both OB and manual OB exist.
-    if (hasManualOB && !isPendingRow && !isScheduledRow && !isMissingRow) {
+    if (hasManualOB && !isPendingRow && !isFutureBlockRow && !isMissingRow) {
       // Emit "Manual Historical" right after the OB row, before the next transaction
       if (passedOpeningBalance && !emittedManualSep) {
         emittedManualSep = true;
@@ -587,7 +599,7 @@ function renderTransactionTable() {
     const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
     // Build row CSS class based on transaction type
     let rowCssClass = '';
-    if (isScheduledRow) rowCssClass = 'scheduled-row';
+    if (isFutureBlockRow) rowCssClass = 'scheduled-row';
     else if (isMissingRow) rowCssClass = 'missing-row';
     else if (isMatched) rowCssClass = 'matched-row';
     else if (isOrphaned) rowCssClass = 'orphaned-row';
@@ -672,6 +684,8 @@ function renderTransactionTable() {
       categoryCell = `<div class="category-cell"><div class="category-display">${openingBalBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
     } else if (isScheduled) {
       // Scheduled/bill transactions: show bill badge + category, memo editable, category overrideable
+      // Override button is hidden for scheduled transfers — transfers are per-transaction, not rule-based
+      const scheduledIsTransfer = isTransferCategory(txn.user_category) || !!txn.transfer_pair_id;
       const billBadge = isBill
         ? `<span class="source-badge scheduled" title="From bill: ${escapeHtml(txn.name || '')}">📅 Bill</span>`
         : '<span class="source-badge scheduled" title="Scheduled future transaction">📅 Scheduled</span>';
@@ -685,7 +699,7 @@ function renderTransactionTable() {
             <div class="category-ac-list" data-txn-id="${txnId}"></div>
           </div>
           <div class="category-buttons">
-            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
+            ${scheduledIsTransfer ? '' : `<button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}" title="Apply category change">✓</button>`}
             ${isBill ? `<button class="bill-edit-btn" data-bill-id="${escapeHtml(txn.bill_id || '')}" title="Edit this bill">Edit Bill</button>` : ''}
           </div>
         </div>
@@ -703,7 +717,7 @@ function renderTransactionTable() {
             <div class="category-ac-list" data-txn-id="${txnId}"></div>
           </div>
           <div class="category-buttons">
-            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
+            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}" title="Apply category change">✓</button>
           </div>
         </div>
       ` : `<div class="category-cell"><div class="category-display">${missingBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
@@ -720,7 +734,7 @@ function renderTransactionTable() {
             <div class="category-ac-list" data-txn-id="${txnId}"></div>
           </div>
           <div class="category-buttons">
-            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
+            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}" title="Apply category change">✓</button>
             <button class="unmatch-btn" data-txn-id="${txnId}" onclick="unmatchScheduledTransaction('${escapeHtml(txnId)}')" title="Undo match — revert to missing + unhide plaid transaction">Unmatch</button>
           </div>
         </div>
@@ -746,7 +760,7 @@ function renderTransactionTable() {
             <div class="category-ac-list" data-txn-id="${txnId}"></div>
           </div>
           <div class="category-buttons">
-            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
+            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}" title="Apply category change">✓</button>
             <button class="transfer-unlink-btn" data-txn-id="${txnId}" onclick="unlinkTransfer('${escapeHtml(txnId)}')" title="Break this transfer pair">Unlink</button>
           </div>
         </div>
@@ -769,7 +783,7 @@ function renderTransactionTable() {
             <div class="category-ac-list" data-txn-id="${txnId}"></div>
           </div>
           <div class="category-buttons">
-            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}">Override</button>
+            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}" title="Apply category change">✓</button>
             <button class="category-rule" data-txn-id="${txnId}" data-account-id="${accountId}">Rule</button>
             <button class="category-split" data-txn-id="${txnId}" onclick="window.splitModalTxnId='${escapeHtml(txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(txnId)}')); return false;" title="Split this transaction">Split</button>
           </div>
@@ -819,8 +833,8 @@ function renderTransactionTable() {
         html += `
           <td>
             <div style="display: flex; gap: 3px; align-items: center;">
-              <input class="memo-input" type="text" maxlength="256" value="${safeMemoValue}" style="width: 100%; min-width: 100px; padding: 2px 4px; font-size: 12px;">
-              <button class="memo-save" data-txn-id="${txnId}" style="padding: 2px 6px; font-size: 10px;">Save</button>
+              <input class="memo-input" type="text" maxlength="256" value="${safeMemoValue}" placeholder="Add memo…">
+              <button class="memo-save" data-txn-id="${txnId}">Save</button>
             </div>
           </td>
         `;

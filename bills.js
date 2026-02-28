@@ -1430,6 +1430,20 @@ $(document).ready(function () {
       allBills = billsResult;
       allCategories = categoriesResult;
       renderBillsTable();
+
+      // If navigated here from transactions with ?edit=<bill_id>, auto-open the edit modal
+      const urlParams = new URLSearchParams(window.location.search);
+      const editBillId = urlParams.get('edit');
+      if (editBillId) {
+        const billExists = allBills.some(findBill => findBill.bill_id === editBillId);
+        if (billExists) {
+          openBillModal(editBillId);
+        } else {
+          showStatus(`Bill not found: ${editBillId}`, 'error');
+        }
+        // Clean up the URL so a refresh doesn't re-trigger
+        window.history.replaceState({}, '', 'bills.html');
+      }
     } catch (initError) {
       console.error('Failed to initialize bills page:', initError);
       showStatus(`Failed to load: ${initError.message}`, 'error');

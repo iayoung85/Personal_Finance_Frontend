@@ -81,6 +81,17 @@ $(document).ready(async function() {
     }
   });
 
+  // Navigate to bills.html when "Edit Bill" button is clicked on scheduled transactions
+  $(document).on('click', '.bill-edit-btn', function() {
+    const billId = $(this).data('bill-id');
+    if (billId) {
+      // Navigate to bills page with bill ID so the edit modal can open
+      window.location.href = `bills.html?edit=${encodeURIComponent(billId)}`;
+    } else {
+      showStatus('Unable to edit bill: missing bill ID', 'error');
+    }
+  });
+
   // Re-render on date range change and save custom date to localStorage
   $(document).on('input change', '#start-date, #end-date', function() {
     _saveDateRangeToStorage('custom');

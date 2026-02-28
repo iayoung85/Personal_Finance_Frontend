@@ -31,11 +31,12 @@ let chartViewMode = 'primary'; // 'primary' or 'detailed'
 let chartDrilldownPrimary = null; // When non-null, chart shows detailed breakdown for this primary category
 
 // Pastel color palette for chart visualization
+// Richer, more saturated palette that stays readable on a dark background
 const PASTEL_COLORS = [
-  '#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF',
-  '#E0BBE4', '#FFDFD3', '#FEC8D8', '#D4F1F4', '#C9E4DE',
-  '#F7D9C4', '#FAEDCB', '#C9F0DB', '#DBE7E4', '#F0EFEB',
-  '#D5AAFF', '#FFCCE5', '#B4E7CE', '#FDE2E4', '#E2ECE9'
+  '#5B9BD5', '#ED7D72', '#70C1B3', '#F6BD60', '#A78BFA',
+  '#FF8C42', '#4ECDC4', '#F87171', '#38BDF8', '#FBBF24',
+  '#C084FC', '#34D399', '#FB923C', '#60A5FA', '#E879F9',
+  '#2DD4BF', '#F472B6', '#818CF8', '#A3E635', '#FCA5A5'
 ];
 
 // Split transaction modal state

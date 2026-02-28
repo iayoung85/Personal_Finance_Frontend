@@ -39,7 +39,12 @@ async function saveSettings() {
       throw new Error(data.error || 'Failed to save settings');
     }
     
-    showStatus('Settings saved successfully', 'success');
+    showStatus('Settings saved successfully — refreshing transactions…', 'success');
+
+    // Why: bills_upcoming_count and other settings affect the server-side
+    // transaction payload (e.g. number of bill occurrence pseudo-txns).
+    // Re-fetch so the transaction viewer reflects the new settings.
+    await fetchAllTransactions(true);
     setTimeout(() => clearStatus(), 2000);
     
   } catch (error) {
