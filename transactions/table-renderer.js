@@ -250,7 +250,7 @@ function renderTransactionTable() {
   }
   
   if (optionalFields.includes('source')) html += '<th>Source</th>';
-  html += '<th>Category</th>';
+  html += '<th class="th-category">Category</th>';
   
   // Add optional headers
   if (optionalFields.includes('merchant_name')) html += '<th>Merchant</th>';
@@ -630,6 +630,36 @@ function renderTransactionTable() {
     const accountId = txn.account_id || '';
 
     const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
+
+    // Detect transfer early so badge can appear in description cell
+    const isTransfer = isTransferCategory(txn.user_category) || !!txn.transfer_pair_id;
+
+    // Build type badge for the description cell — badges live here so the
+    // category column can be a clean, aligned textbox column.
+    let typeBadge = '';
+    if (isOpeningBalance) {
+      typeBadge = '<span class="source-badge opening-balance" title="Opening balance">Opening Bal</span> ';
+    } else if (isScheduled) {
+      typeBadge = isBill
+        ? `<span class="source-badge scheduled" title="From bill: ${escapeHtml(txn.name || '')}">📅</span> `
+        : '<span class="source-badge scheduled" title="Scheduled future transaction">📅</span> ';
+    } else if (isMissing) {
+      typeBadge = '<span class="source-badge missing" title="Expected payment not found">⚠</span> ';
+    } else if (isMatched) {
+      typeBadge = '<span class="source-badge matched" title="Matched to plaid transaction">✓</span> ';
+    } else if (isOrphaned) {
+      typeBadge = '<span class="source-badge orphaned" title="Orphaned manual transaction">⚡</span> ';
+    } else if (isTransfer) {
+      typeBadge = '<span class="transfer-badge" title="Transfer">⇄</span> ';
+    }
+    // Supplementary badges that can co-exist with the type badge
+    if (txn.is_override) {
+      typeBadge += '<span class="override-badge" title="Manual category override">⊘</span> ';
+    }
+    if (txn.is_split) {
+      typeBadge += '<span class="split-badge" title="Split transaction">✂</span> ';
+    }
+
     // Build row CSS class based on transaction type
     let rowCssClass = '';
     if (isFutureBlockRow) rowCssClass = 'scheduled-row';
@@ -643,7 +673,7 @@ function renderTransactionTable() {
     html += `<tr${rowCssClass ? ` class="${rowCssClass}"` : ''}${rowDataAttrs}>`;
     html += `<td>${dateStr}</td>`;
     html += `<td>${txn.bank_account}</td>`;
-    html += `<td>${pendingBadge}${txn.name || ''}</td>`;
+    html += `<td>${typeBadge}${pendingBadge}${txn.name || ''}</td>`;
     
     // In all accounts view, add amount here; in single account view, it goes later
     if (!showLedgerColumn) {
@@ -692,7 +722,6 @@ function renderTransactionTable() {
     
     // Parse current user_category to get primary and detailed
     let currentParsed = { primary: '', detailed: '' };
-    const isTransfer = isTransferCategory(txn.user_category) || !!txn.transfer_pair_id;
     if (txn.user_category) {
       currentParsed = parseCategoryString(txn.user_category);
     } else if (txn.personal_finance_category) {
@@ -712,22 +741,15 @@ function renderTransactionTable() {
       ? (txn.user_category || '')
       : buildCategoryString(currentParsed.primary, currentParsed.detailed);
 
-    // Create combined category cell with autocomplete input + buttons
-    // Opening balance transactions have locked category — no overrides, rules, or splits allowed
+    // Create combined category cell — badges now live in description cell,
+    // so this column is purely textbox + action buttons for clean alignment.
     let categoryCell;
     if (isOpeningBalance) {
-      const openingBalBadge = '<span class="source-badge opening-balance" title="Opening balance — category is locked">Opening Bal</span>';
-      categoryCell = `<div class="category-cell"><div class="category-display">${openingBalBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
+      categoryCell = `<div class="category-cell"><span class="category-locked">${escapeHtml(currentFullCategory || 'Uncategorized')}</span></div>`;
     } else if (isScheduled) {
-      // Scheduled/bill transactions: show bill badge + category, memo editable, category overrideable
-      // Override button is hidden for scheduled transfers — transfers are per-transaction, not rule-based
       const scheduledIsTransfer = isTransferCategory(txn.user_category) || !!txn.transfer_pair_id;
-      const billBadge = isBill
-        ? `<span class="source-badge scheduled" title="From bill: ${escapeHtml(txn.name || '')}">📅 Bill</span>`
-        : '<span class="source-badge scheduled" title="Scheduled future transaction">📅 Scheduled</span>';
       categoryCell = txnId ? `
         <div class="category-cell">
-          <div class="category-display">${billBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div>
           <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
             <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
                    value="${escapeHtml(currentFullCategory)}" placeholder="Type to search categories…"
@@ -739,13 +761,10 @@ function renderTransactionTable() {
             ${isBill ? `<button class="bill-edit-btn" data-bill-id="${escapeHtml(txn.bill_id || '')}" title="Edit this bill">Edit Bill</button>` : ''}
           </div>
         </div>
-      ` : `<div class="category-cell"><div class="category-display">${billBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
+      ` : `<div class="category-cell"><span class="category-locked">${escapeHtml(currentFullCategory || 'Uncategorized')}</span></div>`;
     } else if (isMissing) {
-      // Missing transactions: show missing badge + category, allow match or delete
-      const missingBadge = '<span class="source-badge missing" title="Expected payment not found">⚠ Missing</span>';
       categoryCell = txnId ? `
         <div class="category-cell">
-          <div class="category-display">${missingBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div>
           <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
             <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
                    value="${escapeHtml(currentFullCategory)}" placeholder="Type to search categories…"
@@ -756,13 +775,10 @@ function renderTransactionTable() {
             <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}" title="Apply category change">✓</button>
           </div>
         </div>
-      ` : `<div class="category-cell"><div class="category-display">${missingBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
+      ` : `<div class="category-cell"><span class="category-locked">${escapeHtml(currentFullCategory || 'Uncategorized')}</span></div>`;
     } else if (isMatched) {
-      // Matched transactions: show matched badge + unmatch button
-      const matchedBadge = '<span class="source-badge matched" title="Matched: scheduled transaction linked to plaid transaction">✓ Matched</span>';
       categoryCell = txnId ? `
         <div class="category-cell">
-          <div class="category-display">${matchedBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div>
           <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
             <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
                    value="${escapeHtml(currentFullCategory)}" placeholder="Type to search categories…"
@@ -774,21 +790,12 @@ function renderTransactionTable() {
             <button class="unmatch-btn" data-txn-id="${txnId}" onclick="unmatchScheduledTransaction('${escapeHtml(txnId)}')" title="Undo match — revert to missing + unhide plaid transaction">Unmatch</button>
           </div>
         </div>
-      ` : `<div class="category-cell"><div class="category-display">${matchedBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
+      ` : `<div class="category-cell"><span class="category-locked">${escapeHtml(currentFullCategory || 'Uncategorized')}</span></div>`;
     } else if (isOrphaned) {
-      // Orphaned transactions: show orphan badge, category locked
-      const orphanBadge = '<span class="source-badge orphaned" title="Orphaned manual transaction — occurred in linked date range after re-link">⚡ Orphaned</span>';
-      categoryCell = `<div class="category-cell"><div class="category-display">${orphanBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div></div>`;
+      categoryCell = `<div class="category-cell"><span class="category-locked">${escapeHtml(currentFullCategory || 'Uncategorized')}</span></div>`;
     } else if (isTransfer) {
-      // Transfer transaction: show transfer badge with account name + unlink button
-      const transferAccountName = parseTransferAccountName(txn.user_category || '');
-      const transferDisplayHtml = transferAccountName
-        ? `<span class="transfer-badge" title="Transfer to/from ${escapeHtml(transferAccountName)}">&#x21C4; Transfer</span> ${escapeHtml(transferAccountName)}`
-        : `<span class="transfer-badge">&#x21C4; Transfer</span>`;
-
       categoryCell = txnId ? `
         <div class="category-cell">
-          <div class="category-display">${transferDisplayHtml}</div>
           <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
             <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
                    value="${escapeHtml(currentFullCategory)}" placeholder="Type [ to reassign transfer…"
@@ -802,16 +809,12 @@ function renderTransactionTable() {
         </div>
       ` : '<span class="pill">N/A</span>';
     } else {
-      const overrideBadge = txn.is_override
-        ? `<span class="override-badge" title="This transaction has a manual override — rules will not change its category">Override <button class='clear-override' data-txn-id='${txnId}' onclick='clearOverride(event)'>X</button></span>`
+      const clearOverrideBtn = txn.is_override
+        ? `<button class='clear-override' data-txn-id='${txnId}' onclick='clearOverride(event)' title='Remove override'>✕</button>`
         : '';
-      
-      // Build split badge if transaction can be split
-      const splitBadge = (!txn.is_split) ? '' : `<span class="split-badge" title="This transaction is split">Split</span>`;
       
       categoryCell = txnId ? `
         <div class="category-cell">
-          <div class="category-display">${splitBadge}${overrideBadge}${escapeHtml(currentFullCategory || 'Uncategorized')}</div>
           <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
             <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
                    value="${escapeHtml(currentFullCategory)}" placeholder="Type to search categories…"
@@ -819,6 +822,7 @@ function renderTransactionTable() {
             <div class="category-ac-list" data-txn-id="${txnId}"></div>
           </div>
           <div class="category-buttons">
+            ${clearOverrideBtn}
             <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}" title="Apply category change">✓</button>
             <button class="category-rule" data-txn-id="${txnId}" data-account-id="${accountId}">Rule</button>
             <button class="category-split" data-txn-id="${txnId}" onclick="window.splitModalTxnId='${escapeHtml(txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(txnId)}')); return false;" title="Split this transaction">Split</button>

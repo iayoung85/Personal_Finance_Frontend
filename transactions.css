@@ -437,10 +437,17 @@ th {
   color: var(--text-primary);
   font-size: 13px;
 }
+
+/* Category header no longer needs extra padding since badges
+   moved to description column — textboxes start at column edge. */
+th.th-category {
+  padding-left: 10px;
+}
 td {
-  padding: 5px 10px;
+  padding: 3px 8px;
   border-bottom: 1px solid var(--border-subtle);
   font-size: 13px;
+  vertical-align: middle;
 }
 tr:nth-child(even) {
   background: var(--bg-surface-elevated);
@@ -1679,47 +1686,67 @@ tr:hover {
 
 .category-cell {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
+/* category-display is kept for system/locked rows (opening balance, orphaned)
+   that have no editable textbox — the flex row structure still applies. */
 .category-display {
   font-size: 11px;
   font-weight: 500;
   color: var(--text-primary);
-  padding: 1px 0;
-  min-height: 14px;
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* Plain-text category shown on locked rows (opening balance, orphaned) */
+.category-locked {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  padding: 1px 5px;
+  line-height: 1.3;
 }
 
 .override-badge {
   display: inline-block;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  line-height: 1;
-  padding: 2px 5px;
+  line-height: 1.2;
+  padding: 1px 4px;
   border-radius: 3px;
   background: var(--color-warning-bg);
   color: var(--color-warning);
   border: 1px solid var(--color-warning-border);
   white-space: nowrap;
   flex-shrink: 0;
-  letter-spacing: 0.02em;
   cursor: default;
+  vertical-align: middle;
 }
 
 .clear-override {
-  font-size: 10px !important;
-  padding: 1px 4px !important;
-  height: auto !important;
-  line-height: 1 !important;
-  background: none !important;
-  color: var(--color-warning) !important;
-  border: none !important;
+  font-size: 9px;
+  padding: 1px 4px;
+  height: auto;
+  line-height: 1;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  border: 1px solid var(--color-warning-border);
+  border-radius: 2px;
   cursor: pointer;
-  vertical-align: baseline;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.clear-override:hover {
+  background: var(--color-warning);
+  color: var(--bg-surface);
 }
 
 .category-dropdown {
@@ -1740,8 +1767,8 @@ tr:hover {
 
 /* ── Memo inline input & save button ── */
 .memo-input {
-  font-size: 11px;
-  padding: 2px 6px;
+  font-size: 10.5px;
+  padding: 1px 5px;
   border: 1px solid var(--border-primary);
   border-radius: 2px;
   background: var(--bg-surface);
@@ -1750,6 +1777,7 @@ tr:hover {
   min-width: 100px;
   box-sizing: border-box;
   transition: border-color 0.15s;
+  line-height: 1.3;
 }
 
 .memo-input:focus {
@@ -1780,22 +1808,25 @@ tr:hover {
   border-color: var(--accent-link);
 }
 
-/* Autocomplete wrapper */
+/* Autocomplete wrapper — flex-grows to fill available space in the row */
 .category-autocomplete-wrap {
   position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .category-autocomplete {
-  font-size: 11px;
-  padding: 2px 6px;
+  font-size: 10.5px;
+  padding: 1px 5px;
   border: 1px solid var(--border-primary);
   border-radius: 2px;
   background: var(--bg-surface);
   color: var(--text-primary);
   width: 100%;
-  min-width: 160px;
+  min-width: 120px;
   box-sizing: border-box;
   transition: border-color 0.15s;
+  line-height: 1.3;
 }
 
 .category-autocomplete:focus {
@@ -1964,6 +1995,8 @@ tr:hover {
 .category-buttons {
   display: inline-flex;
   gap: 2px;
+  flex-shrink: 0;
+  align-items: center;
 }
 
 .category-override,
@@ -1996,15 +2029,16 @@ tr:hover {
 /* ── Transfer Badge & Unlink Button ── */
 .transfer-badge {
   display: inline-block;
-  padding: 2px 6px;
+  padding: 1px 4px;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   background: var(--bg-selected);
   color: var(--accent-link);
   border: 1px solid var(--color-info-border);
-  margin-right: 4px;
   white-space: nowrap;
+  vertical-align: middle;
+  line-height: 1.2;
 }
 
 /* Transfer-aware date range (9i): "older → newer" display for cross-account transfers */
@@ -2057,12 +2091,14 @@ tr:hover {
 /* Source Badge Styles */
 .source-badge {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 1px 4px;
   border-radius: 3px;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 600;
-  margin-right: 6px;
+  margin-right: 3px;
   white-space: nowrap;
+  vertical-align: middle;
+  line-height: 1.2;
 }
 
 .source-badge.plaid {
@@ -2268,18 +2304,20 @@ tr:hover {
   color: var(--color-danger-muted);
 }
 
-/* Split Badge */
+/* Split Badge — compact icon-only style in description cell */
 .split-badge {
   display: inline-block;
   background: var(--bg-surface-elevated);
   color: var(--accent-link);
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
   font-weight: 600;
-  margin-right: 6px;
+  margin-right: 3px;
   white-space: nowrap;
   border: 1px solid var(--border-strong);
+  vertical-align: middle;
+  line-height: 1.2;
 }
 
 /* Split Transaction Group Styling */
