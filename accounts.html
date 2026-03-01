@@ -29,6 +29,12 @@
         <!-- Filter / Search -->
         <div class="sidebar-search">
           <input type="text" id="sidebar-filter" placeholder="Search banks or accounts…" oninput="onSidebarFilterChange()">
+          <div class="sidebar-filter-row">
+            <label class="sidebar-archived-label">
+              <input type="checkbox" id="show-archived-toggle" onchange="toggleArchivedVisibility()">
+              Show archived
+            </label>
+          </div>
         </div>
         <div class="sidebar-columns">
           <!-- Bank List (left column) -->

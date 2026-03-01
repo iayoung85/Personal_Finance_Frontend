@@ -70,6 +70,8 @@ input {
   border-radius: 6px;
   font-size: 14px;
   transition: border-color 0.3s;
+  background-color: var(--bg-input);
+  color: var(--text-primary);
 }
 
 input:focus {

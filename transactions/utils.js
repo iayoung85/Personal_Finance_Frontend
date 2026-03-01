@@ -35,12 +35,15 @@ function showStatus(message, type) {
   const statusDiv = document.getElementById('status-message');
   statusDiv.className = `status-message ${type}`;
   statusDiv.textContent = message;
-  statusDiv.style.display = 'block';
+  // Do NOT toggle display — space is always reserved by CSS min-height.
+  // Visibility is controlled by the type class in transactions.css.
 }
 
 function clearStatus() {
   const statusDiv = document.getElementById('status-message');
-  statusDiv.style.display = 'none';
+  // Reset to base class only — CSS hides it via visibility:hidden when no type class is present.
+  statusDiv.className = 'status-message';
+  statusDiv.textContent = '';
 }
 
 /**

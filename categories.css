@@ -55,12 +55,14 @@ input[type="checkbox"] {
   margin-right: 8px;
 }
 
-input[type="date"], select {
+input[type="date"] {
   padding: 5px 8px;
   border: 1px solid var(--border-primary);
   border-radius: 4px;
   margin-right: 4px;
   font-size: 13px;
+  background: var(--bg-input);
+  color: var(--text-primary);
 }
 
 /* ── Dark-Mode Form Inputs ─────────────────────────────────── */

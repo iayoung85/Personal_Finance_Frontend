@@ -162,7 +162,7 @@ function _buildBankDetailHtml(bank) {
 function _buildBankAccountsList(bank) {
   const childAccounts = bank.accounts || [];
   if (childAccounts.length === 0) {
-    return '<div style="color: #999; font-size: 13px;">No accounts under this bank.</div>';
+    return '<div style="color: var(--text-muted); font-size: 13px;">No accounts under this bank.</div>';
   }
 
   let html = '<div style="display: flex; flex-direction: column; gap: 4px;">';
@@ -173,13 +173,13 @@ function _buildBankAccountsList(bank) {
     const archivedTag = account.is_archived ? ' <span class="badge badge-archived" style="font-size:9px; padding:1px 4px;">Archived</span>' : '';
 
     html += `
-      <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: #fafafa; border-radius: 4px; cursor: pointer;"
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 4px; cursor: pointer;"
            onclick="selectAccount('${account.account_id}')">
-        <span style="font-size: 13px;">
+        <span style="font-size: 13px; color: var(--text-primary);">
           ${_escapeHtml(displayName)}${archivedTag}
           <span class="account-type-badge" style="margin-left: 4px;">${account.account_subcategory || account.account_category || ''}</span>
         </span>
-        <span style="font-size: 13px; font-weight: 500; ${balance < 0 ? 'color: #c62828;' : 'color: #2e7d32;'}">${balanceStr}</span>
+        <span style="font-size: 13px; font-weight: 500; ${balance < 0 ? 'color: var(--color-negative);' : 'color: var(--color-positive);'}">${balanceStr}</span>
       </div>
     `;
   }

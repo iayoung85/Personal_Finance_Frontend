@@ -924,7 +924,8 @@ async function clearOverride(event) {
 
 /**
  * Open modal to create a rule from transaction categorization.
- * Improved UX with transaction preview and labels that match visible table columns.
+ * The category section is editable — changing it here also updates the
+ * source transaction (same as applying a manual override directly).
  */
 function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, accountId) {
   if (!selectedPrimary) {
@@ -938,7 +939,9 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
     return;
   }
 
-  const categoryString = resolvedTarget.value;
+  // originalCategory is used later to detect whether the user changed the
+  // category inside the modal (triggers an override on the source transaction).
+  const originalCategory = resolvedTarget.value;
 
   // --- Transaction field values for preview & smart defaults ---
   const txnDescription = txn?.name || '';
@@ -956,60 +959,79 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
   // Format amount for display
   const fmtAmount = txnAmount !== '' ? new Intl.NumberFormat('en-US', { style: 'currency', currency: txnCurrency }).format(txnAmount) : '—';
 
-  // Build rule configuration form
+  // Pre-build category dropdown options using the same helpers used in table rows.
+  const primaryOptions   = buildPrimaryDropdownOptions(selectedPrimary);
+  const detailedOptions  = buildDetailedDropdownOptions(selectedPrimary, selectedDetailed);
+  // Disable the detailed select when the selected primary has no detailed categories
+  // (buildDetailedDropdownOptions renders a placeholder option in that case).
+  const noDetailedAvailable = selectedPrimary === 'Uncategorized' ||
+                               extractDetailedCategories(availableCategories, selectedPrimary).length === 0;
+
+  // Build rule configuration form — all colors use CSS variables so they
+  // automatically match the VS Code dark theme defined in theme.css.
   const formHtml = `
     <div style="display: grid; gap: 14px;">
 
       <!-- Transaction preview so users can see what each field refers to -->
-      <details open style="background: #f8f9fb; border: 1px solid #e2e4e9; border-radius: 6px; padding: 10px 12px;">
+      <details open class="rule-modal-preview">
         <summary style="font-weight: 600; cursor: pointer; user-select: none;">Transaction being matched</summary>
         <table style="width:100%; margin-top: 8px; font-size: 0.92em; border-collapse: collapse;">
-          <tr><td style="padding:3px 8px 3px 0; color:#666; white-space:nowrap;">Description</td>
-              <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnDescription) || '<em style="color:#aaa">empty</em>'}</td></tr>
-          <tr><td style="padding:3px 8px 3px 0; color:#666; white-space:nowrap;">Merchant</td>
-              <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnMerchant) || '<em style="color:#aaa">not available</em>'}</td></tr>
-          <tr><td style="padding:3px 8px 3px 0; color:#666; white-space:nowrap;">Amount</td>
-              <td style="padding:3px 0; font-family: monospace;">${fmtAmount}</td></tr>
+          <tr>
+            <td class="rule-modal-label">Description</td>
+            <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnDescription) || '<em class="rule-modal-empty">empty</em>'}</td>
+          </tr>
+          <tr>
+            <td class="rule-modal-label">Merchant</td>
+            <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnMerchant) || '<em class="rule-modal-empty">not available</em>'}</td>
+          </tr>
+          <tr>
+            <td class="rule-modal-label">Amount</td>
+            <td style="padding:3px 0; font-family: monospace;">${fmtAmount}</td>
+          </tr>
         </table>
       </details>
 
       <div>
-        <label style="display: block; font-weight: 500; margin-bottom: 4px;">Rule Name</label>
-        <input id="rule-modal-name" type="text" placeholder="Rule name" value="${escapeHtml(defaultRuleName)}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
+        <label class="rule-modal-field-label">Rule Name</label>
+        <input id="rule-modal-name" type="text" placeholder="Rule name"
+               value="${escapeHtml(defaultRuleName)}" class="modal-input">
       </div>
 
       <div>
-        <label style="display: block; font-weight: 500; margin-bottom: 4px;">Match Type</label>
-        <select id="rule-modal-match-type" onchange="_ruleModalMatchTypeChanged()" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
+        <label class="rule-modal-field-label">Match Type</label>
+        <select id="rule-modal-match-type" onchange="_ruleModalMatchTypeChanged()" class="modal-input">
           <option value="name_contains"${defaultMatchType === 'name_contains' ? ' selected' : ''}>Description contains</option>
           <option value="merchant_contains"${defaultMatchType === 'merchant_contains' ? ' selected' : ''}>Merchant contains</option>
           <option value="amount_range">Amount range</option>
           <option value="regex">Regular expression (advanced)</option>
         </select>
-        <small id="rule-modal-match-hint" style="color: #666; margin-top: 4px; display: block;"></small>
+        <small id="rule-modal-match-hint" class="rule-modal-hint"></small>
       </div>
 
       <!-- Text-based match value (description / merchant / regex) -->
       <div id="rule-modal-text-group">
-        <label style="display: block; font-weight: 500; margin-bottom: 4px;">Match Value</label>
-        <input id="rule-modal-match-value" type="text" placeholder="Text to search for" value="${escapeHtml(defaultMatchValue)}" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
+        <label class="rule-modal-field-label">Match Value</label>
+        <input id="rule-modal-match-value" type="text" placeholder="Text to search for"
+               value="${escapeHtml(defaultMatchValue)}" class="modal-input">
       </div>
 
       <!-- Amount range inputs (shown only for amount_range) -->
       <div id="rule-modal-amount-group" style="display: none;">
-        <label style="display: block; font-weight: 500; margin-bottom: 4px;">Amount Range</label>
+        <label class="rule-modal-field-label">Amount Range</label>
         <div style="display: flex; gap: 8px; align-items: center;">
-          <input id="rule-modal-amount-min" type="number" step="0.01" min="0" placeholder="Min" value="" style="flex:1; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
-          <span>to</span>
-          <input id="rule-modal-amount-max" type="number" step="0.01" min="0" placeholder="Max" value="" style="flex:1; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
+          <input id="rule-modal-amount-min" type="number" step="0.01" min="0"
+                 placeholder="Min" value="" class="modal-input" style="flex:1;">
+          <span style="color: var(--text-secondary);">to</span>
+          <input id="rule-modal-amount-max" type="number" step="0.01" min="0"
+                 placeholder="Max" value="" class="modal-input" style="flex:1;">
         </div>
-        <small style="color: #666; margin-top: 4px; display: block;">Leave either blank for no limit. Matches absolute value of amount.</small>
+        <small class="rule-modal-hint">Leave either blank for no limit. Matches absolute value of amount.</small>
       </div>
 
       <div>
-        <label style="display: block; font-weight: 500; margin-bottom: 4px;">Priority</label>
-        <input id="rule-modal-priority" type="number" placeholder="0" value="0" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 3px;">
-        <small style="color: #666; margin-top: 4px; display: block;">Higher priority rules are applied first. Default is 0.</small>
+        <label class="rule-modal-field-label">Priority</label>
+        <input id="rule-modal-priority" type="number" placeholder="0" value="0" class="modal-input">
+        <small class="rule-modal-hint">Higher priority rules are applied first. Default is 0.</small>
       </div>
 
       <label id="rule-modal-case-row" style="display: flex; align-items: center; gap: 6px;">
@@ -1022,9 +1044,19 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
         <span style="font-weight: 500;">Active</span>
       </label>
 
-      <div style="background: #f5f5f5; padding: 10px; border-radius: 3px; border-left: 3px solid #6366f1;">
-        <strong>Assign category:</strong> ${escapeHtml(categoryString)}
+      <!-- Editable category assignment — changing this also updates the
+           source transaction (override), same as editing it in the table. -->
+      <div class="rule-modal-category-block">
+        <div class="rule-modal-category-header">
+          <span class="rule-modal-category-title">Assign category</span>
+          <span class="rule-modal-category-sub">Changing this will also update this transaction</span>
+        </div>
+        <div style="display: grid; gap: 8px; margin-top: 8px;">
+          <select id="rule-modal-primary" class="modal-input">${primaryOptions}</select>
+          <select id="rule-modal-detailed" class="modal-input"${noDetailedAvailable ? ' disabled' : ''}>${detailedOptions}</select>
+        </div>
       </div>
+
     </div>
   `;
 
@@ -1033,9 +1065,21 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
     body: formHtml,
     actions: [
       { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Create Rule', onClick: () => submitCategoryRule(categoryString, txnId) }
+      { label: 'Create Rule', onClick: () => submitCategoryRule(txnId, accountId, originalCategory) }
     ]
   });
+
+  // Wire primary dropdown → refresh detailed options
+  const primarySelect  = document.getElementById('rule-modal-primary');
+  const detailedSelect = document.getElementById('rule-modal-detailed');
+  if (primarySelect && detailedSelect) {
+    primarySelect.addEventListener('change', () => {
+      const newPrimary = primarySelect.value;
+      detailedSelect.innerHTML = buildDetailedDropdownOptions(newPrimary, '');
+      const hasOptions = extractDetailedCategories(availableCategories, newPrimary).length > 0;
+      detailedSelect.disabled = !hasOptions;
+    });
+  }
 
   // Store txn data on the modal for match-type switching
   window._ruleModalTxn = { description: txnDescription, merchant: txnMerchant, amount: txnAmount };
@@ -1096,13 +1140,27 @@ function _ruleModalMatchTypeChanged() {
 
 /**
  * Submit the rule creation form and call the API.
+ *
+ * If the user changed the category inside the modal (vs originalCategory),
+ * we first apply a manual override to the source transaction — same behavior
+ * as editing the category inline in the table.
  */
-async function submitCategoryRule(targetCategory, txnId) {
+async function submitCategoryRule(txnId, accountId, originalCategory) {
   const ruleName = document.getElementById('rule-modal-name').value.trim();
   const matchType = document.getElementById('rule-modal-match-type').value;
   const priority = parseInt(document.getElementById('rule-modal-priority').value || '0', 10);
   const caseSensitive = document.getElementById('rule-modal-case-sensitive').checked;
   const isActive = document.getElementById('rule-modal-active').checked;
+
+  // Read the (possibly edited) category from the dropdowns
+  const selectedPrimary  = document.getElementById('rule-modal-primary')?.value || '';
+  const selectedDetailed = document.getElementById('rule-modal-detailed')?.value || '';
+  const resolvedTarget   = resolveTargetCategory(selectedPrimary, selectedDetailed);
+  if (resolvedTarget.error) {
+    showStatus(resolvedTarget.error, 'warning');
+    return;
+  }
+  const targetCategory = resolvedTarget.value;
 
   if (!ruleName) {
     showStatus('Rule name is required', 'warning');
@@ -1137,6 +1195,31 @@ async function submitCategoryRule(targetCategory, txnId) {
   }
 
   try {
+    // If the user changed the category, apply an override to the source
+    // transaction before creating the rule, so both changes land atomically
+    // from the user's perspective.
+    if (txnId && targetCategory !== originalCategory) {
+      const overrideResponse = await authenticatedFetch(
+        `${BACKEND_URL}/api/categorization/transactions/${encodeURIComponent(txnId)}/categorize`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_category: targetCategory })
+        }
+      );
+      const overrideData = await overrideResponse.json();
+      if (!overrideResponse.ok) {
+        showStatus(overrideData.error || 'Failed to update transaction category', 'error');
+        return;
+      }
+      // Sync the local transactions array so the table reflects this immediately
+      const txn = transactions.find(t => t.transaction_id === txnId);
+      if (txn) {
+        txn.user_category = overrideData.updated_category || targetCategory;
+        txn.is_override = true;
+      }
+    }
+
     const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/rules`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1162,12 +1245,12 @@ async function submitCategoryRule(targetCategory, txnId) {
 
     closeModal();
     showStatus(`Rule created: "${ruleName}". Recategorizing transactions...`, 'success');
-    
+
     // Backend already applied rule to matching transactions.
     // Re-fetch transaction list if any were updated (no Plaid sync needed).
     const updatedCount = data.transactions_updated || 0;
     const skippedCount = data.overrides_skipped || 0;
-    
+
     if (updatedCount > 0 || skippedCount > 0) {
       await fetchAllTransactions(true);
       let msg = `Rule created: "${ruleName}" — applied to ${updatedCount} transaction${updatedCount !== 1 ? 's' : ''}`;
@@ -1178,7 +1261,7 @@ async function submitCategoryRule(targetCategory, txnId) {
     } else {
       showStatus(`Rule created: "${ruleName}" — will apply to future transactions`, 'success');
     }
-    
+
     setTimeout(() => clearStatus(), 3000);
   } catch (error) {
     showStatus(`Failed to create rule: ${error.message}`, 'error');

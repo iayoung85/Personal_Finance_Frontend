@@ -20,6 +20,7 @@ let categoriesReference = {}; // Account categories + subcategories from /refere
 let selectedBankId = null;    // null = "All Banks"
 let selectedAccountId = null; // null = no account selected
 let sidebarFilterText = '';   // Current text in the search/filter bar
+let showArchivedAccounts = false; // Controls sidebar visibility of archived banks & accounts
 
 // Pending confirmation action (used by confirm modal)
 let pendingConfirmAction = null;

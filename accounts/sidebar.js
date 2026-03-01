@@ -42,7 +42,8 @@ function _renderBankList() {
     if (filterLower && !_bankMatchesFilter(bank, filterLower)) continue;
 
     if (bank.is_archived) {
-      archivedBanks.push(bank);
+      // Only add to the archived group when the toggle is on
+      if (showArchivedAccounts) archivedBanks.push(bank);
     } else {
       activeBanks.push(bank);
     }
@@ -103,11 +104,12 @@ function _renderAccountList() {
   for (const account of visibleAccounts) {
     // If the parent bank is archived AND the account is archived → archived group
     const parentBank = banksCache.find(b => b.bank_id === account.bank_id);
-    const inArchivedGroup = account.is_archived && parentBank && parentBank.is_archived;
+    const inArchivedGroup = showArchivedAccounts && account.is_archived && parentBank && parentBank.is_archived;
 
     if (inArchivedGroup) {
       archivedAccounts.push(account);
-    } else {
+    } else if (!account.is_archived || showArchivedAccounts) {
+      // Show active accounts always; show individually-archived accounts only when toggle is on
       activeAccounts.push(account);
     }
   }
@@ -267,6 +269,11 @@ function selectAccount(accountId) {
 }
 
 // ── Sidebar Toggle Helpers ───────────────────────────────────
+
+function toggleArchivedVisibility() {
+  showArchivedAccounts = document.getElementById('show-archived-toggle').checked;
+  renderSidebar();
+}
 
 function onSidebarFilterChange() {
   sidebarFilterText = document.getElementById('sidebar-filter').value.trim();
