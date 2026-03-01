@@ -107,6 +107,14 @@ window.BACKEND_URL_PROMISE = detectBackendUrl().then(url => {
   window.ensureLocalDevSession();
   console.log('[Backend Detection] Using backend URL:', url);
   console.log('[Backend Detection] Local auto-login enabled:', window.LOCAL_AUTO_LOGIN_ENABLED);
+  
+  if (window.LOCAL_AUTO_LOGIN_ENABLED) {
+    const s = document.createElement('script');
+    s.src = 'dev-tools.js';
+    s.onload = () => window.initDevTools && window.initDevTools();
+    document.body.appendChild(s);
+  }
+
   return url;
 });
 
