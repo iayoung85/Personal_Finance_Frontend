@@ -46,6 +46,12 @@ $(document).ready(async function() {
   // Initialize right-click context menu on transaction rows
   initContextMenu();
 
+  // Check for pending reconciliation proposals and show banner if needed
+  await checkAndRenderReconciliationBanner();
+
+  // Auto-enable "Show missing/orphaned" toggle when count is small (≤10)
+  _autoSetMissingOrphanedToggle();
+
   // If returning from categories.html after creating a category for a
   // pending manual transaction, auto-submit it now that the page is ready.
   await _submitPendingManualTransaction();
@@ -126,6 +132,11 @@ $(document).ready(async function() {
     renderTransactionTable();
   });
 
+  // Re-render when show-missing-orphaned toggle changes
+  $(document).on('change', '#show-missing-orphaned', function() {
+    renderTransactionTable();
+  });
+
   // Manual categorize handler
   $(document).on('click', '.manual-category-save', function() {
     const txnId = $(this).data('txn-id');
@@ -169,3 +180,19 @@ $(document).ready(async function() {
   });
 
 });
+
+/**
+ * Auto-check the "Show missing/orphaned" toggle when there are few
+ * outstanding items (≤10). Per blueprint: "default: hidden if > 10,
+ * visible if few."
+ */
+function _autoSetMissingOrphanedToggle() {
+  const missingOrOrphaned = transactions.filter(txn =>
+    (txn.source === 'scheduled' && txn.status === 'missing')
+    || (txn.source === 'manual' && txn.status === 'missing')
+  );
+  const toggle = document.getElementById('show-missing-orphaned');
+  if (toggle) {
+    toggle.checked = missingOrOrphaned.length > 0 && missingOrOrphaned.length <= 10;
+  }
+}

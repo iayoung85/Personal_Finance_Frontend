@@ -75,6 +75,10 @@
                 <input type="checkbox" id="show-pending-toggle">
                 <span>Show pending</span>
               </label>
+              <label class="toggle-label">
+                <input type="checkbox" id="show-missing-orphaned">
+                <span>Show missing/orphaned</span>
+              </label>
               <button onclick="saveSettings()" class="btn-quick-range">Save</button>
             </div>
           </div>
@@ -96,6 +100,9 @@
           </div>
         </div>
         <div id="status-message" class="status-message"></div>
+
+        <!-- ── Reconciliation Banner (appears when orphaned/missing txns need review) ── -->
+        <div id="reconciliation-banner" class="reconciliation-banner hidden"></div>
 
         <!-- ── Pending Transactions Placeholder (Phase 2-D) ── -->
         <div id="pending-table-container" class="pending-table-container"></div>
@@ -292,6 +299,7 @@
   <script src="transactions/export.js"></script>
   <script src="transactions/manual-transactions.js"></script>
   <script src="transactions/split-transactions.js"></script>
+  <script src="transactions/reconciliation.js"></script>
   <script src="transactions/context-menu.js"></script>
   <script src="transactions/transfer-modal.js"></script>
   <script src="transactions/main.js"></script>

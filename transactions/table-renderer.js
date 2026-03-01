@@ -125,8 +125,9 @@ function renderTransactionTable() {
   // 2. Missing (source='scheduled', status='missing')
   // 3. Pending (pending=true)
   // 4. Cleared/posted (everything else)
-  // In All Accounts view: hide OB, MOB, reconciliation, orphaned
+  // In All Accounts view: hide OB, MOB, reconciliation
   const isAllAccounts = selectedAccountMode === 'all';
+  const showMissingOrphaned = document.getElementById('show-missing-orphaned')?.checked ?? false;
 
   const scheduledFuture = [];
   const missingTransactions = [];
@@ -137,16 +138,23 @@ function renderTransactionTable() {
   const _todayDateStr = _formatDateLocal(new Date());
 
   filteredTransactions.forEach(txn => {
-    // All Accounts view: hide system rows and orphaned
+    // All Accounts view: hide system rows always
     if (isAllAccounts) {
       if (txn.source === 'opening_balance' || txn.source === 'manual_opening_balance' || txn.source === 'reconciliation') return;
-      if (txn.source === 'manual' && txn.status === 'missing') return; // orphaned
+    }
+
+    // Orphaned (manual + missing) — governed by the show-missing-orphaned toggle
+    const isOrphanedTxn = txn.source === 'manual' && txn.status === 'missing';
+    const isMissingTxn = txn.source === 'scheduled' && txn.status === 'missing';
+    if (isOrphanedTxn || isMissingTxn) {
+      if (showMissingOrphaned) {
+        missingTransactions.push(txn);
+      }
+      return;
     }
 
     if (txn.source === 'scheduled' && txn.status === 'future') {
       scheduledFuture.push(txn);
-    } else if (txn.source === 'scheduled' && txn.status === 'missing') {
-      missingTransactions.push(txn);
     } else if (txn.pending) {
       pendingTransactions.push(txn);
     } else if (txn.date > _todayDateStr && txn.source === 'manual') {
@@ -159,10 +167,20 @@ function renderTransactionTable() {
     }
   });
   
+  // For transfers in all-accounts view, sort by the older of the two dates
+  // so both sides of a transfer cluster together chronologically.
+  // In single-account view, use the transaction's own date (already correct).
+  const _transferSortDate = (txn) => {
+    if (!isAllAccounts || !txn.transfer_pair_id || !txn.transfer_partner_date) {
+      return txn.date;
+    }
+    return txn.date < txn.transfer_partner_date ? txn.date : txn.transfer_partner_date;
+  };
+
   // Sort helper: date descending, then transaction ID descending within same day
   // Mirrors backend balance engine order (date ASC, txn_id ASC) reversed
   const sortNewestFirst = (rowA, rowB) => {
-    const dateComparison = rowB.date.localeCompare(rowA.date);
+    const dateComparison = _transferSortDate(rowB).localeCompare(_transferSortDate(rowA));
     if (dateComparison !== 0) return dateComparison;
     const idA = rowA.transaction_id || '';
     const idB = rowB.transaction_id || '';
@@ -308,7 +326,8 @@ function renderTransactionTable() {
     // with dates after today. Used only for block-boundary logic.
     const isFutureBlockRow = (txn.source === 'scheduled' && txn.status === 'future')
       || (txn.date > _todayDateStr && txn.source === 'manual');
-    const isMissingRow = txn.source === 'scheduled' && txn.status === 'missing';
+    const isMissingRow = (txn.source === 'scheduled' && txn.status === 'missing')
+      || (txn.source === 'manual' && txn.status === 'missing');
     const isPendingRow = !!txn.pending;
 
     // --- Block boundary separators ---
@@ -331,7 +350,7 @@ function renderTransactionTable() {
     if (!missingSectionEnded && !isMissingRow && !isFutureBlockRow) {
       missingSectionEnded = true;
       const missCount = missingTransactions.length;
-      html += `<tr class="missing-separator-row"><td colspan="${colCount}">▲ ${missCount} Missing Transaction${missCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
+      html += `<tr class="missing-separator-row"><td colspan="${colCount}">▲ ${missCount} Missing/Orphaned Transaction${missCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
       html += '</tbody>';
       if (isPendingRow) {
         html += '<tbody class="pending-tbody">';
@@ -550,12 +569,25 @@ function renderTransactionTable() {
     
     // Normal transaction rendering (not split)
     // Parse the date string properly
-    const dateStr = new Date(txn.date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      timeZone: 'UTC'
-    });
+    const _dateFormatOpts = { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC' };
+    const ownDateStr = new Date(txn.date).toLocaleDateString('en-US', _dateFormatOpts);
+
+    // Transfer-aware date display:
+    // When a transfer has a partner date that differs from its own, show "older → newer"
+    // so the user sees both the debit and credit posting dates at a glance.
+    // If both dates match, just show the single date as normal.
+    let dateStr = ownDateStr;
+    const hasTransferPartnerDate = txn.transfer_pair_id
+      && txn.transfer_partner_date
+      && txn.transfer_partner_date !== txn.date;
+    if (hasTransferPartnerDate) {
+      const partnerDateStr = new Date(txn.transfer_partner_date).toLocaleDateString('en-US', _dateFormatOpts);
+      const ownTime = new Date(txn.date).getTime();
+      const partnerTime = new Date(txn.transfer_partner_date).getTime();
+      const olderStr = ownTime <= partnerTime ? ownDateStr : partnerDateStr;
+      const newerStr = ownTime <= partnerTime ? partnerDateStr : ownDateStr;
+      dateStr = `<span class="transfer-date-range" title="Sent ${olderStr}, received ${newerStr}">${olderStr} → ${newerStr}</span>`;
+    }
     
     // Amount is already in ledger convention:
     // positive = money in (deposits, refunds), negative = money out (purchases, charges)

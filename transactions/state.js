@@ -48,3 +48,6 @@ let isEditingSplit = false;
 // Maps transaction ID (plaid or manual) to its running balance string
 let balanceHistoryLookup = {};
 let balanceHistoryLoading = false;
+
+// Reconciliation banner state — populated by checkAndRenderReconciliationBanner()
+let reconciliationStatus = null;

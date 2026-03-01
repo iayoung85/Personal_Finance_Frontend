@@ -2007,6 +2007,14 @@ tr:hover {
   white-space: nowrap;
 }
 
+/* Transfer-aware date range (9i): "older → newer" display for cross-account transfers */
+.transfer-date-range {
+  white-space: nowrap;
+  font-size: 0.85em;
+  color: var(--accent-link);
+  letter-spacing: -0.2px;
+}
+
 .transfer-unlink-btn {
   font-size: 9px;
   padding: 1px 4px;
@@ -2975,4 +2983,448 @@ tr:hover {
   font-size: 11px;
   color: var(--text-muted);
   margin-left: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Reconciliation Center — Banner, Resolution Modal, Inline Fixes
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Reconciliation Banner ──────────────────────────────────── */
+
+.reconciliation-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning);
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.reconciliation-banner.hidden {
+  display: none;
+}
+
+.reconciliation-banner-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.reconciliation-banner-text {
+  flex: 1;
+}
+
+.reconciliation-banner-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-banner {
+  padding: 5px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  white-space: nowrap;
+}
+
+.btn-banner-primary {
+  background: var(--accent-link);
+  color: #fff;
+}
+
+.btn-banner-primary:hover {
+  opacity: 0.9;
+}
+
+.btn-banner-secondary {
+  background: var(--bg-surface-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.btn-banner-secondary:hover {
+  background: var(--bg-page);
+}
+
+/* ── Resolution Center Modal ────────────────────────────────── */
+
+.recon-center {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.recon-section {
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 14px;
+}
+
+.recon-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.recon-section-header h4 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.recon-section-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+}
+
+.recon-proposals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Proposal Cards ──────────────────────────────────────────── */
+
+.recon-proposal-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  padding: 10px;
+  background: var(--bg-surface-elevated);
+  transition: border-color 0.2s;
+}
+
+.recon-proposal-card.recon-decided-approve {
+  border-color: var(--color-success);
+  background: rgba(78,201,176,0.06);
+}
+
+.recon-proposal-card.recon-decided-reject {
+  border-color: var(--color-danger);
+  background: rgba(244,71,71,0.04);
+  opacity: 0.7;
+}
+
+.recon-proposal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.recon-confidence {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.recon-confidence-high {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.recon-confidence-medium {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.recon-confidence-low {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.recon-reasons {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex: 1;
+}
+
+.recon-proposal-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* ── Side-by-side comparison ─────────────────────────────────── */
+
+.recon-comparison {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.recon-side {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  font-size: 12px;
+}
+
+.recon-side-manual {
+  border-left: 3px solid var(--accent-purple);
+}
+
+.recon-side-plaid {
+  border-left: 3px solid var(--accent-link);
+}
+
+.recon-side-label {
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.recon-side-arrow {
+  display: flex;
+  align-items: center;
+  font-size: 20px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.recon-txn-detail {
+  margin-bottom: 3px;
+  color: var(--text-primary);
+}
+
+.recon-txn-detail strong {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* ── Recon action buttons ────────────────────────────────────── */
+
+.btn-recon {
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+
+.btn-recon:hover {
+  background: var(--bg-surface-elevated);
+}
+
+.btn-recon-approve.active {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.btn-recon-reject.active {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.btn-recon-bulk-delete {
+  color: var(--color-danger);
+}
+
+.btn-recon-bulk-delete:hover {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger);
+}
+
+.btn-recon-bulk-keep {
+  color: var(--color-success);
+}
+
+.btn-recon-bulk-keep:hover {
+  background: var(--color-success-bg);
+  border-color: var(--color-success);
+}
+
+/* ── Missing / Orphaned transaction list in modal ────────────── */
+
+.recon-missing-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recon-select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 4px 0 6px;
+  cursor: pointer;
+}
+
+.recon-missing-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  font-size: 12px;
+}
+
+.recon-missing-row:hover {
+  background: var(--bg-surface-elevated);
+}
+
+.recon-missing-checkbox {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.recon-missing-date {
+  width: 80px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.recon-missing-desc {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.recon-missing-amount {
+  width: 85px;
+  flex-shrink: 0;
+  text-align: right;
+  font-weight: 500;
+}
+
+.recon-missing-category {
+  width: 120px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.recon-missing-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-recon-delete-single,
+.btn-recon-keep-single {
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+.btn-recon-delete-single:hover {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.btn-recon-keep-single:hover {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.recon-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 20px;
+  font-style: italic;
+}
+
+.recon-approve-all-btn {
+  font-size: 12px;
+}
+
+/* ── Inline Match Picker ─────────────────────────────────────── */
+
+.recon-match-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 400px;
+  overflow-y: auto;
+  margin-top: 10px;
+}
+
+.recon-match-candidate {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  background: var(--bg-surface);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.recon-match-candidate:hover {
+  background: var(--bg-surface-elevated);
+  border-color: var(--accent-link);
+}
+
+.recon-match-candidate-highlight {
+  border-color: var(--color-success-border);
+}
+
+.recon-match-candidate-highlight:hover {
+  border-color: var(--color-success);
+}
+
+.recon-match-date {
+  width: 80px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.recon-match-desc {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.recon-match-amount {
+  width: 85px;
+  flex-shrink: 0;
+  text-align: right;
+  font-weight: 500;
+}
+
+.recon-amount-match-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  flex-shrink: 0;
 }

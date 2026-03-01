@@ -357,6 +357,10 @@ async function _updateManualTransaction(transactionId, accountId) {
     } catch (cacheError) { /* non-fatal */ }
 
     await fetchAllTransactions(true);
+    if (selectedAccountMode === 'single' && selectedAccountId) {
+      await fetchBalanceHistory(selectedAccountId);
+      renderTransactionTable();
+    }
 
   } catch (error) {
     _showManualTxnError(`Failed to update: ${error.message}`);
@@ -534,6 +538,9 @@ async function _submitPendingManualTransaction() {
       localStorage.removeItem('pf_transactions_cached_at');
     } catch (_cacheError) { /* non-fatal */ }
     await fetchAllTransactions(true);
+    if (selectedAccountMode === 'single' && selectedAccountId) {
+      await fetchBalanceHistory(selectedAccountId);
+    }
     renderTransactionTable();
 
   } catch (networkError) {
@@ -734,6 +741,12 @@ async function saveManualTransaction() {
     // Fetch all transactions in background to ensure consistency and get bank_account names
     try {
       await fetchAllTransactions(true);
+      // fetchAllTransactions renders with stale balanceHistoryLookup — re-fetch
+      // history so the new transaction's running balance appears immediately.
+      if (selectedAccountMode === 'single' && selectedAccountId) {
+        await fetchBalanceHistory(selectedAccountId);
+        renderTransactionTable();
+      }
     } catch (e) {
       // If fetch fails, user still sees the transaction locally
       console.warn('Background fetch failed but transaction is locally cached:', e);
@@ -770,6 +783,10 @@ async function deleteManualTransaction(manualTransactionId) {
 
     // Refresh transactions
     await fetchAllTransactions(true);
+    if (selectedAccountMode === 'single' && selectedAccountId) {
+      await fetchBalanceHistory(selectedAccountId);
+      renderTransactionTable();
+    }
 
   } catch (error) {
     showStatus(`Failed to delete transaction: ${error.message}`, 'error');

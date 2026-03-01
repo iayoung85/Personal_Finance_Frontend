@@ -838,6 +838,15 @@ async function _applyTransferAssignment(txnId, sourceAccountId, targetAccount) {
     // transaction changes the target account's balance.
     await Promise.all([fetchAllTransactions(true), loadAccounts()]);
 
+    // fetchAllTransactions renders the table immediately, but reads the stale
+    // balanceHistoryLookup that was built when the account was last selected.
+    // Re-fetching history and re-rendering ensures the new transfer transaction
+    // row shows a running balance without the user having to re-click the account.
+    if (selectedAccountMode === 'single' && selectedAccountId) {
+      await fetchBalanceHistory(selectedAccountId);
+      renderTransactionTable();
+    }
+
     // Build a descriptive status message
     const unhideNote = wasHidden ? ' ("Hide Transfers" unchecked so you can see it)' : '';
     showStatus(`Transfer paired with ${targetDisplayName}${unhideNote}`, 'success');
@@ -870,6 +879,12 @@ async function unlinkTransfer(txnId) {
     // Refresh both transactions and sidebar balances — the unlinked
     // counterpart may have changed a different account's balance.
     await Promise.all([fetchAllTransactions(true), loadAccounts()]);
+
+    if (selectedAccountMode === 'single' && selectedAccountId) {
+      await fetchBalanceHistory(selectedAccountId);
+      renderTransactionTable();
+    }
+
     setTimeout(() => clearStatus(), 3000);
   } catch (error) {
     showStatus(`Failed to unlink transfer: ${error.message}`, 'error');

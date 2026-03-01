@@ -103,10 +103,52 @@ function _buildMenuItems(txnData) {
   const isOrphaned = source === 'manual' && status === 'missing';
   const isReconciliation = source === 'reconciliation';
 
-  // Opening balance, orphaned, reconciliation, and split children have no context menu
-  if (isOpeningBalance || isOrphaned || isReconciliation || isSplit) return [];
+  // Opening balance, reconciliation, and split children have no context menu
+  if (isOpeningBalance || isReconciliation || isSplit) return [];
 
   const items = [];
+
+  // Orphaned transactions get a dedicated quick-fix menu
+  if (isOrphaned) {
+    items.push({
+      label: '🔗 Match to Transaction',
+      action: 'match-to-adjacent',
+      separator: false,
+    });
+    items.push({
+      label: '✓ Force Keep',
+      action: 'force-keep',
+      separator: false,
+    });
+    items.push({
+      label: '🗑️ Delete',
+      action: 'delete-missing',
+      separator: false,
+      destructive: true,
+    });
+    return items;
+  }
+
+  // Missing transactions get similar quick-fix options
+  if (isMissing) {
+    items.push({
+      label: '🔗 Match to Transaction',
+      action: 'match-to-adjacent',
+      separator: false,
+    });
+    items.push({
+      label: '✓ Force Keep',
+      action: 'force-keep',
+      separator: false,
+    });
+    items.push({
+      label: '🗑️ Delete',
+      action: 'delete-missing',
+      separator: false,
+      destructive: true,
+    });
+    return items;
+  }
 
   // "Modify" — manual transactions and scheduled/bill transactions
   const showModify = isManual || (isScheduled && (isBill || !isBill));
@@ -233,6 +275,15 @@ function _dispatchContextAction(action, txnData) {
     case 'delete':
       _handleContextDelete(txnData);
       break;
+    case 'match-to-adjacent':
+      _handleContextMatchToAdjacent(txnData);
+      break;
+    case 'force-keep':
+      _handleContextForceKeep(txnData);
+      break;
+    case 'delete-missing':
+      _handleContextDeleteMissing(txnData);
+      break;
     default:
       console.warn('Unknown context menu action:', action);
   }
@@ -304,5 +355,64 @@ function _handleContextMakeTransfer(txnData) {
     openTransferAssignmentModal(txnData.txnId, txnData.accountId, txnData.amount);
   } else {
     showStatus('Transfer assignment not available', 'error');
+  }
+}
+
+// ─── Reconciliation quick-fix context menu handlers ─────────
+
+/**
+ * Opens the inline match picker for a missing/orphaned transaction.
+ * Delegates to the reconciliation module.
+ */
+function _handleContextMatchToAdjacent(txnData) {
+  if (typeof openInlineMatchPicker === 'function') {
+    openInlineMatchPicker(txnData.txnId);
+  } else {
+    showStatus('Match picker not available', 'error');
+  }
+}
+
+/**
+ * Force-keep a missing/orphaned transaction (reverts to cleared status).
+ */
+async function _handleContextForceKeep(txnData) {
+  if (!confirm('Keep this transaction as a normal cleared entry?')) return;
+
+  try {
+    await resolveReconciliationBatch({ force_keep: [txnData.txnId] });
+    showStatus('Transaction kept as cleared', 'success');
+
+    // Invalidate cache and refresh
+    try {
+      localStorage.removeItem('pf_cached_transactions');
+      localStorage.removeItem('pf_transactions_cached_at');
+    } catch (cacheErr) { /* non-fatal */ }
+
+    await fetchAllTransactions(true);
+    await checkAndRenderReconciliationBanner();
+  } catch (keepError) {
+    showStatus(`Failed to keep transaction: ${keepError.message}`, 'error');
+  }
+}
+
+/**
+ * Delete a missing/orphaned transaction permanently.
+ */
+async function _handleContextDeleteMissing(txnData) {
+  if (!confirm('Delete this transaction permanently?')) return;
+
+  try {
+    await resolveReconciliationBatch({ delete_missing: [txnData.txnId] });
+    showStatus('Transaction deleted', 'success');
+
+    try {
+      localStorage.removeItem('pf_cached_transactions');
+      localStorage.removeItem('pf_transactions_cached_at');
+    } catch (cacheErr) { /* non-fatal */ }
+
+    await fetchAllTransactions(true);
+    await checkAndRenderReconciliationBanner();
+  } catch (deleteError) {
+    showStatus(`Failed to delete transaction: ${deleteError.message}`, 'error');
   }
 }
