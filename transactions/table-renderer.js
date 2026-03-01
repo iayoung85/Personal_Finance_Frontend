@@ -138,6 +138,10 @@ function renderTransactionTable() {
   const _todayDateStr = _formatDateLocal(new Date());
 
   filteredTransactions.forEach(txn => {
+    // Matched manual/scheduled rows are merged into their plaid
+    // counterpart by the backend — skip them entirely.
+    if (txn._hidden_by_match) return;
+
     // All Accounts view: hide system rows always
     if (isAllAccounts) {
       if (txn.source === 'opening_balance' || txn.source === 'manual_opening_balance' || txn.source === 'reconciliation') return;
@@ -623,6 +627,8 @@ function renderTransactionTable() {
     const isScheduled = txn.source === 'scheduled' && txn.status === 'future';
     const isMissing = txn.source === 'scheduled' && txn.status === 'missing';
     const isMatched = txn.status === 'matched';
+    // Plaid row that has been enriched with its manual counterpart's data
+    const isMatchedPair = !!txn._match_manual_txn_id;
     const isOrphaned = txn.source === 'manual' && txn.status === 'missing';
     const isBill = !!txn.is_bill;
     const isManual = txn.source === 'manual' || isOpeningBalance;
@@ -646,7 +652,10 @@ function renderTransactionTable() {
     } else if (isMissing) {
       typeBadge = '<span class="source-badge missing" title="Expected payment not found">⚠</span> ';
     } else if (isMatched) {
-      typeBadge = '<span class="source-badge matched" title="Matched to plaid transaction">✓</span> ';
+      typeBadge = `<button class="approve-match-badge" data-txn-id="${escapeHtml(txnId)}" onclick="event.stopPropagation(); approveMatch('${escapeHtml(txnId)}').then(() => { showStatus('Match approved', 'success'); localStorage.removeItem('pf_cached_transactions'); localStorage.removeItem('pf_transactions_cached_at'); fetchAllTransactions(true); }).catch(err => showStatus(err.message, 'error'));" title="Click to approve this match — removes the manual counterpart">✓</button> `;
+    } else if (isMatchedPair) {
+      const matchApproveId = escapeHtml(txn._match_manual_txn_id);
+      typeBadge = `<button class="approve-match-badge" data-txn-id="${matchApproveId}" onclick="event.stopPropagation(); approveMatch('${matchApproveId}').then(() => { showStatus('Match approved', 'success'); localStorage.removeItem('pf_cached_transactions'); localStorage.removeItem('pf_transactions_cached_at'); fetchAllTransactions(true); }).catch(err => showStatus(err.message, 'error'));" title="Click to approve this match — removes the manual counterpart">✓</button> `;
     } else if (isOrphaned) {
       typeBadge = '<span class="source-badge orphaned" title="Orphaned manual transaction">⚡</span> ';
     } else if (isTransfer) {
@@ -665,15 +674,19 @@ function renderTransactionTable() {
     if (isFutureBlockRow) rowCssClass = 'scheduled-row';
     else if (isMissingRow) rowCssClass = 'missing-row';
     else if (isMatched) rowCssClass = 'matched-row';
+    else if (isMatchedPair) rowCssClass = 'matched-row';
     else if (isOrphaned) rowCssClass = 'orphaned-row';
     else if (isPendingRow) rowCssClass = 'pending-row';
 
     // Data attributes for the context menu to read without re-scanning the transactions array
-    const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-name="${escapeHtml(txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}"`;
+    const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-name="${escapeHtml(txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn._match_manual_txn_id || '')}"`;
     html += `<tr${rowCssClass ? ` class="${rowCssClass}"` : ''}${rowDataAttrs}>`;
     html += `<td>${dateStr}</td>`;
     html += `<td>${txn.bank_account}</td>`;
-    html += `<td>${typeBadge}${pendingBadge}${txn.name || ''}</td>`;
+    // For matched pairs, show the manual row's user-written description
+    // instead of the plaid-provided name.
+    const displayName = isMatchedPair ? (txn._match_manual_name || txn.name || '') : (txn.name || '');
+    html += `<td>${typeBadge}${pendingBadge}${displayName}</td>`;
     
     // In all accounts view, add amount here; in single account view, it goes later
     if (!showLedgerColumn) {
@@ -699,6 +712,10 @@ function renderTransactionTable() {
         sourceLabel = 'Matched';
         sourceCssClass = 'matched';
         sourceTitle = 'Scheduled transaction matched with a plaid transaction';
+      } else if (isMatchedPair) {
+        sourceLabel = 'Matched';
+        sourceCssClass = 'matched';
+        sourceTitle = 'Plaid transaction merged with user-entered counterpart';
       } else if (isOrphaned) {
         sourceLabel = 'Orphaned';
         sourceCssClass = 'orphaned';
@@ -788,6 +805,24 @@ function renderTransactionTable() {
           <div class="category-buttons">
             <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}" title="Apply category change">✓</button>
             <button class="unmatch-btn" data-txn-id="${txnId}" onclick="unmatchScheduledTransaction('${escapeHtml(txnId)}')" title="Undo match — revert to missing + unhide plaid transaction">Unmatch</button>
+          </div>
+        </div>
+      ` : `<div class="category-cell"><span class="category-locked">${escapeHtml(currentFullCategory || 'Uncategorized')}</span></div>`;
+    } else if (isMatchedPair) {
+      // Merged matched row: category editing targets the plaid row directly;
+      // Unmatch button uses the manual counterpart's transaction_id.
+      const unmatchId = escapeHtml(txn._match_manual_txn_id);
+      categoryCell = txnId ? `
+        <div class="category-cell">
+          <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
+            <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
+                   value="${escapeHtml(currentFullCategory)}" placeholder="Type to search categories…"
+                   autocomplete="off" spellcheck="false">
+            <div class="category-ac-list" data-txn-id="${txnId}"></div>
+          </div>
+          <div class="category-buttons">
+            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}" title="Apply category change">✓</button>
+            <button class="unmatch-btn" data-txn-id="${unmatchId}" onclick="unmatchScheduledTransaction('${unmatchId}')" title="Undo match — revert manual to missing + detach from plaid">Unmatch</button>
           </div>
         </div>
       ` : `<div class="category-cell"><span class="category-locked">${escapeHtml(currentFullCategory || 'Uncategorized')}</span></div>`;
@@ -901,7 +936,7 @@ function renderTransactionTable() {
           <button class="resolve-missing-btn" onclick="resolveMissingTransaction('${escapeHtml(txnId)}')" title="Mark as resolved — remove this missing transaction">✖</button>
         </td>
       `;
-    } else if (isScheduled || isMatched || isOrphaned || isOpeningBalance) {
+    } else if (isScheduled || isMatched || isMatchedPair || isOrphaned || isOpeningBalance) {
       // No direct delete for scheduled pseudo-txns, matched, orphaned, or opening balance
       html += '<td></td>';
     } else if (txn.source === 'manual') {

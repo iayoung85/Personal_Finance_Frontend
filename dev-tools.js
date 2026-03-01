@@ -61,7 +61,8 @@ class DevToolsWidget {
     const scenarios = [
       { id: '1', name: '1: Wipe DB (Clean State)' },
       { id: '2', name: '2: Plaid Re-link Ready (Manual Txns)' },
-      { id: '3', name: '3: Mock Plaid Sync (3 Accounts)' }
+      { id: '3', name: '3: Mock Plaid Sync (3 Accounts)' },
+      { id: '4', name: '4: Reconciliation Demo (Re-link Merge)' }
     ];
 
     scenarios.forEach(sc => {

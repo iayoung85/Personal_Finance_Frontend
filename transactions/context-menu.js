@@ -79,6 +79,7 @@ function _handleContextMenu(event) {
     name: row.dataset.txnName || '',
     userCategory: row.dataset.userCategory || '',
     merchantName: row.dataset.merchantName || '',
+    matchManualTxnId: row.dataset.matchManualTxnId || '',
   };
 
   const menuItems = _buildMenuItems(txnData);
@@ -99,6 +100,8 @@ function _buildMenuItems(txnData) {
   const isScheduled = source === 'scheduled' && status === 'future';
   const isMissing = source === 'scheduled' && status === 'missing';
   const isMatched = status === 'matched';
+  // Plaid row enriched with its manual counterpart (merged display)
+  const isMatchedPair = !!txnData.matchManualTxnId;
   const isOpeningBalance = source === 'opening_balance' || source === 'manual_opening_balance';
   const isOrphaned = source === 'manual' && status === 'missing';
   const isReconciliation = source === 'reconciliation';
@@ -111,19 +114,19 @@ function _buildMenuItems(txnData) {
   // Orphaned transactions get a dedicated quick-fix menu
   if (isOrphaned) {
     items.push({
-      label: '🔗 Match to Transaction',
-      action: 'match-to-adjacent',
+      label: '🔗 Force Match',
+      action: 'force-match',
       separator: false,
     });
     items.push({
-      label: '✓ Force Keep',
-      action: 'force-keep',
+      label: '↪ Move to Account',
+      action: 'move-to-account',
       separator: false,
     });
     items.push({
       label: '🗑️ Delete',
       action: 'delete-missing',
-      separator: false,
+      separator: true,
       destructive: true,
     });
     return items;
@@ -137,15 +140,35 @@ function _buildMenuItems(txnData) {
       separator: false,
     });
     items.push({
-      label: '✓ Force Keep',
-      action: 'force-keep',
-      separator: false,
-    });
-    items.push({
       label: '🗑️ Delete',
       action: 'delete-missing',
       separator: false,
       destructive: true,
+    });
+    return items;
+  }
+
+  // Matched transactions get approve actions, bill, and transfer
+  if (isMatched || isMatchedPair) {
+    items.push({
+      label: '✓ Approve Match',
+      action: 'approve-match',
+      separator: false,
+    });
+    items.push({
+      label: '✓ Approve All Matches',
+      action: 'approve-all-matches',
+      separator: true,
+    });
+    items.push({
+      label: '📅 This is a Bill',
+      action: 'this-is-a-bill',
+      separator: false,
+    });
+    items.push({
+      label: '⇄ Make Transfer',
+      action: 'make-transfer',
+      separator: false,
     });
     return items;
   }
@@ -160,8 +183,8 @@ function _buildMenuItems(txnData) {
     });
   }
 
-  // "This is a Bill" — plaid, manual, pending, matched (NOT scheduled, missing, split, opening, orphaned)
-  const showBill = isPlaid || (isManual && !isOrphaned) || isPending || isMatched;
+  // "This is a Bill" — plaid, manual, pending (NOT scheduled, missing, split, opening, orphaned)
+  const showBill = isPlaid || (isManual && !isOrphaned) || isPending;
   if (showBill) {
     items.push({
       label: '📅 This is a Bill',
@@ -170,9 +193,9 @@ function _buildMenuItems(txnData) {
     });
   }
 
-  // "Make Transfer" — plaid, manual, pending, scheduled, missing, matched
-  // (NOT split, opening balance, orphaned)
-  const showTransfer = isPlaid || isManual || isPending || isScheduled || isMissing || isMatched;
+  // "Make Transfer" — plaid, manual, pending, scheduled, missing
+  // (NOT split, opening balance, orphaned, matched)
+  const showTransfer = isPlaid || isManual || isPending || isScheduled || isMissing;
   if (showTransfer) {
     items.push({
       label: '⇄ Make Transfer',
@@ -186,7 +209,7 @@ function _buildMenuItems(txnData) {
     items[items.length - 1].separator = true;
   }
 
-  // "Delete" — manual transactions only
+  // "Delete" — manual transactions only (not matched, not orphaned)
   if (isManual && !isOrphaned) {
     items.push({
       label: '🗑️ Delete',
@@ -278,11 +301,20 @@ function _dispatchContextAction(action, txnData) {
     case 'match-to-adjacent':
       _handleContextMatchToAdjacent(txnData);
       break;
-    case 'force-keep':
-      _handleContextForceKeep(txnData);
+    case 'force-match':
+      _handleContextForceMatch(txnData);
+      break;
+    case 'move-to-account':
+      _handleContextMoveToAccount(txnData);
       break;
     case 'delete-missing':
       _handleContextDeleteMissing(txnData);
+      break;
+    case 'approve-match':
+      _handleContextApproveMatch(txnData);
+      break;
+    case 'approve-all-matches':
+      _handleContextApproveAllMatches(txnData);
       break;
     default:
       console.warn('Unknown context menu action:', action);
@@ -373,25 +405,25 @@ function _handleContextMatchToAdjacent(txnData) {
 }
 
 /**
- * Force-keep a missing/orphaned transaction (reverts to cleared status).
+ * Force-match: enters pick mode so user can click any plaid transaction
+ * to force-match the orphan to. Delegates to reconciliation module.
  */
-async function _handleContextForceKeep(txnData) {
-  if (!confirm('Keep this transaction as a normal cleared entry?')) return;
+function _handleContextForceMatch(txnData) {
+  if (typeof enterForceMatchPickMode === 'function') {
+    enterForceMatchPickMode(txnData.txnId);
+  } else {
+    showStatus('Force match not available', 'error');
+  }
+}
 
-  try {
-    await resolveReconciliationBatch({ force_keep: [txnData.txnId] });
-    showStatus('Transaction kept as cleared', 'success');
-
-    // Invalidate cache and refresh
-    try {
-      localStorage.removeItem('pf_cached_transactions');
-      localStorage.removeItem('pf_transactions_cached_at');
-    } catch (cacheErr) { /* non-fatal */ }
-
-    await fetchAllTransactions(true);
-    await checkAndRenderReconciliationBanner();
-  } catch (keepError) {
-    showStatus(`Failed to keep transaction: ${keepError.message}`, 'error');
+/**
+ * Move orphan to a manual/converted account via the account picker modal.
+ */
+function _handleContextMoveToAccount(txnData) {
+  if (typeof openRelocateAccountPicker === 'function') {
+    openRelocateAccountPicker(txnData.txnId);
+  } else {
+    showStatus('Move to account not available', 'error');
   }
 }
 
@@ -414,5 +446,49 @@ async function _handleContextDeleteMissing(txnData) {
     await checkAndRenderReconciliationBanner();
   } catch (deleteError) {
     showStatus(`Failed to delete transaction: ${deleteError.message}`, 'error');
+  }
+}
+
+/**
+ * Approve a single matched transaction — deletes the manual side,
+ * the plaid row survives with all migrated metadata intact.
+ */
+async function _handleContextApproveMatch(txnData) {
+  // For merged matched pairs, the approve target is the hidden manual
+  // row's transaction_id, not the displayed plaid row's.
+  const approveId = txnData.matchManualTxnId || txnData.txnId;
+  try {
+    await approveMatch(approveId);
+    showStatus('Match approved — manual transaction removed', 'success');
+
+    try {
+      localStorage.removeItem('pf_cached_transactions');
+      localStorage.removeItem('pf_transactions_cached_at');
+    } catch (cacheErr) { /* non-fatal */ }
+
+    await fetchAllTransactions(true);
+  } catch (approveError) {
+    showStatus(`Failed to approve match: ${approveError.message}`, 'error');
+  }
+}
+
+/**
+ * Approve every matched transaction for the current user at once.
+ */
+async function _handleContextApproveAllMatches() {
+  if (!confirm('Approve all matched transactions? This will permanently delete every manual counterpart.')) return;
+
+  try {
+    const result = await approveAllMatches();
+    showStatus(`Approved ${result.approved_count} match(es)`, 'success');
+
+    try {
+      localStorage.removeItem('pf_cached_transactions');
+      localStorage.removeItem('pf_transactions_cached_at');
+    } catch (cacheErr) { /* non-fatal */ }
+
+    await fetchAllTransactions(true);
+  } catch (approveError) {
+    showStatus(`Failed to approve matches: ${approveError.message}`, 'error');
   }
 }

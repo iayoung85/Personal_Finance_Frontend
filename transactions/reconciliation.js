@@ -42,7 +42,10 @@ async function fetchReconciliationProposals(batchId) {
 /**
  * Batch-resolve proposals and missing transactions.
  * payload: { approve: [id,...], reject: [id,...],
- *            delete_missing: [txn_id,...], force_keep: [txn_id,...] }
+ *            delete_missing: [txn_id,...] }
+ *
+ * Note: force_keep is no longer supported. Orphans must be deleted
+ * or force-matched via forceMatchOrphanToPlaid().
  */
 async function resolveReconciliationBatch(payload) {
   const response = await authenticatedFetch(
@@ -56,6 +59,52 @@ async function resolveReconciliationBatch(payload) {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || 'Failed to resolve reconciliation batch');
+  }
+  return response.json();
+}
+
+/**
+ * Force-match an orphaned manual transaction to any plaid transaction.
+ * The orphan is rewritten to adopt the plaid txn's amount and account.
+ */
+async function forceMatchOrphanToPlaid(orphanTransactionId, targetPlaidTransactionId) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/transactions/reconciliation/force_match`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orphan_transaction_id: orphanTransactionId,
+        target_plaid_transaction_id: targetPlaidTransactionId,
+      }),
+    }
+  );
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to force match transactions');
+  }
+  return response.json();
+}
+
+/**
+ * Relocate an orphaned transaction to a manual/converted account.
+ * The orphan keeps all original properties, only account_id changes.
+ */
+async function relocateOrphanToAccount(orphanTransactionId, targetAccountId) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/transactions/reconciliation/relocate`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orphan_transaction_id: orphanTransactionId,
+        target_account_id: targetAccountId,
+      }),
+    }
+  );
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to relocate transaction');
   }
   return response.json();
 }
@@ -255,15 +304,16 @@ function _renderReconciliationModal(proposals, missingTransactions) {
                     onclick="_bulkActionMissing('delete')">
               🗑 Delete Selected
             </button>
-            <button class="btn-recon btn-recon-bulk-keep"
-                    onclick="_bulkActionMissing('keep')">
-              ✓ Force Keep Selected
+            <button class="btn-recon btn-recon-bulk-match"
+                    onclick="_bulkForceMatchMissing()">
+              🔗 Force Match Selected
             </button>
           </div>
         </div>
         <p class="recon-section-desc">
           These transactions could not be matched to any Plaid entry.
           Select items and choose an action, or handle them individually.
+          Force Match rewrites the orphan to match a plaid transaction you choose.
         </p>
         <div class="recon-missing-list">
           <label class="recon-select-all-label">
@@ -290,9 +340,12 @@ function _renderReconciliationModal(proposals, missingTransactions) {
             <button class="btn-recon btn-recon-delete-single"
                     onclick="_singleMissingAction('${escapeHtml(txn.transaction_id)}', 'delete')"
                     title="Delete this transaction permanently">🗑</button>
-            <button class="btn-recon btn-recon-keep-single"
-                    onclick="_singleMissingAction('${escapeHtml(txn.transaction_id)}', 'keep')"
-                    title="Keep this transaction (revert to cleared)">✓</button>
+            <button class="btn-recon btn-recon-match-single"
+                    onclick="_startForceMatchFromModal('${escapeHtml(txn.transaction_id)}')"
+                    title="Force match to a plaid transaction">🔗</button>
+            <button class="btn-recon btn-recon-move-single"
+                    onclick="_openRelocatePickerFromModal('${escapeHtml(txn.transaction_id)}')"
+                    title="Move to a manual/converted account">↪</button>
           </span>
         </div>
       `;
@@ -393,22 +446,18 @@ async function _bulkActionMissing(action) {
     return;
   }
 
-  const confirmLabel = action === 'delete'
-    ? `Delete ${selectedIds.length} transaction(s) permanently?`
-    : `Keep ${selectedIds.length} transaction(s) as cleared?`;
+  if (action !== 'delete') {
+    showStatus('Only delete is supported as a bulk action for orphans', 'warning');
+    return;
+  }
 
-  if (!confirm(confirmLabel)) return;
+  if (!confirm(`Delete ${selectedIds.length} transaction(s) permanently?`)) return;
 
   try {
-    const payload = {};
-    if (action === 'delete') {
-      payload.delete_missing = selectedIds;
-    } else {
-      payload.force_keep = selectedIds;
-    }
+    const payload = { delete_missing: selectedIds };
 
     await resolveReconciliationBatch(payload);
-    showStatus(`${selectedIds.length} transaction(s) ${action === 'delete' ? 'deleted' : 'kept'}`, 'success');
+    showStatus(`${selectedIds.length} transaction(s) deleted`, 'success');
 
     // Remove resolved rows from the modal DOM
     selectedIds.forEach(txnId => {
@@ -424,19 +473,18 @@ async function _bulkActionMissing(action) {
 }
 
 async function _singleMissingAction(transactionId, action) {
-  const actionLabel = action === 'delete' ? 'Delete' : 'Keep';
-  if (!confirm(`${actionLabel} this transaction?`)) return;
+  if (action !== 'delete') {
+    showStatus('Only delete is supported. Use Force Match to keep an orphan.', 'warning');
+    return;
+  }
+
+  if (!confirm('Delete this transaction permanently?')) return;
 
   try {
-    const payload = {};
-    if (action === 'delete') {
-      payload.delete_missing = [transactionId];
-    } else {
-      payload.force_keep = [transactionId];
-    }
+    const payload = { delete_missing: [transactionId] };
 
     await resolveReconciliationBatch(payload);
-    showStatus(`Transaction ${action === 'delete' ? 'deleted' : 'kept as cleared'}`, 'success');
+    showStatus('Transaction deleted', 'success');
 
     // Remove the row from the modal
     const row = document.querySelector(`.recon-missing-row[data-txn-id="${transactionId}"]`);
@@ -450,12 +498,184 @@ async function _singleMissingAction(transactionId, action) {
 
 // ─── Submit all decisions from the modal ────────────────────
 
+// ─── Force Match Pick Mode ──────────────────────────────────
+// When the user clicks "Force Match" on an orphan (from the modal or
+// context menu), we close any open modal, show a floating instruction
+// banner, and let them click any plaid transaction row in the table.
+// The orphan is rewritten to adopt the plaid txn's amount/account.
+
+let _forceMatchOrphanId = null;
+
+/**
+ * Enter force-match pick mode: close modal, show instruction banner,
+ * install a one-shot click handler on the transaction table.
+ */
+function enterForceMatchPickMode(orphanTxnId) {
+  _forceMatchOrphanId = orphanTxnId;
+
+  // Close the reconciliation center modal if open
+  if (typeof closeModal === 'function') closeModal();
+
+  // Find the orphan in the transactions array for display context
+  const orphanTxn = transactions.find(txn => txn.transaction_id === orphanTxnId);
+  const orphanLabel = orphanTxn
+    ? `"${orphanTxn.name || 'Unnamed'}" (${_formatCurrency(orphanTxn.amount)})`
+    : orphanTxnId;
+
+  // Show the pick-mode instruction banner
+  _showForceMatchBanner(orphanLabel);
+
+  // Install delegated click handler on the table
+  const tableContainer = document.getElementById('table-container');
+  if (tableContainer) {
+    tableContainer.addEventListener('click', _forceMatchRowClickHandler);
+  }
+
+  // Allow Escape to cancel
+  document.addEventListener('keydown', _forceMatchEscapeHandler);
+}
+
+function _showForceMatchBanner(orphanLabel) {
+  // Remove existing banner if any
+  _removeForceMatchBanner();
+
+  const banner = document.createElement('div');
+  banner.id = 'force-match-pick-banner';
+  banner.className = 'force-match-pick-banner';
+  banner.innerHTML = `
+    <span class="force-match-pick-icon">\ud83d\udd17</span>
+    <span class="force-match-pick-text">
+      <strong>Force Match Mode:</strong> Click any <em>Plaid</em> transaction row to match orphan ${escapeHtml(orphanLabel)}.
+      The orphan will be rewritten to match the selected transaction's amount and account.
+    </span>
+    <button class="btn-banner btn-banner-secondary force-match-pick-cancel"
+            onclick="exitForceMatchPickMode()">Cancel</button>
+  `;
+
+  // Insert at the top of the main content area, above the table
+  const tableContainer = document.getElementById('table-container');
+  if (tableContainer && tableContainer.parentNode) {
+    tableContainer.parentNode.insertBefore(banner, tableContainer);
+  } else {
+    document.body.prepend(banner);
+  }
+}
+
+function _removeForceMatchBanner() {
+  const existing = document.getElementById('force-match-pick-banner');
+  if (existing) existing.remove();
+}
+
+function exitForceMatchPickMode() {
+  _forceMatchOrphanId = null;
+  _removeForceMatchBanner();
+
+  const tableContainer = document.getElementById('table-container');
+  if (tableContainer) {
+    tableContainer.removeEventListener('click', _forceMatchRowClickHandler);
+  }
+  document.removeEventListener('keydown', _forceMatchEscapeHandler);
+}
+
+function _forceMatchEscapeHandler(event) {
+  if (event.key === 'Escape') {
+    exitForceMatchPickMode();
+    showStatus('Force match cancelled', 'info');
+  }
+}
+
+async function _forceMatchRowClickHandler(event) {
+  if (!_forceMatchOrphanId) return;
+
+  // Find the clicked row
+  const row = event.target.closest('tr');
+  if (!row) return;
+
+  const clickedTxnId = row.dataset.txnId;
+  const clickedSource = row.dataset.source || '';
+
+  if (!clickedTxnId) return;
+
+  if (clickedSource !== 'plaid') {
+    showStatus('Please click a Plaid transaction (blue "Plaid" badge rows)', 'warning');
+    return;
+  }
+
+  // Prevent clicking orphaned/system rows
+  if (clickedTxnId === _forceMatchOrphanId) {
+    showStatus('Cannot match a transaction to itself', 'warning');
+    return;
+  }
+
+  // Look up the plaid transaction for confirmation display
+  const plaidTxn = transactions.find(txn => txn.transaction_id === clickedTxnId);
+  const orphanTxn = transactions.find(txn => txn.transaction_id === _forceMatchOrphanId);
+
+  const plaidLabel = plaidTxn
+    ? `"${plaidTxn.name || 'Unnamed'}" (${_formatCurrency(plaidTxn.amount)}, ${plaidTxn.date || ''})`
+    : clickedTxnId;
+  const orphanLabel = orphanTxn
+    ? `"${orphanTxn.name || 'Unnamed'}" (${_formatCurrency(orphanTxn.amount)})`
+    : _forceMatchOrphanId;
+
+  const accountChanged = plaidTxn && orphanTxn && plaidTxn.account_id !== orphanTxn.account_id;
+  const accountWarning = accountChanged
+    ? '\n\nNote: The orphan will be moved to a different account.'
+    : '';
+
+  if (!confirm(
+    `Force match orphan ${orphanLabel} to plaid transaction ${plaidLabel}?\n\n` +
+    `The orphan will be rewritten to match the plaid transaction's amount and account.${accountWarning}`
+  )) {
+    return;
+  }
+
+  // Capture the orphan ID before exiting pick mode
+  const orphanId = _forceMatchOrphanId;
+  exitForceMatchPickMode();
+
+  try {
+    showStatus('Applying force match…', 'info');
+    await forceMatchOrphanToPlaid(orphanId, clickedTxnId);
+    showStatus('Force match applied successfully', 'success');
+    _refreshAfterReconciliation();
+  } catch (matchError) {
+    showStatus(`Force match failed: ${matchError.message}`, 'error');
+  }
+}
+
+/**
+ * Start force match from the reconciliation modal for a specific orphan.
+ * Closes the modal first, then enters pick mode.
+ */
+function _startForceMatchFromModal(orphanTxnId) {
+  enterForceMatchPickMode(orphanTxnId);
+}
+
+/**
+ * Bulk force match is not practical (each orphan needs a unique target),
+ * so the bulk button just enters pick mode for the first selected orphan
+ * and shows guidance.
+ */
+function _bulkForceMatchMissing() {
+  const selectedIds = _getSelectedMissingIds();
+  if (selectedIds.length === 0) {
+    showStatus('No transactions selected', 'warning');
+    return;
+  }
+  if (selectedIds.length > 1) {
+    showStatus('Force match works one at a time. Starting with the first selected orphan.', 'info');
+  }
+  enterForceMatchPickMode(selectedIds[0]);
+}
+
+// ─── Submit all decisions from the modal (continued) ────────
+
 async function _submitReconciliationDecisions() {
   const payload = {
     approve: [],
     reject: [],
     delete_missing: [],
-    force_keep: [],
   };
 
   // Gather proposal decisions
@@ -478,7 +698,6 @@ async function _submitReconciliationDecisions() {
     if (result.approved > 0) parts.push(`${result.approved} approved`);
     if (result.rejected > 0) parts.push(`${result.rejected} rejected`);
     if (result.deleted > 0) parts.push(`${result.deleted} deleted`);
-    if (result.kept > 0) parts.push(`${result.kept} kept`);
 
     showStatus(`Reconciliation complete: ${parts.join(', ')}`, 'success');
     closeModal();
@@ -599,6 +818,155 @@ async function _selectMatchCandidate(missingTxnId, plaidTxnId) {
   } catch (matchError) {
     showStatus(`Match failed: ${matchError.message}`, 'error');
   }
+}
+
+// ─── Approve match API calls ────────────────────────────────
+
+/**
+ * Approve a single matched transaction — permanently deletes the manual
+ * counterpart, the surviving plaid row keeps all migrated metadata.
+ */
+async function approveMatch(transactionId) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/transactions/approve_match/${encodeURIComponent(transactionId)}`,
+    { method: 'POST' }
+  );
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Failed to approve match');
+  }
+  return response.json();
+}
+
+/**
+ * Approve every matched transaction for the current user in one call.
+ */
+async function approveAllMatches() {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/transactions/approve_all_matches`,
+    { method: 'POST' }
+  );
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Failed to approve all matches');
+  }
+  return response.json();
+}
+
+// ─── Relocate Orphan to Manual Account (Account Picker) ─────
+
+/**
+ * Open account picker modal for relocating an orphaned transaction to
+ * a manual or converted account. Filters the `accounts` state variable
+ * to show only eligible destinations.
+ */
+function openRelocateAccountPicker(orphanTxnId) {
+  const orphanTxn = transactions.find(txn => txn.transaction_id === orphanTxnId);
+  if (!orphanTxn) {
+    showStatus('Transaction not found', 'error');
+    return;
+  }
+
+  // Eligible: manual or converted, not archived, not the current account
+  const eligibleAccounts = accounts.filter(acc =>
+    acc.connection_status !== 'linked'
+    && !acc.is_archived
+    && acc.account_id !== orphanTxn.account_id
+  );
+
+  if (eligibleAccounts.length === 0) {
+    showStatus('No manual or converted accounts available to move to. Create one on the Accounts page first.', 'warning');
+    return;
+  }
+
+  const orphanLabel = orphanTxn.name || 'Unnamed';
+
+  let bodyHtml = `
+    <p>Move orphan <strong>${escapeHtml(orphanLabel)}</strong>
+    (${_formatCurrency(orphanTxn.amount)}, ${escapeHtml(orphanTxn.date || '')})
+    to a manual or converted account. All properties (amount, date, category, memo)
+    are preserved.</p>
+    <div class="recon-relocate-list">
+  `;
+
+  // Group by bank name for clarity
+  const accountsByBank = {};
+  eligibleAccounts.forEach(acc => {
+    const bankLabel = acc.bank_name || 'Unknown Bank';
+    if (!accountsByBank[bankLabel]) accountsByBank[bankLabel] = [];
+    accountsByBank[bankLabel].push(acc);
+  });
+
+  Object.entries(accountsByBank).forEach(([bankName, bankAccounts]) => {
+    bodyHtml += `<div class="recon-relocate-bank-group">`;
+    bodyHtml += `<div class="recon-relocate-bank-label">${escapeHtml(bankName)}</div>`;
+
+    bankAccounts.forEach(acc => {
+      const displayName = acc.custom_name || acc.account_name || 'Unnamed Account';
+      const statusBadge = acc.connection_status === 'converted'
+        ? '<span class="source-badge converted">Converted</span>'
+        : '<span class="source-badge manual-acct">Manual</span>';
+      const maskLabel = acc.mask ? ` (${acc.mask})` : '';
+
+      bodyHtml += `
+        <div class="recon-relocate-account"
+             onclick="_selectRelocateAccount('${escapeHtml(orphanTxnId)}', '${escapeHtml(acc.account_id)}', '${escapeHtml(displayName)}')">
+          ${statusBadge}
+          <span class="recon-relocate-name">${escapeHtml(displayName)}${escapeHtml(maskLabel)}</span>
+          <span class="recon-relocate-category">${escapeHtml(acc.account_category || '')}</span>
+        </div>
+      `;
+    });
+
+    bodyHtml += `</div>`;
+  });
+
+  bodyHtml += '</div>';
+
+  openModal({
+    title: 'Move Orphan to Account',
+    body: bodyHtml,
+    actions: [
+      {
+        label: 'Cancel',
+        className: 'secondary',
+        onClick: closeModal,
+      },
+    ],
+  });
+
+  const modalEl = document.querySelector('#modal-overlay .modal');
+  if (modalEl) {
+    modalEl.style.width = 'min(600px, 92vw)';
+    modalEl.style.maxHeight = '80vh';
+    modalEl.style.overflow = 'auto';
+  }
+}
+
+async function _selectRelocateAccount(orphanTxnId, targetAccountId, accountName) {
+  if (!confirm(`Move this orphan to "${accountName}"? It will become a normal cleared transaction in that account.`)) {
+    return;
+  }
+
+  try {
+    showStatus('Moving transaction…', 'info');
+    await relocateOrphanToAccount(orphanTxnId, targetAccountId);
+    showStatus(`Transaction moved to ${accountName}`, 'success');
+    closeModal();
+    _refreshAfterReconciliation();
+  } catch (relocateError) {
+    showStatus(`Move failed: ${relocateError.message}`, 'error');
+  }
+}
+
+/**
+ * Entry point from reconciliation modal per-row ↪ button.
+ * Closes the recon modal first, then opens the account picker.
+ */
+function _openRelocatePickerFromModal(orphanTxnId) {
+  closeModal();
+  // Small delay so the recon modal fully closes before opening the picker
+  setTimeout(() => openRelocateAccountPicker(orphanTxnId), 150);
 }
 
 // ─── Shared formatting helper ───────────────────────────────

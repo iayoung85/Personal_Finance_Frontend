@@ -2131,6 +2131,31 @@ tr:hover {
   color: var(--color-success);
 }
 
+.approve-match-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-success);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+  padding: 0;
+  line-height: 1;
+}
+
+.approve-match-badge:hover {
+  background: var(--color-success);
+  color: #fff;
+  transform: scale(1.15);
+}
+
 .source-badge.orphaned {
   background: var(--badge-purple-bg);
   color: var(--accent-purple);
@@ -3465,4 +3490,117 @@ tr:hover {
   background: var(--color-success-bg);
   color: var(--color-success);
   flex-shrink: 0;
+}
+
+/* ── Force Match Pick Mode Banner ───────────────────────────── */
+
+.force-match-pick-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  background: var(--accent-link);
+  color: #fff;
+  font-size: 13px;
+  margin-bottom: 6px;
+  animation: force-match-pulse 2s ease-in-out infinite;
+  z-index: 100;
+  position: sticky;
+  top: 0;
+}
+
+@keyframes force-match-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+
+.force-match-pick-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.force-match-pick-text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.force-match-pick-text em {
+  font-style: italic;
+  text-decoration: underline;
+}
+
+.force-match-pick-cancel {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+}
+
+.force-match-pick-cancel:hover {
+  background: rgba(255, 255, 255, 0.35) !important;
+}
+
+/* ─── Relocate orphan: account picker modal ─────────────────── */
+
+.recon-relocate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  max-height: 42vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.recon-relocate-bank-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recon-relocate-bank-label {
+  font-weight: 700;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary, #888);
+  padding: 4px 0 2px 2px;
+}
+
+.recon-relocate-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #2a2a2a);
+  background: var(--bg-secondary, #1a1a1a);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.recon-relocate-account:hover {
+  background: var(--bg-hover, #252525);
+  border-color: var(--accent-color, #4dabf7);
+}
+
+.recon-relocate-name {
+  flex: 1;
+  font-weight: 500;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.recon-relocate-category {
+  font-size: 0.82rem;
+  color: var(--text-secondary, #888);
+}
+
+.source-badge.converted {
+  background: #3a3a1a;
+  color: #e8d44d;
+}
+
+.source-badge.manual-acct {
+  background: #1a2a3a;
+  color: #4dabf7;
 }
