@@ -827,7 +827,19 @@ function renderTransactionTable() {
         </div>
       ` : `<div class="category-cell"><span class="category-locked">${escapeHtml(currentFullCategory || 'Uncategorized')}</span></div>`;
     } else if (isOrphaned) {
-      categoryCell = `<div class="category-cell"><span class="category-locked">${escapeHtml(currentFullCategory || 'Uncategorized')}</span></div>`;
+      categoryCell = txnId ? `
+        <div class="category-cell">
+          <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
+            <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
+                   value="${escapeHtml(currentFullCategory)}" placeholder="Type to search categories…"
+                   autocomplete="off" spellcheck="false">
+            <div class="category-ac-list" data-txn-id="${txnId}"></div>
+          </div>
+          <div class="category-buttons">
+            <button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}" title="Apply category change">✓</button>
+          </div>
+        </div>
+      ` : `<div class="category-cell"><span class="category-locked">${escapeHtml(currentFullCategory || 'Uncategorized')}</span></div>`;
     } else if (isTransfer) {
       categoryCell = txnId ? `
         <div class="category-cell">
@@ -936,8 +948,14 @@ function renderTransactionTable() {
           <button class="resolve-missing-btn" onclick="resolveMissingTransaction('${escapeHtml(txnId)}')" title="Mark as resolved — remove this missing transaction">✖</button>
         </td>
       `;
-    } else if (isScheduled || isMatched || isMatchedPair || isOrphaned || isOpeningBalance) {
-      // No direct delete for scheduled pseudo-txns, matched, orphaned, or opening balance
+    } else if (isOrphaned) {
+      html += `
+        <td style="text-align: center;">
+          <button class="delete-transaction-btn" onclick="deleteManualTransaction('${escapeHtml(txnId)}')" title="Delete orphaned transaction">🗑</button>
+        </td>
+      `;
+    } else if (isScheduled || isMatched || isMatchedPair || isOpeningBalance) {
+      // No direct delete for scheduled pseudo-txns, matched, or opening balance
       html += '<td></td>';
     } else if (txn.source === 'manual') {
       html += `

@@ -111,8 +111,14 @@ function _buildMenuItems(txnData) {
 
   const items = [];
 
-  // Orphaned transactions get a dedicated quick-fix menu
+  // Orphaned transactions get the same edit capability as manual, plus
+  // reconciliation-specific quick-fix actions (force match, relocate).
   if (isOrphaned) {
+    items.push({
+      label: '✏️ Modify',
+      action: 'modify',
+      separator: false,
+    });
     items.push({
       label: '🔗 Force Match',
       action: 'force-match',

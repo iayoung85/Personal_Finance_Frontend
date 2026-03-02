@@ -607,29 +607,6 @@ async function _forceMatchRowClickHandler(event) {
     return;
   }
 
-  // Look up the plaid transaction for confirmation display
-  const plaidTxn = transactions.find(txn => txn.transaction_id === clickedTxnId);
-  const orphanTxn = transactions.find(txn => txn.transaction_id === _forceMatchOrphanId);
-
-  const plaidLabel = plaidTxn
-    ? `"${plaidTxn.name || 'Unnamed'}" (${_formatCurrency(plaidTxn.amount)}, ${plaidTxn.date || ''})`
-    : clickedTxnId;
-  const orphanLabel = orphanTxn
-    ? `"${orphanTxn.name || 'Unnamed'}" (${_formatCurrency(orphanTxn.amount)})`
-    : _forceMatchOrphanId;
-
-  const accountChanged = plaidTxn && orphanTxn && plaidTxn.account_id !== orphanTxn.account_id;
-  const accountWarning = accountChanged
-    ? '\n\nNote: The orphan will be moved to a different account.'
-    : '';
-
-  if (!confirm(
-    `Force match orphan ${orphanLabel} to plaid transaction ${plaidLabel}?\n\n` +
-    `The orphan will be rewritten to match the plaid transaction's amount and account.${accountWarning}`
-  )) {
-    return;
-  }
-
   // Capture the orphan ID before exiting pick mode
   const orphanId = _forceMatchOrphanId;
   exitForceMatchPickMode();
