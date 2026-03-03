@@ -144,12 +144,14 @@ function renderTransactionTable() {
 
     // All Accounts view: hide system rows always
     if (isAllAccounts) {
-      if (txn.source === 'opening_balance' || txn.source === 'manual_opening_balance' || txn.source === 'reconciliation') return;
+      const txnType = getTransactionType(txn);
+      if (isSystemType(txnType)) return;
     }
 
-    // Orphaned (manual + missing) — governed by the show-missing-orphaned toggle
-    const isOrphanedTxn = txn.source === 'manual' && txn.status === 'missing';
-    const isMissingTxn = txn.source === 'scheduled' && txn.status === 'missing';
+    // Orphaned / missing — governed by the show-missing-orphaned toggle
+    const txnType = getTransactionType(txn);
+    const isOrphanedTxn = txnType === TXN_TYPE.MANUAL_MISSING || txnType === TXN_TYPE.MANUAL_ORPHANED;
+    const isMissingTxn = txnType === TXN_TYPE.BILL_MISSING;
     if (isOrphanedTxn || isMissingTxn) {
       if (showMissingOrphaned) {
         missingTransactions.push(txn);
@@ -161,7 +163,7 @@ function renderTransactionTable() {
       scheduledFuture.push(txn);
     } else if (txn.pending) {
       pendingTransactions.push(txn);
-    } else if (txn.date > _todayDateStr && txn.source === 'manual') {
+    } else if (txnType === TXN_TYPE.MANUAL_FUTURE) {
       // Manual transactions with future dates belong above the scheduled
       // separator — they are effectively user-created scheduled entries
       // until their date arrives.
@@ -329,9 +331,11 @@ function renderTransactionTable() {
     // future/cleared separator — scheduled bills AND manual transactions
     // with dates after today. Used only for block-boundary logic.
     const isFutureBlockRow = (txn.source === 'scheduled' && txn.status === 'future')
-      || (txn.date > _todayDateStr && txn.source === 'manual');
-    const isMissingRow = (txn.source === 'scheduled' && txn.status === 'missing')
-      || (txn.source === 'manual' && txn.status === 'missing');
+      || getTransactionType(txn) === TXN_TYPE.MANUAL_FUTURE;
+    const txnRowType = getTransactionType(txn);
+    const isMissingRow = txnRowType === TXN_TYPE.BILL_MISSING
+      || txnRowType === TXN_TYPE.MANUAL_MISSING
+      || txnRowType === TXN_TYPE.MANUAL_ORPHANED;
     const isPendingRow = !!txn.pending;
 
     // --- Block boundary separators ---
@@ -623,15 +627,20 @@ function renderTransactionTable() {
     
     // Determine source and transaction IDs — must be declared BEFORE
     // they are referenced in the row CSS class builder below.
-    const isOpeningBalance = txn.source === 'opening_balance' || txn.source === 'manual_opening_balance';
-    const isScheduled = txn.source === 'scheduled' && txn.status === 'future';
-    const isMissing = txn.source === 'scheduled' && txn.status === 'missing';
-    const isMatched = txn.status === 'matched';
+    // Classify transaction once via the centralized type classifier.
+    // All boolean flags below are derived from this single type value.
+    const rowType = getTransactionType(txn);
+    const isOpeningBalance = rowType === TXN_TYPE.SYSTEM_OPENING_BALANCE || rowType === TXN_TYPE.SYSTEM_MANUAL_OPENING_BALANCE;
+    const isScheduled = rowType === TXN_TYPE.BILL_FUTURE || rowType === TXN_TYPE.MANUAL_FUTURE;
+    const isMissing = rowType === TXN_TYPE.BILL_MISSING;
+    const isMatched = rowType === TXN_TYPE.BILL_MATCHED || rowType === TXN_TYPE.MANUAL_MATCH;
     // Plaid row that has been enriched with its manual counterpart's data
     const isMatchedPair = !!txn._match_manual_txn_id;
-    const isOrphaned = txn.source === 'manual' && txn.status === 'missing';
+    const isOrphaned = rowType === TXN_TYPE.MANUAL_MISSING || rowType === TXN_TYPE.MANUAL_ORPHANED;
     const isBill = !!txn.is_bill;
-    const isManual = txn.source === 'manual' || isOpeningBalance;
+    const isManual = rowType === TXN_TYPE.MANUAL_CLEARED || rowType === TXN_TYPE.MANUAL_FUTURE
+      || rowType === TXN_TYPE.MANUAL_MISSING || rowType === TXN_TYPE.MANUAL_ORPHANED
+      || rowType === TXN_TYPE.MANUAL_MATCH || isOpeningBalance;
     const txnId = txn.transaction_id || '';
     const accountId = txn.account_id || '';
 
@@ -999,7 +1008,12 @@ async function saveTransactionMemo(transactionId, userMemo, buttonEl) {
   try {
     // Determine if this is a manual or Plaid transaction
     const txn = transactions.find(t => t.transaction_id === transactionId);
-    const isManual = txn && (txn.source === 'manual' || txn.source === 'opening_balance' || txn.source === 'manual_opening_balance');
+    const memoTxnType = txn ? getTransactionType(txn) : null;
+    const isManual = memoTxnType && (
+      memoTxnType === TXN_TYPE.MANUAL_CLEARED
+      || memoTxnType === TXN_TYPE.SYSTEM_OPENING_BALANCE
+      || memoTxnType === TXN_TYPE.SYSTEM_MANUAL_OPENING_BALANCE
+    );
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/add-memo`, {
       method: 'POST',

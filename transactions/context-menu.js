@@ -92,19 +92,21 @@ function _handleContextMenu(event) {
 // Visibility matrix from the implementation plan in transactions.md
 
 function _buildMenuItems(txnData) {
-  const { source, status, isBill, isSplit } = txnData;
+  const { isBill, isSplit } = txnData;
 
-  const isPlaid = source === 'plaid';
-  const isManual = source === 'manual';
-  const isPending = !!txnData.pending;
-  const isScheduled = source === 'scheduled' && status === 'future';
-  const isMissing = source === 'scheduled' && status === 'missing';
-  const isMatched = status === 'matched';
-  // Plaid row enriched with its manual counterpart (merged display)
+  // Classify once via the centralized type classifier
+  const txnType = getTransactionType(txnData);
+
+  const isPlaid = txnType === TXN_TYPE.PLAID_CLEARED || txnType === TXN_TYPE.PLAID_PENDING;
+  const isManual = txnType === TXN_TYPE.MANUAL_CLEARED;
+  const isPending = txnType === TXN_TYPE.PLAID_PENDING;
+  const isScheduled = txnType === TXN_TYPE.BILL_FUTURE || txnType === TXN_TYPE.MANUAL_FUTURE;
+  const isMissing = txnType === TXN_TYPE.BILL_MISSING;
+  const isMatched = txnType === TXN_TYPE.BILL_MATCHED || txnType === TXN_TYPE.MANUAL_MATCH;
   const isMatchedPair = !!txnData.matchManualTxnId;
-  const isOpeningBalance = source === 'opening_balance' || source === 'manual_opening_balance';
-  const isOrphaned = source === 'manual' && status === 'missing';
-  const isReconciliation = source === 'reconciliation';
+  const isOpeningBalance = txnType === TXN_TYPE.SYSTEM_OPENING_BALANCE || txnType === TXN_TYPE.SYSTEM_MANUAL_OPENING_BALANCE;
+  const isOrphaned = txnType === TXN_TYPE.MANUAL_MISSING || txnType === TXN_TYPE.MANUAL_ORPHANED;
+  const isReconciliation = txnType === TXN_TYPE.SYSTEM_RECONCILIATION;
 
   // Opening balance, reconciliation, and split children have no context menu
   if (isOpeningBalance || isReconciliation || isSplit) return [];

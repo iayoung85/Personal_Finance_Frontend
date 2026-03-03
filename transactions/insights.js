@@ -18,8 +18,7 @@ function generateSpendingInsights() {
     if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.account_id || txn.plaid_account_id)) return false;
     if (txn.pending) return false;
     // Exclude system-generated bookkeeping entries (opening balances, reconciliation, etc.)
-    // Use txn.source (a controlled backend enum) not user_category which is user-editable.
-    if (SYSTEM_SOURCES.has(txn.source)) return false;
+    if (isSystemType(getTransactionType(txn))) return false;
     if (hideTransfers) {
       const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
       if (/transfer/i.test(primaryCat)) return false;

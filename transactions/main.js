@@ -187,10 +187,12 @@ $(document).ready(async function() {
  * visible if few."
  */
 function _autoSetMissingOrphanedToggle() {
-  const missingOrOrphaned = transactions.filter(txn =>
-    (txn.source === 'scheduled' && txn.status === 'missing')
-    || (txn.source === 'manual' && txn.status === 'missing')
-  );
+  const missingOrOrphaned = transactions.filter(txn => {
+    const txnType = getTransactionType(txn);
+    return txnType === TXN_TYPE.BILL_MISSING
+      || txnType === TXN_TYPE.MANUAL_MISSING
+      || txnType === TXN_TYPE.MANUAL_ORPHANED;
+  });
   const toggle = document.getElementById('show-missing-orphaned');
   if (toggle) {
     toggle.checked = missingOrOrphaned.length > 0 && missingOrOrphaned.length <= 10;

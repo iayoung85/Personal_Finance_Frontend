@@ -6,12 +6,13 @@
 
 // System-generated bookkeeping transaction source types.
 // Mirror of SYSTEM_TRANSACTION_SOURCES in transactions_models.py.
-// These rows are internal to the balance engine and must be excluded from
-// all user-facing charts, insights, category lists, and aggregations.
+// Kept for any remaining raw-source checks. Prefer isSystemType(getTransactionType(txn))
+// from transaction-types.js for new code.
 const SYSTEM_SOURCES = new Set([
   'opening_balance',
   'manual_opening_balance',
   'reconciliation',
+  'investment_trending',
 ]);
 
 function escapeHtml(str) {

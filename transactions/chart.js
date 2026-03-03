@@ -57,8 +57,7 @@ function _getFilteredTransactionsForChart() {
     if (txn.pending) return false;
 
     // Exclude system-generated bookkeeping entries (opening balances, reconciliation, etc.)
-    // Use txn.source (a controlled backend enum) not user_category which is user-editable.
-    if (SYSTEM_SOURCES.has(txn.source)) return false;
+    if (isSystemType(getTransactionType(txn))) return false;
 
     // Transfers are always excluded from the expense chart — they aren't expenses
     const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';

@@ -324,8 +324,10 @@ function _renderReconciliationModal(proposals, missingTransactions) {
     `;
 
     missingTransactions.forEach(txn => {
-      const sourceLabel = txn.source === 'manual' ? 'Orphaned' : 'Missing';
-      const sourceBadgeClass = txn.source === 'manual' ? 'orphaned' : 'missing';
+      const reconType = getTransactionType(txn);
+      const isOrphanedRow = reconType === TXN_TYPE.MANUAL_MISSING || reconType === TXN_TYPE.MANUAL_ORPHANED;
+      const sourceLabel = isOrphanedRow ? 'Orphaned' : 'Missing';
+      const sourceBadgeClass = isOrphanedRow ? 'orphaned' : 'missing';
 
       bodyHtml += `
         <div class="recon-missing-row" data-txn-id="${escapeHtml(txn.transaction_id || '')}">
@@ -596,7 +598,10 @@ async function _forceMatchRowClickHandler(event) {
 
   if (!clickedTxnId) return;
 
-  if (clickedSource !== 'plaid') {
+  // Only Plaid-cleared transactions can serve as a force-match target
+  const clickedTxn = transactions.find(txn => txn.transaction_id === clickedTxnId);
+  const clickedType = clickedTxn ? getTransactionType(clickedTxn) : null;
+  if (clickedType !== TXN_TYPE.PLAID_CLEARED) {
     showStatus('Please click a Plaid transaction (blue "Plaid" badge rows)', 'warning');
     return;
   }
@@ -717,8 +722,7 @@ function openInlineMatchPicker(missingTxnId) {
 
   // Gather plaid transactions in the same account that are cleared and unmatched
   const candidates = transactions.filter(txn =>
-    txn.source === 'plaid'
-    && txn.status === 'cleared'
+    getTransactionType(txn) === TXN_TYPE.PLAID_CLEARED
     && (txn.account_id || txn.plaid_account_id) === (missingTxn.account_id || missingTxn.plaid_account_id)
     && !txn.matched_transaction_id
   );
