@@ -401,6 +401,72 @@ function renderTransactionTable() {
     if (txn.is_split && txn.splits && txn.splits.length > 0) {
       // Use parent's unified transaction_id for split API calls (modify/delete)
       const parentTxnId = txn.transaction_id || '';
+
+      // Detect split-amount mismatch: children no longer sum to parent.
+      // Happens when a future/missing split parent gets matched to a plaid
+      // transaction with a different amount, and the children are re-parented.
+      const splitChildSum = txn.splits.reduce((sum, splitChild) => sum + (splitChild.amount || 0), 0);
+      const parentAmount = txn.amount || 0;
+      const splitAmountMismatch = Math.abs(splitChildSum - parentAmount) > 0.01;
+
+      if (splitAmountMismatch) {
+        // Render the parent row (not children) with a repair prompt.
+        // The split children are hidden until the user fixes the split.
+        const dateStr = new Date(txn.date).toLocaleDateString('en-US', {
+          year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC'
+        });
+        const formattedAmount = new Intl.NumberFormat('en-US', {
+          style: 'currency', currency: txn.iso_currency_code || 'USD'
+        }).format(parentAmount);
+        const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
+        const rowClass = `split-mismatch-row${isPendingRow ? ' pending-row' : ''}`;
+
+        html += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-source="${escapeHtml(txn.source || '')}">
+          <td>${escapeHtml(dateStr)}</td>
+          <td>${escapeHtml(txn.bank_account || '')}</td>
+          <td>${pendingBadge}${escapeHtml(txn.name || '—')}</td>`;
+
+        if (!showLedgerColumn) {
+          html += `<td>${formattedAmount}</td>`;
+        }
+
+        if (optionalFields.includes('source')) {
+          const sourceLabel = txn.is_manual ? 'Manual' : 'Plaid';
+          html += `<td><span class="source-badge ${txn.is_manual ? 'manual' : 'plaid'}">${sourceLabel}</span></td>`;
+        }
+
+        html += `<td class="split-mismatch-cell">
+          <span class="split-mismatch-badge" title="Split amounts no longer add up to the transaction total. This can happen when a matched transaction has a different amount than the original.">⚠ Split broken</span>
+          <button class="split-badge-btn split-repair-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Repair splits — amounts no longer match parent total">Repair</button>
+          <button class="split-badge-btn split-delete-badge" onclick="handleDeleteSplit('${escapeHtml(parentTxnId)}')" title="Delete all splits and revert to unsplit">🗑</button>
+        </td>`;
+
+        // Fill remaining optional columns
+        if (optionalFields.includes('merchant_name')) html += `<td>${escapeHtml(txn.merchant_name || '')}</td>`;
+        if (optionalFields.includes('payment_channel')) html += `<td>${escapeHtml(txn.payment_channel || '')}</td>`;
+        if (optionalFields.includes('check_number')) html += `<td>${escapeHtml(txn.check_number || '')}</td>`;
+        if (optionalFields.includes('original_description')) html += `<td>${escapeHtml(txn.original_description || '')}</td>`;
+        if (optionalFields.includes('authorized_date')) html += `<td>${escapeHtml(txn.authorized_date || '')}</td>`;
+        if (optionalFields.includes('authorized_datetime')) html += '<td></td>';
+        if (optionalFields.includes('personal_finance_category')) html += '<td></td>';
+        if (optionalFields.includes('user_memo')) html += `<td>${escapeHtml(txn.user_memo || '')}</td>`;
+
+        if (showLedgerColumn) {
+          html += `<td class="ledger-amount-cell">${formattedAmount}</td>`;
+          const lookupKey = txn.transaction_id;
+          const runningBal = isPendingRow ? pendingLedgerLookup[lookupKey] : balanceHistoryLookup[lookupKey];
+          if (runningBal !== undefined) {
+            const fmtBal = new Intl.NumberFormat('en-US', { style: 'currency', currency: txn.iso_currency_code || 'USD' }).format(runningBal);
+            html += `<td class="ledger-cell${runningBal < 0 ? ' ledger-negative' : ''}">${fmtBal}</td>`;
+          } else {
+            html += '<td class="ledger-cell ledger-unavailable">—</td>';
+          }
+        }
+
+        html += '<td></td></tr>';
+        renderedTxnIds.add(txn.transaction_id);
+        return;
+      }
       
       // Filter and render each split child as actual table rows
       let renderedSplitCount = 0;

@@ -618,8 +618,17 @@ async function _forceMatchRowClickHandler(event) {
 
   try {
     showStatus('Applying force match…', 'info');
-    await forceMatchOrphanToPlaid(orphanId, clickedTxnId);
-    showStatus('Force match applied successfully', 'success');
+    const result = await forceMatchOrphanToPlaid(orphanId, clickedTxnId);
+
+    if (result.splits_need_repair) {
+      showStatus(
+        'Force match applied — but split amounts no longer add up. Open the transaction to repair splits.',
+        'warning'
+      );
+    } else {
+      showStatus('Force match applied successfully', 'success');
+    }
+
     _refreshAfterReconciliation();
   } catch (matchError) {
     showStatus(`Force match failed: ${matchError.message}`, 'error');
@@ -792,8 +801,17 @@ async function _selectMatchCandidate(missingTxnId, plaidTxnId) {
   if (!confirm('Link these two transactions?')) return;
 
   try {
-    await manualReconciliationMatch(missingTxnId, plaidTxnId);
-    showStatus('Transactions matched successfully', 'success');
+    const result = await manualReconciliationMatch(missingTxnId, plaidTxnId);
+
+    if (result.splits_need_repair) {
+      showStatus(
+        'Transactions matched — but split amounts no longer add up. Open the transaction to repair splits.',
+        'warning'
+      );
+    } else {
+      showStatus('Transactions matched successfully', 'success');
+    }
+
     closeModal();
     _refreshAfterReconciliation();
   } catch (matchError) {
