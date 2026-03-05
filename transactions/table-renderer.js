@@ -208,23 +208,40 @@ function renderTransactionTable() {
   // Pending txns are excluded from backend balance history, so we project
   // forward from the account's current_balance (which reflects all posted txns).
   const pendingLedgerLookup = {};
+  const scheduledLedgerLookup = {};
   const showLedgerColumn = selectedAccountMode === 'single' && selectedAccountId;
   
-  if (showLedgerColumn && pendingTransactions.length > 0) {
+  if (showLedgerColumn) {
     const selectedAccount = accounts.find(account => account.account_id === selectedAccountId);
     const currentPostedBalance = selectedAccount ? selectedAccount.current_balance : 0;
-    
-    // Walk pending in balance-engine order (date ASC, txn_id ASC) to accumulate
-    const pendingAscending = [...pendingTransactions].reverse();
+
+    // Phase 1: pending transactions projected from current posted balance
     let runningProjected = currentPostedBalance;
-    pendingAscending.forEach(txn => {
-      // Amount is already in ledger convention (positive=inflow, negative=outflow)
-      runningProjected += txn.amount;
-      const lookupKey = txn.transaction_id;
-      if (lookupKey) {
-        pendingLedgerLookup[lookupKey] = runningProjected;
-      }
-    });
+    if (pendingTransactions.length > 0) {
+      const pendingAscending = [...pendingTransactions].reverse();
+      pendingAscending.forEach(txn => {
+        runningProjected += txn.amount;
+        const lookupKey = txn.transaction_id;
+        if (lookupKey) {
+          pendingLedgerLookup[lookupKey] = runningProjected;
+        }
+      });
+    }
+
+    // Phase 2: scheduled future transactions projected from the
+    // running balance that already incorporates all pending items.
+    // Walk in date ascending order (the array is sorted date descending,
+    // so reverse it) to accumulate balances chronologically.
+    if (scheduledFuture.length > 0) {
+      const scheduledAscending = [...scheduledFuture].reverse();
+      scheduledAscending.forEach(txn => {
+        runningProjected += txn.amount;
+        const lookupKey = txn.transaction_id;
+        if (lookupKey) {
+          scheduledLedgerLookup[lookupKey] = runningProjected;
+        }
+      });
+    }
   }
   
   // Build the combined rendering list following the blueprint block order:
@@ -418,6 +435,9 @@ function renderTransactionTable() {
         const formattedAmount = new Intl.NumberFormat('en-US', {
           style: 'currency', currency: txn.iso_currency_code || 'USD'
         }).format(parentAmount);
+        const parentAmountCellClass = parentAmount < 0
+          ? 'ledger-amount-cell ledger-negative'
+          : 'ledger-amount-cell';
         const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
         const rowClass = `split-mismatch-row${isPendingRow ? ' pending-row' : ''}`;
 
@@ -452,9 +472,11 @@ function renderTransactionTable() {
         if (optionalFields.includes('user_memo')) html += `<td>${escapeHtml(txn.user_memo || '')}</td>`;
 
         if (showLedgerColumn) {
-          html += `<td class="ledger-amount-cell">${formattedAmount}</td>`;
+          html += `<td class="${parentAmountCellClass}">${formattedAmount}</td>`;
           const lookupKey = txn.transaction_id;
-          const runningBal = isPendingRow ? pendingLedgerLookup[lookupKey] : balanceHistoryLookup[lookupKey];
+          const runningBal = isFutureBlockRow
+            ? scheduledLedgerLookup[lookupKey]
+            : isPendingRow ? pendingLedgerLookup[lookupKey] : balanceHistoryLookup[lookupKey];
           if (runningBal !== undefined) {
             const fmtBal = new Intl.NumberFormat('en-US', { style: 'currency', currency: txn.iso_currency_code || 'USD' }).format(runningBal);
             html += `<td class="ledger-cell${runningBal < 0 ? ' ledger-negative' : ''}">${fmtBal}</td>`;
@@ -503,6 +525,9 @@ function renderTransactionTable() {
           style: 'currency', 
           currency: split.iso_currency_code || 'USD' 
         }).format(displayAmount);
+        const splitAmountCellClass = displayAmount < 0
+          ? 'ledger-amount-cell ledger-negative'
+          : 'ledger-amount-cell';
         
         // Add split styling class and border class
         // Note: isFirstSplit/isLastSplit now refer to rendered splits, not original splits
@@ -602,12 +627,12 @@ function renderTransactionTable() {
         if (isFirstSplit) {
           // When ledger is shown, add amount + ledger columns for split rows
           if (showLedgerColumn) {
-            html += `<td class="ledger-amount-cell">${amount}</td>`;
+            html += `<td class="${splitAmountCellClass}">${amount}</td>`;
             // Top child shows the parent transaction's running balance
             const parentLookupKey = txn.transaction_id;
-            const parentRunningBalance = isPendingRow
-              ? pendingLedgerLookup[parentLookupKey]
-              : balanceHistoryLookup[parentLookupKey];
+            const parentRunningBalance = isFutureBlockRow
+              ? scheduledLedgerLookup[parentLookupKey]
+              : isPendingRow ? pendingLedgerLookup[parentLookupKey] : balanceHistoryLookup[parentLookupKey];
             if (parentRunningBalance !== undefined) {
               const formattedParentBalance = new Intl.NumberFormat('en-US', {
                 style: 'currency',
@@ -627,7 +652,7 @@ function renderTransactionTable() {
         } else {
           // Non-top split children: show amount but dash for ledger
           if (showLedgerColumn) {
-            html += `<td class="ledger-amount-cell">${amount}</td>`;
+            html += `<td class="${splitAmountCellClass}">${amount}</td>`;
             html += '<td class="ledger-cell ledger-unavailable">—</td>';
           }
           html += `<td></td>`;
@@ -712,20 +737,24 @@ function renderTransactionTable() {
       style: 'currency',
       currency: txn.iso_currency_code || 'USD'
     }).format(txn.amount);
+    const amountCellClass = txn.amount < 0
+      ? 'ledger-amount-cell ledger-negative'
+      : 'ledger-amount-cell';
 
     // ── Ledger balance cell (single-account view only) ──
     let ledgerBalanceHtml = '';
     if (showLedgerColumn) {
-      const runningBalance = isPendingRow
-        ? pendingLedgerLookup[txn.transaction_id]
-        : balanceHistoryLookup[txn.transaction_id];
+      const runningBalance = isFutureBlockRow
+        ? scheduledLedgerLookup[txn.transaction_id]
+        : isPendingRow ? pendingLedgerLookup[txn.transaction_id] : balanceHistoryLookup[txn.transaction_id];
       if (runningBalance !== undefined) {
         const formattedBalance = new Intl.NumberFormat('en-US', {
           style: 'currency',
           currency: txn.iso_currency_code || 'USD'
         }).format(runningBalance);
         const negativeClass = runningBalance < 0 ? ' ledger-negative' : '';
-        ledgerBalanceHtml = `<td class="ledger-cell${negativeClass}">${formattedBalance}</td>`;
+        const projectedClass = isFutureBlockRow ? ' ledger-projected' : '';
+        ledgerBalanceHtml = `<td class="ledger-cell${negativeClass}${projectedClass}">${formattedBalance}</td>`;
       } else {
         ledgerBalanceHtml = '<td class="ledger-cell ledger-unavailable">—</td>';
       }
@@ -748,7 +777,7 @@ function renderTransactionTable() {
     // Source badge column (optional field)
     if (optionalFields.includes('source')) {
       const sb = rendered.sourceBadge;
-      html += `<td><span class="source-badge ${sb.cssClass}" title="${sb.title}">${sb.label}</span></td>`;
+      html += `<td><span class="source-badge ${sb.cssClass}" data-tooltip="${sb.title}">${sb.label}</span></td>`;
     }
 
     // Category cell
@@ -799,7 +828,7 @@ function renderTransactionTable() {
 
     // Ledger columns (single-account view)
     if (showLedgerColumn) {
-      html += `<td class="ledger-amount-cell">${amount}</td>`;
+      html += `<td class="${amountCellClass}">${amount}</td>`;
       html += ledgerBalanceHtml;
     }
 

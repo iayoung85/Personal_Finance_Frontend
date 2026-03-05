@@ -1815,6 +1815,17 @@ tr:hover {
   min-width: 0;
 }
 
+/* Keep the active row above neighboring rows so autocomplete menus
+   are not visually buried under subsequent transaction rows. */
+.transaction-scroll-pane tbody tr:focus-within {
+  position: relative;
+  z-index: 40;
+}
+
+.transaction-scroll-pane tbody tr:focus-within .category-autocomplete-wrap {
+  z-index: 41;
+}
+
 .category-autocomplete {
   font-size: 10.5px;
   padding: 1px 5px;
@@ -1847,7 +1858,7 @@ tr:hover {
   top: 100%;
   left: 0;
   right: 0;
-  z-index: 100;
+  z-index: 2000;
   background: var(--bg-surface);
   border: 1px solid var(--border-primary);
   border-top: none;
@@ -2099,6 +2110,37 @@ tr:hover {
   white-space: nowrap;
   vertical-align: middle;
   line-height: 1.2;
+  position: relative;
+}
+
+/* Custom instant tooltip for badges — replaces native title delay */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-tertiary, #2d2d3d);
+  color: var(--text-primary, #e0e0e0);
+  border: 1px solid var(--border-color, #3e3e52);
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.05s;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+[data-tooltip]:hover::after {
+  opacity: 1;
 }
 
 .source-badge.plaid {
@@ -2177,6 +2219,77 @@ tr:hover {
   color: var(--accent-link);
   background: rgba(99,102,241,0.04);
   border-bottom-color: rgba(99,102,241,0.15);
+}
+
+.scheduled-row .ledger-amount-cell,
+.scheduled-row .ledger-cell,
+.scheduled-row .ledger-projected {
+  color: var(--color-success);
+}
+
+.scheduled-row .ledger-negative {
+  color: var(--color-danger);
+}
+
+/* Virtual BILL_FUTURE: theoretical / projected occurrence — faded to
+   visually distinguish from confirmed/materialized rows. */
+.bill-virtual-row {
+  opacity: 0.70;
+}
+
+.bill-virtual-row td {
+  color: var(--text-secondary);
+  background: rgba(99,102,241,0.02);
+  border-bottom-color: rgba(99,102,241,0.10);
+}
+
+/* Badge stays fully opaque even though the row is muted */
+.bill-virtual-row .source-badge {
+  opacity: 1.43;  /* 1/0.70 ≈ 1.43 to counteract the parent row's 0.70 */
+}
+
+/* Amount and ledger cells keep their green/red color, not greyed out */
+.bill-virtual-row .ledger-amount-cell,
+.bill-virtual-row .ledger-cell,
+.bill-virtual-row .ledger-projected {
+  opacity: 1.43;  /* counteract parent 0.70 */
+  color: var(--color-success);
+}
+
+.bill-virtual-row .ledger-negative {
+  color: var(--color-danger);
+}
+
+.source-badge.bill-virtual {
+  opacity: 1;
+}
+
+/* Materialized bill-originated MANUAL_FUTURE: user has confirmed or
+   customized this occurrence so it is rendered at full prominence. */
+.bill-materialized-row {
+  opacity: 1;
+}
+
+.bill-materialized-row td {
+  color: var(--accent-link);
+  background: rgba(99,102,241,0.07);
+  border-bottom-color: rgba(99,102,241,0.18);
+}
+
+.bill-materialized-row .ledger-amount-cell,
+.bill-materialized-row .ledger-cell,
+.bill-materialized-row .ledger-projected {
+  color: var(--color-success);
+}
+
+.bill-materialized-row .ledger-negative {
+  color: var(--color-danger);
+}
+
+.source-badge.bill-materialized {
+  background: rgba(99,102,241,0.15);
+  color: rgba(99,102,241,0.95);
+  font-weight: 600;
 }
 
 .missing-row {
@@ -2293,17 +2406,20 @@ tr:hover {
 
 .bill-edit-btn {
   font-size: 10px;
-  padding: 2px 6px;
-  border: 1px solid rgba(99,102,241,0.3);
-  background: var(--badge-info-bg);
-  color: rgba(99,102,241,0.8);
+  padding: 2px 8px;
+  border: 1px solid rgba(99,102,241,0.5);
+  background: rgba(99,102,241,0.12);
+  color: rgba(99,102,241,0.95);
   border-radius: 3px;
   cursor: pointer;
+  font-weight: 600;
   transition: all 0.2s;
+  opacity: 1.43;  /* counteract virtual row's opacity so button is fully visible */
 }
 
 .bill-edit-btn:hover {
-  background: rgba(99,102,241,0.15);
+  background: rgba(99,102,241,0.25);
+  border-color: rgba(99,102,241,0.7);
 }
 
 /* Delete Button for Manual Transactions */
@@ -2880,6 +2996,11 @@ tr:hover {
 
 .ledger-unavailable {
   color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Projected balance for scheduled future rows — italic to distinguish from actual */
+.ledger-projected {
   font-style: italic;
 }
 

@@ -99,7 +99,8 @@ const MATCHABLE_TYPES = new Set([
 const SPLITTABLE_TYPES = new Set([
   TXN_TYPE.PLAID_CLEARED,
   TXN_TYPE.MANUAL_CLEARED,
-  TXN_TYPE.BILL_FUTURE,
+  // BILL_FUTURE intentionally excluded: virtual rows have no DB record
+  // for split children to reference. User must materialize first (→ MANUAL_FUTURE).
   TXN_TYPE.MANUAL_FUTURE,
   TXN_TYPE.BILL_MISSING,
   TXN_TYPE.MANUAL_MISSING,

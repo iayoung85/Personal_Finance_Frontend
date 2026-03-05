@@ -107,16 +107,11 @@ function _renderOpeningBalanceRow(ctx) {
 function _renderScheduledRow(ctx) {
   const scheduledIsTransfer = isTransferCategory(ctx.txn.user_category) || !!ctx.txn.transfer_pair_id;
 
-  const badge = ctx.isBill
-    ? `<span class="source-badge scheduled" title="From bill: ${escapeHtml(ctx.txn.name || '')}">📅</span> `
-    : '<span class="source-badge scheduled" title="Scheduled future transaction">📅</span> ';
+  const badge = '<span class="source-badge scheduled" title="Scheduled future transaction">📅</span> ';
 
   let buttons = '';
   if (!scheduledIsTransfer) {
     buttons += _confirmButton(ctx.txnId, ctx.accountId);
-  }
-  if (ctx.isBill) {
-    buttons += `<button class="bill-edit-btn" data-bill-id="${escapeHtml(ctx.txn.bill_id || '')}" title="Edit this bill">Edit Bill</button>`;
   }
 
   const categoryCell = _buildCategoryAutocomplete(
@@ -124,26 +119,96 @@ function _renderScheduledRow(ctx) {
     'Type to search categories…', buttons
   );
 
-  let actionCell;
-  if (ctx.isBill && ctx.txn.bill_id) {
-    actionCell = `
-      <td style="text-align: center;">
-        <button class="skip-occurrence-btn" onclick="skipBillOccurrence('${escapeHtml(ctx.txn.bill_id)}', '${escapeHtml(ctx.txn.date)}')" title="Skip this bill occurrence">⏭</button>
-      </td>
-    `;
-  } else {
-    actionCell = '<td></td>';
-  }
+  return {
+    typeBadge: badge,
+    categoryCell,
+    actionCell: '<td></td>',
+    rowCssClass: 'scheduled-row',
+    sourceBadge: { label: 'Scheduled', cssClass: 'scheduled', title: 'Scheduled future transaction' },
+    displayName: ctx.txn.name || '',
+  };
+}
 
-  const sourceLabel = ctx.isBill ? 'Bill' : 'Scheduled';
-  const sourceTitle = ctx.isBill ? 'Upcoming bill payment' : 'Scheduled future transaction';
+
+/**
+ * Virtual BILL_FUTURE row: greyed-out appearance to indicate the
+ * occurrence is theoretical (projected from the bill template, no DB row).
+ * Right-click context menu provides Mark Paid, Modify, and Skip actions.
+ */
+function _renderVirtualBillRow(ctx) {
+  const scheduledIsTransfer = isTransferCategory(ctx.txn.user_category) || !!ctx.txn.transfer_pair_id;
+  const occNum = ctx.txn.occurrence_number || '?';
+  const billName = escapeHtml(ctx.txn.name || 'Bill');
+  const scheduleSummary = escapeHtml(ctx.txn.schedule_summary || '');
+  const hoverTitle = `#${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
+
+  const badge = `<span class="source-badge scheduled bill-virtual" data-tooltip="${hoverTitle}">📅</span> `;
+
+  let buttons = '';
+  if (!scheduledIsTransfer) {
+    buttons += _confirmButton(ctx.txnId, ctx.accountId);
+  }
+  buttons += `<button class="bill-edit-btn" data-bill-id="${escapeHtml(ctx.txn.bill_id || '')}" title="Edit this bill template">📋 Edit Bill</button>`;
+
+  const categoryCell = _buildCategoryAutocomplete(
+    ctx.txnId, ctx.accountId, ctx.currentFullCategory,
+    'Type to search categories…', buttons
+  );
+
+  const actionCell = ctx.txn.bill_id
+    ? `<td style="text-align: center;">
+        <button class="skip-occurrence-btn" onclick="skipBillOccurrence('${escapeHtml(ctx.txn.bill_id)}', '${escapeHtml(ctx.txn.date)}')" title="Skip this bill occurrence">⏭</button>
+      </td>`
+    : '<td></td>';
 
   return {
     typeBadge: badge,
     categoryCell,
     actionCell,
-    rowCssClass: 'scheduled-row',
-    sourceBadge: { label: sourceLabel, cssClass: 'scheduled', title: sourceTitle },
+    rowCssClass: 'scheduled-row bill-virtual-row',
+    sourceBadge: { label: 'Bill', cssClass: 'scheduled bill-virtual', title: hoverTitle },
+    displayName: ctx.txn.name || '',
+  };
+}
+
+
+/**
+ * Materialized bill-originated MANUAL_FUTURE row: the user has acted on
+ * this occurrence (mark paid, modify, etc.) so it has a real DB row.
+ * Rendered with full opacity and a 📝 badge to distinguish from virtual
+ * BILL_FUTURE rows, signaling it has been confirmed/customized.
+ */
+function _renderMaterializedBillRow(ctx) {
+  const scheduledIsTransfer = isTransferCategory(ctx.txn.user_category) || !!ctx.txn.transfer_pair_id;
+  const occNum = ctx.txn.occurrence_number || ctx.txn.bill_occurrence_number || '?';
+  const billName = escapeHtml(ctx.txn.name || 'Bill');
+  const scheduleSummary = escapeHtml(ctx.txn.schedule_summary || '');
+  const hoverTitle = `Confirmed #${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
+
+  const badge = `<span class="source-badge scheduled bill-materialized" data-tooltip="${hoverTitle}">📝</span> `;
+
+  let buttons = '';
+  if (!scheduledIsTransfer) {
+    buttons += _confirmButton(ctx.txnId, ctx.accountId);
+  }
+
+  const categoryCell = _buildCategoryAutocomplete(
+    ctx.txnId, ctx.accountId, ctx.currentFullCategory,
+    'Type to search categories…', buttons
+  );
+
+  const actionCell = ctx.txnId
+    ? `<td style="text-align: center;">
+        <button class="delete-transaction-btn" onclick="deleteManualTransaction('${escapeHtml(ctx.txnId)}')" title="Delete this materialized occurrence">🗑</button>
+      </td>`
+    : '<td></td>';
+
+  return {
+    typeBadge: badge,
+    categoryCell,
+    actionCell,
+    rowCssClass: 'scheduled-row bill-materialized-row',
+    sourceBadge: { label: 'Confirmed', cssClass: 'scheduled bill-materialized', title: hoverTitle },
     displayName: ctx.txn.name || '',
   };
 }
@@ -365,8 +430,14 @@ function renderRowByType(ctx) {
     return _renderOpeningBalanceRow(ctx);
   }
 
-  // Scheduled future transactions — bill skip button, edit-bill button
-  if (rowType === TXN_TYPE.BILL_FUTURE || rowType === TXN_TYPE.MANUAL_FUTURE) {
+  // Scheduled future block: three distinct visual treatments
+  if (rowType === TXN_TYPE.BILL_FUTURE) {
+    return _renderVirtualBillRow(ctx);
+  }
+  if (rowType === TXN_TYPE.MANUAL_FUTURE && ctx.isBill) {
+    return _renderMaterializedBillRow(ctx);
+  }
+  if (rowType === TXN_TYPE.MANUAL_FUTURE) {
     return _renderScheduledRow(ctx);
   }
 

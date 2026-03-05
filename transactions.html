@@ -183,18 +183,12 @@
             <label><input type="checkbox" class="field-checkbox" value="source"> Source (Plaid/Manual)</label>
           </div>
         </div>
-        <!-- Bills Ahead -->
+        <!-- Forecast Days -->
         <div class="config-section">
-          <h3>Bills Ahead</h3>
-          <p style="font-size: 13px; color: #666; margin-bottom: 8px;">How many upcoming bill occurrences to show per bill in the scheduled transactions block.</p>
-          <select id="bills-upcoming-count" style="width: 80px; padding: 4px 8px; font-size: 14px;">
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="6">6</option>
-            <option value="12">12</option>
-          </select>
+          <h3>Forecast Horizon</h3>
+          <p style="font-size: 13px; color: #666; margin-bottom: 8px;">How many days into the future to project bill and scheduled transaction occurrences.</p>
+          <input id="bills-future-days" type="number" min="1" max="365" value="90" style="width: 80px; padding: 4px 8px; font-size: 14px;">
+          <span style="font-size: 13px; color: #999; margin-left: 6px;">days</span>
         </div>
       </div>
       <div class="modal-footer">

@@ -100,7 +100,9 @@ function _buildMenuItems(txnData) {
   const isPlaid = txnType === TXN_TYPE.PLAID_CLEARED || txnType === TXN_TYPE.PLAID_PENDING;
   const isManual = txnType === TXN_TYPE.MANUAL_CLEARED;
   const isPending = txnType === TXN_TYPE.PLAID_PENDING;
-  const isScheduled = txnType === TXN_TYPE.BILL_FUTURE || txnType === TXN_TYPE.MANUAL_FUTURE;
+  const isBillFuture = txnType === TXN_TYPE.BILL_FUTURE;
+  const isManualFuture = txnType === TXN_TYPE.MANUAL_FUTURE;
+  const isScheduled = isBillFuture || isManualFuture;
   const isMissing = txnType === TXN_TYPE.BILL_MISSING;
   const isMatched = txnType === TXN_TYPE.BILL_MATCHED || txnType === TXN_TYPE.MANUAL_MATCH;
   const isMatchedPair = !!txnData.matchManualTxnId;
@@ -181,8 +183,33 @@ function _buildMenuItems(txnData) {
     return items;
   }
 
-  // "Modify" — manual transactions and scheduled/bill transactions
-  const showModify = isManual || (isScheduled && (isBill || !isBill));
+  // ── Virtual BILL_FUTURE gets its own menu: mark paid, modify, skip ──
+  // These are virtual rows (no DB record) — actions trigger materialization.
+  // Split and transfer are not available because there is no DB row to
+  // attach child rows or transfer_pair_id to.
+  if (isBillFuture) {
+    const markPaidLabel = txnData.amount < 0 ? '✅ Mark Paid' : '✅ Mark Received';
+    items.push({
+      label: markPaidLabel,
+      action: 'mark-paid',
+      separator: false,
+    });
+    items.push({
+      label: '✏️ Modify',
+      action: 'modify',
+      separator: false,
+    });
+    items.push({
+      label: '⏭ Skip Occurrence',
+      action: 'skip-occurrence',
+      separator: false,
+      destructive: true,
+    });
+    return items;
+  }
+
+  // "Modify" — manual transactions and MANUAL_FUTURE (including bill-originated)
+  const showModify = isManual || isManualFuture;
   if (showModify) {
     items.push({
       label: '✏️ Modify',
@@ -201,9 +228,9 @@ function _buildMenuItems(txnData) {
     });
   }
 
-  // "Make Transfer" — plaid, manual, pending, scheduled, missing
-  // (NOT split, opening balance, orphaned, matched)
-  const showTransfer = isPlaid || isManual || isPending || isScheduled || isMissing;
+  // "Make Transfer" — plaid, manual, pending, MANUAL_FUTURE, missing
+  // (NOT split, opening balance, orphaned, matched, BILL_FUTURE)
+  const showTransfer = isPlaid || isManual || isPending || isManualFuture || isMissing;
   if (showTransfer) {
     items.push({
       label: '⇄ Make Transfer',
@@ -217,8 +244,8 @@ function _buildMenuItems(txnData) {
     items[items.length - 1].separator = true;
   }
 
-  // "Delete" — manual transactions only (not matched, not orphaned)
-  if (isManual && !isOrphaned) {
+  // "Delete" — manual cleared and MANUAL_FUTURE (not matched, not orphaned)
+  if ((isManual || isManualFuture) && !isOrphaned) {
     items.push({
       label: '🗑️ Delete',
       action: 'delete',
@@ -324,6 +351,12 @@ function _dispatchContextAction(action, txnData) {
     case 'approve-all-matches':
       _handleContextApproveAllMatches(txnData);
       break;
+    case 'mark-paid':
+      _handleContextMarkPaid(txnData);
+      break;
+    case 'skip-occurrence':
+      _handleContextSkipOccurrence(txnData);
+      break;
     default:
       console.warn('Unknown context menu action:', action);
   }
@@ -332,18 +365,12 @@ function _dispatchContextAction(action, txnData) {
 // ─── Action handlers ──────────────────────────────────────────
 
 /**
- * RC-2: Modify — open edit modal for manual transactions,
- *        navigate to bills.html for bill occurrences.
+ * RC-2: Modify — open edit modal for manual transactions.
+ *        For virtual BILL_FUTURE rows the modal opens pre-filled with
+ *        bill data; on save the backend materializes it first, then
+ *        applies the edits (handled transparently by the update route).
  */
 function _handleContextModify(txnData) {
-  if (txnData.isBill && txnData.billId) {
-    // Bill occurrence: navigate to bills page with edit modal
-    window.location.href = `bills.html?edit=${encodeURIComponent(txnData.billId)}`;
-    return;
-  }
-
-  // Manual transaction (including future-dated manual txns shown in scheduled block):
-  // open edit modal
   if (typeof openEditManualTransactionModal === 'function') {
     openEditManualTransactionModal(txnData.txnId);
   } else {
@@ -498,5 +525,81 @@ async function _handleContextApproveAllMatches() {
     await fetchAllTransactions(true);
   } catch (approveError) {
     showStatus(`Failed to approve matches: ${approveError.message}`, 'error');
+  }
+}
+
+
+// ─── Bill-future specific context menu handlers ─────────────
+
+/**
+ * Mark Paid: materializes a virtual BILL_FUTURE occurrence into a real
+ * MANUAL_FUTURE row in the database. The backend handles the state
+ * machine transition (BILL_FUTURE → MANUAL_FUTURE via MATERIALIZE) and
+ * adds the occurrence to Bill.skipped_occurrences so the virtual slot
+ * is suppressed on the next fetch.
+ *
+ * The row appears in-place in the scheduled block after refresh, now
+ * rendered as a materialized bill-originated MANUAL_FUTURE with the 📝
+ * badge instead of the greyed-out 📅 bill badge.
+ */
+async function _handleContextMarkPaid(txnData) {
+  try {
+    // The update route detects virtual IDs (bill_{id}_occ_{N}) and
+    // materializes automatically. Sending an empty payload triggers
+    // materialization without changing any fields.
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(txnData.txnId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      showStatus(data.error || 'Failed to mark as paid', 'error');
+      return;
+    }
+
+    showStatus('Marked as paid — occurrence materialized', 'success');
+
+    try {
+      localStorage.removeItem('pf_cached_transactions');
+      localStorage.removeItem('pf_transactions_cached_at');
+    } catch (cacheErr) { /* non-fatal */ }
+
+    await fetchAllTransactions(true);
+  } catch (networkError) {
+    showStatus(`Failed to mark as paid: ${networkError.message}`, 'error');
+  }
+}
+
+
+/**
+ * Skip Occurrence: adds the occurrence number to the bill's
+ * skipped_occurrences list so it no longer appears in the scheduled
+ * future block. Delegates to the existing skipBillOccurrence() in
+ * manual-transactions.js.
+ */
+function _handleContextSkipOccurrence(txnData) {
+  if (!txnData.billId) {
+    showStatus('Cannot skip — no bill associated', 'error');
+    return;
+  }
+  // Find the full transaction object from the cached list to get the
+  // occurrence date for the skip endpoint.
+  const txn = transactions.find(findTxn => findTxn.transaction_id === txnData.txnId);
+  const occurrenceDate = txn?.date || '';
+  if (!occurrenceDate) {
+    showStatus('Cannot determine occurrence date', 'error');
+    return;
+  }
+
+  if (typeof skipBillOccurrence === 'function') {
+    skipBillOccurrence(txnData.billId, occurrenceDate);
+  } else {
+    showStatus('Skip function not available', 'error');
   }
 }

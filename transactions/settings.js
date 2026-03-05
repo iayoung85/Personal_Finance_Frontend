@@ -23,7 +23,7 @@ async function saveSettings() {
       hide_transfers: hideTransfers,
       show_overrides_only: showOverridesOnly,
       show_pending: document.getElementById('show-pending-toggle').checked,
-      bills_upcoming_count: parseInt(document.getElementById('bills-upcoming-count').value, 10) || 1
+      bills_future_days: parseInt(document.getElementById('bills-future-days').value, 10) || 90
     };
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transaction_viewer_settings`, {
@@ -41,7 +41,7 @@ async function saveSettings() {
     
     showStatus('Settings saved successfully — refreshing transactions…', 'success');
 
-    // Why: bills_upcoming_count and other settings affect the server-side
+    // Why: bills_future_days and other settings affect the server-side
     // transaction payload (e.g. number of bill occurrence pseudo-txns).
     // Re-fetch so the transaction viewer reflects the new settings.
     await fetchAllTransactions(true);
@@ -97,7 +97,7 @@ function applySettings(settings) {
   const showPending = settings.show_pending !== undefined ? settings.show_pending : false;
   document.getElementById('show-pending-toggle').checked = showPending;
 
-  // Apply bills_upcoming_count setting (default to 1 if not set)
-  const billsUpcomingCount = settings.bills_upcoming_count !== undefined ? settings.bills_upcoming_count : 1;
-  document.getElementById('bills-upcoming-count').value = String(billsUpcomingCount);
+  // Apply bills_future_days setting (default to 90 if not set)
+  const billsFutureDays = settings.bills_future_days !== undefined ? settings.bills_future_days : 90;
+  document.getElementById('bills-future-days').value = String(billsFutureDays);
 }

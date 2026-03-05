@@ -34,7 +34,7 @@ function openAddManualTransactionModal() {
   }
 
   if (linkedAccounts.length > 0) {
-    accountOptions += '<optgroup label="🔗 Plaid-Linked (historical only)">';
+    accountOptions += '<optgroup label="🔗 Plaid-Linked (historical or future)">';
     linkedAccounts.forEach(account => {
       const displayName = account.custom_name || account.account_name || account.institution_name || 'Unknown Account';
       const categoryLabel = account.account_category || '';
@@ -309,6 +309,12 @@ async function _updateManualTransaction(transactionId, accountId) {
     return;
   }
 
+  const linkedDateError = _getLinkedAccountDateWindowError(accountId, date);
+  if (linkedDateError) {
+    _showManualTxnError(linkedDateError);
+    return;
+  }
+
   // Category validation: must match an existing category or be a bracket transfer
   if (category && !isTransferCategory(category)) {
     const isKnownCategory = (availableCategories || []).some(
@@ -383,6 +389,35 @@ function _showManualTxnError(message) {
   // Auto-clear after 5 seconds
   clearTimeout(banner._clearTimer);
   banner._clearTimer = setTimeout(() => { banner.style.display = 'none'; }, 5000);
+}
+
+/**
+ * Return a user-facing validation error when a linked account date falls
+ * inside the plaid-synced window; otherwise return null.
+ */
+function _getLinkedAccountDateWindowError(accountId, date) {
+  if (!accountId || !date) return null;
+
+  const selectedAccount = accounts.find(account => account.account_id === accountId);
+  // Why connection_status not origin: origin is immutable (how the account was born),
+  // but connection_status reflects current lifecycle. A converted plaid account
+  // (connection_status='converted') now operates as manual — no date restriction.
+  const isActivelyLinkedToPlaid = selectedAccount && selectedAccount.connection_status === 'linked';
+  const earliestPlaidDate = selectedAccount && selectedAccount.earliest_plaid_transaction_date;
+
+  if (!isActivelyLinkedToPlaid || !earliestPlaidDate) {
+    return null;
+  }
+
+  const localNow = new Date();
+  const todayIso = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
+  const isInPlaidSyncedWindow = date >= earliestPlaidDate && date <= todayIso;
+
+  if (isInPlaidSyncedWindow) {
+    return `Plaid account: date falls in the Plaid-synced range (${earliestPlaidDate} to ${todayIso}). Use a historical date before ${earliestPlaidDate} or a future date after ${todayIso}.`;
+  }
+
+  return null;
 }
 
 /**
@@ -483,6 +518,15 @@ async function _submitPendingManualTransaction() {
     user_category: pending.category || null,
     memo: pending.memo || null,
   };
+
+  const pendingAccountId = pending.mode === 'edit'
+    ? (transactions.find(txn => txn.transaction_id === pending.transactionId)?.account_id || pending.accountId)
+    : pending.accountId;
+  const pendingDateError = _getLinkedAccountDateWindowError(pendingAccountId, pending.date);
+  if (pendingDateError) {
+    showStatus(pendingDateError, 'error');
+    return;
+  }
 
   try {
     if (pending.mode === 'edit') {
@@ -644,25 +688,10 @@ async function saveManualTransaction() {
     }
   }
 
-  // Date validation depends on whether this is a plaid or offline account
-  const selectedAccount = accounts.find(account => account.account_id === accountId);
-  // Why connection_status not origin: origin is immutable (how the account was born),
-  // but connection_status reflects current lifecycle. A converted plaid account
-  // (connection_status='converted') now operates as manual — no date restriction.
-  const isActivelyLinkedToPlaid = selectedAccount && selectedAccount.connection_status === 'linked';
-
-  // Use backend-authoritative earliest plaid transaction date (Problem 5 alignment).
-  // The backend guards against dates >= earliest_plaid_date, so the frontend must
-  // use the same boundary rather than the opening_balance date (which may differ).
-  const earliestPlaidDate = selectedAccount && selectedAccount.earliest_plaid_transaction_date;
-
-  if (isActivelyLinkedToPlaid && earliestPlaidDate) {
-    // Plaid accounts: manual transactions MUST be before the earliest plaid transaction.
-    // Backend will auto-generate a manual_opening_balance to reconcile.
-    if (date >= earliestPlaidDate) {
-      _showManualTxnError(`Plaid account: date must be before the earliest plaid transaction (${earliestPlaidDate}). Manual transactions in Plaid accounts are only for historical entries.`);
-      return;
-    }
+  const linkedDateError = _getLinkedAccountDateWindowError(accountId, date);
+  if (linkedDateError) {
+    _showManualTxnError(linkedDateError);
+    return;
   }
 
   try {
@@ -1029,8 +1058,9 @@ function _updateManualTxnDateConstraints() {
   const earliestPlaidDate = selectedAccount && selectedAccount.earliest_plaid_transaction_date;
 
   if (selectedAccount && selectedAccount.connection_status === 'linked') {
-    // Plaid account: manual transactions must be BEFORE earliest plaid transaction.
-    // Auto-set date to 1 day before that boundary for convenience.
+    // Linked account: manual entries can be historical (before earliest plaid date)
+    // or future (after today). Auto-set a historical default for convenience,
+    // but do not set a max constraint so future dates remain selectable.
     if (earliestPlaidDate) {
       const boundaryDate = new Date(earliestPlaidDate + 'T00:00:00');
       const dayBefore = new Date(boundaryDate);
@@ -1038,15 +1068,14 @@ function _updateManualTxnDateConstraints() {
       const dayBeforeStr = dayBefore.toISOString().split('T')[0];
 
       dateInput.value = dayBeforeStr;
-      dateInput.setAttribute('max', dayBeforeStr);
     }
 
     const advisory = document.createElement('small');
     advisory.id = 'manual-txn-plaid-advisory';
     advisory.style.cssText = 'color: var(--color-warning); display: block; margin-top: 6px; padding: 6px 8px; background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); border-radius: 4px; font-size: 11px;';
     advisory.textContent = earliestPlaidDate
-      ? `⚠ Linked account — date capped at ${earliestPlaidDate}. An opening balance will be auto-created.`
-      : '⚠ Linked account — historical entries only (before first Plaid import).';
+      ? `⚠ Linked account — allowed dates are before ${earliestPlaidDate} (historical) or after today (future).`
+      : '⚠ Linked account — choose a historical date (before first Plaid import) or a future date.';
     accountSelect.parentElement.appendChild(advisory);
   }
   // Offline accounts: no constraints, date stays as today

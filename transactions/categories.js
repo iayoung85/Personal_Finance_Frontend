@@ -384,6 +384,10 @@ function attachCategoryDropdownListeners() {
 
   // Select all text on focus for easy replacement
   $(document).on('focus', '.category-autocomplete', function() {
+    // Snapshot the current persisted value for this editing session.
+    // If the user cancels (Escape) or leaves without applying override,
+    // we restore this value so unsaved text does not linger in the table.
+    $(this).data('committedCategoryValue', this.value || '');
     this.select();
   });
 
@@ -462,6 +466,11 @@ function attachCategoryDropdownListeners() {
         }
       }
     } else if (e.key === 'Escape') {
+      e.preventDefault();
+      const committedValue = $(input).data('committedCategoryValue');
+      if (committedValue !== undefined) {
+        input.value = committedValue;
+      }
       list.empty().hide();
     }
   });
@@ -479,10 +488,15 @@ function attachCategoryDropdownListeners() {
 
   // ===== Hide list on blur =====
   $(document).on('blur', '.category-autocomplete', function() {
-    const txnId = $(this).data('txn-id');
+    const input = this;
+    const txnId = $(input).data('txn-id');
+    const committedValue = $(input).data('committedCategoryValue');
     // Small delay so click-on-item can fire first
     setTimeout(() => {
       $(`.category-ac-list[data-txn-id="${txnId}"]`).empty().hide();
+      if (committedValue !== undefined && (input.value || '') !== committedValue) {
+        input.value = committedValue;
+      }
     }, 200);
   });
 
