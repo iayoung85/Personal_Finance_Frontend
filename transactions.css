@@ -3765,3 +3765,87 @@ tr:hover {
   background: #1a2a3a;
   color: #4dabf7;
 }
+
+
+/* ============================================================
+   Inline Cell Editing — click-to-edit on date, description, amount
+   ============================================================ */
+
+/* Hover affordance: subtle underline + pointer on editable cells */
+td.inline-editable,
+td.inline-editable-modal {
+  cursor: pointer;
+  position: relative;
+}
+
+td.inline-editable:hover,
+td.inline-editable-modal:hover {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--text-secondary, #888);
+}
+
+/* Pencil icon hint on hover (only on non-touch) */
+@media (hover: hover) {
+  td.inline-editable::after,
+  td.inline-editable-modal::after {
+    content: '✎';
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.7rem;
+    opacity: 0;
+    color: var(--text-secondary, #888);
+    pointer-events: none;
+    transition: opacity 0.15s;
+  }
+
+  td.inline-editable:hover::after,
+  td.inline-editable-modal:hover::after {
+    opacity: 0.6;
+  }
+
+  /* Hide the pencil when the editor is open */
+  td.inline-editing::after {
+    display: none;
+  }
+}
+
+/* Active editing state — remove underline, fill cell with input */
+td.inline-editing {
+  text-decoration: none !important;
+  padding: 0 !important;
+}
+
+/* Shared input styles for all inline editors */
+.inline-edit-input {
+  width: 100%;
+  height: 100%;
+  min-height: 28px;
+  padding: 4px 6px;
+  margin: 0;
+  border: 2px solid var(--accent-color, #4dabf7);
+  border-radius: 3px;
+  background: var(--bg-primary, #1a1a2e);
+  color: var(--text-primary, #e0e0e0);
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.inline-edit-input:focus {
+  box-shadow: 0 0 0 1px var(--accent-color, #4dabf7);
+}
+
+/* Date input specific */
+.inline-edit-date {
+  max-width: 160px;
+}
+
+/* Description input stretches to fill */
+.inline-edit-description {
+  min-width: 120px;
+}

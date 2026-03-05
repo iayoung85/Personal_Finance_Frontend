@@ -763,15 +763,23 @@ function renderTransactionTable() {
     // ── Data attributes for context menu ──
     const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-name="${escapeHtml(txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}"`;
 
+    // ── Inline-edit eligibility (date, description, amount) ──
+    const isInlineEditable = EDITABLE_TYPES.has(txnRowType);
+    const isPlaidDescEditable = (txnRowType === TXN_TYPE.PLAID_CLEARED || txnRowType === TXN_TYPE.PLAID_PENDING);
+    const isDescEditable = isInlineEditable || isPlaidDescEditable;
+
+    // Prefer user_description_override for plaid rows (if the user set one)
+    const effectiveDisplayName = txn.user_description_override || rendered.displayName;
+
     // ── Assemble the row ──
     const rowCssClass = rendered.rowCssClass;
     html += `<tr${rowCssClass ? ` class="${rowCssClass}"` : ''}${rowDataAttrs}>`;
-    html += `<td>${dateStr}</td>`;
+    html += `<td${isInlineEditable ? ' data-field="date" class="inline-editable"' : ''}>${dateStr}</td>`;
     html += `<td>${txn.bank_account}</td>`;
-    html += `<td>${fullBadge}${pendingBadge}${rendered.displayName}</td>`;
+    html += `<td${isDescEditable ? ' data-field="description" class="inline-editable"' : ''}>${fullBadge}${pendingBadge}${escapeHtml(effectiveDisplayName)}</td>`;
 
     if (!showLedgerColumn) {
-      html += `<td>${amount}</td>`;
+      html += `<td${isInlineEditable ? ' data-field="amount" class="inline-editable-modal"' : ''}>${amount}</td>`;
     }
 
     // Source badge column (optional field)
@@ -828,7 +836,7 @@ function renderTransactionTable() {
 
     // Ledger columns (single-account view)
     if (showLedgerColumn) {
-      html += `<td class="${amountCellClass}">${amount}</td>`;
+      html += `<td class="${amountCellClass}${isInlineEditable ? ' inline-editable-modal' : ''}"${isInlineEditable ? ' data-field="amount"' : ''}>${amount}</td>`;
       html += ledgerBalanceHtml;
     }
 

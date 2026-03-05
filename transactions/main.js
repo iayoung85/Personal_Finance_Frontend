@@ -46,6 +46,9 @@ $(document).ready(async function() {
   // Initialize right-click context menu on transaction rows
   initContextMenu();
 
+  // Initialize click-to-edit on date, description, and amount cells
+  initInlineEditing();
+
   // Check for pending reconciliation proposals and show banner if needed
   await checkAndRenderReconciliationBanner();
 
