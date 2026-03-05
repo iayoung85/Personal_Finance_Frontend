@@ -49,6 +49,9 @@ $(document).ready(async function() {
   // Initialize click-to-edit on date, description, and amount cells
   initInlineEditing();
 
+  // Initialize batch edit manager for deferred category/memo submissions
+  initBatchEditListeners();
+
   // Check for pending reconciliation proposals and show banner if needed
   await checkAndRenderReconciliationBanner();
 
@@ -66,20 +69,38 @@ $(document).ready(async function() {
     renderTransactionTable();
   });
 
-  // Save memo via button click
+  // Save memo via button click — stage for batch submission
   $(document).on('click', '.memo-save', function() {
     const button = $(this);
     const txnId = button.data('txn-id');
     const input = button.closest('td').find('.memo-input');
     const memoValue = input.val();
-    saveTransactionMemo(txnId, memoValue, button);
+
+    if (txnId && typeof stageBatchEdit === 'function') {
+      stageBatchEdit(String(txnId), { user_memo: memoValue });
+      showStatus('Memo staged', 'success');
+      setTimeout(() => clearStatus(), 1500);
+    } else {
+      // Fallback to immediate save if batch manager is unavailable
+      saveTransactionMemo(txnId, memoValue, button);
+    }
   });
 
-  // Tab handler for memo input — move to next row's category input
+  // Tab handler for memo input — stage memo via batch manager and advance
   $(document).on('keydown', '.memo-input', function(e) {
     if (e.key === 'Tab') {
       e.preventDefault();
-      const currentRow = $(this).closest('tr');
+      const memoInputEl = $(this);
+      const memoValue = memoInputEl.val();
+      const currentRow = memoInputEl.closest('tr');
+      const memoTxnId = currentRow.data('txn-id');
+
+      // Stage the memo change for bulk submission
+      if (memoTxnId && typeof stageBatchEdit === 'function') {
+        stageBatchEdit(String(memoTxnId), { user_memo: memoValue });
+      }
+
+      // Advance to next row's category input
       const nextRow = currentRow.next('tr');
       if (nextRow.length) {
         const nextCategoryInput = nextRow.find('.category-autocomplete');
@@ -88,11 +109,23 @@ $(document).ready(async function() {
         }
       }
     } else if (e.key === 'Enter') {
-      // Enter key to save memo
       e.preventDefault();
-      const button = $(this).closest('td').find('.memo-save');
-      if (button.length) {
-        button.click();
+      const enterMemoInput = $(this);
+      const enterMemoValue = enterMemoInput.val();
+      const enterRow = enterMemoInput.closest('tr');
+      const enterTxnId = enterRow.data('txn-id');
+
+      // Stage the memo change for bulk submission
+      if (enterTxnId && typeof stageBatchEdit === 'function') {
+        stageBatchEdit(String(enterTxnId), { user_memo: enterMemoValue });
+        showStatus('Memo staged', 'success');
+        setTimeout(() => clearStatus(), 1500);
+      } else {
+        // Fallback: click the save button directly
+        const button = enterMemoInput.closest('td').find('.memo-save');
+        if (button.length) {
+          button.click();
+        }
       }
     }
   });

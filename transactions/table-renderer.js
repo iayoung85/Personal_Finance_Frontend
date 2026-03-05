@@ -249,6 +249,7 @@ function renderTransactionTable() {
   const hasPendingToShow = showPendingEnabled && pendingTransactions.length > 0;
   const hasScheduledToShow = scheduledFuture.length > 0;
   const hasMissingToShow = missingTransactions.length > 0;
+  const showBankAccountColumn = selectedAccountMode === 'all';
 
   const allRowTransactions = [
     ...scheduledFuture,
@@ -263,7 +264,9 @@ function renderTransactionTable() {
   
   let html = '<table><thead><tr>';
   html += '<th>Date</th>';
-  html += '<th>Bank/Account</th>';
+  if (showBankAccountColumn) {
+    html += '<th>Bank/Account</th>';
+  }
   html += '<th>Description</th>';
   
   // In single account view: amount goes 2nd-from-right (before ledger column)
@@ -298,7 +301,7 @@ function renderTransactionTable() {
   html += '</tr></thead>';
   
   // Calculate column count for separator row
-  let colCount = 4; // Date, Bank, Description, Delete
+  let colCount = showBankAccountColumn ? 4 : 3; // Date, (Bank), Description, Delete
   if (!showLedgerColumn) colCount++; // Amount in normal position
   if (optionalFields.includes('source')) colCount++;
   colCount++; // Category
@@ -443,7 +446,7 @@ function renderTransactionTable() {
 
         html += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-source="${escapeHtml(txn.source || '')}">
           <td>${escapeHtml(dateStr)}</td>
-          <td>${escapeHtml(txn.bank_account || '')}</td>
+          ${showBankAccountColumn ? `<td>${escapeHtml(txn.bank_account || '')}</td>` : ''}
           <td>${pendingBadge}${escapeHtml(txn.name || '—')}</td>`;
 
         if (!showLedgerColumn) {
@@ -549,7 +552,7 @@ function renderTransactionTable() {
         const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
         html += `<tr class="${rowClass}">
           <td>${escapeHtml(dateStr)}</td>
-          <td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>
+          ${showBankAccountColumn ? `<td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>` : ''}
           <td>${pendingBadge}${escapeHtml(split.name || '—')}</td>`;
         
         // When ledger column is NOT shown, amount stays in normal position
@@ -775,11 +778,13 @@ function renderTransactionTable() {
     const rowCssClass = rendered.rowCssClass;
     html += `<tr${rowCssClass ? ` class="${rowCssClass}"` : ''}${rowDataAttrs}>`;
     html += `<td${isInlineEditable ? ' data-field="date" class="inline-editable"' : ''}>${dateStr}</td>`;
-    html += `<td>${txn.bank_account}</td>`;
+    if (showBankAccountColumn) {
+      html += `<td>${txn.bank_account}</td>`;
+    }
     html += `<td${isDescEditable ? ' data-field="description" class="inline-editable"' : ''}>${fullBadge}${pendingBadge}${escapeHtml(effectiveDisplayName)}</td>`;
 
     if (!showLedgerColumn) {
-      html += `<td${isInlineEditable ? ' data-field="amount" class="inline-editable-modal"' : ''}>${amount}</td>`;
+      html += `<td${isInlineEditable ? ' data-field="amount" class="inline-editable"' : ''}>${amount}</td>`;
     }
 
     // Source badge column (optional field)
@@ -836,7 +841,7 @@ function renderTransactionTable() {
 
     // Ledger columns (single-account view)
     if (showLedgerColumn) {
-      html += `<td class="${amountCellClass}${isInlineEditable ? ' inline-editable-modal' : ''}"${isInlineEditable ? ' data-field="amount"' : ''}>${amount}</td>`;
+      html += `<td class="${amountCellClass}${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="amount"' : ''}>${amount}</td>`;
       html += ledgerBalanceHtml;
     }
 

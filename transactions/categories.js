@@ -428,13 +428,23 @@ function attachCategoryDropdownListeners() {
         if (currentValue) {
           const resolved = _resolveAutocompleteCategory(currentValue);
           if (!resolved.error) {
-            // Valid category — apply the override automatically, then move
-            // focus to memo so the user can keep tabbing through the row.
+            // Valid category — stage via batch manager for deferred
+            // bulk submission instead of firing an immediate API call.
+            // This prevents rapid Tab-cycling from overwhelming the backend.
             e.preventDefault();
-            const overrideBtn = $(input).closest('.category-cell').find('.category-override');
-            if (overrideBtn.length) {
-              overrideBtn.click();
+            const resolvedValue = resolved.value || currentValue;
+            const batchTxnId = $(input).data('txn-id');
+
+            if (resolved.isTransfer && resolved.account) {
+              // Transfer assignments still need the full interactive flow
+              const accountId = $(input).data('account-id') || $(input).closest('tr').data('account-id');
+              _applyTransferAssignment(batchTxnId, accountId, resolved.account);
+            } else if (batchTxnId && typeof stageBatchEdit === 'function') {
+              stageBatchEdit(batchTxnId, { user_category: resolvedValue });
+              $(input).data('committedCategoryValue', resolvedValue);
+              input.value = resolvedValue;
             }
+
             const memoInput = $(input).closest('tr').find('.memo-input');
             if (memoInput.length) {
               memoInput.focus();

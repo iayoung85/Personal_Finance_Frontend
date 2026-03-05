@@ -1,26 +1,21 @@
 // ============================================================
-// transactions/inline-edit.js — Click-to-Edit on Table Cells
+// transactions/inline-edit.js — Click/Tab Inline Editing
 //
-// Adds inline editing for Date and Description cells directly
-// in the transaction table. Amount clicks open the existing
-// edit modal with the amount field pre-highlighted.
+// Supports inline editing for date, description, and amount on
+// EDITABLE_TYPES rows with keyboard flow:
+// - Tab: stage current field and move to next editable field
+// - Enter: save staged row edits in one API call
+// - Escape: cancel inline session
 //
-// This is an additive UX layer — the right-click context menu
-// and modify modal remain fully functional as alternative paths.
-//
-// Depends on: transaction-types.js, api.js, table-renderer.js,
-//             manual-transactions.js (for openEditManualTransactionModal)
+// Plaid rows keep their existing description-override inline flow.
 // ============================================================
 
-/** Track the currently active inline editor so only one is open at a time. */
 let _activeInlineEditor = null;
+let _activeRowEditSession = null;
+
+const _ROW_EDIT_FIELD_ORDER = ['date', 'description', 'amount'];
 
 
-/**
- * One-time setup: attaches a delegated click listener on the table
- * container that inspects the clicked cell and dispatches to the
- * appropriate inline editor based on data-field attributes.
- */
 function initInlineEditing() {
   const tableContainer = document.getElementById('table-container');
   if (!tableContainer) return;
@@ -29,13 +24,10 @@ function initInlineEditing() {
 }
 
 
-// ── Click dispatcher ──────────────────────────────────────────
-
 function _handleInlineClick(event) {
   const targetCell = event.target.closest('td[data-field]');
   if (!targetCell) return;
 
-  // Ignore clicks on interactive elements inside the cell (buttons, inputs)
   const interactiveTag = event.target.tagName.toLowerCase();
   if (['input', 'select', 'textarea', 'button'].includes(interactiveTag)) return;
   if (event.target.closest('button') || event.target.closest('input')) return;
@@ -49,268 +41,510 @@ function _handleInlineClick(event) {
   const field = targetCell.dataset.field;
   const source = row.dataset.source || '';
   const status = row.dataset.status || '';
-
-  // Reconstruct the transaction type from source + status
   const txnType = getTransactionType({ source, status });
   if (!txnType) return;
 
-  switch (field) {
-    case 'date':
-      if (!EDITABLE_TYPES.has(txnType)) return;
-      _openDateEditor(targetCell, txnId, row);
-      break;
-
-    case 'description':
-      _openDescriptionEditor(targetCell, txnId, txnType, row);
-      break;
-
-    case 'amount':
-      if (!EDITABLE_TYPES.has(txnType)) return;
-      _openAmountViaModal(txnId);
-      break;
-
-    default:
-      return;
+  if (field === 'description' && (txnType === TXN_TYPE.PLAID_CLEARED || txnType === TXN_TYPE.PLAID_PENDING)) {
+    _openPlaidDescriptionEditor(targetCell, txnId);
+    return;
   }
+
+  if (!EDITABLE_TYPES.has(txnType)) return;
+  if (!_ROW_EDIT_FIELD_ORDER.includes(field)) return;
+
+  _openRowFieldEditor({ cell: targetCell, row, txnId, field });
 }
 
 
-// ── Date Editor ───────────────────────────────────────────────
+function _openRowFieldEditor({ cell, row, txnId, field }) {
+  if (!_commitActiveFieldToSession()) {
+    return;
+  }
 
-function _openDateEditor(cell, txnId, row) {
-  // Find the transaction in the in-memory array to get the raw date
-  const txn = transactions.find(findTxn => findTxn.transaction_id === txnId);
-  if (!txn) return;
+  const editSession = _ensureRowEditSession(row, txnId);
+  if (!editSession) return;
 
-  // Dismiss any existing editor first
-  _dismissActiveEditor();
+  _dismissActiveEditor({ clearRowSession: false });
 
   const originalHtml = cell.innerHTML;
-  const currentDate = txn.date; // YYYY-MM-DD string
+  const descriptionPrefixHtml = field === 'description' ? _getLeadingElementHtml(cell) : '';
+  const input = _buildInputForField(field, editSession.draft);
 
-  const input = document.createElement('input');
-  input.type = 'date';
-  input.className = 'inline-edit-input inline-edit-date';
-  input.value = currentDate;
+  if (!input) return;
 
   cell.textContent = '';
   cell.appendChild(input);
   cell.classList.add('inline-editing');
 
-  input.focus();
-
   _activeInlineEditor = {
     cell,
     originalHtml,
     input,
-    cleanup: () => _restoreCell(cell, originalHtml),
+    field,
+    row,
+    txnId,
+    descriptionPrefixHtml,
   };
 
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      _saveDateEdit(txnId, input.value, cell, originalHtml);
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      _dismissActiveEditor();
-    }
-  });
+  input.focus();
+  if (field !== 'date') {
+    input.select();
+  }
 
-  // Save on change (calendar picker selection) for quicker UX
-  input.addEventListener('change', () => {
-    if (input.value && input.value !== currentDate) {
-      _saveDateEdit(txnId, input.value, cell, originalHtml);
+  input.addEventListener('keydown', async (keyboardEvent) => {
+    if (keyboardEvent.key === 'Escape') {
+      keyboardEvent.preventDefault();
+      _dismissActiveEditor({ clearRowSession: true });
+      return;
+    }
+
+    if (keyboardEvent.key === 'Tab') {
+      keyboardEvent.preventDefault();
+      const staged = _commitActiveFieldToSession();
+      if (!staged) return;
+      const nextField = _getAdjacentEditableField(row, field, keyboardEvent.shiftKey ? -1 : 1);
+      if (!nextField) return;
+      _openRowFieldEditor({
+        cell: nextField.cell,
+        row,
+        txnId,
+        field: nextField.field,
+      });
+      return;
+    }
+
+    if (keyboardEvent.key === 'Enter') {
+      keyboardEvent.preventDefault();
+      const staged = _commitActiveFieldToSession();
+      if (!staged) return;
+      await _saveRowInlineEdits();
     }
   });
 
   input.addEventListener('blur', () => {
-    // Short delay so that a change event can fire before blur dismisses
     setTimeout(() => {
       if (_activeInlineEditor && _activeInlineEditor.input === input) {
-        _dismissActiveEditor();
+        _dismissActiveEditor({ clearRowSession: false });
       }
-    }, 150);
+    }, 120);
   });
 }
 
 
-async function _saveDateEdit(txnId, newDate, cell, originalHtml) {
-  if (!newDate) {
-    _dismissActiveEditor();
+function _buildInputForField(field, draftState) {
+  const input = document.createElement('input');
+  input.className = 'inline-edit-input';
+
+  if (field === 'date') {
+    input.type = 'date';
+    input.classList.add('inline-edit-date');
+    input.value = draftState.date;
+    return input;
+  }
+
+  if (field === 'description') {
+    input.type = 'text';
+    input.classList.add('inline-edit-description');
+    input.maxLength = 500;
+    input.value = draftState.description;
+    return input;
+  }
+
+  if (field === 'amount') {
+    input.type = 'text';
+    input.classList.add('inline-edit-amount');
+    input.inputMode = 'decimal';
+    input.value = draftState.amount_input;
+    return input;
+  }
+
+  return null;
+}
+
+
+function _ensureRowEditSession(row, txnId) {
+  if (_activeRowEditSession && _activeRowEditSession.txn_id === txnId) {
+    return _activeRowEditSession;
+  }
+
+  if (_activeRowEditSession && _activeRowEditSession.txn_id !== txnId) {
+    _activeRowEditSession = null;
+  }
+
+  const txn = transactions.find(find_txn => find_txn.transaction_id === txnId);
+  if (!txn) return null;
+
+  const absolute_amount = Math.abs(Number(txn.amount || 0));
+  _activeRowEditSession = {
+    txn_id: txnId,
+    row,
+    original: {
+      date: txn.date || '',
+      description: txn.name || '',
+      signed_amount: Number(txn.amount || 0),
+    },
+    draft: {
+      date: txn.date || '',
+      description: txn.name || '',
+      amount_input: Number.isFinite(absolute_amount) ? absolute_amount.toFixed(2) : '0.00',
+    },
+  };
+
+  return _activeRowEditSession;
+}
+
+
+function _getAdjacentEditableField(row, currentField, direction) {
+  const editableCells = _ROW_EDIT_FIELD_ORDER
+    .map(field => ({ field, cell: row.querySelector(`td[data-field="${field}"]`) }))
+    .filter(cellInfo => !!cellInfo.cell);
+
+  if (editableCells.length === 0) return null;
+
+  const currentIndex = editableCells.findIndex(cellInfo => cellInfo.field === currentField);
+  const fallbackIndex = currentIndex < 0 ? 0 : currentIndex;
+  const nextIndex = (fallbackIndex + direction + editableCells.length) % editableCells.length;
+  return editableCells[nextIndex];
+}
+
+
+function _commitActiveFieldToSession() {
+  if (!_activeInlineEditor || !_activeRowEditSession) return true;
+  if (_activeInlineEditor.txnId !== _activeRowEditSession.txn_id) return true;
+
+  const field = _activeInlineEditor.field;
+  const value = (_activeInlineEditor.input.value || '').trim();
+
+  if (field === 'date') {
+    if (!value) {
+      showStatus('Date is required', 'error');
+      return false;
+    }
+    _activeRowEditSession.draft.date = value;
+    if (_activeInlineEditor) {
+      _activeInlineEditor.originalHtml = _formatDateDisplay(value);
+      _activeInlineEditor.cell.classList.add('inline-staged');
+    }
+    return true;
+  }
+
+  if (field === 'description') {
+    if (!value) {
+      showStatus('Description cannot be empty', 'error');
+      return false;
+    }
+    _activeRowEditSession.draft.description = value;
+    if (_activeInlineEditor) {
+      const prefixHtml = _activeInlineEditor.descriptionPrefixHtml || '';
+      _activeInlineEditor.originalHtml = `${prefixHtml}${_escapeInlineText(value)}`;
+      _activeInlineEditor.cell.classList.add('inline-staged');
+    }
+    return true;
+  }
+
+  if (field === 'amount') {
+    const amountParseResult = _parseAmountInput(value);
+    if (!amountParseResult.ok) {
+      showStatus(amountParseResult.error, 'error');
+      return false;
+    }
+    _activeRowEditSession.draft.amount_input = value;
+    if (_activeInlineEditor) {
+      const stagedAmount = _formatStagedAmount(
+        _activeInlineEditor.txnId,
+        value,
+        _activeRowEditSession.original.signed_amount
+      );
+      if (stagedAmount) {
+        _activeInlineEditor.originalHtml = stagedAmount.display_text;
+        _activeInlineEditor.cell.classList.toggle('ledger-negative', stagedAmount.is_negative);
+        _activeInlineEditor.cell.classList.add('inline-staged');
+      }
+    }
+    return true;
+  }
+
+  return true;
+}
+
+
+async function _saveRowInlineEdits() {
+  if (!_activeRowEditSession) return;
+
+  const editSession = _activeRowEditSession;
+  const payload = {};
+
+  if (editSession.draft.date !== editSession.original.date) {
+    payload.date = editSession.draft.date;
+  }
+
+  const normalized_description = (editSession.draft.description || '').trim();
+  if (!normalized_description) {
+    showStatus('Description cannot be empty', 'error');
+    return;
+  }
+  if (normalized_description !== editSession.original.description) {
+    payload.description = normalized_description;
+  }
+
+  const amountDiffResult = _getAmountDiff(editSession.draft.amount_input, editSession.original.signed_amount);
+  if (!amountDiffResult.ok) {
+    showStatus(amountDiffResult.error, 'error');
+    return;
+  }
+  if (amountDiffResult.has_change) {
+    payload.amount = amountDiffResult.absolute_amount;
+    if (amountDiffResult.type_override) {
+      payload.type = amountDiffResult.type_override;
+    }
+  }
+
+  const payloadKeys = Object.keys(payload);
+  if (payloadKeys.length === 0) {
+    _dismissActiveEditor({ clearRowSession: true });
     return;
   }
 
-  // Determine API route: virtual BILL_FUTURE ids go through manual update
-  // (backend auto-materializes), all EDITABLE_TYPES use the manual update endpoint
-  const endpoint = `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(txnId)}`;
-
   try {
-    const response = await authenticatedFetch(endpoint, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date: newDate }),
-    });
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(editSession.txn_id)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
 
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to update date');
+      throw new Error(data.error || 'Failed to update transaction');
     }
 
-    showStatus('Date updated', 'success');
-    _dismissActiveEditor();
-    _refreshAfterInlineEdit();
-
+    showStatus('Transaction updated', 'success');
+    _dismissActiveEditor({ clearRowSession: true });
+    await _refreshAfterInlineEdit();
   } catch (saveError) {
-    showStatus(`Date update failed: ${saveError.message}`, 'error');
-    _dismissActiveEditor();
+    showStatus(`Inline update failed: ${saveError.message}`, 'error');
   }
 }
 
 
-// ── Description Editor ────────────────────────────────────────
+function _getAmountDiff(amountInput, originalSignedAmount) {
+  const parsedAmount = _parseAmountInput(amountInput);
+  if (!parsedAmount.ok) return parsedAmount;
 
-function _openDescriptionEditor(cell, txnId, txnType, row) {
-  const isPlaidType = (txnType === TXN_TYPE.PLAID_CLEARED || txnType === TXN_TYPE.PLAID_PENDING);
-  const isEditableType = EDITABLE_TYPES.has(txnType);
+  const defaultType = Number(originalSignedAmount) < 0 ? 'debit' : 'credit';
+  const effectiveType = parsedAmount.type_override || defaultType;
+  const nextSignedAmount = effectiveType === 'debit'
+    ? -parsedAmount.absolute_amount
+    : parsedAmount.absolute_amount;
 
-  // Only plaid types (override) and editable types (direct edit) allowed
-  if (!isPlaidType && !isEditableType) return;
+  const delta = Math.abs(nextSignedAmount - Number(originalSignedAmount));
+  if (delta < 0.000001) {
+    return {
+      ok: true,
+      has_change: false,
+      absolute_amount: parsedAmount.absolute_amount,
+      type_override: null,
+    };
+  }
 
-  const txn = transactions.find(findTxn => findTxn.transaction_id === txnId);
+  return {
+    ok: true,
+    has_change: true,
+    absolute_amount: parsedAmount.absolute_amount,
+    type_override: parsedAmount.type_override,
+  };
+}
+
+
+function _parseAmountInput(rawAmountInput) {
+  const trimmedInput = (rawAmountInput || '').trim();
+  if (!trimmedInput) {
+    return { ok: false, error: 'Amount is required' };
+  }
+
+  const signSymbol = _extractSignSymbol(trimmedInput);
+  const typeOverride = signSymbol === '-'
+    ? 'debit'
+    : signSymbol === '+' ? 'credit' : null;
+
+  const normalizedString = trimmedInput
+    .replace(/[−]/g, '-')
+    .replace(/[$,\s]/g, '')
+    .replace(/[+\-]/g, '');
+
+  const parsedFloat = Number.parseFloat(normalizedString);
+  if (!Number.isFinite(parsedFloat) || parsedFloat <= 0) {
+    return { ok: false, error: 'Amount must be a positive number' };
+  }
+
+  return {
+    ok: true,
+    absolute_amount: parsedFloat,
+    type_override: typeOverride,
+  };
+}
+
+
+function _extractSignSymbol(amountInput) {
+  for (const inputChar of amountInput) {
+    if (inputChar === '+' || inputChar === '-' || inputChar === '−') {
+      return inputChar === '−' ? '-' : inputChar;
+    }
+  }
+  return null;
+}
+
+
+function _formatDateDisplay(dateString) {
+  const parsedDate = new Date(`${dateString}T00:00:00Z`);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return dateString;
+  }
+  return parsedDate.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: 'UTC',
+  });
+}
+
+
+function _formatStagedAmount(txnId, rawInputValue, originalSignedAmount) {
+  const parsedAmount = _parseAmountInput(rawInputValue);
+  if (!parsedAmount.ok) return null;
+
+  const defaultType = Number(originalSignedAmount) < 0 ? 'debit' : 'credit';
+  const effectiveType = parsedAmount.type_override || defaultType;
+  const signedAmount = effectiveType === 'debit'
+    ? -parsedAmount.absolute_amount
+    : parsedAmount.absolute_amount;
+
+  const txn = transactions.find(find_txn => find_txn.transaction_id === txnId);
+  const currencyCode = (txn && txn.iso_currency_code) ? txn.iso_currency_code : 'USD';
+
+  return {
+    display_text: new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currencyCode,
+    }).format(signedAmount),
+    is_negative: signedAmount < 0,
+  };
+}
+
+
+function _escapeInlineText(rawText) {
+  if (typeof escapeHtml === 'function') {
+    return escapeHtml(rawText);
+  }
+  return String(rawText)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+
+function _getLeadingElementHtml(cell) {
+  const htmlChunks = [];
+  const childElements = cell.querySelectorAll(':scope > *');
+  childElements.forEach(childElement => {
+    htmlChunks.push(childElement.outerHTML);
+  });
+  return htmlChunks.join('');
+}
+
+
+function _openPlaidDescriptionEditor(cell, txnId) {
+  const txn = transactions.find(find_txn => find_txn.transaction_id === txnId);
   if (!txn) return;
 
-  _dismissActiveEditor();
+  _dismissActiveEditor({ clearRowSession: true });
 
   const originalHtml = cell.innerHTML;
+  const descriptionPrefixHtml = _getLeadingElementHtml(cell);
   const currentName = txn.user_description_override || txn.name || '';
 
-  // Preserve badges — they sit before the display name in the cell.
-  // Extract the text content that represents the name (last text node or
-  // the rendered.displayName portion). We'll re-render the full cell on
-  // save, so for the editor we overlay an input after any badge elements.
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'inline-edit-input inline-edit-description';
   input.value = currentName;
   input.maxLength = 500;
 
-  // Replace cell contents but preserve data attributes on the cell
   cell.textContent = '';
   cell.appendChild(input);
   cell.classList.add('inline-editing');
-
-  input.focus();
-  input.select();
 
   _activeInlineEditor = {
     cell,
     originalHtml,
     input,
-    cleanup: () => _restoreCell(cell, originalHtml),
+    field: 'description',
+    row: cell.closest('tr'),
+    txnId,
+    descriptionPrefixHtml,
   };
 
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      _saveDescriptionEdit(txnId, input.value.trim(), isPlaidType, cell, originalHtml);
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      _dismissActiveEditor();
+  input.focus();
+  input.select();
+
+  input.addEventListener('keydown', async (keyboardEvent) => {
+    if (keyboardEvent.key === 'Enter') {
+      keyboardEvent.preventDefault();
+      await _savePlaidDescriptionEdit(txnId, input.value.trim());
+    } else if (keyboardEvent.key === 'Escape') {
+      keyboardEvent.preventDefault();
+      _dismissActiveEditor({ clearRowSession: true });
     }
   });
 
   input.addEventListener('blur', () => {
     setTimeout(() => {
       if (_activeInlineEditor && _activeInlineEditor.input === input) {
-        _dismissActiveEditor();
+        _dismissActiveEditor({ clearRowSession: true });
       }
-    }, 150);
+    }, 120);
   });
 }
 
 
-async function _saveDescriptionEdit(txnId, newDescription, isPlaid, cell, originalHtml) {
+async function _savePlaidDescriptionEdit(txnId, newDescription) {
   if (!newDescription) {
     showStatus('Description cannot be empty', 'error');
-    _dismissActiveEditor();
     return;
   }
 
   try {
-    let response;
-
-    if (isPlaid) {
-      // Plaid transactions use the dedicated description override endpoint
-      response = await authenticatedFetch(
-        `${BACKEND_URL}/api/transactions/${encodeURIComponent(txnId)}/description`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ description: newDescription }),
-        }
-      );
-    } else {
-      // Manual/editable types use the existing manual update endpoint
-      response = await authenticatedFetch(
-        `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(txnId)}`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ description: newDescription }),
-        }
-      );
-    }
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/${encodeURIComponent(txnId)}/description`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: newDescription }),
+      }
+    );
 
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.error || 'Failed to update description');
     }
 
-    // Update the in-memory transaction so re-render shows the new name
-    const txn = transactions.find(findTxn => findTxn.transaction_id === txnId);
+    const txn = transactions.find(find_txn => find_txn.transaction_id === txnId);
     if (txn) {
-      if (isPlaid) {
-        txn.user_description_override = newDescription;
-        txn.name = newDescription;
-      } else {
-        txn.name = newDescription;
-      }
+      txn.user_description_override = newDescription;
+      txn.name = newDescription;
     }
 
     showStatus('Description updated', 'success');
-    _dismissActiveEditor();
-    _refreshAfterInlineEdit();
-
+    _dismissActiveEditor({ clearRowSession: true });
+    await _refreshAfterInlineEdit();
   } catch (saveError) {
     showStatus(`Description update failed: ${saveError.message}`, 'error');
-    _dismissActiveEditor();
   }
 }
 
-
-// ── Amount (opens modal with pre-highlight) ───────────────────
-
-function _openAmountViaModal(txnId) {
-  if (typeof openEditManualTransactionModal !== 'function') {
-    showStatus('Edit modal not available', 'error');
-    return;
-  }
-
-  openEditManualTransactionModal(txnId);
-
-  // After the modal renders, focus and select the amount input so the
-  // user can immediately type the new value without extra clicks.
-  setTimeout(() => {
-    const amountInput = document.getElementById('manual-txn-amount');
-    if (amountInput) {
-      amountInput.focus();
-      amountInput.select();
-    }
-  }, 100);
-}
-
-
-// ── Shared helpers ────────────────────────────────────────────
 
 function _restoreCell(cell, originalHtml) {
   cell.innerHTML = originalHtml;
@@ -318,24 +552,24 @@ function _restoreCell(cell, originalHtml) {
 }
 
 
-function _dismissActiveEditor() {
+function _dismissActiveEditor({ clearRowSession = true } = {}) {
   if (_activeInlineEditor) {
-    _activeInlineEditor.cleanup();
+    _restoreCell(_activeInlineEditor.cell, _activeInlineEditor.originalHtml);
     _activeInlineEditor = null;
+  }
+  if (clearRowSession) {
+    _activeRowEditSession = null;
   }
 }
 
 
-/**
- * After a successful inline edit, invalidate the localStorage cache and
- * re-fetch + re-render. This is the same pattern used by the memo save
- * and the modify modal.
- */
 async function _refreshAfterInlineEdit() {
   try {
     localStorage.removeItem('pf_cached_transactions');
     localStorage.removeItem('pf_transactions_cached_at');
-  } catch (cacheError) { /* non-fatal */ }
+  } catch (cacheError) {
+    // Cache misses should not block UI refresh.
+  }
 
   await fetchAllTransactions(true);
 

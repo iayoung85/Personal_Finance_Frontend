@@ -227,12 +227,22 @@ function _renderMissingRow(ctx) {
       </td>`
     : '<td></td>';
 
+  // Bill badge when this missing row originated from a bill template
+  let typeBadge = '<span class="source-badge missing" title="Expected payment not found">⚠</span> ';
+  if (ctx.txn.is_bill || ctx.txn.bill_id) {
+    const occNum = ctx.txn.occurrence_number || ctx.txn.bill_occurrence_number || '?';
+    const billName = escapeHtml(ctx.txn.name || 'Bill');
+    const scheduleSummary = escapeHtml(ctx.txn.schedule_summary || '');
+    const hoverTitle = `Missing bill #${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
+    typeBadge = `<span class="source-badge bill-provenance" data-tooltip="${hoverTitle}" title="${hoverTitle}">📋</span> ` + typeBadge;
+  }
+
   return {
-    typeBadge: '<span class="source-badge missing" title="Expected payment not found">⚠</span> ',
+    typeBadge,
     categoryCell,
     actionCell,
     rowCssClass: 'missing-row',
-    sourceBadge: { label: 'Missing', cssClass: 'missing', title: 'Expected payment not yet matched to a plaid transaction' },
+    sourceBadge: { label: 'Missing', cssClass: 'missing', title: ctx.txn.is_bill ? 'Bill payment not yet matched to a plaid transaction' : 'Expected payment not yet matched to a plaid transaction' },
     displayName: ctx.txn.name || '',
   };
 }
@@ -248,12 +258,22 @@ function _renderMatchedRow(ctx) {
 
   const approveOnclick = `event.stopPropagation(); approveMatch('${escapeHtml(ctx.txnId)}').then(() => { showStatus('Match approved', 'success'); localStorage.removeItem('pf_cached_transactions'); localStorage.removeItem('pf_transactions_cached_at'); fetchAllTransactions(true); }).catch(err => showStatus(err.message, 'error'));`;
 
+  // Bill badge when this matched row originated from a bill template
+  let billBadge = '';
+  if (ctx.txn.is_bill || ctx.txn.bill_id) {
+    const occNum = ctx.txn.occurrence_number || ctx.txn.bill_occurrence_number || '?';
+    const billName = escapeHtml(ctx.txn.name || 'Bill');
+    const scheduleSummary = escapeHtml(ctx.txn.schedule_summary || '');
+    const hoverTitle = `Matched bill #${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
+    billBadge = `<span class="source-badge bill-provenance" data-tooltip="${hoverTitle}" title="${hoverTitle}">📋</span> `;
+  }
+
   return {
-    typeBadge: `<button class="approve-match-badge" data-txn-id="${escapeHtml(ctx.txnId)}" onclick="${approveOnclick}" title="Click to approve this match — removes the manual counterpart">✓</button> `,
+    typeBadge: billBadge + `<button class="approve-match-badge" data-txn-id="${escapeHtml(ctx.txnId)}" onclick="${approveOnclick}" title="Click to approve this match — removes the manual counterpart">✓</button> `,
     categoryCell,
     actionCell: '<td></td>',
     rowCssClass: 'matched-row',
-    sourceBadge: { label: 'Matched', cssClass: 'matched', title: 'Scheduled transaction matched with a plaid transaction' },
+    sourceBadge: { label: 'Matched', cssClass: 'matched', title: ctx.txn.is_bill ? 'Bill-matched scheduled transaction' : 'Scheduled transaction matched with a plaid transaction' },
     displayName: ctx.txn.name || '',
   };
 }
@@ -271,12 +291,22 @@ function _renderMatchedPairRow(ctx) {
 
   const approveOnclick = `event.stopPropagation(); approveMatch('${unmatchId}').then(() => { showStatus('Match approved', 'success'); localStorage.removeItem('pf_cached_transactions'); localStorage.removeItem('pf_transactions_cached_at'); fetchAllTransactions(true); }).catch(err => showStatus(err.message, 'error'));`;
 
+  // Bill badge when the matched counterpart originated from a bill template
+  let billBadge = '';
+  if (matchInfo.matched_bill_id) {
+    const occNum = matchInfo.matched_occurrence_number || '?';
+    const billName = escapeHtml(matchInfo.matched_name || 'Bill');
+    const scheduleSummary = escapeHtml(matchInfo.matched_schedule_summary || '');
+    const hoverTitle = `Matched bill #${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
+    billBadge = `<span class="source-badge bill-provenance" data-tooltip="${hoverTitle}" title="${hoverTitle}">📋</span> `;
+  }
+
   return {
-    typeBadge: `<button class="approve-match-badge" data-txn-id="${unmatchId}" onclick="${approveOnclick}" title="Click to approve this match — removes the manual counterpart">✓</button> `,
+    typeBadge: billBadge + `<button class="approve-match-badge" data-txn-id="${unmatchId}" onclick="${approveOnclick}" title="Click to approve this match — removes the manual counterpart">✓</button> `,
     categoryCell,
     actionCell: '<td></td>',
     rowCssClass: 'matched-row',
-    sourceBadge: { label: 'Matched', cssClass: 'matched', title: 'Plaid transaction merged with user-entered counterpart' },
+    sourceBadge: { label: 'Matched', cssClass: 'matched', title: matchInfo.matched_bill_id ? 'Bill-matched plaid transaction' : 'Plaid transaction merged with user-entered counterpart' },
     displayName: matchInfo.matched_name || ctx.txn.name || '',
   };
 }

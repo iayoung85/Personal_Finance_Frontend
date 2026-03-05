@@ -2292,6 +2292,16 @@ tr:hover {
   font-weight: 600;
 }
 
+/* Bill provenance badge — shown on BILL_MATCHED (merged plaid row) and
+   BILL_MISSING rows to indicate the transaction originated from a bill
+   template. The clipboard emoji links visually to the bill schedule. */
+.source-badge.bill-provenance {
+  background: rgba(99,102,241,0.12);
+  color: rgba(99,102,241,0.90);
+  font-weight: 600;
+  cursor: help;
+}
+
 .missing-row {
   opacity: 0.80;
 }
@@ -3817,6 +3827,12 @@ td.inline-editable-modal:hover {
 td.inline-editing {
   text-decoration: none !important;
   padding: 0 !important;
+}
+
+/* Cell has staged inline changes that are not persisted yet */
+td.inline-staged {
+  background: var(--bg-selected);
+  box-shadow: inset 0 0 0 1px var(--accent-primary);
 }
 
 /* Shared input styles for all inline editors */
