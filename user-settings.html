@@ -21,7 +21,7 @@
       <div class="page-header">
         <div>
           <h1>User Settings</h1>
-          <p class="page-subtitle">Manage your account, security, and authentication settings</p>
+          <p class="page-subtitle">Manage your account, security, authentication, and app preferences</p>
         </div>
       </div>
 
@@ -70,6 +70,15 @@
             <div id="deletion-content">Loading...</div>
           </div>
 
+          <!-- App Configuration Panel -->
+          <div id="app-config" class="settings-panel hidden">
+            <div class="panel-header">
+              <h2>App Configuration</h2>
+              <p>Customize how the app looks and behaves across all pages</p>
+            </div>
+            <div id="app-config-content">Loading...</div>
+          </div>
+
         </section>
       </div>
 
@@ -89,6 +98,7 @@
   <script src="user-settings/password.js"></script>
   <script src="user-settings/two-factor.js"></script>
   <script src="user-settings/account-deletion.js"></script>
+  <script src="user-settings/app-config.js"></script>
   <script src="user-settings/main.js"></script>
 </body>
 </html>

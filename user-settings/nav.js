@@ -13,7 +13,7 @@
  */
 function setupSettingsMenu() {
   const hash = window.location.hash.replace('#', '') || 'profile';
-  const validSections = ['profile', 'password', 'twofa', 'deletion'];
+  const validSections = ['profile', 'password', 'twofa', 'deletion', 'app-config'];
 
   // Why: fallback to profile if hash is invalid or empty
   const section = validSections.includes(hash) ? hash : 'profile';
@@ -44,6 +44,9 @@ function loadSectionContent(section) {
       break;
     case 'deletion':
       loadAccountDeletionForm();
+      break;
+    case 'app-config':
+      loadAppConfigSettings();
       break;
   }
 }
