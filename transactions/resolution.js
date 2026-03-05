@@ -1,7 +1,7 @@
 // ============================================================
-// transactions/reconciliation.js — Reconciliation Center
+// transactions/resolution.js — Resolution Center
 // Banner display, Resolution Center modal, and inline quick-fix
-// actions for orphaned/missing transactions after re-link events.
+// actions for MANUAL_ORPHANED transactions after re-link events.
 // ============================================================
 
 // ─── API helpers (all go through authenticatedFetch) ────────
@@ -40,9 +40,9 @@ async function fetchReconciliationProposals(batchId) {
 }
 
 /**
- * Batch-resolve proposals and missing transactions.
+ * Batch-resolve proposals and orphaned transactions.
  * payload: { approve: [id,...], reject: [id,...],
- *            delete_missing: [txn_id,...] }
+ *            delete_orphaned: [txn_id,...] }
  *
  * Note: force_keep is no longer supported. Orphans must be deleted
  * or force-matched via forceMatchOrphanToPlaid().
@@ -152,15 +152,11 @@ async function checkAndRenderReconciliationBanner() {
     }
 
     const totalCount = (status.pending_count || 0)
-                     + (status.missing_count || 0)
-                     + (status.orphaned_count || 0);
+             + (status.orphaned_count || 0);
 
     const parts = [];
     if (status.pending_count > 0) {
       parts.push(`${status.pending_count} match proposal${status.pending_count !== 1 ? 's' : ''}`);
-    }
-    if (status.missing_count > 0) {
-      parts.push(`${status.missing_count} missing`);
     }
     if (status.orphaned_count > 0) {
       parts.push(`${status.orphaned_count} orphaned`);
@@ -171,8 +167,8 @@ async function checkAndRenderReconciliationBanner() {
     bannerEl.innerHTML = `
       <span class="reconciliation-banner-icon">⚠️</span>
       <span class="reconciliation-banner-text">
-        <strong>${totalCount}</strong> manual/scheduled transaction${totalCount !== 1 ? 's' : ''}
-        could not be matched with account data (${summary}).
+        <strong>${totalCount}</strong> relink conflict item${totalCount !== 1 ? 's' : ''}
+        need resolution (${summary}).
       </span>
       <span class="reconciliation-banner-actions">
         <button class="btn-banner btn-banner-primary" onclick="openReconciliationCenter()">Review &amp; Resolve</button>
@@ -207,7 +203,7 @@ async function openReconciliationCenter() {
     const data = await fetchReconciliationProposals(batchId);
 
     clearStatus();
-    _renderReconciliationModal(data.proposals || [], data.missing_transactions || []);
+    _renderReconciliationModal(data.proposals || [], data.orphaned_transactions || data.missing_transactions || []);
   } catch (loadError) {
     showStatus(`Failed to load reconciliation data: ${loadError.message}`, 'error');
   }
@@ -217,9 +213,9 @@ async function openReconciliationCenter() {
  * Build and display the Resolution Center modal content.
  * Proposals are pre-sorted by confidence (descending) from the backend.
  */
-function _renderReconciliationModal(proposals, missingTransactions) {
+function _renderReconciliationModal(proposals, orphanedTransactions) {
   const hasProposals = proposals.length > 0;
-  const hasMissing = missingTransactions.length > 0;
+  const hasOrphaned = orphanedTransactions.length > 0;
 
   let bodyHtml = '<div class="recon-center">';
 
@@ -235,7 +231,7 @@ function _renderReconciliationModal(proposals, missingTransactions) {
           </button>
         </div>
         <p class="recon-section-desc">
-          The system found likely matches between your manual/scheduled entries and
+          The system found likely matches between your orphaned manual entries and
           Plaid-downloaded transactions. Review each pair below.
         </p>
         <div class="recon-proposals-list">
@@ -293,41 +289,39 @@ function _renderReconciliationModal(proposals, missingTransactions) {
     bodyHtml += '</div></div>';
   }
 
-  // ── Section 2: Missing / Orphaned Transactions ──
-  if (hasMissing) {
+  // ── Section 2: Orphaned Transactions ──
+  if (hasOrphaned) {
     bodyHtml += `
       <div class="recon-section">
         <div class="recon-section-header">
-          <h4>Unmatched Transactions (${missingTransactions.length})</h4>
+          <h4>Orphaned Transactions (${orphanedTransactions.length})</h4>
           <div class="recon-bulk-actions">
             <button class="btn-recon btn-recon-bulk-delete"
-                    onclick="_bulkActionMissing('delete')">
+                    onclick="_bulkActionOrphaned('delete')">
               🗑 Delete Selected
             </button>
             <button class="btn-recon btn-recon-bulk-match"
-                    onclick="_bulkForceMatchMissing()">
+                    onclick="_bulkForceMatchOrphaned()">
               🔗 Force Match Selected
             </button>
           </div>
         </div>
         <p class="recon-section-desc">
-          These transactions could not be matched to any Plaid entry.
+          These MANUAL_ORPHANED transactions were created by relinking conflict detection.
           Select items and choose an action, or handle them individually.
           Force Match rewrites the orphan to match a plaid transaction you choose.
         </p>
         <div class="recon-missing-list">
           <label class="recon-select-all-label">
             <input type="checkbox" id="recon-select-all-missing"
-                   onchange="_toggleAllMissingCheckboxes(this.checked)">
+                   onchange="_toggleAllOrphanedCheckboxes(this.checked)">
             <span>Select All</span>
           </label>
     `;
 
-    missingTransactions.forEach(txn => {
-      const reconType = getTransactionType(txn);
-      const isOrphanedRow = reconType === TXN_TYPE.MANUAL_MISSING || reconType === TXN_TYPE.MANUAL_ORPHANED;
-      const sourceLabel = isOrphanedRow ? 'Orphaned' : 'Missing';
-      const sourceBadgeClass = isOrphanedRow ? 'orphaned' : 'missing';
+    orphanedTransactions.forEach(txn => {
+      const sourceLabel = 'Orphaned';
+      const sourceBadgeClass = 'orphaned';
 
       bodyHtml += `
         <div class="recon-missing-row" data-txn-id="${escapeHtml(txn.transaction_id || '')}">
@@ -340,14 +334,11 @@ function _renderReconciliationModal(proposals, missingTransactions) {
           <span class="recon-missing-category">${escapeHtml(txn.user_category || '—')}</span>
           <span class="recon-missing-actions">
             <button class="btn-recon btn-recon-delete-single"
-                    onclick="_singleMissingAction('${escapeHtml(txn.transaction_id)}', 'delete')"
+                onclick="_singleOrphanedAction('${escapeHtml(txn.transaction_id)}', 'delete')"
                     title="Delete this transaction permanently">🗑</button>
             <button class="btn-recon btn-recon-match-single"
                     onclick="_startForceMatchFromModal('${escapeHtml(txn.transaction_id)}')"
                     title="Force match to a plaid transaction">🔗</button>
-            <button class="btn-recon btn-recon-move-single"
-                    onclick="_openRelocatePickerFromModal('${escapeHtml(txn.transaction_id)}')"
-                    title="Move to a manual/converted account">↪</button>
           </span>
         </div>
       `;
@@ -356,14 +347,14 @@ function _renderReconciliationModal(proposals, missingTransactions) {
     bodyHtml += '</div></div>';
   }
 
-  if (!hasProposals && !hasMissing) {
-    bodyHtml += '<p class="recon-empty">No pending reconciliation items. Everything is in sync.</p>';
+  if (!hasProposals && !hasOrphaned) {
+    bodyHtml += '<p class="recon-empty">No pending resolution items. Everything is in sync.</p>';
   }
 
   bodyHtml += '</div>';
 
   openModal({
-    title: 'Reconciliation Center',
+    title: 'Resolution Center',
     body: bodyHtml,
     actions: [
       {
@@ -379,7 +370,7 @@ function _renderReconciliationModal(proposals, missingTransactions) {
     ],
   });
 
-  // Widen the modal for the reconciliation center — it needs more space for
+  // Widen the modal for the resolution center — it needs more space for
   // the side-by-side comparison layout.
   const modalEl = document.querySelector('#modal-overlay .modal');
   if (modalEl) {
@@ -429,20 +420,20 @@ function _approveAllProposals() {
   showStatus(`Marked all ${cards.length} proposals for approval`, 'info');
 }
 
-// ─── Missing transaction checkbox/action helpers ────────────
+// ─── Orphaned transaction checkbox/action helpers ───────────
 
-function _toggleAllMissingCheckboxes(checked) {
+function _toggleAllOrphanedCheckboxes(checked) {
   const checkboxes = document.querySelectorAll('.recon-missing-checkbox');
   checkboxes.forEach(cb => { cb.checked = checked; });
 }
 
-function _getSelectedMissingIds() {
+function _getSelectedOrphanedIds() {
   const checked = document.querySelectorAll('.recon-missing-checkbox:checked');
   return Array.from(checked).map(cb => cb.value);
 }
 
-async function _bulkActionMissing(action) {
-  const selectedIds = _getSelectedMissingIds();
+async function _bulkActionOrphaned(action) {
+  const selectedIds = _getSelectedOrphanedIds();
   if (selectedIds.length === 0) {
     showStatus('No transactions selected', 'warning');
     return;
@@ -456,7 +447,7 @@ async function _bulkActionMissing(action) {
   if (!confirm(`Delete ${selectedIds.length} transaction(s) permanently?`)) return;
 
   try {
-    const payload = { delete_missing: selectedIds };
+    const payload = { delete_orphaned: selectedIds };
 
     await resolveReconciliationBatch(payload);
     showStatus(`${selectedIds.length} transaction(s) deleted`, 'success');
@@ -474,7 +465,7 @@ async function _bulkActionMissing(action) {
   }
 }
 
-async function _singleMissingAction(transactionId, action) {
+async function _singleOrphanedAction(transactionId, action) {
   if (action !== 'delete') {
     showStatus('Only delete is supported. Use Force Match to keep an orphan.', 'warning');
     return;
@@ -483,7 +474,7 @@ async function _singleMissingAction(transactionId, action) {
   if (!confirm('Delete this transaction permanently?')) return;
 
   try {
-    const payload = { delete_missing: [transactionId] };
+    const payload = { delete_orphaned: [transactionId] };
 
     await resolveReconciliationBatch(payload);
     showStatus('Transaction deleted', 'success');
@@ -515,7 +506,7 @@ let _forceMatchOrphanId = null;
 function enterForceMatchPickMode(orphanTxnId) {
   _forceMatchOrphanId = orphanTxnId;
 
-  // Close the reconciliation center modal if open
+  // Close the resolution center modal if open
   if (typeof closeModal === 'function') closeModal();
 
   // Find the orphan in the transactions array for display context
@@ -648,8 +639,8 @@ function _startForceMatchFromModal(orphanTxnId) {
  * so the bulk button just enters pick mode for the first selected orphan
  * and shows guidance.
  */
-function _bulkForceMatchMissing() {
-  const selectedIds = _getSelectedMissingIds();
+function _bulkForceMatchOrphaned() {
+  const selectedIds = _getSelectedOrphanedIds();
   if (selectedIds.length === 0) {
     showStatus('No transactions selected', 'warning');
     return;
@@ -666,7 +657,7 @@ async function _submitReconciliationDecisions() {
   const payload = {
     approve: [],
     reject: [],
-    delete_missing: [],
+    delete_orphaned: [],
   };
 
   // Gather proposal decisions
@@ -715,7 +706,7 @@ async function _refreshAfterReconciliation() {
 }
 
 // ─── Inline Quick-Fix: Match to Adjacent Transaction ────────
-// Called from the context menu on orphaned/missing rows
+// Called from the context menu on orphaned rows
 // in the day-to-day inline handling flow.
 
 /**
