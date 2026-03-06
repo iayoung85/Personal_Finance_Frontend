@@ -308,26 +308,17 @@ function renderAccountsSidebar() {
 
   const grouped = {
     active: {},
-    inactive: [] // Plaid items without transactions product billed
   };
 
   accounts.forEach(acc => {
-    // Check if this account's Plaid item (if Plaid) has transactions billed
-    // Why connection_status not origin: a converted plaid account (origin='plaid',
-    // connection_status='converted') operates as manual and should be active.
-    // Only actively-Plaid-linked accounts need billed_products check.
-    const isActive = acc.connection_status !== 'linked' || acc.billed_products.includes('transactions');
-    
-    if (isActive) {
-      const cat = acc.account_category || 'asset';
-      if (!grouped.active[cat]) {
-        grouped.active[cat] = [];
-      }
-      grouped.active[cat].push(acc);
-    } else {
-      // Separate inactive Plaid items
-      grouped.inactive.push(acc);
+    // All accounts are active in the sidebar.  Dormant accounts (Plaid-born
+    // but transactions product not yet billed) operate as manual.
+    // Activation of the transactions product is handled on accounts.html.
+    const cat = acc.account_category || 'asset';
+    if (!grouped.active[cat]) {
+      grouped.active[cat] = [];
     }
+    grouped.active[cat].push(acc);
   });
 
   // Sort accounts within each category by account_name
@@ -445,34 +436,6 @@ function renderAccountsSidebar() {
     renderCategoryBlock(cat);
   });
 
-  // ===== INACTIVE PLAID ITEMS =====
-  if (grouped.inactive.length > 0) {
-    html += `<div class="sidebar-inactive-section">`;
-    html += `<div class="sidebar-inactive-title">⚠️ Needs Activation</div>`;
-
-    // Group inactive accounts by institution
-    const inactiveByInstitution = {};
-    grouped.inactive.forEach(acc => {
-      const inst = acc.institution_name || 'Unknown';
-      if (!inactiveByInstitution[inst]) {
-        inactiveByInstitution[inst] = [];
-      }
-      inactiveByInstitution[inst].push(acc);
-    });
-
-    Object.entries(inactiveByInstitution).forEach(([inst, accs]) => {
-      const itemId = accs[0].plaid_item_id;
-      html += `
-        <div class="sidebar-activate-section">
-          <div style="font-weight: 500; margin-bottom: 6px;">• ${inst}</div>
-          <button class="activate-btn" onclick="activateBank('${itemId}')">Activate & Sync</button>
-        </div>
-      `;
-    });
-
-    html += '</div>';
-  }
-
   // ===== CREATE MANUAL ACCOUNT LINK =====
   html += `
     <a href="accounts.html#create-account" class="sidebar-create-btn">
@@ -492,64 +455,11 @@ function renderAccountsSidebar() {
   }
 }
 
-async function activateBank(itemId) {
-    if (!confirm('Activating transactions for this bank may incur additional fees. Do you want to proceed?')) {
-        return;
-    }
-
-    // Invalidate cached item_info so subsequent UI reads the freshest product state
-    try { invalidateItemInfoCache(itemId); } catch (e) {}
-
-    const btn = event.target;
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = 'Activating...';
-
-    try {
-        const itemAccounts = accounts.filter(a => a.plaid_item_id === itemId);
-        if (itemAccounts.length === 0) {
-            throw new Error('No accounts found for this bank.');
-        }
-        const accountIds = itemAccounts.map(a => a.account_id);
-
-        // Use last 30 days for activation
-        const end = new Date();
-        const start = new Date();
-        start.setDate(start.getDate() - 30);
-        
-        const formatDate = (date) => {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
-        };
-
-        const activationResult = await performSync(accountIds, formatDate(start), formatDate(end), true);
-        
-        // Refresh accounts to update status (force network)
-        await loadAccounts(true);
-        
-        // If items were activated, inform user that background sync is in progress
-        if (activationResult.activated && activationResult.activated.length > 0) {
-            showStatus('Activation complete! Transactions will be synced automatically in the background.', 'success');
-        } else {
-            showStatus('Activated successfully. Fetching transactions...', 'success');
-        }
-
-    } catch (error) {
-        alert('Activation failed: ' + error.message);
-    } finally {
-        btn.disabled = false;
-        btn.textContent = originalText;
-    }
-}
-
 function getSelectedAccounts() {
   if (selectedAccountMode === 'all') {
-    // Return all account IDs (active only - Plaid items with transactions billed)
-    return accounts
-      .filter(a => a.connection_status !== 'linked' || a.billed_products.includes('transactions'))
-      .map(a => a.account_id);
+    // Return all account IDs — every account in the sidebar is usable.
+    // Dormant accounts operate as manual and are included.
+    return accounts.map(a => a.account_id);
   } else if (selectedAccountMode === 'single' && selectedAccountId) {
     // Return single selected account
     return [selectedAccountId];

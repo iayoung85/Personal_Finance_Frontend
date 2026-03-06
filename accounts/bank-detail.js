@@ -213,6 +213,20 @@ function _buildBankActions(bank) {
     );
   }
 
+  // ── Activate Transactions (banks with dormant accounts) ──
+  const hasDormantAccounts = (bank.accounts || []).some(
+    acct => acct.connection_status === 'dormant'
+  );
+  if (hasDormantAccounts) {
+    actions += _actionItem(
+      'Activate Transactions',
+      'Enable Plaid transaction syncing for the dormant (manual) accounts under this bank. This may incur additional Plaid billing.',
+      `<button class="btn-action" onclick="activateTransactions('${bank.bank_id}', '${_escapeAttr(buildBankDisplayName(bank))}')">Activate</button>`,
+      'info-activate-txns',
+      'Dormant accounts were created because this bank was connected with investments-only billing. Activating tells Plaid to start the transactions product. After activation, dormant accounts become fully linked and any manual transactions you entered will be reconciled against the Plaid transaction history.'
+    );
+  }
+
   // ── Archive / Unarchive Bank ──
   if (bank.is_archived) {
     actions += _actionItem(
@@ -353,6 +367,38 @@ async function saveBankNotes(bankId) {
   } catch (notesError) {
     showToast(`Failed to save notes: ${notesError.message}`, 'error');
   }
+}
+
+function activateTransactions(bankId, bankDisplayName) {
+  openConfirmModal(
+    'Activate Transactions',
+    `This will enable Plaid transaction syncing for "${bankDisplayName}". ` +
+    'Dormant accounts will become fully linked. This may incur additional Plaid billing fees. ' +
+    'Any manual transactions you entered will be reconciled against the Plaid transaction history.',
+    async () => {
+      try {
+        showToast('Activating transactions…', 'info');
+        const response = await authenticatedFetch(
+          `${BACKEND_URL}/api/accounts/banks/${bankId}/activate-transactions`,
+          { method: 'POST' }
+        );
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || 'Activation failed');
+        }
+        const activatedCount = (result.accounts_activated || []).length;
+        showToast(
+          `Transactions activated for ${activatedCount} account${activatedCount !== 1 ? 's' : ''}. ` +
+          'Plaid sync in progress.',
+          'success'
+        );
+        await reloadAndReselect();
+      } catch (activateError) {
+        showToast(`Failed to activate: ${activateError.message}`, 'error');
+      }
+    },
+    { buttonLabel: 'Activate Transactions', buttonClass: 'btn-action' }
+  );
 }
 
 // ── Helpers ──────────────────────────────────────────────────

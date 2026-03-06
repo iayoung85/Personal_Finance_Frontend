@@ -57,6 +57,7 @@ function renderOriginBadge(origin) {
 function renderConnectionBadge(connectionStatus) {
   const map = {
     linked:    { css: 'badge-conn-linked',    label: 'Linked' },
+    dormant:   { css: 'badge-conn-dormant',   label: 'Dormant' },
     converted: { css: 'badge-conn-converted', label: 'Converted' },
     manual:    { css: 'badge-conn-manual',    label: 'Manual' }
   };

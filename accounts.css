@@ -364,6 +364,7 @@ body {
 .badge-origin-plaid   { background: var(--badge-purple-bg); color: var(--accent-purple); }
 .badge-origin-manual  { background: var(--badge-plaid-bg); color: var(--text-secondary); }
 .badge-conn-linked    { background: var(--color-success-bg); color: var(--color-success); }
+.badge-conn-dormant   { background: var(--color-warning-bg); color: var(--accent-orange); }
 .badge-conn-converted { background: var(--color-info-bg); color: var(--color-success); }
 .badge-conn-manual    { background: var(--badge-plaid-bg); color: var(--text-secondary); }
 .badge-health-ok      { background: var(--color-success-bg); color: var(--color-success); }

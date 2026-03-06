@@ -426,6 +426,7 @@ async function saveAccountNotes(accountId) {
 function _connectionMeaning(connectionStatus) {
   const meanings = {
     linked: 'Actively connected to Plaid. Syncing data automatically.',
+    dormant: 'Plaid-connected but transactions not yet billed. Operating as manual. Activate to start syncing.',
     converted: 'Was Plaid-linked, converted to manual. Plaid billing stopped. Re-link available.',
     manual: 'Manual data-entry mode. Transactions are entered by the user.'
   };
