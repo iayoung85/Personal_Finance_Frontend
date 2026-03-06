@@ -42,7 +42,7 @@ $(document).ready(async function () {
   showToast('Accounts loaded', 'success');
 
   // 4. Set default balance date in create-account modal to today
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = todayISO();
   const balanceDateInput = document.getElementById('new-acct-balance-date');
   if (balanceDateInput) balanceDateInput.value = todayStr;
 
@@ -192,7 +192,7 @@ function openCreateAccountModal() {
   document.getElementById('new-acct-name').value = '';
   document.getElementById('new-acct-category').value = '';
   document.getElementById('new-acct-balance').value = '0';
-  document.getElementById('new-acct-balance-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('new-acct-balance-date').value = todayISO();
   document.getElementById('new-acct-currency').value = 'USD';
   document.getElementById('new-acct-notes').value = '';
   document.getElementById('create-account-error').classList.add('hidden');

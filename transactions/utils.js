@@ -41,10 +41,8 @@ function showStatus(message, type) {
 }
 
 function clearStatus() {
-  const statusDiv = document.getElementById('status-message');
-  // Reset to base class only — CSS hides it via visibility:hidden when no type class is present.
-  statusDiv.className = 'status-message';
-  statusDiv.textContent = '';
+  // Intentionally empty — the status bar is dedicated space that always
+  // shows the most recent message. showStatus() overwrites as needed.
 }
 
 /**

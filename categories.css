@@ -55,7 +55,7 @@ input[type="checkbox"] {
   margin-right: 8px;
 }
 
-input[type="date"] {
+.date-input {
   padding: 5px 8px;
   border: 1px solid var(--border-primary);
   border-radius: 4px;

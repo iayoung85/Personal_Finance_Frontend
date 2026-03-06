@@ -7,12 +7,7 @@
  * Open modal to create a new manual transaction
  */
 function openAddManualTransactionModal() {
-  // Get today's date in local timezone (not UTC)
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const today = `${year}-${month}-${day}`;
+  const today = todayISO();
   
   // Build account dropdown from available accounts
   let accountOptions = '<option value="">— Select Account —</option>';
@@ -75,7 +70,7 @@ function openAddManualTransactionModal() {
         </div>
         <div>
           <label style="display: block; font-weight: 500; margin-bottom: 6px;">Date *</label>
-          <input id="manual-txn-date" type="date" value="${today}" class="modal-input">
+          <input id="manual-txn-date" type="text" value="${today}" class="modal-input date-input">
         </div>
       </div>
 
@@ -116,6 +111,9 @@ function openAddManualTransactionModal() {
       { label: 'Create', onClick: () => saveManualTransaction() }
     ]
   });
+
+  // Auto-format wiring for the date text input inside the modal
+  wireDateInputs(document.querySelector('.modal-content'));
   
   // --- Wire up smart +/− shorthand on the amount field ---
   // Typing "+" before the number auto-selects Credit; no prefix = Debit.
@@ -187,7 +185,7 @@ function openEditManualTransactionModal(transactionId) {
   const absAmount = Math.abs(txn.amount || 0).toFixed(2);
   const txnType = (txn.amount || 0) >= 0 ? 'credit' : 'debit';
   const txnDate = txn.date || '';
-  const txnName = txn.name || '';
+  const txnName = txn.raw_description || txn.description || txn.name || '';
   const txnMerchant = txn.merchant_name || '';
   const txnCategory = txn.user_category || '';
   const txnMemo = txn.user_memo || '';
@@ -214,7 +212,7 @@ function openEditManualTransactionModal(transactionId) {
         </div>
         <div>
           <label style="display: block; font-weight: 500; margin-bottom: 6px;">Date *</label>
-          <input id="manual-txn-date" type="date" value="${txnDate}" class="modal-input">
+          <input id="manual-txn-date" type="text" value="${txnDate}" class="modal-input date-input">
         </div>
       </div>
 
@@ -252,6 +250,9 @@ function openEditManualTransactionModal(transactionId) {
       { label: 'Save Changes', onClick: () => _updateManualTransaction(transactionId, txn.account_id) }
     ]
   });
+
+  // Auto-format wiring for the date text input inside the modal
+  wireDateInputs(document.querySelector('.modal-content'));
 
   // Wire up the same amount prefix helpers
   setTimeout(() => {
@@ -409,8 +410,7 @@ function _getLinkedAccountDateWindowError(accountId, date) {
     return null;
   }
 
-  const localNow = new Date();
-  const todayIso = `${localNow.getFullYear()}-${String(localNow.getMonth() + 1).padStart(2, '0')}-${String(localNow.getDate()).padStart(2, '0')}`;
+  const todayIso = todayISO();
   const isInPlaidSyncedWindow = date >= earliestPlaidDate && date <= todayIso;
 
   if (isInPlaidSyncedWindow) {
@@ -1065,7 +1065,7 @@ function _updateManualTxnDateConstraints() {
       const boundaryDate = new Date(earliestPlaidDate + 'T00:00:00');
       const dayBefore = new Date(boundaryDate);
       dayBefore.setDate(dayBefore.getDate() - 1);
-      const dayBeforeStr = dayBefore.toISOString().split('T')[0];
+      const dayBeforeStr = toISODateStr(dayBefore);
 
       dateInput.value = dayBeforeStr;
     }

@@ -136,9 +136,10 @@ function _buildInputForField(field, draftState) {
   input.className = 'inline-edit-input';
 
   if (field === 'date') {
-    input.type = 'date';
-    input.classList.add('inline-edit-date');
+    input.type = 'text';
+    input.classList.add('inline-edit-date', 'date-input');
     input.value = draftState.date;
+    autoFormatDateInput(input);
     return input;
   }
 
@@ -180,12 +181,12 @@ function _ensureRowEditSession(row, txnId) {
     row,
     original: {
       date: txn.date || '',
-      description: txn.name || '',
+      description: txn.description || txn.name || '',
       signed_amount: Number(txn.amount || 0),
     },
     draft: {
       date: txn.date || '',
-      description: txn.name || '',
+      description: txn.description || txn.name || '',
       amount_input: Number.isFinite(absolute_amount) ? absolute_amount.toFixed(2) : '0.00',
     },
   };
@@ -398,16 +399,7 @@ function _extractSignSymbol(amountInput) {
 
 
 function _formatDateDisplay(dateString) {
-  const parsedDate = new Date(`${dateString}T00:00:00Z`);
-  if (Number.isNaN(parsedDate.getTime())) {
-    return dateString;
-  }
-  return parsedDate.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    timeZone: 'UTC',
-  });
+  return formatDate(dateString);
 }
 
 
@@ -465,7 +457,7 @@ function _openPlaidDescriptionEditor(cell, txnId) {
 
   const originalHtml = cell.innerHTML;
   const descriptionPrefixHtml = _getLeadingElementHtml(cell);
-  const currentName = txn.user_description_override || txn.name || '';
+  const currentName = txn.user_description_override || txn.description || txn.name || '';
 
   const input = document.createElement('input');
   input.type = 'text';
@@ -511,10 +503,9 @@ function _openPlaidDescriptionEditor(cell, txnId) {
 
 
 async function _savePlaidDescriptionEdit(txnId, newDescription) {
-  if (!newDescription) {
-    showStatus('Description cannot be empty', 'error');
-    return;
-  }
+  // Empty input signals user wants to revert to the original plaid description.
+  // The backend clears user_description_override when description is empty.
+  const isClearing = !newDescription;
 
   try {
     const response = await authenticatedFetch(
@@ -522,7 +513,7 @@ async function _savePlaidDescriptionEdit(txnId, newDescription) {
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: newDescription }),
+        body: JSON.stringify({ description: newDescription || '' }),
       }
     );
 
@@ -533,11 +524,15 @@ async function _savePlaidDescriptionEdit(txnId, newDescription) {
 
     const txn = transactions.find(find_txn => find_txn.transaction_id === txnId);
     if (txn) {
-      txn.user_description_override = newDescription;
-      txn.name = newDescription;
+      if (isClearing) {
+        txn.user_description_override = null;
+      } else {
+        txn.user_description_override = newDescription;
+        txn.description = newDescription;
+      }
     }
 
-    showStatus('Description updated', 'success');
+    showStatus(isClearing ? 'Description override cleared' : 'Description updated', 'success');
     _dismissActiveEditor({ clearRowSession: true });
     await _refreshAfterInlineEdit();
   } catch (saveError) {

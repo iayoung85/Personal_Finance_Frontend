@@ -14,6 +14,16 @@
 
 
 /**
+ * Return the user-facing description for a transaction.
+ * New backend blobs store 'description', older blobs may only have 'name'.
+ * This accessor provides a single fallback chain everywhere in the frontend.
+ */
+function _txnDescription(txn) {
+  return txn.description || txn.name || '';
+}
+
+
+/**
  * Shared autocomplete input + buttons template used by most category cells.
  * Avoids duplicating the same 8-line HTML block across every renderer.
  *
@@ -99,7 +109,7 @@ function _renderOpeningBalanceRow(ctx) {
     actionCell: '<td></td>',
     rowCssClass: '',
     sourceBadge: { label: 'Opening Bal', cssClass: 'opening-balance', title: sourceTitle },
-    displayName: ctx.txn.name || '',
+    displayName: _txnDescription(ctx.txn),
   };
 }
 
@@ -125,7 +135,7 @@ function _renderScheduledRow(ctx) {
     actionCell: '<td></td>',
     rowCssClass: 'scheduled-row',
     sourceBadge: { label: 'Scheduled', cssClass: 'scheduled', title: 'Scheduled future transaction' },
-    displayName: ctx.txn.name || '',
+    displayName: _txnDescription(ctx.txn),
   };
 }
 
@@ -138,7 +148,7 @@ function _renderScheduledRow(ctx) {
 function _renderVirtualBillRow(ctx) {
   const scheduledIsTransfer = isTransferCategory(ctx.txn.user_category) || !!ctx.txn.transfer_pair_id;
   const occNum = ctx.txn.occurrence_number || '?';
-  const billName = escapeHtml(ctx.txn.name || 'Bill');
+  const billName = escapeHtml(_txnDescription(ctx.txn) || 'Bill');
   const scheduleSummary = escapeHtml(ctx.txn.schedule_summary || '');
   const hoverTitle = `#${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
 
@@ -167,7 +177,7 @@ function _renderVirtualBillRow(ctx) {
     actionCell,
     rowCssClass: 'scheduled-row bill-virtual-row',
     sourceBadge: { label: 'Bill', cssClass: 'scheduled bill-virtual', title: hoverTitle },
-    displayName: ctx.txn.name || '',
+    displayName: _txnDescription(ctx.txn),
   };
 }
 
@@ -181,7 +191,7 @@ function _renderVirtualBillRow(ctx) {
 function _renderMaterializedBillRow(ctx) {
   const scheduledIsTransfer = isTransferCategory(ctx.txn.user_category) || !!ctx.txn.transfer_pair_id;
   const occNum = ctx.txn.occurrence_number || ctx.txn.bill_occurrence_number || '?';
-  const billName = escapeHtml(ctx.txn.name || 'Bill');
+  const billName = escapeHtml(_txnDescription(ctx.txn) || 'Bill');
   const scheduleSummary = escapeHtml(ctx.txn.schedule_summary || '');
   const hoverTitle = `Confirmed #${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
 
@@ -209,7 +219,7 @@ function _renderMaterializedBillRow(ctx) {
     actionCell,
     rowCssClass: 'scheduled-row bill-materialized-row',
     sourceBadge: { label: 'Confirmed', cssClass: 'scheduled bill-materialized', title: hoverTitle },
-    displayName: ctx.txn.name || '',
+    displayName: _txnDescription(ctx.txn),
   };
 }
 
@@ -231,19 +241,25 @@ function _renderMissingRow(ctx) {
   let typeBadge = '<span class="source-badge missing" title="Expected payment not found">⚠</span> ';
   if (ctx.txn.is_bill || ctx.txn.bill_id) {
     const occNum = ctx.txn.occurrence_number || ctx.txn.bill_occurrence_number || '?';
-    const billName = escapeHtml(ctx.txn.name || 'Bill');
+    const billName = escapeHtml(_txnDescription(ctx.txn) || 'Bill');
     const scheduleSummary = escapeHtml(ctx.txn.schedule_summary || '');
     const hoverTitle = `Missing bill #${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
     typeBadge = `<span class="source-badge bill-provenance" data-tooltip="${hoverTitle}" title="${hoverTitle}">📋</span> ` + typeBadge;
   }
+
+  // Source badge differentiates bill-originated vs manual-originated missing
+  const isBillMissing = ctx.rowType === TXN_TYPE.BILL_MISSING;
+  const sourceTitle = isBillMissing
+    ? 'Bill payment not yet matched to a plaid transaction'
+    : 'Manual future transaction not yet matched to a plaid transaction';
 
   return {
     typeBadge,
     categoryCell,
     actionCell,
     rowCssClass: 'missing-row',
-    sourceBadge: { label: 'Missing', cssClass: 'missing', title: ctx.txn.is_bill ? 'Bill payment not yet matched to a plaid transaction' : 'Expected payment not yet matched to a plaid transaction' },
-    displayName: ctx.txn.name || '',
+    sourceBadge: { label: 'Missing', cssClass: 'missing', title: sourceTitle },
+    displayName: _txnDescription(ctx.txn),
   };
 }
 
@@ -262,7 +278,7 @@ function _renderMatchedRow(ctx) {
   let billBadge = '';
   if (ctx.txn.is_bill || ctx.txn.bill_id) {
     const occNum = ctx.txn.occurrence_number || ctx.txn.bill_occurrence_number || '?';
-    const billName = escapeHtml(ctx.txn.name || 'Bill');
+    const billName = escapeHtml(_txnDescription(ctx.txn) || 'Bill');
     const scheduleSummary = escapeHtml(ctx.txn.schedule_summary || '');
     const hoverTitle = `Matched bill #${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
     billBadge = `<span class="source-badge bill-provenance" data-tooltip="${hoverTitle}" title="${hoverTitle}">📋</span> `;
@@ -274,7 +290,7 @@ function _renderMatchedRow(ctx) {
     actionCell: '<td></td>',
     rowCssClass: 'matched-row',
     sourceBadge: { label: 'Matched', cssClass: 'matched', title: ctx.txn.is_bill ? 'Bill-matched scheduled transaction' : 'Scheduled transaction matched with a plaid transaction' },
-    displayName: ctx.txn.name || '',
+    displayName: _txnDescription(ctx.txn),
   };
 }
 
@@ -307,7 +323,7 @@ function _renderMatchedPairRow(ctx) {
     actionCell: '<td></td>',
     rowCssClass: 'matched-row',
     sourceBadge: { label: 'Matched', cssClass: 'matched', title: matchInfo.matched_bill_id ? 'Bill-matched plaid transaction' : 'Plaid transaction merged with user-entered counterpart' },
-    displayName: matchInfo.matched_name || ctx.txn.name || '',
+    displayName: matchInfo.matched_description || _txnDescription(ctx.txn),
   };
 }
 
@@ -331,7 +347,7 @@ function _renderOrphanedRow(ctx) {
     actionCell,
     rowCssClass: 'orphaned-row',
     sourceBadge: { label: 'Orphaned', cssClass: 'orphaned', title: 'Manual transaction orphaned after account re-link' },
-    displayName: ctx.txn.name || '',
+    displayName: _txnDescription(ctx.txn),
   };
 }
 
@@ -350,7 +366,7 @@ function _renderTransferRow(ctx) {
     actionCell: '<td></td>',
     rowCssClass: ctx.isPendingRow ? 'pending-row' : '',
     sourceBadge: _getDefaultSourceBadge(ctx),
-    displayName: ctx.txn.name || '',
+    displayName: _txnDescription(ctx.txn),
   };
 }
 
@@ -382,7 +398,7 @@ function _renderManualClearedRow(ctx) {
     actionCell,
     rowCssClass: '',
     sourceBadge: { label: 'Manual', cssClass: 'manual', title: 'Added manually by user' },
-    displayName: ctx.txn.name || '',
+    displayName: _txnDescription(ctx.txn),
   };
 }
 
@@ -413,7 +429,7 @@ function _renderDefaultRow(ctx) {
     actionCell: '<td></td>',
     rowCssClass: ctx.isPendingRow ? 'pending-row' : '',
     sourceBadge: _getDefaultSourceBadge(ctx),
-    displayName: ctx.txn.name || '',
+    displayName: _txnDescription(ctx.txn),
   };
 }
 
@@ -429,7 +445,7 @@ function _getDefaultSourceBadge(ctx) {
   if (ctx.txn.source === 'reconciliation') {
     return { label: 'Reconcil.', cssClass: 'reconciliation', title: 'Auto-generated balance reconciliation' };
   }
-  return { label: 'Plaid', cssClass: 'plaid', title: 'From Plaid' };
+  return { label: 'Downloaded', cssClass: 'plaid', title: 'Downloaded from Plaid' };
 }
 
 
@@ -476,6 +492,11 @@ function renderRowByType(ctx) {
     return _renderMissingRow(ctx);
   }
 
+  // Missing manual transactions — same visual treatment as missing bills
+  if (rowType === TXN_TYPE.MANUAL_MISSING) {
+    return _renderMissingRow(ctx);
+  }
+
   // Matched rows (the manual/scheduled side) — approve + unmatch
   if (rowType === TXN_TYPE.BILL_MATCHED || rowType === TXN_TYPE.MANUAL_MATCH) {
     return _renderMatchedRow(ctx);
@@ -486,8 +507,9 @@ function renderRowByType(ctx) {
     return _renderMatchedPairRow(ctx);
   }
 
-  // Orphaned / manual missing — delete button
-  if (rowType === TXN_TYPE.MANUAL_MISSING || rowType === TXN_TYPE.MANUAL_ORPHANED) {
+  // Orphaned transactions — only shown in Resolution Center, not in ledger.
+  // Renderer kept for Resolution Center usage if needed.
+  if (rowType === TXN_TYPE.MANUAL_ORPHANED) {
     return _renderOrphanedRow(ctx);
   }
 

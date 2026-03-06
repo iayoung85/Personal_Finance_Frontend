@@ -120,7 +120,7 @@
 }
 .bill-field input[type="text"],
 .bill-field input[type="number"],
-.bill-field input[type="date"],
+.bill-field .date-input,
 .bill-field select {
   width: 100%;
   padding: 7px 8px;

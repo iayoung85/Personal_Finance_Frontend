@@ -51,7 +51,7 @@ function generateSpendingInsights() {
     if (!currentStats.largestTransaction || amount > currentStats.largestTransaction.amount) {
       currentStats.largestTransaction = {
         amount: amount,
-        merchant: txn.merchant_name || txn.name || 'Unknown',
+        merchant: txn.merchant_name || txn.description || txn.name || 'Unknown',
         date: txn.date,
         category: (txn.personal_finance_category && txn.personal_finance_category.primary) || 'Uncategorized'
       };

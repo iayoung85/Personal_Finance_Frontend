@@ -44,33 +44,24 @@ function generateCSV() {
   let csv = 'Date,Bank/Account,Description,Amount';
   
   // Add optional headers — values must match .field-checkbox values in transactions.html
-  if (optionalFields.includes('merchant_name')) csv += ',Merchant';
   if (optionalFields.includes('personal_finance_category')) csv += ',Category (Primary),Category (Detailed),Confidence';
   if (optionalFields.includes('payment_channel')) csv += ',Channel';
-  if (optionalFields.includes('check_number')) csv += ',Check #';
-  if (optionalFields.includes('original_description')) csv += ',Original Desc';
-  if (optionalFields.includes('authorized_date')) csv += ',Auth Date';
-  if (optionalFields.includes('authorized_datetime')) csv += ',Auth Time';
+  if (optionalFields.includes('original_description')) csv += ',Pre-Override Desc';
+  if (optionalFields.includes('authorized_datetime')) csv += ',Authorized';
   if (optionalFields.includes('user_memo')) csv += ',Memo';
-  if (optionalFields.includes('source')) csv += ',Source';
+  if (optionalFields.includes('source')) csv += ',Type';
   
   csv += '\n';
 
   transactions.forEach(txn => {
     const dateObj = new Date(txn.date);
-    const dateStr = dateObj.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      timeZone: 'UTC'
-    });
+    const dateStr = toISODateStr(dateObj);
     const amount = txn.amount;
-    const name = (txn.name || '').replace(/"/g, '""');
+    const name = (txn.description || txn.name || '').replace(/"/g, '""');
     
     csv += `"${dateStr}","${txn.bank_account}","${name}",${amount}`;
     
     // Add optional fields
-    if (optionalFields.includes('merchant_name')) csv += `,"${(txn.merchant_name || '').replace(/"/g, '""')}"`;
     if (optionalFields.includes('personal_finance_category')) {
          // Use new personal_finance_category if available
          const pfc = txn.personal_finance_category;
@@ -99,14 +90,15 @@ function generateCSV() {
          }
     }
     if (optionalFields.includes('payment_channel')) csv += `,"${(txn.payment_channel || '').replace(/"/g, '""')}"`;
-    if (optionalFields.includes('check_number')) csv += `,"${(txn.check_number || '').replace(/"/g, '""')}"`;
-    if (optionalFields.includes('original_description')) csv += `,"${(txn.original_description || '').replace(/"/g, '""')}"`;
-    if (optionalFields.includes('authorized_date')) csv += `,"${(txn.authorized_date || '').replace(/"/g, '""')}"`;
+    if (optionalFields.includes('original_description')) {
+      const preOverrideExport = txn.user_description_override ? (txn.description || txn.name || '') : 'no override';
+      csv += `,"${preOverrideExport.replace(/"/g, '""')}"`;
+    }
     if (optionalFields.includes('authorized_datetime')) {
-        let authTime = '';
+        let authDisplay = '';
         if (txn.authorized_datetime) {
             const dt = new Date(txn.authorized_datetime);
-            authTime = dt.toLocaleString('en-US', {
+            authDisplay = dt.toLocaleString('en-US', {
                 year: 'numeric', 
                 month: '2-digit', 
                 day: '2-digit',
@@ -115,8 +107,10 @@ function generateCSV() {
                 second: '2-digit',
                 timeZoneName: 'short'
             });
+        } else if (txn.authorized_date) {
+            authDisplay = txn.authorized_date;
         }
-        csv += `,"${authTime}"`;
+        csv += `,"${authDisplay}"`;
     }
     if (optionalFields.includes('user_memo')) csv += `,"${(txn.user_memo || '').replace(/"/g, '""')}"`;
     if (optionalFields.includes('source')) csv += `,"${(txn.source || '').replace(/"/g, '""')}"`;

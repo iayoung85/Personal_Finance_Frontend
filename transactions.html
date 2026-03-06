@@ -40,9 +40,9 @@
           <!-- Date Range Row -->
           <div class="filter-row">
             <div class="filter-group filter-group-dates">
-              <input type="date" id="start-date">
+              <input type="text" id="start-date" class="date-input">
               <span class="filter-separator">to</span>
-              <input type="date" id="end-date">
+              <input type="text" id="end-date" class="date-input">
               <button onclick="setEarliestToDate()" class="btn-quick-range">Earliest</button>
               <button onclick="setMonthToDate()" class="btn-quick-range">MTD</button>
               <button onclick="setLastMonth()" class="btn-quick-range">Last Month</button>
@@ -75,10 +75,6 @@
                 <input type="checkbox" id="show-pending-toggle">
                 <span>Show pending</span>
               </label>
-              <label class="toggle-label">
-                <input type="checkbox" id="show-missing-orphaned">
-                <span>Show missing/orphaned</span>
-              </label>
               <button onclick="saveSettings()" class="btn-quick-range">Save</button>
             </div>
           </div>
@@ -89,17 +85,17 @@
           <div class="insights-empty">Select accounts and date range to view insights</div>
         </div>
 
-        <!-- ── Action Row ───────────────────────────────────── -->
+        <!-- ── Action Row: status left, buttons right ─────── -->
         <div class="action-row">
           <div class="action-row-left">
-            <button onclick="syncTransactions()" class="btn-action btn-sync">⟳ Re-sync</button>
-            <button onclick="openAddManualTransactionModal()" class="btn-action btn-manual-txn" title="Add a manual transaction. For Plaid accounts, use this only for historical transactions that occurred before the earliest Plaid-downloaded entry. Hotkey: Ctrl+M (Windows/Linux) or Cmd+M (Mac)">+ Manual Txn</button>
+            <div id="status-message" class="status-message"></div>
           </div>
           <div class="action-row-right">
+            <button onclick="syncTransactions()" class="btn-action btn-sync">⟳ Re-sync</button>
+            <button onclick="openAddManualTransactionModal()" class="btn-action btn-manual-txn" title="Add a manual transaction. For Plaid accounts, use this only for historical transactions that occurred before the earliest Plaid-downloaded entry. Hotkey: Ctrl+M (Windows/Linux) or Cmd+M (Mac)">+ Manual Txn</button>
             <button onclick="openConfigModal()" class="btn-action btn-config" title="Settings">⚙</button>
           </div>
         </div>
-        <div id="status-message" class="status-message"></div>
 
         <!-- ── Resolution Banner (appears when relink orphan conflicts need review) ── -->
         <div id="reconciliation-banner" class="reconciliation-banner hidden"></div>
@@ -172,15 +168,13 @@
         <div class="config-section">
           <h3>Optional Table Columns</h3>
           <div class="optional-fields-grid">
-            <label><input type="checkbox" class="field-checkbox" value="merchant_name"> Merchant Name</label>
+            <label><input type="checkbox" class="field-checkbox" value="merchant_logo"> Merchant Logo</label>
             <label><input type="checkbox" class="field-checkbox" value="payment_channel"> Payment Channel</label>
-            <label><input type="checkbox" class="field-checkbox" value="check_number"> Check Number</label>
-            <label><input type="checkbox" class="field-checkbox" value="original_description"> Original Description</label>
-            <label><input type="checkbox" class="field-checkbox" value="authorized_date"> Authorized Date</label>
-            <label><input type="checkbox" class="field-checkbox" value="authorized_datetime"> Authorized Time</label>
+            <label><input type="checkbox" class="field-checkbox" value="original_description"> Pre-Override Description</label>
+            <label><input type="checkbox" class="field-checkbox" value="authorized_datetime"> Authorized Date/Time</label>
             <label><input type="checkbox" class="field-checkbox" value="personal_finance_category"> Plaid's Category</label>
             <label><input type="checkbox" class="field-checkbox" value="user_memo"> Memo</label>
-            <label><input type="checkbox" class="field-checkbox" value="source"> Source (Plaid/Manual)</label>
+            <label><input type="checkbox" class="field-checkbox" value="source"> Type</label>
           </div>
         </div>
         <!-- Forecast Days -->
@@ -275,6 +269,7 @@
   </div>
 
   <script src="config.js"></script>
+  <script src="date-helpers.js"></script>
   <script src="nav-sidebar.js"></script>
 
   <!-- Modularised transactions scripts (Phase 2-A) -->

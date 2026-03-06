@@ -118,11 +118,7 @@ function formatCurrency(amount) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(amount));
 }
 
-function formatDate(dateStr) {
-  if (!dateStr) return '—';
-  const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-}
+// formatDate() is provided by the shared date-helpers.js
 
 /** Ordinal suffix: 1→1st, 2→2nd, 3→3rd, 11→11th, etc. */
 function _ordinal(n) {
@@ -495,9 +491,9 @@ function onFrequencyChange() {
   updatePreview();
 }
 
+// Delegates to todayISO() from date-helpers.js
 function _todayStr() {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return todayISO();
 }
 
 function _sixMonthsFromNow() {
@@ -748,11 +744,9 @@ function _dowFromDateStr(dateStr) {
   return (date.getDay() + 6) % 7; // Convert JS Sun=0 to Mon=0 system
 }
 
+// Delegates to toISODateStr() from date-helpers.js
 function _dateToStr(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return toISODateStr(date);
 }
 
 // ── Date Input Auto-Correction (Idiot-Proofing) ─────────────
@@ -844,45 +838,11 @@ function _autoCorrectBillDateInput(inputEl) {
 }
 
 /**
- * Parse date input in multiple formats: YYYYMMDD, YYYY-MM-DD, M/D/YYYY.
- * Uses Date(year, month-1, day) so invalid dates roll forward naturally
- * (e.g. 2026-02-29 -> 2026-03-01).
+ * Delegates to parseDateInput() from date-helpers.js.
+ * Kept as a local alias so callers in this file don't need renaming.
  */
 function _parseDateWithRollover(rawDate) {
-  // Format: YYYYMMDD (e.g. 20260301)
-  const compactMatch = rawDate.match(/^(\d{8})$/);
-  if (compactMatch) {
-    const year = parseInt(compactMatch[1].substring(0, 4), 10);
-    const month = parseInt(compactMatch[1].substring(4, 6), 10);
-    const day = parseInt(compactMatch[1].substring(6, 8), 10);
-    if (month < 1 || month > 12 || day < 1) return null;
-    const parsed = new Date(year, month - 1, day);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-
-  // Format: YYYY-MM-DD (e.g. 2026-03-01)
-  const isoMatch = rawDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (isoMatch) {
-    const year = parseInt(isoMatch[1], 10);
-    const month = parseInt(isoMatch[2], 10);
-    const day = parseInt(isoMatch[3], 10);
-    if (month < 1 || month > 12 || day < 1) return null;
-    const parsed = new Date(year, month - 1, day);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-
-  // Format: M/D/YYYY (e.g. 3/1/2026)
-  const usMatch = rawDate.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (usMatch) {
-    const month = parseInt(usMatch[1], 10);
-    const day = parseInt(usMatch[2], 10);
-    const year = parseInt(usMatch[3], 10);
-    if (month < 1 || month > 12 || day < 1) return null;
-    const parsed = new Date(year, month - 1, day);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-
-  return null;
+  return parseDateInput(rawDate);
 }
 
 // ── Calendar Date Picker ────────────────────────────────────

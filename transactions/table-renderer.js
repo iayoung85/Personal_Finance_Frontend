@@ -4,6 +4,51 @@
 // including split-group rendering and memo save.
 // ============================================================
 
+
+/**
+ * Build the inner HTML for a merchant logo cell. Uses native lazy loading
+ * so the browser only fetches logos as they scroll into view.
+ * Falls back to a generic category icon derived from the transaction's
+ * primary personal_finance_category, or a neutral placeholder.
+ */
+function _renderLogoCell(txn) {
+  const logoUrl = txn.logo_url;
+  if (logoUrl) {
+    return `<img class="merchant-logo" src="${escapeHtml(logoUrl)}" alt="" width="24" height="24" loading="lazy" decoding="async" onerror="this.replaceWith(document.createTextNode('${_logoFallbackChar(txn)}'))">`;
+  }
+  return `<span class="merchant-logo-fallback">${_logoFallbackChar(txn)}</span>`;
+}
+
+/**
+ * Pick a single-character fallback icon based on the transaction's primary
+ * personal_finance_category. Keeps the column visually consistent even
+ * when no logo URL is available.
+ */
+function _logoFallbackChar(txn) {
+  const primary = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
+  switch (primary) {
+    case 'FOOD_AND_DRINK':        return '🍽';
+    case 'TRANSPORTATION':        return '🚗';
+    case 'TRAVEL':                return '✈';
+    case 'ENTERTAINMENT':         return '🎬';
+    case 'MEDICAL':
+    case 'HEALTHCARE':            return '🏥';
+    case 'INCOME':                return '💰';
+    case 'TRANSFER_IN':
+    case 'TRANSFER_OUT':          return '⇄';
+    case 'LOAN_PAYMENTS':         return '🏦';
+    case 'RENT_AND_UTILITIES':    return '🏠';
+    case 'GENERAL_MERCHANDISE':   return '🛒';
+    case 'PERSONAL_CARE':         return '💇';
+    case 'GENERAL_SERVICES':      return '🔧';
+    case 'GOVERNMENT_AND_NON_PROFIT': return '🏛';
+    case 'HOME_IMPROVEMENT':      return '🔨';
+    case 'BANK_FEES':             return '🏧';
+    default:                      return '○';
+  }
+}
+
+
 function renderTransactionTable() {
   const container = document.getElementById('table-container');
   
@@ -122,15 +167,13 @@ function renderTransactionTable() {
   
   // Separate transactions into blocks per blueprint structure:
   // 1. Scheduled future (source='scheduled', status='future')
-  // 2. Missing (source='scheduled', status='missing')
-  // 3. Pending (pending=true)
-  // 4. Cleared/posted (everything else)
+  // 2. Pending (pending=true)
+  // 3. Cleared/posted (everything else, including BILL_MISSING and MANUAL_MISSING inline)
+  // MANUAL_ORPHANED is excluded entirely — only accessible via Resolution Center.
   // In All Accounts view: hide OB, MOB, reconciliation
   const isAllAccounts = selectedAccountMode === 'all';
-  const showMissingOrphaned = document.getElementById('show-missing-orphaned')?.checked ?? false;
 
   const scheduledFuture = [];
-  const missingTransactions = [];
   const pendingTransactions = [];
   const postedTransactions = [];
 
@@ -148,16 +191,10 @@ function renderTransactionTable() {
       if (isSystemType(txnType)) return;
     }
 
-    // Orphaned / missing — governed by the show-missing-orphaned toggle
+    // Orphaned transactions are excluded from the ledger entirely —
+    // they are only accessible via the Resolution Center after re-link events.
     const txnType = getTransactionType(txn);
-    const isOrphanedTxn = txnType === TXN_TYPE.MANUAL_MISSING || txnType === TXN_TYPE.MANUAL_ORPHANED;
-    const isMissingTxn = txnType === TXN_TYPE.BILL_MISSING;
-    if (isOrphanedTxn || isMissingTxn) {
-      if (showMissingOrphaned) {
-        missingTransactions.push(txn);
-      }
-      return;
-    }
+    if (txnType === TXN_TYPE.MANUAL_ORPHANED) return;
 
     if (txn.source === 'scheduled' && txn.status === 'future') {
       scheduledFuture.push(txn);
@@ -200,7 +237,6 @@ function renderTransactionTable() {
     if (dateComp !== 0) return dateComp;
     return (rowB.transaction_id || '').localeCompare(rowA.transaction_id || '');
   });
-  missingTransactions.sort(sortNewestFirst);
   postedTransactions.sort(sortNewestFirst);
   pendingTransactions.sort(sortNewestFirst);
   
@@ -245,81 +281,68 @@ function renderTransactionTable() {
   }
   
   // Build the combined rendering list following the blueprint block order:
-  // scheduled future → missing → pending → cleared/posted
+  // scheduled future → pending → cleared/posted (missing rows inline with posted)
   const hasPendingToShow = showPendingEnabled && pendingTransactions.length > 0;
   const hasScheduledToShow = scheduledFuture.length > 0;
-  const hasMissingToShow = missingTransactions.length > 0;
   const showBankAccountColumn = selectedAccountMode === 'all';
 
   const allRowTransactions = [
     ...scheduledFuture,
-    ...missingTransactions,
     ...(hasPendingToShow ? pendingTransactions : []),
     ...postedTransactions,
   ];
   // Block boundary tracking flags
   let scheduledSectionEnded = !hasScheduledToShow;
-  let missingSectionEnded = !hasMissingToShow;
   let pendingSectionEnded = !hasPendingToShow;
   
+  const showLogoColumn = optionalFields.includes('merchant_logo');
+
   let html = '<table><thead><tr>';
+  if (showLogoColumn) {
+    html += '<th class="th-logo" style="width: 36px;"></th>';
+  }
   html += '<th>Date</th>';
   if (showBankAccountColumn) {
     html += '<th>Bank/Account</th>';
   }
   html += '<th>Description</th>';
   
-  // In single account view: amount goes 2nd-from-right (before ledger column)
-  // In all accounts view: amount stays in normal position
-  if (!showLedgerColumn) {
-    html += '<th>Amount</th>';
-  }
-  
-  if (optionalFields.includes('source')) html += '<th>Source</th>';
+  if (optionalFields.includes('source')) html += '<th>Type</th>';
   html += '<th class="th-category">Category</th>';
   
-  // Add optional headers
-  if (optionalFields.includes('merchant_name')) html += '<th>Merchant</th>';
+  // Optional column headers
   if (optionalFields.includes('payment_channel')) html += '<th>Channel</th>';
-  if (optionalFields.includes('check_number')) html += '<th>Check #</th>';
-  if (optionalFields.includes('original_description')) html += '<th>Original Desc</th>';
-  if (optionalFields.includes('authorized_date')) html += '<th>Auth Date</th>';
-  if (optionalFields.includes('authorized_datetime')) html += '<th>Auth Time</th>';
+  if (optionalFields.includes('original_description')) html += '<th>Pre-Override</th>';
+  if (optionalFields.includes('authorized_datetime')) html += '<th>Authorized</th>';
   if (optionalFields.includes('personal_finance_category')) html += '<th>Plaid Category</th>';
   if (optionalFields.includes('user_memo')) html += '<th>Memo</th>';
   
-  // In single account view, add amount column here (2nd-from-right)
-  // and then ledger column will be the rightmost
+  // Amount is always pinned toward the right edge of the table,
+  // regardless of single-account vs all-accounts view.
+  html += '<th>Amount</th>';
   if (showLedgerColumn) {
-    html += '<th>Amount</th>';
     html += '<th>Balance Ledger</th>';
   }
   
-  html += '<th style="width: 40px;"></th>'; // Delete button column 
-  // TODO: 3f: move delete button to be an icon in the description column to save horizontal space and avoid accidental clicks
+  html += '<th style="width: 40px;"></th>'; // Delete button column
 
   html += '</tr></thead>';
   
   // Calculate column count for separator row
-  let colCount = showBankAccountColumn ? 4 : 3; // Date, (Bank), Description, Delete
-  if (!showLedgerColumn) colCount++; // Amount in normal position
+  let colCount = showBankAccountColumn ? 5 : 4; // Date, (Bank), Description, Amount, Delete
+  if (showLogoColumn) colCount++;
   if (optionalFields.includes('source')) colCount++;
   colCount++; // Category
-  if (optionalFields.includes('merchant_name')) colCount++;
   if (optionalFields.includes('payment_channel')) colCount++;
-  if (optionalFields.includes('check_number')) colCount++;
   if (optionalFields.includes('original_description')) colCount++;
-  if (optionalFields.includes('authorized_date')) colCount++;
   if (optionalFields.includes('authorized_datetime')) colCount++;
   if (optionalFields.includes('personal_finance_category')) colCount++;
   if (optionalFields.includes('user_memo')) colCount++;
-  if (showLedgerColumn) colCount += 2; // Amount + Balance Ledger
+  if (showLedgerColumn) colCount++; // Balance Ledger
   
   // Open first tbody based on which block comes first
   if (hasScheduledToShow) {
     html += '<tbody class="scheduled-tbody">';
-  } else if (hasMissingToShow) {
-    html += '<tbody class="missing-tbody">';
   } else if (hasPendingToShow) {
     html += '<tbody class="pending-tbody">';
   } else {
@@ -354,31 +377,15 @@ function renderTransactionTable() {
       || getTransactionType(txn) === TXN_TYPE.MANUAL_FUTURE;
     const txnRowType = getTransactionType(txn);
     const isMissingRow = txnRowType === TXN_TYPE.BILL_MISSING
-      || txnRowType === TXN_TYPE.MANUAL_MISSING
-      || txnRowType === TXN_TYPE.MANUAL_ORPHANED;
+      || txnRowType === TXN_TYPE.MANUAL_MISSING;
     const isPendingRow = !!txn.pending;
 
     // --- Block boundary separators ---
-    // Separator: end of future block → start of missing or pending or posted
+    // Separator: end of future block → start of pending or posted
     if (!scheduledSectionEnded && !isFutureBlockRow) {
       scheduledSectionEnded = true;
       const schedCount = scheduledFuture.length;
       html += `<tr class="scheduled-separator-row"><td colspan="${colCount}">▲ ${schedCount} Future Transaction${schedCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
-      html += '</tbody>';
-      if (isMissingRow) {
-        html += '<tbody class="missing-tbody">';
-      } else if (isPendingRow) {
-        html += '<tbody class="pending-tbody">';
-      } else {
-        html += '<tbody>';
-      }
-    }
-
-    // Separator: end of missing block → start of pending or posted
-    if (!missingSectionEnded && !isMissingRow && !isFutureBlockRow) {
-      missingSectionEnded = true;
-      const missCount = missingTransactions.length;
-      html += `<tr class="missing-separator-row"><td colspan="${colCount}">▲ ${missCount} Missing/Orphaned Transaction${missCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
       html += '</tbody>';
       if (isPendingRow) {
         html += '<tbody class="pending-tbody">';
@@ -388,7 +395,7 @@ function renderTransactionTable() {
     }
 
     // Separator: end of pending block → start of posted
-    if (!pendingSectionEnded && !isPendingRow && !isFutureBlockRow && !isMissingRow) {
+    if (!pendingSectionEnded && !isPendingRow && !isFutureBlockRow) {
       pendingSectionEnded = true;
       const pendingCount = pendingTransactions.length;
       html += `<tr class="pending-separator-row"><td colspan="${colCount}">▲ ${pendingCount} Pending Transaction${pendingCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
@@ -397,7 +404,7 @@ function renderTransactionTable() {
 
     // --- Zone bookmark separators (plaid-synced / manual-historical) ---
     // Only rendered in single-account view when both OB and manual OB exist.
-    if (hasManualOB && !isPendingRow && !isFutureBlockRow && !isMissingRow) {
+    if (hasManualOB && !isPendingRow && !isFutureBlockRow) {
       // Emit "Manual Historical" right after the OB row, before the next transaction
       if (passedOpeningBalance && !emittedManualSep) {
         emittedManualSep = true;
@@ -432,9 +439,7 @@ function renderTransactionTable() {
       if (splitAmountMismatch) {
         // Render the parent row (not children) with a repair prompt.
         // The split children are hidden until the user fixes the split.
-        const dateStr = new Date(txn.date).toLocaleDateString('en-US', {
-          year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC'
-        });
+        const dateStr = formatDate(txn.date);
         const formattedAmount = new Intl.NumberFormat('en-US', {
           style: 'currency', currency: txn.iso_currency_code || 'USD'
         }).format(parentAmount);
@@ -445,16 +450,13 @@ function renderTransactionTable() {
         const rowClass = `split-mismatch-row${isPendingRow ? ' pending-row' : ''}`;
 
         html += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-source="${escapeHtml(txn.source || '')}">
+          ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
           <td>${escapeHtml(dateStr)}</td>
           ${showBankAccountColumn ? `<td>${escapeHtml(txn.bank_account || '')}</td>` : ''}
-          <td>${pendingBadge}${escapeHtml(txn.name || '—')}</td>`;
-
-        if (!showLedgerColumn) {
-          html += `<td>${formattedAmount}</td>`;
-        }
+          <td>${pendingBadge}${escapeHtml(txn.description || txn.name || '—')}</td>`;
 
         if (optionalFields.includes('source')) {
-          const sourceLabel = txn.is_manual ? 'Manual' : 'Plaid';
+          const sourceLabel = txn.is_manual ? 'Manual' : 'Downloaded';
           html += `<td><span class="source-badge ${txn.is_manual ? 'manual' : 'plaid'}">${sourceLabel}</span></td>`;
         }
 
@@ -465,17 +467,17 @@ function renderTransactionTable() {
         </td>`;
 
         // Fill remaining optional columns
-        if (optionalFields.includes('merchant_name')) html += `<td>${escapeHtml(txn.merchant_name || '')}</td>`;
         if (optionalFields.includes('payment_channel')) html += `<td>${escapeHtml(txn.payment_channel || '')}</td>`;
-        if (optionalFields.includes('check_number')) html += `<td>${escapeHtml(txn.check_number || '')}</td>`;
-        if (optionalFields.includes('original_description')) html += `<td>${escapeHtml(txn.original_description || '')}</td>`;
-        if (optionalFields.includes('authorized_date')) html += `<td>${escapeHtml(txn.authorized_date || '')}</td>`;
+        if (optionalFields.includes('original_description')) {
+          const preOverrideText = txn.user_description_override ? escapeHtml(txn.description || txn.name || '') : 'no override';
+          html += `<td class="pre-override-cell">${preOverrideText}</td>`;
+        }
         if (optionalFields.includes('authorized_datetime')) html += '<td></td>';
         if (optionalFields.includes('personal_finance_category')) html += '<td></td>';
         if (optionalFields.includes('user_memo')) html += `<td>${escapeHtml(txn.user_memo || '')}</td>`;
 
+        html += `<td class="${parentAmountCellClass}">${formattedAmount}</td>`;
         if (showLedgerColumn) {
-          html += `<td class="${parentAmountCellClass}">${formattedAmount}</td>`;
           const lookupKey = txn.transaction_id;
           const runningBal = isFutureBlockRow
             ? scheduledLedgerLookup[lookupKey]
@@ -515,12 +517,7 @@ function renderTransactionTable() {
         }
         
         renderedSplitCount++;
-        const dateStr = new Date(split.date).toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          timeZone: 'UTC'
-        });
+        const dateStr = formatDate(split.date);
         
         // Amount is already in ledger convention (positive=inflow, negative=outflow)
         const displayAmount = split.amount;
@@ -551,18 +548,14 @@ function renderTransactionTable() {
         
         const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
         html += `<tr class="${rowClass}">
+          ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
           <td>${escapeHtml(dateStr)}</td>
           ${showBankAccountColumn ? `<td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>` : ''}
-          <td>${pendingBadge}${escapeHtml(split.name || '—')}</td>`;
-        
-        // When ledger column is NOT shown, amount stays in normal position
-        if (!showLedgerColumn) {
-          html += `<td>${amount}</td>`;
-        }
+          <td>${pendingBadge}${escapeHtml(split.description || split.name || '—')}</td>`;
         
         // Add source column if needed
         if (optionalFields.includes('source')) {
-          const sourceLabel = split.is_manual ? 'Manual' : 'Plaid';
+          const sourceLabel = split.is_manual ? 'Manual' : 'Downloaded';
           const sourceBadge = `<span class="source-badge ${split.is_manual ? 'manual' : 'plaid'}">${sourceLabel}</span>`;
           html += `<td>${sourceBadge}</td>`;
         }
@@ -578,36 +571,26 @@ function renderTransactionTable() {
         html += `<td class="split-category-cell">${escapeHtml(splitCategoryDisplay)}</td>`;
         
         // Add optional field columns
-        if (optionalFields.includes('merchant_name')) {
-          html += `<td>${escapeHtml(split.merchant_name || '')}</td>`;
-        }
         if (optionalFields.includes('payment_channel')) {
           html += `<td>${escapeHtml(split.payment_channel || '')}</td>`;
         }
-        if (optionalFields.includes('check_number')) {
-          html += `<td>${escapeHtml(split.check_number || '')}</td>`;
-        }
         if (optionalFields.includes('original_description')) {
-          html += `<td>${escapeHtml(split.original_description || '')}</td>`;
-        }
-        if (optionalFields.includes('authorized_date')) {
-          html += `<td>${escapeHtml(split.authorized_date || '')}</td>`;
+          const splitPreOverride = txn.user_description_override ? escapeHtml(txn.description || txn.name || '') : 'no override';
+          html += `<td class="pre-override-cell">${splitPreOverride}</td>`;
         }
         if (optionalFields.includes('authorized_datetime')) {
-          let authTime = '';
+          let authDisplay = '';
           if (split.authorized_datetime) {
             const dt = new Date(split.authorized_datetime);
-            authTime = dt.toLocaleString('en-US', {
-              year: 'numeric', 
-              month: '2-digit', 
-              day: '2-digit',
-              hour: '2-digit', 
-              minute: '2-digit',
-              second: '2-digit',
+            authDisplay = dt.toLocaleString('en-US', {
+              year: 'numeric', month: '2-digit', day: '2-digit',
+              hour: '2-digit', minute: '2-digit', second: '2-digit',
               timeZoneName: 'short'
             });
+          } else if (split.authorized_date) {
+            authDisplay = split.authorized_date;
           }
-          html += `<td>${escapeHtml(authTime)}</td>`;
+          html += `<td>${escapeHtml(authDisplay)}</td>`;
         }
         if (optionalFields.includes('personal_finance_category')) {
           let plaidCategoryDisplay = '';
@@ -628,10 +611,9 @@ function renderTransactionTable() {
         
         // Add split action badges on first row only
         if (isFirstSplit) {
-          // When ledger is shown, add amount + ledger columns for split rows
+          // Amount is always right-aligned; in ledger view add balance too
+          html += `<td class="${splitAmountCellClass}">${amount}</td>`;
           if (showLedgerColumn) {
-            html += `<td class="${splitAmountCellClass}">${amount}</td>`;
-            // Top child shows the parent transaction's running balance
             const parentLookupKey = txn.transaction_id;
             const parentRunningBalance = isFutureBlockRow
               ? scheduledLedgerLookup[parentLookupKey]
@@ -654,8 +636,8 @@ function renderTransactionTable() {
           </td>`;
         } else {
           // Non-top split children: show amount but dash for ledger
+          html += `<td class="${splitAmountCellClass}">${amount}</td>`;
           if (showLedgerColumn) {
-            html += `<td class="${splitAmountCellClass}">${amount}</td>`;
             html += '<td class="ledger-cell ledger-unavailable">—</td>';
           }
           html += `<td></td>`;
@@ -720,14 +702,13 @@ function renderTransactionTable() {
     const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
 
     // ── Date cell ──
-    const _dateFormatOpts = { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC' };
-    const ownDateStr = new Date(txn.date).toLocaleDateString('en-US', _dateFormatOpts);
+    const ownDateStr = formatDate(txn.date);
     let dateStr = ownDateStr;
     const hasTransferPartnerDate = txn.transfer_pair_id
       && txn.transfer_partner_date
       && txn.transfer_partner_date !== txn.date;
     if (hasTransferPartnerDate) {
-      const partnerDateStr = new Date(txn.transfer_partner_date).toLocaleDateString('en-US', _dateFormatOpts);
+      const partnerDateStr = formatDate(txn.transfer_partner_date);
       const ownTime = new Date(txn.date).getTime();
       const partnerTime = new Date(txn.transfer_partner_date).getTime();
       const olderStr = ownTime <= partnerTime ? ownDateStr : partnerDateStr;
@@ -745,26 +726,32 @@ function renderTransactionTable() {
       : 'ledger-amount-cell';
 
     // ── Ledger balance cell (single-account view only) ──
+    // Missing rows (BILL_MISSING, MANUAL_MISSING) are excluded from the
+    // running balance continuity — they display "N/A" instead of a number.
     let ledgerBalanceHtml = '';
     if (showLedgerColumn) {
-      const runningBalance = isFutureBlockRow
-        ? scheduledLedgerLookup[txn.transaction_id]
-        : isPendingRow ? pendingLedgerLookup[txn.transaction_id] : balanceHistoryLookup[txn.transaction_id];
-      if (runningBalance !== undefined) {
-        const formattedBalance = new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: txn.iso_currency_code || 'USD'
-        }).format(runningBalance);
-        const negativeClass = runningBalance < 0 ? ' ledger-negative' : '';
-        const projectedClass = isFutureBlockRow ? ' ledger-projected' : '';
-        ledgerBalanceHtml = `<td class="ledger-cell${negativeClass}${projectedClass}">${formattedBalance}</td>`;
+      if (isMissingRow) {
+        ledgerBalanceHtml = '<td class="ledger-cell ledger-unavailable">N/A</td>';
       } else {
-        ledgerBalanceHtml = '<td class="ledger-cell ledger-unavailable">—</td>';
+        const runningBalance = isFutureBlockRow
+          ? scheduledLedgerLookup[txn.transaction_id]
+          : isPendingRow ? pendingLedgerLookup[txn.transaction_id] : balanceHistoryLookup[txn.transaction_id];
+        if (runningBalance !== undefined) {
+          const formattedBalance = new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: txn.iso_currency_code || 'USD'
+          }).format(runningBalance);
+          const negativeClass = runningBalance < 0 ? ' ledger-negative' : '';
+          const projectedClass = isFutureBlockRow ? ' ledger-projected' : '';
+          ledgerBalanceHtml = `<td class="ledger-cell${negativeClass}${projectedClass}">${formattedBalance}</td>`;
+        } else {
+          ledgerBalanceHtml = '<td class="ledger-cell ledger-unavailable">—</td>';
+        }
       }
     }
 
     // ── Data attributes for context menu ──
-    const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-name="${escapeHtml(txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}"`;
+    const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}"`;
 
     // ── Inline-edit eligibility (date, description, amount) ──
     const isInlineEditable = EDITABLE_TYPES.has(txnRowType);
@@ -777,17 +764,16 @@ function renderTransactionTable() {
     // ── Assemble the row ──
     const rowCssClass = rendered.rowCssClass;
     html += `<tr${rowCssClass ? ` class="${rowCssClass}"` : ''}${rowDataAttrs}>`;
+    if (showLogoColumn) {
+      html += `<td class="logo-cell">${_renderLogoCell(txn)}</td>`;
+    }
     html += `<td${isInlineEditable ? ' data-field="date" class="inline-editable"' : ''}>${dateStr}</td>`;
     if (showBankAccountColumn) {
       html += `<td>${txn.bank_account}</td>`;
     }
     html += `<td${isDescEditable ? ' data-field="description" class="inline-editable"' : ''}>${fullBadge}${pendingBadge}${escapeHtml(effectiveDisplayName)}</td>`;
 
-    if (!showLedgerColumn) {
-      html += `<td${isInlineEditable ? ' data-field="amount" class="inline-editable"' : ''}>${amount}</td>`;
-    }
-
-    // Source badge column (optional field)
+    // Type badge column (optional field)
     if (optionalFields.includes('source')) {
       const sb = rendered.sourceBadge;
       html += `<td><span class="source-badge ${sb.cssClass}" data-tooltip="${sb.title}">${sb.label}</span></td>`;
@@ -797,22 +783,24 @@ function renderTransactionTable() {
     html += `<td>${rendered.categoryCell}</td>`;
 
     // Optional field cells (type-agnostic)
-    if (optionalFields.includes('merchant_name')) html += `<td>${txn.merchant_name || ''}</td>`;
     if (optionalFields.includes('payment_channel')) html += `<td>${txn.payment_channel || ''}</td>`;
-    if (optionalFields.includes('check_number')) html += `<td>${txn.check_number || ''}</td>`;
-    if (optionalFields.includes('original_description')) html += `<td>${txn.original_description || ''}</td>`;
-    if (optionalFields.includes('authorized_date')) html += `<td>${txn.authorized_date || ''}</td>`;
+    if (optionalFields.includes('original_description')) {
+      const preOverrideText = txn.user_description_override ? escapeHtml(txn.description || txn.name || '') : 'no override';
+      html += `<td class="pre-override-cell">${preOverrideText}</td>`;
+    }
     if (optionalFields.includes('authorized_datetime')) {
-      let authTime = '';
+      let authDisplay = '';
       if (txn.authorized_datetime) {
         const dt = new Date(txn.authorized_datetime);
-        authTime = dt.toLocaleString('en-US', {
+        authDisplay = dt.toLocaleString('en-US', {
           year: 'numeric', month: '2-digit', day: '2-digit',
           hour: '2-digit', minute: '2-digit', second: '2-digit',
           timeZoneName: 'short'
         });
+      } else if (txn.authorized_date) {
+        authDisplay = txn.authorized_date;
       }
-      html += `<td>${authTime}</td>`;
+      html += `<td>${authDisplay}</td>`;
     }
     if (optionalFields.includes('personal_finance_category')) {
       let plaidCategoryDisplay = '';
@@ -839,9 +827,9 @@ function renderTransactionTable() {
       `;
     }
 
-    // Ledger columns (single-account view)
+    // Amount is always pinned toward the right edge
+    html += `<td class="${amountCellClass}${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="amount"' : ''}>${amount}</td>`;
     if (showLedgerColumn) {
-      html += `<td class="${amountCellClass}${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="amount"' : ''}>${amount}</td>`;
       html += ledgerBalanceHtml;
     }
 

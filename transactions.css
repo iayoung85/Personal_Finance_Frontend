@@ -323,7 +323,7 @@ input[type="checkbox"] {
 
 /* ── Dark-Mode Text Inputs ────────────────────────────────── */
 /* Covers all generic text/number/search inputs that are not
-   using the .modal-input class or the input[type="date"] rule. */
+   using the .modal-input class or the .date-input rule. */
 input[type="text"],
 input[type="number"],
 input[type="search"],
@@ -347,7 +347,7 @@ textarea::placeholder {
   font-style: italic;
 }
 
-input[type="date"], select {
+.date-input, select {
   padding: 5px 8px;
   border: 1px solid var(--border-primary);
   border-radius: 4px;
@@ -383,16 +383,17 @@ button.secondary {
 button.secondary:hover {
   background: var(--bg-hover);
 }
-/* Always reserve a fixed slot so nothing below ever shifts when alerts appear/disappear */
+/* Status message lives inside the action row — fills all space left of buttons */
 #status-message {
-  min-height: 44px;
-  margin-top: 12px;
+  min-height: 0;
+  margin: 0;
   box-sizing: border-box;
 }
 .status-message {
-  padding: 12px;
+  padding: 4px 10px;
   border-radius: 4px;
-  visibility: hidden; /* space reserved; content hidden until a type class is added */
+  font-size: 13px;
+  visibility: hidden; /* hidden until a type class is added */
 }
 .status-message.success {
   visibility: visible;
@@ -634,20 +635,25 @@ tr:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2px 0;
-  gap: 8px;
+  padding: 2px ;
+  gap: 5px;
 }
 
-.action-row-left,
+.action-row-left {
+  flex: 1;
+  min-width: 0;
+}
+
 .action-row-right {
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .btn-action {
-  padding: 5px 12px;
-  font-size: 12px;
+  padding: 4px 10px;
+  font-size: 11px;
   font-weight: 500;
   border-radius: 4px;
   white-space: nowrap;
@@ -675,6 +681,8 @@ tr:hover {
 
 .btn-config {
   background: var(--bg-surface-elevated);
+  font-size: 18px;
+  line-height: 1;
 }
 
 .btn-config:hover {
@@ -1670,8 +1678,7 @@ tr:hover {
   }
 
   .action-row {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-wrap: wrap;
   }
 
   .export-bar {
@@ -2303,7 +2310,7 @@ tr:hover {
 }
 
 .missing-row {
-  opacity: 0.80;
+  opacity: 0.53;
 }
 
 .missing-row td {
@@ -2334,10 +2341,6 @@ tr:hover {
   background: rgba(99,102,241,0.04);
 }
 
-.missing-tbody {
-  background: rgba(244,71,71,0.04);
-}
-
 /* ── Block separator rows ── */
 
 .scheduled-separator-row td {
@@ -2349,18 +2352,6 @@ tr:hover {
   padding: 4px 0;
   border-top: 1px dashed rgba(99,102,241,0.3);
   border-bottom: 1px dashed rgba(99,102,241,0.3);
-  letter-spacing: 0.5px;
-}
-
-.missing-separator-row td {
-  text-align: center;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-danger);
-  background: linear-gradient(to right, var(--bg-surface), rgba(244,71,71,0.08), var(--bg-surface));
-  padding: 4px 0;
-  border-top: 1px dashed var(--color-danger-border);
-  border-bottom: 1px dashed var(--color-danger-border);
   letter-spacing: 0.5px;
 }
 
@@ -3864,4 +3855,50 @@ td.inline-staged {
 /* Description input stretches to fill */
 .inline-edit-description {
   min-width: 120px;
+}
+
+/* ============================================
+   MERCHANT LOGO COLUMN
+   ============================================ */
+.th-logo {
+  width: 36px;
+  min-width: 36px;
+  max-width: 36px;
+  padding: 2px 4px;
+  text-align: center;
+}
+
+.logo-cell {
+  width: 36px;
+  min-width: 36px;
+  max-width: 36px;
+  padding: 2px 4px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.merchant-logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.merchant-logo-fallback {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  text-align: center;
+  font-size: 16px;
+  border-radius: 4px;
+  background: var(--bg-input, #f0f0f0);
+  vertical-align: middle;
+}
+
+.pre-override-cell {
+  color: var(--text-muted, #999);
+  font-style: italic;
+  font-size: 0.92em;
 }

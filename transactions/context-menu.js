@@ -76,7 +76,7 @@ function _handleContextMenu(event) {
     accountId: row.dataset.accountId || '',
     amount: parseFloat(row.dataset.amount) || 0,
     isSplit: row.dataset.isSplit === 'true',
-    name: row.dataset.txnName || '',
+    name: row.dataset.txnDescription || '',
     userCategory: row.dataset.userCategory || '',
     merchantName: row.dataset.merchantName || '',
     matchManualTxnId: row.dataset.matchManualTxnId || '',
@@ -103,11 +103,11 @@ function _buildMenuItems(txnData) {
   const isBillFuture = txnType === TXN_TYPE.BILL_FUTURE;
   const isManualFuture = txnType === TXN_TYPE.MANUAL_FUTURE;
   const isScheduled = isBillFuture || isManualFuture;
-  const isMissing = txnType === TXN_TYPE.BILL_MISSING;
+  const isMissing = txnType === TXN_TYPE.BILL_MISSING || txnType === TXN_TYPE.MANUAL_MISSING;
   const isMatched = txnType === TXN_TYPE.BILL_MATCHED || txnType === TXN_TYPE.MANUAL_MATCH;
   const isMatchedPair = !!txnData.matchManualTxnId;
   const isOpeningBalance = txnType === TXN_TYPE.SYSTEM_OPENING_BALANCE || txnType === TXN_TYPE.SYSTEM_MANUAL_OPENING_BALANCE;
-  const isOrphaned = txnType === TXN_TYPE.MANUAL_MISSING || txnType === TXN_TYPE.MANUAL_ORPHANED;
+  const isOrphaned = txnType === TXN_TYPE.MANUAL_ORPHANED;
   const isReconciliation = txnType === TXN_TYPE.SYSTEM_RECONCILIATION;
 
   // Opening balance, reconciliation, and split children have no context menu

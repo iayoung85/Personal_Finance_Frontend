@@ -13,7 +13,7 @@
  */
 async function fetchReconciliationStatus() {
   const response = await authenticatedFetch(
-    `${BACKEND_URL}/api/transactions/reconciliation/status`
+    `${BACKEND_URL}/api/transactions/resolution/status`
   );
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
@@ -27,7 +27,7 @@ async function fetchReconciliationStatus() {
  * Optional batch_id narrows to a single re-link event.
  */
 async function fetchReconciliationProposals(batchId) {
-  let url = `${BACKEND_URL}/api/transactions/reconciliation/proposals`;
+  let url = `${BACKEND_URL}/api/transactions/resolution/proposals`;
   if (batchId) {
     url += `?batch_id=${encodeURIComponent(batchId)}`;
   }
@@ -49,7 +49,7 @@ async function fetchReconciliationProposals(batchId) {
  */
 async function resolveReconciliationBatch(payload) {
   const response = await authenticatedFetch(
-    `${BACKEND_URL}/api/transactions/reconciliation/resolve`,
+    `${BACKEND_URL}/api/transactions/resolution/resolve`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -69,7 +69,7 @@ async function resolveReconciliationBatch(payload) {
  */
 async function forceMatchOrphanToPlaid(orphanTransactionId, targetPlaidTransactionId) {
   const response = await authenticatedFetch(
-    `${BACKEND_URL}/api/transactions/reconciliation/force_match`,
+    `${BACKEND_URL}/api/transactions/resolution/force_match`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -92,7 +92,7 @@ async function forceMatchOrphanToPlaid(orphanTransactionId, targetPlaidTransacti
  */
 async function relocateOrphanToAccount(orphanTransactionId, targetAccountId) {
   const response = await authenticatedFetch(
-    `${BACKEND_URL}/api/transactions/reconciliation/relocate`,
+    `${BACKEND_URL}/api/transactions/resolution/relocate`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -115,7 +115,7 @@ async function relocateOrphanToAccount(orphanTransactionId, targetAccountId) {
  */
 async function manualReconciliationMatch(manualTransactionId, plaidTransactionId) {
   const response = await authenticatedFetch(
-    `${BACKEND_URL}/api/transactions/reconciliation/match`,
+    `${BACKEND_URL}/api/transactions/resolution/match`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -269,7 +269,7 @@ function _renderReconciliationModal(proposals, orphanedTransactions) {
             <div class="recon-side recon-side-manual">
               <div class="recon-side-label">Manual/Scheduled Entry</div>
               <div class="recon-txn-detail"><strong>Date:</strong> ${escapeHtml(manualTxn.date || '—')}</div>
-              <div class="recon-txn-detail"><strong>Description:</strong> ${escapeHtml(manualTxn.name || '—')}</div>
+              <div class="recon-txn-detail"><strong>Description:</strong> ${escapeHtml(manualTxn.description || manualTxn.name || '—')}</div>
               <div class="recon-txn-detail"><strong>Amount:</strong> ${_formatCurrency(manualTxn.amount)}</div>
               <div class="recon-txn-detail"><strong>Category:</strong> ${escapeHtml(manualTxn.user_category || '—')}</div>
             </div>
@@ -277,7 +277,7 @@ function _renderReconciliationModal(proposals, orphanedTransactions) {
             <div class="recon-side recon-side-plaid">
               <div class="recon-side-label">Plaid Transaction</div>
               <div class="recon-txn-detail"><strong>Date:</strong> ${escapeHtml(plaidTxn.date || '—')}</div>
-              <div class="recon-txn-detail"><strong>Description:</strong> ${escapeHtml(plaidTxn.name || '—')}</div>
+              <div class="recon-txn-detail"><strong>Description:</strong> ${escapeHtml(plaidTxn.description || plaidTxn.name || '—')}</div>
               <div class="recon-txn-detail"><strong>Amount:</strong> ${_formatCurrency(plaidTxn.amount)}</div>
               <div class="recon-txn-detail"><strong>Category:</strong> ${escapeHtml(plaidTxn.user_category || plaidTxn.personal_finance_category_primary || '—')}</div>
             </div>
@@ -329,7 +329,7 @@ function _renderReconciliationModal(proposals, orphanedTransactions) {
                  value="${escapeHtml(txn.transaction_id || '')}">
           <span class="source-badge ${sourceBadgeClass}">${sourceLabel}</span>
           <span class="recon-missing-date">${escapeHtml(txn.date || '—')}</span>
-          <span class="recon-missing-desc">${escapeHtml(txn.name || '—')}</span>
+          <span class="recon-missing-desc">${escapeHtml(txn.description || txn.name || '—')}</span>
           <span class="recon-missing-amount">${_formatCurrency(txn.amount)}</span>
           <span class="recon-missing-category">${escapeHtml(txn.user_category || '—')}</span>
           <span class="recon-missing-actions">
@@ -512,7 +512,7 @@ function enterForceMatchPickMode(orphanTxnId) {
   // Find the orphan in the transactions array for display context
   const orphanTxn = transactions.find(txn => txn.transaction_id === orphanTxnId);
   const orphanLabel = orphanTxn
-    ? `"${orphanTxn.name || 'Unnamed'}" (${_formatCurrency(orphanTxn.amount)})`
+    ? `"${orphanTxn.description || orphanTxn.name || 'Unnamed'}" (${_formatCurrency(orphanTxn.amount)})`
     : orphanTxnId;
 
   // Show the pick-mode instruction banner
@@ -745,7 +745,7 @@ function openInlineMatchPicker(missingTxnId) {
   }
 
   let bodyHtml = `
-    <p>Select a Plaid transaction to match with: <strong>${escapeHtml(missingTxn.name || '—')}</strong>
+    <p>Select a Plaid transaction to match with: <strong>${escapeHtml(missingTxn.description || missingTxn.name || '—')}</strong>
     (${_formatCurrency(missingTxn.amount)}, ${escapeHtml(missingTxn.date || '')})</p>
     <div class="recon-match-picker-list">
   `;
@@ -869,7 +869,7 @@ function openRelocateAccountPicker(orphanTxnId) {
     return;
   }
 
-  const orphanLabel = orphanTxn.name || 'Unnamed';
+  const orphanLabel = orphanTxn.description || orphanTxn.name || 'Unnamed';
 
   let bodyHtml = `
     <p>Move orphan <strong>${escapeHtml(orphanLabel)}</strong>

@@ -22,7 +22,8 @@ const APP_CONFIG_DEFAULTS = {
   theme: 'dark',                  // 'dark' | 'light'  (light not yet built)
 
   // Date & time
-  dateFormat: 'YYYYMMDD',         // 'YYYYMMDD' | 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'MMM D, YYYY'
+  dateFormat: 'YYYY-MM-DD',       // 'YYYY-MM-DD' | 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'MMM D, YYYY'
+  dateInputFormat: 'YYYYMMDD',    // 'YYYYMMDD' | 'MMDDYYYY' — numpad entry order
   firstDayOfWeek: 'sunday',       // 'sunday' | 'monday'
 
   // Number & currency display
@@ -110,11 +111,15 @@ function _renderAppearanceCard(config) {
  */
 function _renderDateFormattingCard(config) {
   const formatOptions = [
-    { value: 'YYYYMMDD',    label: 'YYYYMMDD',         example: '20260304' },
+    { value: 'YYYY-MM-DD',  label: 'YYYY-MM-DD (ISO)', example: '2026-03-04' },
     { value: 'MM/DD/YYYY',  label: 'MM/DD/YYYY',       example: '03/04/2026' },
     { value: 'DD/MM/YYYY',  label: 'DD/MM/YYYY',       example: '04/03/2026' },
     { value: 'MMM D, YYYY', label: 'MMM D, YYYY',      example: 'Mar 4, 2026' },
-    { value: 'YYYY-MM-DD',  label: 'YYYY-MM-DD (ISO)', example: '2026-03-04' },
+  ];
+
+  const inputFormatOptions = [
+    { value: 'YYYYMMDD', label: 'Year first',  example: '20260304 → 2026-03-04' },
+    { value: 'MMDDYYYY', label: 'Month first', example: '03042026 → 2026-03-04' },
   ];
 
   const dayOptions = [
@@ -127,6 +132,16 @@ function _renderDateFormattingCard(config) {
       <input type="radio" name="dateFormat" value="${opt.value}"
         ${config.dateFormat === opt.value ? 'checked' : ''}
         onchange="handleAppConfigChange('dateFormat', this.value)">
+      <span>${opt.label}</span>
+      <span class="example-value">${opt.example}</span>
+    </label>
+  `).join('');
+
+  const inputFormatRadios = inputFormatOptions.map(opt => `
+    <label class="stub-radio-label${config.dateInputFormat === opt.value ? ' selected' : ''}">
+      <input type="radio" name="dateInputFormat" value="${opt.value}"
+        ${config.dateInputFormat === opt.value ? 'checked' : ''}
+        onchange="handleAppConfigChange('dateInputFormat', this.value); refreshDateInputPlaceholders();">
       <span>${opt.label}</span>
       <span class="example-value">${opt.example}</span>
     </label>
@@ -149,7 +164,12 @@ function _renderDateFormattingCard(config) {
       <div class="form-group">
         <label>Preferred Date Format</label>
         <div class="stub-option-group">${formatRadios}</div>
-        <p class="text-muted stub-note">Affects date display across all pages once wired to the shared <code>formatDate()</code> helper.</p>
+        <p class="text-muted stub-note">Controls date display across all pages (tables, detail panels, exports).</p>
+      </div>
+      <div class="form-group">
+        <label>Date Input Order</label>
+        <div class="stub-option-group">${inputFormatRadios}</div>
+        <p class="text-muted stub-note">Controls what order digits are typed in date fields. Type the digits on the numpad — dashes are added automatically on blur.</p>
       </div>
       <div class="form-group">
         <label>First Day of Week</label>

@@ -530,6 +530,15 @@ function attachCategoryDropdownListeners() {
       return;
     }
 
+    // Skip the override when the resolved category is the same as what
+    // was already committed — avoids creating a redundant user_category
+    // override when the user just clicked into the cell and pressed Enter
+    // without actually changing the category.
+    const committedValue = (input.data('committedCategoryValue') || '').trim();
+    if (resolved.value === committedValue) {
+      return;
+    }
+
     const parsed = parseCategoryString(resolved.value);
     applyOverride(txnId, accountId, parsed.primary, parsed.detailed);
   });

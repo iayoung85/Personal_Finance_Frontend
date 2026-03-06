@@ -18,7 +18,7 @@ async function saveSettings() {
     
     const settings = {
       optional_fields: optionalFields,
-      field_order: ['datetime', 'bank_account', 'name', 'amount', ...optionalFields],
+      field_order: ['datetime', 'bank_account', 'description', 'amount', ...optionalFields],
       timezone: timezone,
       hide_transfers: hideTransfers,
       show_overrides_only: showOverridesOnly,

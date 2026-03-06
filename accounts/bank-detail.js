@@ -92,7 +92,7 @@ function _buildBankDetailHtml(bank) {
         ` : ''}
         <div class="metadata-item">
           <span class="metadata-label">Created</span>
-          <span class="metadata-value">${bank.created_at ? new Date(bank.created_at).toLocaleDateString() : '—'}</span>
+          <span class="metadata-value">${bank.created_at ? formatDate(bank.created_at) : '—'}</span>
         </div>
       </div>
 

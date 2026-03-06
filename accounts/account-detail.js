@@ -86,7 +86,7 @@ function _buildAccountDetailHtml(account) {
         </div>
         <div class="metadata-item">
           <span class="metadata-label">Created</span>
-          <span class="metadata-value">${account.created_at ? new Date(account.created_at).toLocaleDateString() : '—'}</span>
+          <span class="metadata-value">${account.created_at ? formatDate(account.created_at) : '—'}</span>
         </div>
         <div class="metadata-item">
           <span class="metadata-label">Transactions</span>
@@ -367,7 +367,7 @@ function openResetAccountModal(accountId, origin, connectionStatus) {
       'You will need to provide a new opening balance and date.';
     manualFields.classList.remove('hidden');
     document.getElementById('reset-new-balance').value = '';
-    document.getElementById('reset-new-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('reset-new-date').value = todayISO();
   }
 
   document.getElementById('reset-account-modal').classList.remove('hidden');
@@ -394,7 +394,7 @@ async function submitResetAccount() {
     const balanceInput = document.getElementById('reset-new-balance');
     const dateInput = document.getElementById('reset-new-date');
     openingBalance = parseFloat(balanceInput?.value) || 0;
-    openingBalanceDate = dateInput?.value || new Date().toISOString().split('T')[0];
+    openingBalanceDate = dateInput?.value || todayISO();
   }
 
   try {

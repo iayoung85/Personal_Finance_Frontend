@@ -121,7 +121,7 @@
             </div>
             <div class="form-field" style="flex: 1;">
               <label for="new-acct-balance-date">Balance Date</label>
-              <input type="date" id="new-acct-balance-date">
+              <input type="text" id="new-acct-balance-date" class="date-input">
             </div>
           </div>
           <div class="form-field">
@@ -179,7 +179,7 @@
           </div>
           <div class="form-field">
             <label for="reset-new-date">Opening Balance Date</label>
-            <input type="date" id="reset-new-date">
+            <input type="text" id="reset-new-date" class="date-input">
           </div>
         </div>
         <div id="reset-account-error" class="form-error hidden"></div>
@@ -196,6 +196,7 @@
 
   <!-- Script includes (order matters: config → state → api → utils → modules → main) -->
   <script src="config.js"></script>
+  <script src="date-helpers.js"></script>
   <script src="nav-sidebar.js"></script>
   <script src="accounts/state.js"></script>
   <script src="accounts/api.js"></script>

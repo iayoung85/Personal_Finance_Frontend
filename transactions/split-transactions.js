@@ -39,12 +39,7 @@ function openSplitModal(txn) {
   splitRows = [];
   
   // Populate original transaction data
-  const dateStr = new Date(txn.date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    timeZone: 'UTC'
-  });
+  const dateStr = formatDate(txn.date);
   
   const amountFormatted = new Intl.NumberFormat('en-US', { 
     style: 'currency', 
@@ -53,7 +48,7 @@ function openSplitModal(txn) {
   
   document.getElementById('split-modal-title').textContent = 'Create Split Transaction';
   document.getElementById('split-orig-date').textContent = dateStr;
-  document.getElementById('split-orig-description').textContent = txn.name || '';
+  document.getElementById('split-orig-description').textContent = txn.description || txn.name || '';
   document.getElementById('split-orig-account').textContent = txn.bank_account || '';
   document.getElementById('split-orig-amount').textContent = amountFormatted;
   
@@ -102,12 +97,7 @@ async function modifySplitModal(parentTransactionId) {
     splitRows = [];
     
     // Populate original transaction data
-    const dateStr = new Date(parentTxn.date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      timeZone: 'UTC'
-    });
+    const dateStr = formatDate(parentTxn.date);
     
     const amountFormatted = new Intl.NumberFormat('en-US', { 
       style: 'currency', 
@@ -116,7 +106,7 @@ async function modifySplitModal(parentTransactionId) {
     
     document.getElementById('split-modal-title').textContent = 'Modify Split Transaction';
     document.getElementById('split-orig-date').textContent = dateStr;
-    document.getElementById('split-orig-description').textContent = parentTxn.name || '';
+    document.getElementById('split-orig-description').textContent = parentTxn.description || parentTxn.name || '';
     document.getElementById('split-orig-account').textContent = parentTxn.bank_account || '';
     document.getElementById('split-orig-amount').textContent = amountFormatted;
     

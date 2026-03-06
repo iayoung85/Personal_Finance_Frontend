@@ -494,7 +494,7 @@ function renderAccountStatus() {
     if (item.status === 'active') {
       statusClass = 'status-active';
       statusText = 'Active';
-      actionHtml = `<span style="font-size: 11px; color: #666;">Last synced: ${formatDate(item.last_updated)}</span>`;
+      actionHtml = `<span style="font-size: 11px; color: #666;">Last synced: ${formatDateTime(item.last_updated)}</span>`;
     } else if (item.status === 'available') {
       statusClass = 'status-inactive';
       statusText = 'Available (Not Active)';
@@ -626,7 +626,7 @@ function formatCurrency(amount) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
 
-function formatDate(isoString) {
+function formatDateTime(isoString) {
   if (!isoString) return 'Never';
   return new Date(isoString).toLocaleString();
 }
