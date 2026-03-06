@@ -112,6 +112,13 @@ function openAddManualTransactionModal() {
     ]
   });
 
+  setTimeout(() => {
+    const descriptionInput = document.getElementById('manual-txn-name');
+    if (!descriptionInput) return;
+    descriptionInput.focus();
+    descriptionInput.select();
+  }, 0);
+
   // Auto-format wiring for the date text input inside the modal
   wireDateInputs(document.querySelector('.modal-content'));
   
@@ -130,8 +137,7 @@ function openAddManualTransactionModal() {
     }
   }, 50);
 
-  // Wire up account selection to show advisory for plaid accounts
-  // and auto-set date to day before opening balance for plaid accounts
+  // Wire up account selection to show a lightweight linked-account badge.
   setTimeout(() => {
     const accountSelect = document.getElementById('manual-txn-account');
     if (accountSelect) {
@@ -250,6 +256,13 @@ function openEditManualTransactionModal(transactionId) {
       { label: 'Save Changes', onClick: () => _updateManualTransaction(transactionId, txn.account_id) }
     ]
   });
+
+  setTimeout(() => {
+    const descriptionInput = document.getElementById('manual-txn-name');
+    if (!descriptionInput) return;
+    descriptionInput.focus();
+    descriptionInput.select();
+  }, 0);
 
   // Auto-format wiring for the date text input inside the modal
   wireDateInputs(document.querySelector('.modal-content'));
@@ -1052,30 +1065,11 @@ function _updateManualTxnDateConstraints() {
   dateInput.removeAttribute('min');
   dateInput.removeAttribute('max');
 
-  // Use backend-authoritative earliest plaid transaction date (Problem 5 alignment).
-  // This matches the backend's guard in create_manual_transaction_record which
-  // checks txn_date >= earliest_plaid_date, not the opening_balance date.
-  const earliestPlaidDate = selectedAccount && selectedAccount.earliest_plaid_transaction_date;
-
   if (selectedAccount && selectedAccount.connection_status === 'linked') {
-    // Linked account: manual entries can be historical (before earliest plaid date)
-    // or future (after today). Auto-set a historical default for convenience,
-    // but do not set a max constraint so future dates remain selectable.
-    if (earliestPlaidDate) {
-      const boundaryDate = new Date(earliestPlaidDate + 'T00:00:00');
-      const dayBefore = new Date(boundaryDate);
-      dayBefore.setDate(dayBefore.getDate() - 1);
-      const dayBeforeStr = toISODateStr(dayBefore);
-
-      dateInput.value = dayBeforeStr;
-    }
-
     const advisory = document.createElement('small');
     advisory.id = 'manual-txn-plaid-advisory';
-    advisory.style.cssText = 'color: var(--color-warning); display: block; margin-top: 6px; padding: 6px 8px; background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); border-radius: 4px; font-size: 11px;';
-    advisory.textContent = earliestPlaidDate
-      ? `⚠ Linked account — allowed dates are before ${earliestPlaidDate} (historical) or after today (future).`
-      : '⚠ Linked account — choose a historical date (before first Plaid import) or a future date.';
+    advisory.style.cssText = 'color: var(--color-info); display: block; margin-top: 6px; font-size: 11px;';
+    advisory.textContent = '🔗 Linked';
     accountSelect.parentElement.appendChild(advisory);
   }
   // Offline accounts: no constraints, date stays as today

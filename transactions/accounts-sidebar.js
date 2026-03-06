@@ -4,6 +4,9 @@
 // activation, renaming, and manual account creation.
 // ============================================================
 
+let _pendingSidebarFocusAccountId = null;
+const _ALL_ACCOUNTS_NAV_ID = '__all_accounts__';
+
 /**
  * Build the human-readable display name for an account.
  * Custom name takes priority and is shown as-is (user controls mask inclusion).
@@ -208,6 +211,68 @@ async function loadAccounts() {
   }
 }
 
+function _wireSidebarKeyboardNavigation(container) {
+  if (!container) return;
+  if (container.dataset.arrowNavBound === 'true') return;
+
+  const handleArrowNavigation = (event) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+
+    const activeElement = document.activeElement;
+    const isTypingContext = activeElement && (
+      activeElement.tagName === 'INPUT' ||
+      activeElement.tagName === 'TEXTAREA' ||
+      activeElement.tagName === 'SELECT' ||
+      activeElement.isContentEditable
+    );
+    if (isTypingContext) return;
+
+    const sidebarRows = Array.from(container.querySelectorAll('.sidebar-all-accounts, .sidebar-account-item'));
+    if (sidebarRows.length === 0) return;
+
+    const focusedSidebarRow = activeElement && activeElement.closest
+      ? activeElement.closest('.sidebar-all-accounts, .sidebar-account-item')
+      : null;
+    const focusIsInSidebar = !!focusedSidebarRow;
+    const hasSelectedSidebarAccount = selectedAccountMode === 'single' && !!selectedAccountId;
+
+    if (!focusIsInSidebar && !hasSelectedSidebarAccount) return;
+
+    let currentIndex = -1;
+    if (focusedSidebarRow) {
+      currentIndex = sidebarRows.indexOf(focusedSidebarRow);
+    }
+
+    if (currentIndex < 0 && hasSelectedSidebarAccount) {
+      currentIndex = sidebarRows.findIndex(row => row.dataset.accountId === selectedAccountId);
+    }
+
+    if (currentIndex < 0) {
+      currentIndex = 0;
+    }
+
+    const direction = event.key === 'ArrowDown' ? 1 : -1;
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= sidebarRows.length) return;
+
+    const nextAccountId = sidebarRows[nextIndex].dataset.accountId || _ALL_ACCOUNTS_NAV_ID;
+
+    event.preventDefault();
+    _pendingSidebarFocusAccountId = nextAccountId;
+    if (nextAccountId === _ALL_ACCOUNTS_NAV_ID) {
+      selectAllAccountsMode();
+      return;
+    }
+
+    void selectAccount(nextAccountId);
+  };
+
+  // container.addEventListener('keydown', handleArrowNavigation);
+  document.addEventListener('keydown', handleArrowNavigation);
+
+  container.dataset.arrowNavBound = 'true';
+}
+
 function renderAccountsSidebar() {
   const container = document.getElementById('accounts-list');
   
@@ -216,13 +281,19 @@ function renderAccountsSidebar() {
     return;
   }
 
-  // Compute total balance across all accounts
-  const totalBalance = accounts.reduce((sum, acc) => sum + (acc.current_balance || 0), 0);
-  const totalBalanceStr = new Intl.NumberFormat('en-US', { 
-    style: 'currency', 
+  const formatSidebarCurrency = (amount) => new Intl.NumberFormat('en-US', {
+    style: 'currency',
     currency: 'USD',
     maximumFractionDigits: 0
-  }).format(totalBalance);
+  }).format(amount);
+
+  const sumAccountBalances = (accountList) => accountList.reduce((sum, account) => {
+    return sum + (account.current_balance || 0);
+  }, 0);
+
+  // Compute total balance across all accounts
+  const totalBalance = sumAccountBalances(accounts);
+  const totalBalanceStr = formatSidebarCurrency(totalBalance);
 
   // Group accounts by category
   const categoryOrder = ['depository', 'credit', 'investment', 'loan', 'asset', 'liability'];
@@ -268,22 +339,73 @@ function renderAccountsSidebar() {
     });
   });
 
+  const categoryTotals = {};
+  Object.keys(grouped.active).forEach(cat => {
+    categoryTotals[cat] = sumAccountBalances(grouped.active[cat]);
+  });
+
+  const superCategoryDefinitions = [
+    {
+      id: 'banking',
+      label: 'Banking Net:',
+      categories: ['depository', 'credit']
+    },
+    {
+      id: 'property-debt',
+      label: 'Property/Debt Net:',
+      categories: ['investment', 'loan', 'asset', 'liability']
+    }
+  ];
+
   let html = '';
+
+  const netWorthTotalClass = totalBalance < 0
+    ? 'sidebar-super-group-total sidebar-super-group-total-negative'
+    : 'sidebar-super-group-total sidebar-super-group-total-positive';
+
+  const superCategoryRows = superCategoryDefinitions.map(superCategory => {
+    const superCategoryTotal = superCategory.categories.reduce((sum, cat) => {
+      return sum + (categoryTotals[cat] || 0);
+    }, 0);
+    const superCategoryTotalClass = superCategoryTotal < 0
+      ? 'sidebar-super-group-total sidebar-super-group-total-negative'
+      : 'sidebar-super-group-total sidebar-super-group-total-positive';
+
+    return `
+      <div class="sidebar-super-group-title">
+        <span>${superCategory.label}</span>
+        <span class="${superCategoryTotalClass}">${formatSidebarCurrency(superCategoryTotal)}</span>
+      </div>
+    `;
+  }).join('');
+
+  html += `
+    <div class="sidebar-super-group-box">
+      <div class="sidebar-super-group-title">
+        <span>Net Worth:</span>
+        <span class="${netWorthTotalClass}">${totalBalanceStr}</span>
+      </div>
+      ${superCategoryRows}
+    </div>
+  `;
 
   // ===== ALL ACCOUNTS ITEM =====
   const allAccountsClass = selectedAccountMode === 'all' ? 'selected' : '';
   html += `
-    <div class="sidebar-all-accounts ${allAccountsClass}" onclick="selectAllAccountsMode()">
-      <div style="font-weight: 600; margin-bottom: 4px;">⊕ All Accounts</div>
-      <div style="font-size: 12px; color: var(--color-success); font-weight: 500;">Total: ${totalBalanceStr}</div>
+    <div class="sidebar-all-accounts ${allAccountsClass}" tabindex="0" data-account-id="${_ALL_ACCOUNTS_NAV_ID}" onclick="selectAllAccountsMode()">
+      <span>⊕ All Accounts</span>
     </div>
   `;
 
-  // ===== ACTIVE ACCOUNTS (grouped by category) =====
-  categoryOrder.forEach(cat => {
+  const renderCategoryBlock = (cat) => {
     if (grouped.active[cat] && grouped.active[cat].length > 0) {
       html += `<div class="sidebar-account-group">`;
-      html += `<div class="sidebar-group-title">${categoryLabels[cat] || cat}</div>`;
+      html += `
+        <div class="sidebar-group-title">
+          <span>${categoryLabels[cat] || cat}</span>
+          <span class="sidebar-group-total">${formatSidebarCurrency(categoryTotals[cat] || 0)}</span>
+        </div>
+      `;
 
       grouped.active[cat].forEach(acc => {
         const displayName = _buildAccountDisplayName(acc);
@@ -293,18 +415,14 @@ function renderAccountsSidebar() {
         const displayNameMain = maskMatch ? maskMatch[1] : displayName;
         const displayNameSuffix = maskMatch ? maskMatch[2] : '';
         const currentBalance = acc.current_balance || 0;
-        const balanceStr = new Intl.NumberFormat('en-US', { 
-          style: 'currency', 
-          currency: 'USD',
-          maximumFractionDigits: 0
-        }).format(currentBalance);
+        const balanceStr = formatSidebarCurrency(currentBalance);
         const balanceColorClass = currentBalance < 0 ? 'sidebar-account-balance-negative' : 'sidebar-account-balance';
 
         const isSelected = selectedAccountMode === 'single' && selectedAccountId === acc.account_id;
         const selectedClass = isSelected ? 'selected' : '';
 
         html += `
-          <div class="sidebar-account-item ${selectedClass}" onclick="selectAccount('${acc.account_id}')">
+          <div class="sidebar-account-item ${selectedClass}" tabindex="0" data-account-id="${acc.account_id}" onclick="selectAccount('${acc.account_id}')">
             <button class="secondary" title="Rename account"
                     style="padding: 0 5px; font-size: 12px; align-self: stretch; min-width: unset; flex-shrink: 0; border-radius: 2px 0 0 2px; margin-left: -1px;"
                     onclick="event.stopPropagation(); promptRename('${acc.account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
@@ -320,6 +438,11 @@ function renderAccountsSidebar() {
 
       html += '</div>';
     }
+  };
+
+  // ===== ACTIVE ACCOUNTS (grouped by category) =====
+  categoryOrder.forEach(cat => {
+    renderCategoryBlock(cat);
   });
 
   // ===== INACTIVE PLAID ITEMS =====
@@ -358,6 +481,15 @@ function renderAccountsSidebar() {
   `;
 
   container.innerHTML = html;
+  _wireSidebarKeyboardNavigation(container);
+
+  if (_pendingSidebarFocusAccountId) {
+    const focusTarget = container.querySelector(`[data-account-id="${_pendingSidebarFocusAccountId}"]`);
+    if (focusTarget) {
+      focusTarget.focus();
+    }
+    _pendingSidebarFocusAccountId = null;
+  }
 }
 
 async function activateBank(itemId) {

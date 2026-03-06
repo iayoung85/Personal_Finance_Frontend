@@ -19,6 +19,156 @@ function refreshAuthState() {
 // Re-read auth state on script load
 refreshAuthState();
 
+const BALANCE_HISTORY_CACHE_KEY = 'pf_balance_history_by_account';
+const BALANCE_HISTORY_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+const NO_ACTIVE_PLAID_SYNC_CACHE_KEY = 'pf_sync_no_active_plaid_items';
+const NO_ACTIVE_PLAID_SYNC_TTL_MS = 5 * 60 * 1000;
+const NO_ACTIVE_PLAID_ITEMS_ERROR_MESSAGE = 'No active Plaid items found';
+
+function _recordNetworkMetric(url, method, status) {
+  try {
+    if (window.PFDevMetrics && typeof window.PFDevMetrics.recordNetworkHit === 'function') {
+      window.PFDevMetrics.recordNetworkHit({ url, method, status });
+    }
+  } catch (error) {
+    console.debug('Metrics recordNetworkHit failed:', error);
+  }
+}
+
+function _recordBalanceHistoryCacheHitMetric() {
+  try {
+    if (window.PFDevMetrics && typeof window.PFDevMetrics.recordBalanceHistoryCacheHit === 'function') {
+      window.PFDevMetrics.recordBalanceHistoryCacheHit();
+    }
+  } catch (error) {
+    console.debug('Metrics recordBalanceHistoryCacheHit failed:', error);
+  }
+}
+
+function _recordBalanceHistoryNetworkHitMetric() {
+  try {
+    if (window.PFDevMetrics && typeof window.PFDevMetrics.recordBalanceHistoryNetworkHit === 'function') {
+      window.PFDevMetrics.recordBalanceHistoryNetworkHit();
+    }
+  } catch (error) {
+    console.debug('Metrics recordBalanceHistoryNetworkHit failed:', error);
+  }
+}
+
+function _recordFullHistoryCallMetric(callType) {
+  try {
+    if (window.PFDevMetrics && typeof window.PFDevMetrics.recordFullHistoryCall === 'function') {
+      window.PFDevMetrics.recordFullHistoryCall(callType);
+    }
+  } catch (error) {
+    console.debug('Metrics recordFullHistoryCall failed:', error);
+  }
+}
+
+function _rememberNoActivePlaidItemsSyncError() {
+  try {
+    localStorage.setItem(
+      NO_ACTIVE_PLAID_SYNC_CACHE_KEY,
+      JSON.stringify({
+        error: NO_ACTIVE_PLAID_ITEMS_ERROR_MESSAGE,
+        cached_at: Date.now(),
+      })
+    );
+  } catch (error) {
+    console.debug('Failed to cache no-active-plaid sync error:', error);
+  }
+}
+
+function _clearNoActivePlaidItemsSyncError() {
+  try {
+    localStorage.removeItem(NO_ACTIVE_PLAID_SYNC_CACHE_KEY);
+  } catch (error) {
+    console.debug('Failed to clear no-active-plaid sync error cache:', error);
+  }
+}
+
+function _getNoActivePlaidItemsSyncErrorState() {
+  try {
+    const rawCache = localStorage.getItem(NO_ACTIVE_PLAID_SYNC_CACHE_KEY);
+    if (!rawCache) {
+      return { blocked: false, secondsRemaining: 0 };
+    }
+
+    const parsedCache = JSON.parse(rawCache);
+    if (!parsedCache || parsedCache.error !== NO_ACTIVE_PLAID_ITEMS_ERROR_MESSAGE) {
+      _clearNoActivePlaidItemsSyncError();
+      return { blocked: false, secondsRemaining: 0 };
+    }
+
+    const cachedAt = Number(parsedCache.cached_at || 0);
+    const ageMs = Date.now() - cachedAt;
+    if (ageMs >= NO_ACTIVE_PLAID_SYNC_TTL_MS) {
+      _clearNoActivePlaidItemsSyncError();
+      return { blocked: false, secondsRemaining: 0 };
+    }
+
+    return {
+      blocked: true,
+      secondsRemaining: Math.ceil((NO_ACTIVE_PLAID_SYNC_TTL_MS - ageMs) / 1000),
+    };
+  } catch (error) {
+    console.debug('Failed to read no-active-plaid sync error cache:', error);
+    _clearNoActivePlaidItemsSyncError();
+    return { blocked: false, secondsRemaining: 0 };
+  }
+}
+
+function _loadBalanceHistoryCache() {
+  try {
+    const rawCache = localStorage.getItem(BALANCE_HISTORY_CACHE_KEY);
+    if (!rawCache) {
+      return {};
+    }
+
+    const parsedCache = JSON.parse(rawCache);
+    if (!parsedCache || typeof parsedCache !== 'object') {
+      return {};
+    }
+
+    return parsedCache;
+  } catch (error) {
+    console.debug('Failed to load balance history cache:', error);
+    return {};
+  }
+}
+
+function _saveBalanceHistoryCache(cacheByAccountId) {
+  try {
+    localStorage.setItem(BALANCE_HISTORY_CACHE_KEY, JSON.stringify(cacheByAccountId || {}));
+  } catch (error) {
+    console.debug('Failed to save balance history cache:', error);
+  }
+}
+
+function _clearBalanceHistoryCache() {
+  try {
+    localStorage.removeItem(BALANCE_HISTORY_CACHE_KEY);
+  } catch (error) {
+    console.debug('Failed to clear balance history cache:', error);
+  }
+}
+
+function _buildBalanceHistorySignature(accountId) {
+  const matchedAccount = Array.isArray(accounts)
+    ? accounts.find(account => account.account_id === accountId)
+    : null;
+  const accountLastUpdated = matchedAccount
+    ? (matchedAccount.last_updated || matchedAccount.current_balance || '')
+    : '';
+
+  const accountTransactionCount = Array.isArray(transactions)
+    ? transactions.filter(transaction => transaction.account_id === accountId).length
+    : 0;
+
+  const totalTransactionCount = Array.isArray(transactions) ? transactions.length : 0;
+  return `${accountLastUpdated}|${accountTransactionCount}|${totalTransactionCount}`;
+}
+
 async function refreshAccessToken() {
   if (!refreshToken) {
     return false;
@@ -51,14 +201,19 @@ async function authenticatedFetch(url, options = {}) {
     'Authorization': `Bearer ${token}`,
     ...options.headers
   };
+
+  const method = options.method || 'GET';
   
   const response = await fetch(url, { ...options, headers });
+  _recordNetworkMetric(url, method, response.status);
   
   if (response.status === 401) {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
       headers['Authorization'] = `Bearer ${token}`;
-      return fetch(url, { ...options, headers });
+      const retriedResponse = await fetch(url, { ...options, headers });
+      _recordNetworkMetric(url, method, retriedResponse.status);
+      return retriedResponse;
     }
     alert('Session expired. Please log in again.');
     localStorage.removeItem('authToken');
@@ -112,6 +267,8 @@ function logout() {
   localStorage.removeItem('pf_cached_categories');
   localStorage.removeItem('pf_cached_taxonomy');
   localStorage.removeItem('pf_categories_cached_at');
+  localStorage.removeItem(BALANCE_HISTORY_CACHE_KEY);
+  localStorage.removeItem(NO_ACTIVE_PLAID_SYNC_CACHE_KEY);
   // Clear date range memory on logout
   localStorage.removeItem('pf_date_range_preset');
   localStorage.removeItem('pf_date_range_start');
@@ -139,8 +296,20 @@ async function performSync(accountIds, startDate, endDate, activate = false, for
   });
   
   const data = await response.json();
+
+  if (!response.ok) {
+    if (data && data.error === NO_ACTIVE_PLAID_ITEMS_ERROR_MESSAGE) {
+      _rememberNoActivePlaidItemsSyncError();
+    }
+    throw new Error((data && data.error) || 'Failed to sync transactions');
+  }
+
+  _clearNoActivePlaidItemsSyncError();
   
   if (data.error) {
+    if (data.error === NO_ACTIVE_PLAID_ITEMS_ERROR_MESSAGE) {
+      _rememberNoActivePlaidItemsSyncError();
+    }
     throw new Error(data.error);
   }
   
@@ -184,6 +353,30 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
   const cachedAt = localStorage.getItem(CACHE_TS_KEY);
   const cacheAge = cachedAt ? (Date.now() - parseInt(cachedAt)) : Infinity;
   const cacheValid = cachedData && cacheAge < CACHE_MAX_AGE_MS;
+
+  if (!forceNetwork) {
+    const syncBlockState = _getNoActivePlaidItemsSyncErrorState();
+    if (syncBlockState.blocked) {
+      if (cacheValid) {
+        try {
+          transactions = JSON.parse(cachedData);
+          autoExtendEndDateForScheduled();
+          renderTransactionTable();
+          renderDynamicPeriodButtons();
+        } catch (cacheParseError) {
+          console.warn('Unable to read cached transactions while sync is blocked:', cacheParseError);
+          await fetchAllTransactions(false);
+        }
+      } else {
+        await fetchAllTransactions(false);
+      }
+
+      console.debug(
+        `Skipping Plaid sync for ${syncBlockState.secondsRemaining}s: ${NO_ACTIVE_PLAID_ITEMS_ERROR_MESSAGE}`
+      );
+      return;
+    }
+  }
   
   // Show cached data immediately for instant page load
   if (cacheValid && !forceNetwork) {
@@ -248,6 +441,28 @@ async function fetchAllTransactions(forceNetwork = false) {
   // Fetch all transactions for the user (backend returns all, frontend filters)
   const CACHE_KEY = 'pf_cached_transactions';
   const CACHE_TS_KEY = 'pf_transactions_cached_at';
+  const CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
+  const cachedTransactionsRaw = localStorage.getItem(CACHE_KEY);
+  const cachedAtRaw = localStorage.getItem(CACHE_TS_KEY);
+  const cachedAgeMs = cachedAtRaw ? (Date.now() - parseInt(cachedAtRaw)) : Infinity;
+  const hasFreshCache = Boolean(cachedTransactionsRaw) && cachedAgeMs < CACHE_MAX_AGE_MS;
+
+  if (!forceNetwork && hasFreshCache) {
+    try {
+      transactions = JSON.parse(cachedTransactionsRaw);
+      autoExtendEndDateForScheduled();
+      renderTransactionTable();
+      renderDynamicPeriodButtons();
+      showStatus(`Loaded ${transactions.length} transactions from local cache`, 'success');
+      setTimeout(() => clearStatus(), 1500);
+      return;
+    } catch (cacheParseError) {
+      console.warn('Cached transactions unreadable, falling back to network:', cacheParseError);
+    }
+  }
+
+  _recordFullHistoryCallMetric('transactions_full_history');
   
   try {
     showStatus('Loading all transactions...', 'info');
@@ -265,6 +480,7 @@ async function fetchAllTransactions(forceNetwork = false) {
     }
     
     transactions = data.transactions || [];
+    _clearBalanceHistoryCache();
     
     // Cache transactions in localStorage for instant page loads
     try {
@@ -301,7 +517,26 @@ async function fetchBalanceHistory(accountId) {
     return;
   }
 
+  const cacheByAccountId = _loadBalanceHistoryCache();
+  const cacheEntry = cacheByAccountId[accountId];
+  const currentSignature = _buildBalanceHistorySignature(accountId);
+  const cacheAgeMs = cacheEntry ? (Date.now() - Number(cacheEntry.cached_at || 0)) : Infinity;
+
+  if (
+    cacheEntry
+    && cacheEntry.signature === currentSignature
+    && cacheAgeMs < BALANCE_HISTORY_CACHE_MAX_AGE_MS
+    && cacheEntry.lookup
+    && typeof cacheEntry.lookup === 'object'
+  ) {
+    _recordBalanceHistoryCacheHitMetric();
+    balanceHistoryLookup = cacheEntry.lookup;
+    return;
+  }
+
   balanceHistoryLoading = true;
+  _recordBalanceHistoryNetworkHitMetric();
+  _recordFullHistoryCallMetric('account_balance_history');
 
   try {
     const response = await authenticatedFetch(
@@ -326,6 +561,12 @@ async function fetchBalanceHistory(accountId) {
     });
 
     balanceHistoryLookup = lookup;
+    cacheByAccountId[accountId] = {
+      cached_at: Date.now(),
+      signature: currentSignature,
+      lookup,
+    };
+    _saveBalanceHistoryCache(cacheByAccountId);
     console.debug(
       `fetchBalanceHistory: loaded ${Object.keys(lookup).length} ledger entries for account ${accountId}`
     );

@@ -89,12 +89,18 @@ h1 {
 /* Account sidebar styles */
 .sidebar-all-accounts {
   background: var(--bg-surface);
-  border: 2px solid var(--accent-primary);
-  border-radius: 4px;
-  padding: 10px;
-  margin-bottom: 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  padding: 3px 8px;
+  margin-bottom: 8px;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 .sidebar-all-accounts:hover {
@@ -106,8 +112,58 @@ h1 {
   border-color: var(--accent-primary);
 }
 
+.sidebar-all-accounts:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
 .sidebar-account-group {
-  margin-bottom: 12px;
+  margin-bottom: 1px;
+}
+
+.sidebar-super-group-box {
+  margin-bottom: 14px;
+  padding: 8px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.sidebar-super-group-title {
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  padding: 4px 0;
+  font-size: 15px;
+  letter-spacing: 0;
+  text-transform: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-super-group-title + .sidebar-super-group-title {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-primary);
+}
+
+.sidebar-super-group-total {
+  color: var(--text-primary);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sidebar-super-group-total-positive {
+  color: var(--color-success);
+}
+
+.sidebar-super-group-total-negative {
+  color: var(--color-danger);
 }
 
 .sidebar-group-title {
@@ -118,6 +174,16 @@ h1 {
   background: var(--bg-surface-elevated);
   border-radius: 3px;
   font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-group-total {
+  color: var(--text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .sidebar-account-item {
@@ -137,6 +203,11 @@ h1 {
 .sidebar-account-item:hover {
   background: var(--bg-page);
   border-color: var(--border-primary);
+}
+
+.sidebar-account-item:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
 }
 
 .sidebar-account-item.selected {
