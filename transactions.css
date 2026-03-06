@@ -2287,10 +2287,19 @@ tr:hover {
   font-style: italic;
 }
 
+.source-badge.investment-trending {
+  background: var(--badge-info-bg);
+  color: var(--accent-link);
+}
+
 /* ── Row styles for new transaction types ── */
 
 .scheduled-row {
   opacity: 0.78;
+}
+
+.investment-trending-row td {
+  background: rgba(99,102,241,0.03);
 }
 
 .scheduled-row td {

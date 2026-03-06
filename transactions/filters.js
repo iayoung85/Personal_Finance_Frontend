@@ -190,16 +190,22 @@ function _latestTransactionDate() {
 // ===== Dynamic Period Buttons =====
 
 /**
- * Auto-extend the end-date to include all scheduled/future transactions.
- * Called after transactions are loaded so that future bill occurrences
- * are always visible without manual date range adjustment.
+ * Auto-extend the end-date to include all projected future transactions.
+ * Called after transactions are loaded so that future bill occurrences,
+ * manual-future rows, and projected investment trending rows remain visible
+ * without manual date range adjustment.
  */
 function autoExtendEndDateForScheduled() {
   if (!transactions || transactions.length === 0) return;
+  const todayDateStr = _formatDateLocal(new Date());
 
   const latestScheduledDate = transactions.reduce((latest, txn) => {
     const txnType = getTransactionType(txn);
-    if (txnType === TXN_TYPE.BILL_FUTURE || txnType === TXN_TYPE.MANUAL_FUTURE) {
+    const isProjectedFutureType = txnType === TXN_TYPE.BILL_FUTURE
+      || txnType === TXN_TYPE.MANUAL_FUTURE
+      || (txnType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING && txn.date > todayDateStr);
+
+    if (isProjectedFutureType) {
       if (!latest || txn.date > latest) return txn.date;
     }
     return latest;

@@ -23,7 +23,7 @@ const APP_CONFIG_DEFAULTS = {
 
   // Date & time
   dateFormat: 'YYYY-MM-DD',       // 'YYYY-MM-DD' | 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'MMM D, YYYY'
-  dateInputFormat: 'YYYYMMDD',    // 'YYYYMMDD' | 'MMDDYYYY' — numpad entry order
+  dateInputFormat: 'MMDDYYYY',    // 'MMDDYYYY' | 'YYYYMMDD' — segmented entry order
   firstDayOfWeek: 'sunday',       // 'sunday' | 'monday'
 
   // Number & currency display
@@ -118,8 +118,8 @@ function _renderDateFormattingCard(config) {
   ];
 
   const inputFormatOptions = [
-    { value: 'YYYYMMDD', label: 'Year first',  example: '20260304 → 2026-03-04' },
-    { value: 'MMDDYYYY', label: 'Month first', example: '03042026 → 2026-03-04' },
+    { value: 'MMDDYYYY', label: 'Month first', example: 'MM / DD / YYYY — enter month, day, then year' },
+    { value: 'YYYYMMDD', label: 'Year first',  example: 'YYYY / MM / DD — enter year, month, then day' },
   ];
 
   const dayOptions = [
@@ -169,7 +169,7 @@ function _renderDateFormattingCard(config) {
       <div class="form-group">
         <label>Date Input Order</label>
         <div class="stub-option-group">${inputFormatRadios}</div>
-        <p class="text-muted stub-note">Controls what order digits are typed in date fields. Type the digits on the numpad — dashes are added automatically on blur.</p>
+        <p class="text-muted stub-note">Controls the segment order in date fields. Arrow keys navigate between segments, Up/Down adjusts values, or just type all digits straight through.</p>
       </div>
       <div class="form-group">
         <label>First Day of Week</label>

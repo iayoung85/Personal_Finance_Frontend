@@ -191,10 +191,12 @@ function renderTransactionTable() {
       if (isSystemType(txnType)) return;
     }
 
+    const txnType = getTransactionType(txn);
     // Orphaned transactions are excluded from the ledger entirely —
     // they are only accessible via the Resolution Center after re-link events.
-    const txnType = getTransactionType(txn);
     if (txnType === TXN_TYPE.MANUAL_ORPHANED) return;
+
+    const isFutureInvestmentTrending = txnType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING && txn.date > _todayDateStr;
 
     if (txn.source === 'scheduled' && txn.status === 'future') {
       scheduledFuture.push(txn);
@@ -204,6 +206,10 @@ function renderTransactionTable() {
       // Manual transactions with future dates belong above the scheduled
       // separator — they are effectively user-created scheduled entries
       // until their date arrives.
+      scheduledFuture.push(txn);
+    } else if (isFutureInvestmentTrending) {
+      // Current-month system investment trending rows are month-end dated.
+      // Treat them as projected future rows so they render in the future block.
       scheduledFuture.push(txn);
     } else {
       postedTransactions.push(txn);
@@ -370,12 +376,14 @@ function renderTransactionTable() {
   let passedOpeningBalance = false;
   
   allRowTransactions.forEach(txn => {
+    const txnRowType = getTransactionType(txn);
+
     // isFutureBlockRow: true for ANY transaction that belongs above the
     // future/cleared separator — scheduled bills AND manual transactions
     // with dates after today. Used only for block-boundary logic.
     const isFutureBlockRow = (txn.source === 'scheduled' && txn.status === 'future')
-      || getTransactionType(txn) === TXN_TYPE.MANUAL_FUTURE;
-    const txnRowType = getTransactionType(txn);
+      || txnRowType === TXN_TYPE.MANUAL_FUTURE
+      || (txnRowType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING && txn.date > _todayDateStr);
     const isMissingRow = txnRowType === TXN_TYPE.BILL_MISSING
       || txnRowType === TXN_TYPE.MANUAL_MISSING;
     const isPendingRow = !!txn.pending;

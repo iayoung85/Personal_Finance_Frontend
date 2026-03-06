@@ -39,9 +39,11 @@ function _getDateFormatPreference() {
 function _getDateInputFormatPreference() {
   try {
     const stored = JSON.parse(localStorage.getItem('appConfig') || '{}');
-    return stored.dateInputFormat || 'YYYYMMDD';
+    const pref = stored.dateInputFormat || 'MMDDYYYY';
+    // Migrate the old 'SEGMENTED' key to the month-first layout
+    return pref === 'SEGMENTED' ? 'MMDDYYYY' : pref;
   } catch {
-    return 'YYYYMMDD';
+    return 'MMDDYYYY';
   }
 }
 
@@ -50,7 +52,9 @@ function _getDateInputFormatPreference() {
  * @returns {string}
  */
 function _getDateInputPlaceholder() {
-  return _getDateInputFormatPreference() === 'MMDDYYYY' ? 'MMDDYYYY' : 'YYYYMMDD';
+  return _getDateInputFormatPreference() === 'YYYYMMDD'
+    ? 'YYYY / MM / DD'
+    : 'MM / DD / YYYY';
 }
 
 /**
@@ -176,12 +180,360 @@ function parseDateInput(rawInput) {
   return null;
 }
 
+// ── Segmented Date Input ──────────────────────────────────────
+//
+// Arrow-key-friendly date entry. Two layouts share the same
+// interaction model — only the visual order differs:
+//   MMDDYYYY  →  MM / DD / YYYY   (month-first, the default)
+//   YYYYMMDD  →  YYYY / MM / DD   (year-first)
+//
+// Left/Right arrows navigate segments, Up/Down change values,
+// digit keys overwrite the active segment then auto-advance.
+// On blur the value normalizes to YYYY-MM-DD for storage.
+// ───────────────────────────────────────────────────────────────
+
 /**
- * Auto-format a date input's value on blur: whatever the user
- * typed is parsed and normalized to YYYY-MM-DD for storage.
+ * Layout definitions for the two segmented modes.
  *
- * Attaches to a single <input> element. Idempotent — safe to
- * call multiple times on the same element.
+ * Each layout describes the visual order of the three fields
+ * (month, day, year) in the text box, the character offsets
+ * for programmatic selection, and a builder function that
+ * assembles the display string.
+ *
+ * `segmentTypes` maps positional indices (0, 1, 2) to the
+ * data field they represent so the shared keydown handler can
+ * apply the right logic regardless of layout order.
+ */
+const _SEGMENTED_LAYOUTS = {
+  MMDDYYYY: {
+    segmentTypes:  ['month', 'day', 'year'],
+    segmentRanges: [
+      { start: 0,  end: 2  },   // MM   (indices 0–1)
+      { start: 5,  end: 7  },   // DD   (indices 5–6)
+      { start: 10, end: 14 },   // YYYY (indices 10–13)
+    ],
+    buildDisplay(month, day, year) {
+      const monthStr = String(month).padStart(2, '0');
+      const dayStr   = String(day).padStart(2, '0');
+      const yearStr  = String(year).padStart(4, '0');
+      return `${monthStr} / ${dayStr} / ${yearStr}`;
+    },
+  },
+  YYYYMMDD: {
+    segmentTypes:  ['year', 'month', 'day'],
+    segmentRanges: [
+      { start: 0,  end: 4  },   // YYYY (indices 0–3)
+      { start: 7,  end: 9  },   // MM   (indices 7–8)
+      { start: 12, end: 14 },   // DD   (indices 12–13)
+    ],
+    buildDisplay(month, day, year) {
+      const monthStr = String(month).padStart(2, '0');
+      const dayStr   = String(day).padStart(2, '0');
+      const yearStr  = String(year).padStart(4, '0');
+      return `${yearStr} / ${monthStr} / ${dayStr}`;
+    },
+  },
+};
+
+/**
+ * Returns the number of days in a given month/year.
+ * @param {number} month - 1-based month (1 = January).
+ * @param {number} year  - Full four-digit year.
+ * @returns {number}
+ */
+function _maxDaysInMonth(month, year) {
+  return new Date(year, month, 0).getDate();
+}
+
+/**
+ * Clamp a day value to the valid range for the given month/year.
+ * @param {number} day
+ * @param {number} month - 1-based.
+ * @param {number} year
+ * @returns {number}
+ */
+function _clampDay(day, month, year) {
+  const maxDay = _maxDaysInMonth(month, year);
+  if (day < 1) return 1;
+  return day > maxDay ? maxDay : day;
+}
+
+/**
+ * Parse a YYYY-MM-DD value (or today if blank) into {month, day, year}.
+ * @param {string} isoValue
+ * @returns {{month: number, day: number, year: number}}
+ */
+function _parseISOToParts(isoValue) {
+  const trimmed = (isoValue || '').trim();
+  const match = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (match) {
+    return {
+      year:  parseInt(match[1], 10),
+      month: parseInt(match[2], 10),
+      day:   parseInt(match[3], 10),
+    };
+  }
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+}
+
+/**
+ * Wires the segmented date input behavior onto a single element.
+ * The layout (MMDDYYYY or YYYYMMDD) determines segment order.
+ * All state is tracked per-element via a closure so multiple
+ * date inputs on the same page stay independent.
+ *
+ * @param {HTMLInputElement} inputEl
+ * @param {Object} layout - One of the _SEGMENTED_LAYOUTS entries.
+ */
+function _wireSegmentedDateInput(inputEl, layout) {
+  const { segmentTypes, segmentRanges, buildDisplay } = layout;
+
+  let activeSegment = 0;
+  let digitBuffer   = '';
+  let parts = { month: 0, day: 0, year: 0 };
+
+  /** Which data field the currently-active visual segment controls. */
+  function _activeType() {
+    return segmentTypes[activeSegment];
+  }
+
+  /** How many digits the active segment accepts before auto-advancing. */
+  function _maxDigitsForSegment() {
+    return _activeType() === 'year' ? 4 : 2;
+  }
+
+  /** Highlight (select) the active segment in the text box. */
+  function _highlight() {
+    const range = segmentRanges[activeSegment];
+    requestAnimationFrame(() => {
+      inputEl.setSelectionRange(range.start, range.end);
+    });
+  }
+
+  /** Rewrite the visible value from `parts` and highlight. */
+  function _render() {
+    parts.day = _clampDay(parts.day, parts.month, parts.year);
+    inputEl.value = buildDisplay(parts.month, parts.day, parts.year);
+    _highlight();
+  }
+
+  /** Commit a partially-typed digit buffer into the active segment. */
+  function _commitBuffer() {
+    if (!digitBuffer) return;
+    const numericValue = parseInt(digitBuffer, 10) || 0;
+    const type = _activeType();
+
+    if (type === 'month') {
+      parts.month = Math.max(1, Math.min(12, numericValue));
+    } else if (type === 'day') {
+      parts.day = _clampDay(numericValue || 1, parts.month, parts.year);
+    } else {
+      parts.year = Math.max(1900, Math.min(2099, numericValue));
+    }
+    digitBuffer = '';
+  }
+
+  /** Move to a different segment, committing pending digits first. */
+  function _moveTo(newSegment) {
+    _commitBuffer();
+    activeSegment = Math.max(0, Math.min(2, newSegment));
+    digitBuffer = '';
+    _render();
+  }
+
+  // ── Focus: parse existing ISO value, enter segmented display ──
+  inputEl.addEventListener('focus', () => {
+    parts = _parseISOToParts(inputEl.value);
+    activeSegment = 0;
+    digitBuffer = '';
+    _render();
+  });
+
+  // ── Click: detect which segment was clicked ──
+  inputEl.addEventListener('mouseup', (event) => {
+    event.preventDefault();
+    const cursorPos = inputEl.selectionStart;
+    if (cursorPos <= segmentRanges[0].end + 1) {
+      _moveTo(0);
+    } else if (cursorPos <= segmentRanges[1].end + 1) {
+      _moveTo(1);
+    } else {
+      _moveTo(2);
+    }
+  });
+
+  // ── Keyboard: arrow navigation, digit entry, increment/decrement ──
+  inputEl.addEventListener('keydown', (event) => {
+    const key = event.key;
+
+    // Let Tab / Shift+Tab move to the next/previous field naturally.
+    // We only commit any partially typed segment before focus leaves.
+    if (key === 'Tab') {
+      _commitBuffer();
+      return;
+    }
+
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+         'Backspace', 'Delete'].includes(key)
+        || (key >= '0' && key <= '9')) {
+
+      event.preventDefault();
+    } else if (key === 'Enter') {
+      _commitBuffer();
+      _render();
+      inputEl.blur();
+      return;
+    } else {
+      event.preventDefault();
+      return;
+    }
+
+    // ── Arrow navigation ──
+    if (key === 'ArrowLeft') {
+      if (activeSegment > 0) _moveTo(activeSegment - 1);
+      return;
+    }
+    if (key === 'ArrowRight') {
+      if (activeSegment < 2) _moveTo(activeSegment + 1);
+      return;
+    }
+
+    // ── Increment / Decrement ──
+    if (key === 'ArrowUp' || key === 'ArrowDown') {
+      _commitBuffer();
+      const direction = key === 'ArrowUp' ? 1 : -1;
+      const type = _activeType();
+
+      if (type === 'month') {
+        parts.month += direction;
+        if (parts.month > 12) parts.month = 1;
+        if (parts.month < 1)  parts.month = 12;
+      } else if (type === 'day') {
+        const maxDay = _maxDaysInMonth(parts.month, parts.year);
+        parts.day += direction;
+        if (parts.day > maxDay) parts.day = 1;
+        if (parts.day < 1)     parts.day = maxDay;
+      } else {
+        parts.year = Math.max(1900, Math.min(2099, parts.year + direction));
+      }
+
+      _render();
+      return;
+    }
+
+    // ── Backspace / Delete: reset the active segment ──
+    if (key === 'Backspace' || key === 'Delete') {
+      digitBuffer = '';
+      const type = _activeType();
+      if (type === 'month')    parts.month = 1;
+      else if (type === 'day') parts.day = 1;
+      else                     parts.year = new Date().getFullYear();
+      _render();
+      return;
+    }
+
+    // ── Digit entry ──
+    if (key >= '0' && key <= '9') {
+      digitBuffer += key;
+      const maxDigits = _maxDigitsForSegment();
+      const type = _activeType();
+
+      if (type === 'month') {
+        const tentativeMonth = parseInt(digitBuffer, 10);
+        // First digit 2–9 can only be a single-digit month → advance immediately
+        if (digitBuffer.length === 1 && tentativeMonth >= 2) {
+          parts.month = tentativeMonth;
+          digitBuffer = '';
+          _render();
+          if (activeSegment < 2) _moveTo(activeSegment + 1);
+          return;
+        }
+        if (digitBuffer.length >= maxDigits) {
+          parts.month = Math.max(1, Math.min(12, tentativeMonth));
+          digitBuffer = '';
+          _render();
+          if (activeSegment < 2) _moveTo(activeSegment + 1);
+          return;
+        }
+        parts.month = tentativeMonth || parts.month;
+        _render();
+
+      } else if (type === 'day') {
+        const tentativeDay = parseInt(digitBuffer, 10);
+        const maxDay = _maxDaysInMonth(parts.month, parts.year);
+        // First digit too high for a valid two-digit day → advance immediately
+        if (digitBuffer.length === 1 && tentativeDay > Math.floor(maxDay / 10)) {
+          parts.day = _clampDay(tentativeDay, parts.month, parts.year);
+          digitBuffer = '';
+          _render();
+          if (activeSegment < 2) _moveTo(activeSegment + 1);
+          return;
+        }
+        if (digitBuffer.length >= maxDigits) {
+          parts.day = _clampDay(tentativeDay, parts.month, parts.year);
+          digitBuffer = '';
+          _render();
+          if (activeSegment < 2) _moveTo(activeSegment + 1);
+          return;
+        }
+        parts.day = tentativeDay || parts.day;
+        _render();
+
+      } else {
+        // Year segment — no early-advance, always waits for 4 digits
+        const tentativeYear = parseInt(digitBuffer, 10);
+        if (digitBuffer.length >= maxDigits) {
+          parts.year = Math.max(1900, Math.min(2099, tentativeYear));
+          digitBuffer = '';
+          _render();
+          // Auto-advance to next segment if not the last
+          if (activeSegment < 2) _moveTo(activeSegment + 1);
+          return;
+        }
+        // Show partial year while typing
+        inputEl.value = buildDisplay(parts.month, parts.day, tentativeYear);
+        _highlight();
+      }
+
+      return;
+    }
+  });
+
+  // ── Blur: normalize back to YYYY-MM-DD ──
+  inputEl.addEventListener('blur', () => {
+    _commitBuffer();
+    parts.day = _clampDay(parts.day, parts.month, parts.year);
+    const yearStr  = String(parts.year).padStart(4, '0');
+    const monthStr = String(parts.month).padStart(2, '0');
+    const dayStr   = String(parts.day).padStart(2, '0');
+    inputEl.value = `${yearStr}-${monthStr}-${dayStr}`;
+  });
+
+  // Pasted text is parsed and loaded into the segments
+  inputEl.addEventListener('paste', (event) => {
+    event.preventDefault();
+    const pasted = (event.clipboardData || window.clipboardData).getData('text');
+    const parsed = parseDateInput(pasted);
+    if (parsed && !Number.isNaN(parsed.getTime())) {
+      parts = {
+        year:  parsed.getFullYear(),
+        month: parsed.getMonth() + 1,
+        day:   parsed.getDate(),
+      };
+      _render();
+    }
+  });
+}
+
+// ── Auto-format / Segmented Wiring ────────────────────────────
+
+/**
+ * Wires segmented date input behavior onto a single <input>.
+ * The layout (month-first or year-first) is chosen from the
+ * user's dateInputFormat preference.
+ *
+ * Idempotent — safe to call multiple times on the same element.
  *
  * @param {HTMLInputElement} inputEl - The text input to watch.
  */
@@ -189,21 +541,11 @@ function autoFormatDateInput(inputEl) {
   if (!inputEl || inputEl.dataset.dateAutoFormatWired) return;
   inputEl.dataset.dateAutoFormatWired = 'true';
 
-  // Set placeholder to match the user's input format preference
   inputEl.placeholder = _getDateInputPlaceholder();
 
-  // Select all on focus so the user can immediately start typing a new date
-  inputEl.addEventListener('focus', () => inputEl.select());
-
-  inputEl.addEventListener('blur', () => {
-    const raw = inputEl.value.trim();
-    if (!raw) return;
-
-    const parsed = parseDateInput(raw);
-    if (parsed && !Number.isNaN(parsed.getTime())) {
-      inputEl.value = toISODateStr(parsed);
-    }
-  });
+  const pref = _getDateInputFormatPreference();
+  const layout = _SEGMENTED_LAYOUTS[pref] || _SEGMENTED_LAYOUTS.MMDDYYYY;
+  _wireSegmentedDateInput(inputEl, layout);
 }
 
 /**

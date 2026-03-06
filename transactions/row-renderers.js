@@ -114,6 +114,27 @@ function _renderOpeningBalanceRow(ctx) {
 }
 
 
+function _renderInvestmentTrendingRow(ctx) {
+  const lockedCategory = `<div class="category-cell"><span class="category-locked">${escapeHtml(ctx.currentFullCategory || 'System: Investment Performance')}</span></div>`;
+  const isProjectedFuture = ctx.isFutureBlockRow;
+
+  return {
+    typeBadge: '<span class="source-badge investment-trending" title="System investment performance estimate">📈</span> ',
+    categoryCell: lockedCategory,
+    actionCell: '<td></td>',
+    rowCssClass: isProjectedFuture ? 'investment-trending-row scheduled-row' : 'investment-trending-row',
+    sourceBadge: {
+      label: isProjectedFuture ? 'Trend (Proj)' : 'Trend',
+      cssClass: 'investment-trending',
+      title: isProjectedFuture
+        ? 'Projected end-of-month investment performance (system generated)'
+        : 'Historical month-end investment performance (system generated)',
+    },
+    displayName: _txnDescription(ctx.txn),
+  };
+}
+
+
 function _renderScheduledRow(ctx) {
   const scheduledIsTransfer = isTransferCategory(ctx.txn.user_category) || !!ctx.txn.transfer_pair_id;
 
@@ -474,6 +495,11 @@ function renderRowByType(ctx) {
   // Opening balance types — locked category, no actions
   if (rowType === TXN_TYPE.SYSTEM_OPENING_BALANCE || rowType === TXN_TYPE.SYSTEM_MANUAL_OPENING_BALANCE) {
     return _renderOpeningBalanceRow(ctx);
+  }
+
+  // Investment trending rows — locked system row, projected in future block
+  if (rowType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING) {
+    return _renderInvestmentTrendingRow(ctx);
   }
 
   // Scheduled future block: three distinct visual treatments
