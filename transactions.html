@@ -37,6 +37,17 @@
 
         <!-- ── Filter Strip (always visible) ────────────────── -->
         <div class="filter-strip">
+          <!-- Search Bar Row -->
+          <div class="filter-row filter-row-search">
+            <div class="search-bar-wrap">
+              <span class="search-bar-icon">🔍</span>
+              <input type="text" id="search-input"
+                     placeholder="Search transactions…"
+                     autocomplete="off" spellcheck="false">
+              <button id="search-clear-btn" class="search-clear-btn" onclick="clearSearch()" style="display:none;">✕</button>
+              <button class="search-help-btn" onclick="openSearchHelpModal()" title="Search help">?</button>
+            </div>
+          </div>
           <!-- Date Range Row -->
           <div class="filter-row">
             <div class="filter-group filter-group-dates">
@@ -154,6 +165,72 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- ═══ Search Help Modal ═══ -->
+  <div id="search-help-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeSearchHelpModal()">
+    <div class="modal modal-search-help">
+      <div class="modal-header">
+        <h2>🔍 Search Help</h2>
+        <button class="modal-close" onclick="closeSearchHelpModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="search-help-intro">Type plain text to search across all fields, or use advanced operators for precise filtering. All terms use AND logic.</p>
+
+        <div class="search-help-section">
+          <h3>Basic Search</h3>
+          <table class="search-help-table">
+            <tr><td class="search-help-example">coffee</td><td>Find transactions matching "coffee" in any field</td></tr>
+            <tr><td class="search-help-example">"whole foods"</td><td>Exact phrase match</td></tr>
+            <tr><td class="search-help-example">-amazon</td><td>Exclude transactions containing "amazon"</td></tr>
+          </table>
+        </div>
+
+        <div class="search-help-section">
+          <h3>Field Operators</h3>
+          <table class="search-help-table">
+            <tr><td class="search-help-example">merchant:starbucks</td><td>Search merchant name</td></tr>
+            <tr><td class="search-help-example">desc:"direct deposit"</td><td>Search description</td></tr>
+            <tr><td class="search-help-example">category:food</td><td>Search category (also: <code>cat:</code>)</td></tr>
+            <tr><td class="search-help-example">memo:reimbursement</td><td>Search memo notes</td></tr>
+            <tr><td class="search-help-example">bank:chase</td><td>Search bank/account name (also: <code>account:</code>)</td></tr>
+          </table>
+        </div>
+
+        <div class="search-help-section">
+          <h3>Amount &amp; Date Filters</h3>
+          <table class="search-help-table">
+            <tr><td class="search-help-example">amount:&gt;100</td><td>Amounts greater than $100</td></tr>
+            <tr><td class="search-help-example">amount:50..200</td><td>Amounts between $50 and $200</td></tr>
+            <tr><td class="search-help-example">date:2026-03</td><td>All transactions in March 2026</td></tr>
+            <tr><td class="search-help-example">date:2026-01-01..2026-03-01</td><td>Date range</td></tr>
+          </table>
+        </div>
+
+        <div class="search-help-section">
+          <h3>Status Flags</h3>
+          <table class="search-help-table">
+            <tr><td class="search-help-example">is:pending</td><td>Pending transactions</td></tr>
+            <tr><td class="search-help-example">is:transfer</td><td>Transfers</td></tr>
+            <tr><td class="search-help-example">is:split</td><td>Split transactions</td></tr>
+            <tr><td class="search-help-example">is:manual</td><td>Manual transactions</td></tr>
+            <tr><td class="search-help-example">is:bill</td><td>Bill-linked transactions</td></tr>
+            <tr><td class="search-help-example">is:hidden</td><td>Hidden transactions</td></tr>
+            <tr><td class="search-help-example">is:override</td><td>Category overrides</td></tr>
+          </table>
+        </div>
+
+        <div class="search-help-section">
+          <h3>Combining Queries</h3>
+          <table class="search-help-table">
+            <tr><td class="search-help-example">merchant:target amount:&gt;50</td><td>Target purchases over $50</td></tr>
+            <tr><td class="search-help-example">cat:food -merchant:starbucks</td><td>Food except Starbucks</td></tr>
+          </table>
+        </div>
+
+        <p class="search-help-shortcut">Tip: Press <kbd>Ctrl</kbd>+<kbd>F</kbd> (<kbd>⌘F</kbd> on Mac) to quickly focus the search bar.</p>
+      </div>
+    </div>
   </div>
 
   <!-- ═══ Config Modal (settings popup) ═══ -->
@@ -291,6 +368,7 @@
   <script src="transactions/utils.js"></script>
   <script src="transactions/api.js"></script>
   <script src="transactions/categories.js"></script>
+  <script src="transactions/search.js"></script>
   <script src="transactions/filters.js"></script>
   <script src="transactions/settings.js"></script>
   <script src="transactions/accounts-sidebar.js"></script>

@@ -750,6 +750,8 @@ async function saveManualTransaction() {
     newTxn.iso_currency_code = 'USD';
     newTxn.source = 'manual';
     
+    const isOldestTransactionForAccount = _isOldestTransactionForAccount(accountId, newTxn.date);
+
     // Add to in-memory transactions array
     transactions.unshift(newTxn);
     
@@ -762,7 +764,9 @@ async function saveManualTransaction() {
     // Why: expand date filters so the newly created transaction (including
     // historical ones and opening-balance entries) is immediately visible
     // instead of silently falling outside the active date window.
-    _expandDateFiltersForTransaction(newTxn.date);
+    _expandDateFiltersForTransaction(newTxn.date, {
+      includePreviousDay: isOldestTransactionForAccount,
+    });
     
     // Refresh table with new transaction visible
     renderTransactionTable();
@@ -1076,6 +1080,40 @@ function _updateManualTxnDateConstraints() {
 }
 
 /**
+ * Return true when the newly created transaction date is older than every
+ * currently loaded transaction date for the same account.
+ *
+ * Why: when this happens, backend reconciliation may place a
+ * manual_opening_balance row one day earlier. We need to include that anchor
+ * day in the active start-date filter so the row is visible immediately.
+ */
+function _isOldestTransactionForAccount(accountId, txnDate) {
+  if (!accountId || !txnDate || !Array.isArray(transactions)) return false;
+
+  let earliestExistingDate = null;
+  transactions.forEach(transaction => {
+    if (transaction.account_id !== accountId || !transaction.date) return;
+    if (!earliestExistingDate || transaction.date < earliestExistingDate) {
+      earliestExistingDate = transaction.date;
+    }
+  });
+
+  if (!earliestExistingDate) return true;
+  return txnDate < earliestExistingDate;
+}
+
+/**
+ * Shift an ISO date string by a day offset and return YYYY-MM-DD.
+ */
+function _shiftIsoDateByDays(isoDate, dayOffset) {
+  if (!isoDate) return isoDate;
+  const parsedDate = new Date(`${isoDate}T00:00:00`);
+  if (isNaN(parsedDate.getTime())) return isoDate;
+  parsedDate.setDate(parsedDate.getDate() + dayOffset);
+  return toISODateStr(parsedDate);
+}
+
+/**
  * Expand the start/end date filter inputs if the given transaction date
  * falls outside the currently visible range. This ensures newly created
  * manual transactions (including historical entries and opening-balance
@@ -1083,7 +1121,7 @@ function _updateManualTxnDateConstraints() {
  *
  * @param {string} txnDate — ISO date string (YYYY-MM-DD) of the new transaction.
  */
-function _expandDateFiltersForTransaction(txnDate) {
+function _expandDateFiltersForTransaction(txnDate, options = {}) {
   if (!txnDate) return;
 
   const startInput = document.getElementById('start-date');
@@ -1092,15 +1130,19 @@ function _expandDateFiltersForTransaction(txnDate) {
 
   const currentStart = startInput.value; // YYYY-MM-DD string
   const currentEnd = endInput.value;
+  const includePreviousDay = Boolean(options.includePreviousDay);
+  const startCandidateDate = includePreviousDay
+    ? _shiftIsoDateByDays(txnDate, -1)
+    : txnDate;
 
   let didExpand = false;
 
-  if (txnDate < currentStart) {
-    startInput.value = txnDate;
+  if (!currentStart || startCandidateDate < currentStart) {
+    startInput.value = startCandidateDate;
     didExpand = true;
   }
 
-  if (txnDate > currentEnd) {
+  if (!currentEnd || txnDate > currentEnd) {
     endInput.value = txnDate;
     didExpand = true;
   }

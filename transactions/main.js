@@ -41,6 +41,7 @@ $(document).ready(async function() {
   // Load available categories for manual categorization dropdown
   await loadAvailableCategories();
   initCategoryFilterInput();
+  initSearchBar();
   renderTransactionTable();
 
   // Initialize right-click context menu on transaction rows

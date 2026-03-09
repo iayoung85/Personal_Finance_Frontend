@@ -700,6 +700,179 @@ tr:hover {
 }
 
 /* ============================================
+   SEARCH BAR
+   ============================================ */
+.filter-row-search {
+  margin-bottom: 2px;
+}
+
+.search-bar-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 0 4px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.search-bar-wrap:focus-within {
+  border-color: var(--accent-link);
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+.search-bar-icon {
+  font-size: 14px;
+  padding: 0 6px;
+  color: var(--text-muted);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+#search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 6px 4px;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  min-width: 0;
+  font-family: inherit;
+}
+
+#search-input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.search-clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 11px;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.search-clear-btn:hover {
+  background: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.search-help-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-elevated);
+  color: var(--text-muted);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  padding: 0;
+  margin-left: 4px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.search-help-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent-link);
+  border-color: var(--accent-link);
+}
+
+/* ── Search Help Modal ── */
+.modal-search-help {
+  max-width: 560px;
+}
+
+.search-help-intro {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.search-help-section {
+  margin-bottom: 16px;
+}
+
+.search-help-section h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.search-help-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.search-help-table td {
+  padding: 4px 8px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.search-help-table tr:last-child td {
+  border-bottom: none;
+}
+
+.search-help-example {
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: var(--accent-link);
+  white-space: nowrap;
+  width: 1%;
+  padding-right: 16px;
+}
+
+.search-help-table code {
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  background: var(--bg-surface);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.search-help-shortcut {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.search-help-shortcut kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-family: inherit;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  box-shadow: 0 1px 0 var(--border-subtle);
+}
+
+/* ============================================
    ACTION ROW (sync, manual txn, chart, config)
    ============================================ */
 .action-row {

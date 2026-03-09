@@ -314,6 +314,9 @@ class DevToolsWidget {
       this.body.appendChild(btn);
     });
 
+    // --- Scenario 5: Populate manual txns with account picker ---
+    this._buildScenario5Section();
+
     const metricsButton = document.createElement('button');
     metricsButton.innerText = '📊 Show Top 10 Modules';
     Object.assign(metricsButton.style, {
@@ -407,6 +410,143 @@ class DevToolsWidget {
       }
     } catch (e) {
       this.log(`Fail: ${e.message}`);
+    } finally {
+      btnElement.innerText = originalText;
+      btnElement.disabled = false;
+    }
+  }
+
+  _buildScenario5Section() {
+    const wrapper = document.createElement('div');
+    Object.assign(wrapper.style, {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '4px',
+      borderTop: '1px solid #444',
+      paddingTop: '8px',
+      marginTop: '4px',
+    });
+
+    const label = document.createElement('span');
+    label.textContent = '5: Populate Manual Txns';
+    Object.assign(label.style, {
+      fontWeight: 'bold',
+      fontSize: '11px',
+      color: '#ccc',
+    });
+    wrapper.appendChild(label);
+
+    this.scenario5Select = document.createElement('select');
+    Object.assign(this.scenario5Select.style, {
+      padding: '6px',
+      backgroundColor: '#2a2a3d',
+      color: '#fff',
+      border: '1px solid #555',
+      borderRadius: '4px',
+      fontSize: '11px',
+    });
+
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = '(Create new account)';
+    this.scenario5Select.appendChild(defaultOption);
+
+    const loadingOption = document.createElement('option');
+    loadingOption.value = '__loading__';
+    loadingOption.textContent = 'Loading accounts...';
+    loadingOption.disabled = true;
+    this.scenario5Select.appendChild(loadingOption);
+
+    wrapper.appendChild(this.scenario5Select);
+
+    const goButton = document.createElement('button');
+    goButton.innerText = '5: Add 12 Sample Txns';
+    Object.assign(goButton.style, {
+      padding: '8px',
+      backgroundColor: '#4a6a4c',
+      color: '#fff',
+      border: 'none',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      textAlign: 'left',
+    });
+    goButton.onmouseover = () => goButton.style.backgroundColor = '#5c8c5e';
+    goButton.onmouseout = () => goButton.style.backgroundColor = '#4a6a4c';
+    goButton.onclick = () => this._triggerScenario5(goButton);
+    wrapper.appendChild(goButton);
+
+    this.body.appendChild(wrapper);
+
+    this._loadAccountsForScenario5();
+  }
+
+  async _loadAccountsForScenario5() {
+    try {
+      if (!window.BACKEND_URL) return;
+
+      const response = await fetch(`${window.BACKEND_URL}/api/dev/accounts`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+        },
+      });
+
+      if (!response.ok) return;
+
+      const accounts = await response.json();
+
+      // Remove the "Loading accounts..." placeholder
+      const loadingPlaceholder = this.scenario5Select.querySelector('option[value="__loading__"]');
+      if (loadingPlaceholder) loadingPlaceholder.remove();
+
+      accounts.forEach(account => {
+        const option = document.createElement('option');
+        option.value = account.account_id;
+        option.textContent = account.label;
+        this.scenario5Select.appendChild(option);
+      });
+    } catch (fetchError) {
+      console.debug('[DevTools] Failed to load accounts for S5:', fetchError);
+    }
+  }
+
+  async _triggerScenario5(btnElement) {
+    const originalText = btnElement.innerText;
+    btnElement.innerText = 'Loading...';
+    btnElement.disabled = true;
+
+    const selectedAccountId = this.scenario5Select.value;
+    const queryString = selectedAccountId
+      ? `?target_account_id=${encodeURIComponent(selectedAccountId)}`
+      : '';
+
+    this.log('Populating transactions...');
+
+    try {
+      if (!window.BACKEND_URL) {
+        throw new Error('BACKEND_URL not ready');
+      }
+
+      const response = await fetch(
+        `${window.BACKEND_URL}/api/dev/seed-scenario/5${queryString}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        this.log(`Success: ${data.message}`);
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        this.log(`Error: ${data.error}`);
+      }
+    } catch (triggerError) {
+      this.log(`Fail: ${triggerError.message}`);
     } finally {
       btnElement.innerText = originalText;
       btnElement.disabled = false;

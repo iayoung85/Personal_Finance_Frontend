@@ -18,6 +18,10 @@ let selectedAccountId = null; // The account_id when mode is not 'all'
 let filterPrimaryCategory = '';
 let filterDetailedCategory = '';
 
+// Search state — raw query string and pre-parsed token array
+let searchQuery = '';
+let searchTokens = [];
+
 // Auth state
 let token = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');

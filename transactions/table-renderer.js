@@ -115,6 +115,13 @@ function renderTransactionTable() {
       return false;
     }
     
+    // Filter by search query (broad text + advanced operators)
+    if (searchTokens && searchTokens.length > 0) {
+      if (!transactionMatchesSearch(txn, searchTokens)) {
+        return false;
+      }
+    }
+
     // Filter by category (primary and/or detailed)
     if (filterPrimaryCategory || filterDetailedCategory) {
       // For split transactions, check if any split child matches the filter

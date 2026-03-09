@@ -412,6 +412,11 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
       showStatus(successMsg, 'info');
       
       await fetchAllTransactions(true);
+
+      // Orphan detection may have created new orphans or proposals during
+      // post-sync processing — refresh the banner so it reflects the
+      // latest resolution state without requiring a full page reload.
+      await checkAndRenderReconciliationBanner();
     } else {
       // Have valid cache AND no changes from Plaid → use cache
       const cooldownMsg = syncData.cooldown 
