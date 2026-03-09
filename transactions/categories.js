@@ -1472,7 +1472,7 @@ async function loadAvailableCategories(forceNetwork = false) {
   const CAT_CACHE_KEY = 'pf_cached_categories';
   const TAX_CACHE_KEY = 'pf_cached_taxonomy';
   const CAT_TS_KEY = 'pf_categories_cached_at';
-  const CAT_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes — categories change infrequently
+  const CAT_MAX_AGE_MS = 10 * 1000; // 10 seconds — kept ultra-short during development to avoid stale-data confusion
 
   // Try cache first
   if (!forceNetwork) {

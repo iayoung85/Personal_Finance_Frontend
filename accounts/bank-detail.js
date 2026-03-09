@@ -387,11 +387,26 @@ function activateTransactions(bankId, bankDisplayName) {
           throw new Error(result.error || 'Activation failed');
         }
         const activatedCount = (result.accounts_activated || []).length;
-        showToast(
-          `Transactions activated for ${activatedCount} account${activatedCount !== 1 ? 's' : ''}. ` +
-          'Plaid sync in progress.',
-          'success'
-        );
+        const syncStatus = result.sync_status || 'awaiting_data';
+
+        if (result.sync_error) {
+          showToast(
+            `Accounts activated but transaction sync failed: ${result.sync_error}. ` +
+            'Plaid will retry via webhooks.',
+            'warning'
+          );
+        } else if (syncStatus === 'complete') {
+          showToast(
+            `Transactions activated and synced for ${activatedCount} account${activatedCount !== 1 ? 's' : ''}.`,
+            'success'
+          );
+        } else {
+          showToast(
+            `Transactions activated for ${activatedCount} account${activatedCount !== 1 ? 's' : ''}. ` +
+            'Plaid is loading transaction history — this may take a few minutes.',
+            'success'
+          );
+        }
         await reloadAndReselect();
       } catch (activateError) {
         showToast(`Failed to activate: ${activateError.message}`, 'error');

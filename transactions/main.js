@@ -165,6 +165,16 @@ $(document).ready(async function() {
     renderTransactionTable();
   });
 
+  // Re-render when show-hidden toggle changes and manage batch toolbar visibility
+  $(document).on('change', '#show-hidden-toggle', function() {
+    const showHidden = this.checked;
+    const toolbar = document.getElementById('batch-unhide-toolbar');
+    if (toolbar) {
+      toolbar.classList.toggle('hidden', !showHidden);
+    }
+    renderTransactionTable();
+  });
+
   // Manual categorize handler
   $(document).on('click', '.manual-category-save', function() {
     const txnId = $(this).data('txn-id');

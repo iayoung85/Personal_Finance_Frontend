@@ -41,7 +41,7 @@ let statusTimeout;
 // ── Cache Keys & TTLs ──────────────────────────────────────
 const CAT_PAGE_CACHE_KEY = 'pf_catpage_data';
 const CAT_PAGE_CACHE_TS_KEY = 'pf_catpage_cached_at';
-const CAT_PAGE_CACHE_MAX_AGE_MS = 2 * 60 * 1000; // 2 minutes
+const CAT_PAGE_CACHE_MAX_AGE_MS = 10 * 1000; // 10 seconds — kept ultra-short during development to avoid stale-data confusion
 const CAT_PAGE_TAXONOMY_KEY = 'pf_catpage_taxonomy';
 const CAT_PAGE_TAXONOMY_TS_KEY = 'pf_catpage_taxonomy_at';
-const CAT_PAGE_TAXONOMY_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes (rarely changes)
+const CAT_PAGE_TAXONOMY_MAX_AGE_MS = 10 * 1000; // 10 seconds — kept ultra-short during development

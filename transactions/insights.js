@@ -17,6 +17,8 @@ function generateSpendingInsights() {
     if (txn.date < startDate || txn.date > endDate) return false;
     if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.account_id || txn.plaid_account_id)) return false;
     if (txn.pending) return false;
+    // Hidden transactions are excluded from spending analytics
+    if (txn.is_hidden) return false;
     // Exclude system-generated bookkeeping entries (opening balances, reconciliation, etc.)
     if (isSystemType(getTransactionType(txn))) return false;
     if (hideTransfers) {

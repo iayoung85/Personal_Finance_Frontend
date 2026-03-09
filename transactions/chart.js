@@ -56,6 +56,9 @@ function _getFilteredTransactionsForChart() {
     if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.account_id || txn.plaid_account_id)) return false;
     if (txn.pending) return false;
 
+    // Hidden transactions are excluded from chart aggregations
+    if (txn.is_hidden) return false;
+
     // Exclude system-generated bookkeeping entries (opening balances, reconciliation, etc.)
     if (isSystemType(getTransactionType(txn))) return false;
 

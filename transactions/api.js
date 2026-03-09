@@ -19,8 +19,11 @@ function refreshAuthState() {
 // Re-read auth state on script load
 refreshAuthState();
 
+const TRANSACTION_CACHE_KEY = 'pf_cached_transactions';
+const TRANSACTION_CACHE_TS_KEY = 'pf_transactions_cached_at';
+const TRANSACTION_CACHE_MAX_AGE_MS = 10 * 1000; // 10 seconds — kept ultra-short during development to avoid stale-data confusion
 const BALANCE_HISTORY_CACHE_KEY = 'pf_balance_history_by_account';
-const BALANCE_HISTORY_CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+const BALANCE_HISTORY_CACHE_MAX_AGE_MS = 10 * 1000; // 10 seconds — kept ultra-short during development
 const NO_ACTIVE_PLAID_SYNC_CACHE_KEY = 'pf_sync_no_active_plaid_items';
 const NO_ACTIVE_PLAID_SYNC_TTL_MS = 5 * 60 * 1000;
 const NO_ACTIVE_PLAID_ITEMS_ERROR_MESSAGE = 'No active Plaid items found';
@@ -345,14 +348,10 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
   // 2. Sync with Plaid in background (may be skipped by backend cooldown)
   // 3. Only re-fetch from server if Plaid returned actual changes
   
-  const CACHE_KEY = 'pf_cached_transactions';
-  const CACHE_TS_KEY = 'pf_transactions_cached_at';
-  const CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
-  
-  const cachedData = localStorage.getItem(CACHE_KEY);
-  const cachedAt = localStorage.getItem(CACHE_TS_KEY);
+  const cachedData = localStorage.getItem(TRANSACTION_CACHE_KEY);
+  const cachedAt = localStorage.getItem(TRANSACTION_CACHE_TS_KEY);
   const cacheAge = cachedAt ? (Date.now() - parseInt(cachedAt)) : Infinity;
-  const cacheValid = cachedData && cacheAge < CACHE_MAX_AGE_MS;
+  const cacheValid = cachedData && cacheAge < TRANSACTION_CACHE_MAX_AGE_MS;
 
   if (!forceNetwork) {
     const syncBlockState = _getNoActivePlaidItemsSyncErrorState();
@@ -439,14 +438,10 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
 
 async function fetchAllTransactions(forceNetwork = false) {
   // Fetch all transactions for the user (backend returns all, frontend filters)
-  const CACHE_KEY = 'pf_cached_transactions';
-  const CACHE_TS_KEY = 'pf_transactions_cached_at';
-  const CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
-
-  const cachedTransactionsRaw = localStorage.getItem(CACHE_KEY);
-  const cachedAtRaw = localStorage.getItem(CACHE_TS_KEY);
+  const cachedTransactionsRaw = localStorage.getItem(TRANSACTION_CACHE_KEY);
+  const cachedAtRaw = localStorage.getItem(TRANSACTION_CACHE_TS_KEY);
   const cachedAgeMs = cachedAtRaw ? (Date.now() - parseInt(cachedAtRaw)) : Infinity;
-  const hasFreshCache = Boolean(cachedTransactionsRaw) && cachedAgeMs < CACHE_MAX_AGE_MS;
+  const hasFreshCache = Boolean(cachedTransactionsRaw) && cachedAgeMs < TRANSACTION_CACHE_MAX_AGE_MS;
 
   if (!forceNetwork && hasFreshCache) {
     try {
@@ -484,8 +479,8 @@ async function fetchAllTransactions(forceNetwork = false) {
     
     // Cache transactions in localStorage for instant page loads
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(transactions));
-      localStorage.setItem(CACHE_TS_KEY, String(Date.now()));
+      localStorage.setItem(TRANSACTION_CACHE_KEY, JSON.stringify(transactions));
+      localStorage.setItem(TRANSACTION_CACHE_TS_KEY, String(Date.now()));
     } catch (cacheErr) {
       console.warn('Could not cache transactions to localStorage:', cacheErr);
       // localStorage might be full — not fatal

@@ -122,7 +122,7 @@ window.BACKEND_URL_PROMISE = detectBackendUrl().then(url => {
 // item_info client cache
 // ----------------------
 const ITEM_INFO_CACHE_KEY = 'itemInfoCache';
-const ITEM_INFO_CACHE_TTL = 300; // seconds — matches server-side cooldown
+const ITEM_INFO_CACHE_TTL = 10; // seconds — kept ultra-short during development to avoid stale-data confusion
 
 function _readItemInfoCache() {
   try {

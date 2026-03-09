@@ -75,6 +75,10 @@
                 <input type="checkbox" id="show-pending-toggle">
                 <span>Show pending</span>
               </label>
+              <label class="toggle-label">
+                <input type="checkbox" id="show-hidden-toggle">
+                <span>Show hidden</span>
+              </label>
               <button onclick="saveSettings()" class="btn-quick-range">Save</button>
             </div>
           </div>
@@ -102,6 +106,13 @@
 
         <!-- ── Pending Transactions Placeholder (Phase 2-D) ── -->
         <div id="pending-table-container" class="pending-table-container"></div>
+
+        <!-- ── Batch Unhide Toolbar (visible when Show Hidden is active) ── -->
+        <div id="batch-unhide-toolbar" class="batch-unhide-toolbar hidden">
+          <span id="hidden-txn-count" class="hidden-txn-count"></span>
+          <button onclick="batchUnhideSelected()" class="btn-action btn-batch-unhide">Unhide Selected</button>
+          <button onclick="batchUnhideAll()" class="btn-action btn-batch-unhide-all">Unhide All</button>
+        </div>
 
         <!-- ── Transaction Scroll Pane ──────────────────────── -->
         <div class="transaction-scroll-pane">

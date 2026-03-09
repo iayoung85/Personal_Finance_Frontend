@@ -66,6 +66,7 @@ function renderTransactionTable() {
   const selectedAccounts = getSelectedAccounts();
   const showPendingEnabled = document.getElementById('show-pending-toggle').checked;
   const hideTransfers = document.getElementById('hide-transfers').checked;
+  const showHiddenEnabled = document.getElementById('show-hidden-toggle').checked;
   
   // Get selected optional fields
   const optionalFields = [];
@@ -88,6 +89,11 @@ function renderTransactionTable() {
     // Filter pending transactions — always exclude pending from main filter
     // pass. Pending txns are handled separately below when showPending is on.
     if (txn.pending && !showPendingEnabled) {
+      return false;
+    }
+
+    // Filter hidden transactions — excluded by default, visible when toggle is on
+    if (txn.is_hidden && !showHiddenEnabled) {
       return false;
     }
 
@@ -759,7 +765,7 @@ function renderTransactionTable() {
     }
 
     // ── Data attributes for context menu ──
-    const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}"`;
+    const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-is-hidden="${!!txn.is_hidden}"`;
 
     // ── Inline-edit eligibility (date, description, amount) ──
     const isInlineEditable = EDITABLE_TYPES.has(txnRowType);
@@ -770,12 +776,21 @@ function renderTransactionTable() {
     const effectiveDisplayName = txn.user_description_override || rendered.displayName;
 
     // ── Assemble the row ──
+    const isHiddenRow = !!txn.is_hidden;
+    const hiddenClass = isHiddenRow ? ' txn-hidden' : '';
     const rowCssClass = rendered.rowCssClass;
-    html += `<tr${rowCssClass ? ` class="${rowCssClass}"` : ''}${rowDataAttrs}>`;
+    const combinedClass = (rowCssClass || '') + hiddenClass;
+    html += `<tr${combinedClass ? ` class="${combinedClass.trim()}"` : ''}${rowDataAttrs}>`;
+
+    // Hidden-row checkbox (for batch unhide) — rendered as first visible cell content
+    const hiddenCheckboxHtml = isHiddenRow && showHiddenEnabled
+      ? `<input type="checkbox" class="hidden-txn-checkbox" data-txn-id="${escapeHtml(txnId)}" title="Select for batch unhide">`
+      : '';
+
     if (showLogoColumn) {
-      html += `<td class="logo-cell">${_renderLogoCell(txn)}</td>`;
+      html += `<td class="logo-cell">${hiddenCheckboxHtml}${_renderLogoCell(txn)}</td>`;
     }
-    html += `<td${isInlineEditable ? ' data-field="date" class="inline-editable"' : ''}>${dateStr}</td>`;
+    html += `<td${isInlineEditable ? ' data-field="date" class="inline-editable"' : ''}>${!showLogoColumn ? hiddenCheckboxHtml : ''}${dateStr}</td>`;
     if (showBankAccountColumn) {
       html += `<td>${txn.bank_account}</td>`;
     }
@@ -859,6 +874,24 @@ function renderTransactionTable() {
   
   // Update insights panel
   renderInsightsPanel();
+
+  // Update the batch-unhide toolbar with hidden transaction count
+  _updateHiddenTransactionCount();
+}
+
+/**
+ * Updates the hidden transaction count badge in the batch-unhide toolbar.
+ * Counts how many hidden rows are currently rendered in the table.
+ */
+function _updateHiddenTransactionCount() {
+  const countEl = document.getElementById('hidden-txn-count');
+  if (!countEl) return;
+
+  const hiddenCheckboxes = document.querySelectorAll('.hidden-txn-checkbox');
+  const count = hiddenCheckboxes.length;
+  countEl.textContent = count > 0
+    ? `${count} hidden transaction${count !== 1 ? 's' : ''}`
+    : 'No hidden transactions';
 }
 
 async function saveTransactionMemo(transactionId, userMemo, buttonEl) {

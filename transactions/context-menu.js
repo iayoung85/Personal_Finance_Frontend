@@ -80,6 +80,7 @@ function _handleContextMenu(event) {
     userCategory: row.dataset.userCategory || '',
     merchantName: row.dataset.merchantName || '',
     matchManualTxnId: row.dataset.matchManualTxnId || '',
+    isHidden: row.dataset.isHidden === 'true',
   };
 
   const menuItems = _buildMenuItems(txnData);
@@ -216,6 +217,23 @@ function _buildMenuItems(txnData) {
       action: 'modify',
       separator: false,
     });
+  }
+
+  // "Hide" / "Unhide" — plaid cleared and plaid pending in linked accounts
+  if (isPlaid) {
+    if (txnData.isHidden) {
+      items.push({
+        label: '👁 Unhide',
+        action: 'unhide',
+        separator: false,
+      });
+    } else {
+      items.push({
+        label: '👁‍🗨 Hide',
+        action: 'hide',
+        separator: false,
+      });
+    }
   }
 
   // "This is a Bill" — plaid, manual, pending (NOT scheduled, missing, split, opening, orphaned)
@@ -356,6 +374,12 @@ function _dispatchContextAction(action, txnData) {
       break;
     case 'skip-occurrence':
       _handleContextSkipOccurrence(txnData);
+      break;
+    case 'hide':
+      _handleContextHide(txnData);
+      break;
+    case 'unhide':
+      _handleContextUnhide(txnData);
       break;
     default:
       console.warn('Unknown context menu action:', action);
@@ -601,5 +625,156 @@ function _handleContextSkipOccurrence(txnData) {
     skipBillOccurrence(txnData.billId, occurrenceDate);
   } else {
     showStatus('Skip function not available', 'error');
+  }
+}
+
+
+// ─── Hide / Unhide handlers ──────────────────────────────────
+
+/**
+ * Hide a plaid transaction — excluded from balance and main ledger view.
+ * Common use cases: reversed fees (debit + credit pair), micro-deposits,
+ * hotel pre-auth holds, or contaminating transactions from plaid.
+ */
+async function _handleContextHide(txnData) {
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/${encodeURIComponent(txnData.txnId)}/hide`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hide: true }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      showStatus(data.error || 'Failed to hide transaction', 'error');
+      return;
+    }
+
+    showStatus('Transaction hidden', 'success');
+    _invalidateTransactionCache();
+    await fetchAllTransactions(true);
+  } catch (networkError) {
+    showStatus(`Failed to hide transaction: ${networkError.message}`, 'error');
+  }
+}
+
+/**
+ * Unhide a plaid transaction — restores it to balance and ledger view.
+ */
+async function _handleContextUnhide(txnData) {
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/${encodeURIComponent(txnData.txnId)}/hide`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hide: false }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      showStatus(data.error || 'Failed to unhide transaction', 'error');
+      return;
+    }
+
+    showStatus('Transaction unhidden', 'success');
+    _invalidateTransactionCache();
+    await fetchAllTransactions(true);
+  } catch (networkError) {
+    showStatus(`Failed to unhide transaction: ${networkError.message}`, 'error');
+  }
+}
+
+/**
+ * Clear the transaction cache so the next fetch pulls fresh data.
+ * Extracted to avoid duplicating these localStorage calls.
+ */
+function _invalidateTransactionCache() {
+  try {
+    localStorage.removeItem('pf_cached_transactions');
+    localStorage.removeItem('pf_transactions_cached_at');
+  } catch (cacheErr) { /* non-fatal */ }
+}
+
+/**
+ * Batch unhide: unhides all currently selected hidden transactions.
+ * Called from the batch toolbar that appears when "Show Hidden" is active.
+ */
+async function batchUnhideSelected() {
+  const checkboxes = document.querySelectorAll('.hidden-txn-checkbox:checked');
+  const transactionIds = Array.from(checkboxes).map(cb => cb.dataset.txnId);
+
+  if (transactionIds.length === 0) {
+    showStatus('No hidden transactions selected', 'error');
+    return;
+  }
+
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/batch-unhide`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction_ids: transactionIds }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      showStatus(data.error || 'Failed to unhide transactions', 'error');
+      return;
+    }
+
+    showStatus(`Unhid ${data.unhidden_count} transaction(s)`, 'success');
+    _invalidateTransactionCache();
+    await fetchAllTransactions(true);
+  } catch (networkError) {
+    showStatus(`Failed to batch unhide: ${networkError.message}`, 'error');
+  }
+}
+
+/**
+ * Batch unhide all hidden transactions visible in current filter view.
+ */
+async function batchUnhideAll() {
+  const checkboxes = document.querySelectorAll('.hidden-txn-checkbox');
+  const transactionIds = Array.from(checkboxes).map(cb => cb.dataset.txnId);
+
+  if (transactionIds.length === 0) {
+    showStatus('No hidden transactions to unhide', 'error');
+    return;
+  }
+
+  if (!confirm(`Unhide all ${transactionIds.length} hidden transaction(s)?`)) return;
+
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/batch-unhide`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction_ids: transactionIds }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      showStatus(data.error || 'Failed to unhide transactions', 'error');
+      return;
+    }
+
+    showStatus(`Unhid ${data.unhidden_count} transaction(s)`, 'success');
+    _invalidateTransactionCache();
+    await fetchAllTransactions(true);
+  } catch (networkError) {
+    showStatus(`Failed to batch unhide: ${networkError.message}`, 'error');
   }
 }
