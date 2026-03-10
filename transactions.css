@@ -4241,3 +4241,101 @@ td.inline-staged {
   background: var(--color-primary, #4a90d9);
   color: #fff;
 }
+
+/* ── Inspect Transaction Data Modal ────────────────────────── */
+
+.modal-inspect-data {
+  width: min(960px, 94vw);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-inspect-data .modal-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.inspect-loading,
+.inspect-error {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-secondary);
+}
+
+.inspect-error {
+  color: var(--color-danger, #e74c3c);
+}
+
+.inspect-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .inspect-panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+.inspect-panel {
+  background: var(--bg-surface-elevated, #2a2a2a);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.inspect-panel-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 6px;
+}
+
+.inspect-row {
+  font-size: 12px;
+  line-height: 1.6;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+.inspect-key {
+  color: var(--accent-link, #6ab0f3);
+  font-weight: 500;
+}
+
+.inspect-value {
+  color: var(--text-primary, #e0e0e0);
+}
+
+.inspect-null {
+  color: var(--text-muted, #777);
+  font-style: italic;
+}
+
+.inspect-bool {
+  color: var(--color-warning, #e6a040);
+}
+
+.inspect-number {
+  color: var(--color-success, #4ec9b0);
+}
+
+.inspect-empty {
+  color: var(--text-muted, #777);
+  font-style: italic;
+  font-size: 12px;
+  padding: 8px 0;
+}
+
+.inspect-empty-val {
+  color: var(--text-muted, #777);
+}

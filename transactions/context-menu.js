@@ -273,8 +273,21 @@ function _buildMenuItems(txnData) {
     });
   }
 
+  // "Inspect Data" — any plaid-sourced row (cleared, pending, converted).
+  // Shows Plaid's raw blob side-by-side with the app's working data.
+  if (isPlaid || isPlaidConverted) {
+    if (items.length > 0) {
+      items[items.length - 1].separator = true;
+    }
+    items.push({
+      label: '🔍 Inspect Data',
+      action: 'inspect-data',
+      separator: false,
+    });
+  }
+
   // Remove trailing separator if delete wasn't added
-  if (items.length > 0 && !items[items.length - 1].destructive) {
+  if (items.length > 0 && !items[items.length - 1].destructive && items[items.length - 1].action !== 'inspect-data') {
     items[items.length - 1].separator = false;
   }
 
@@ -381,6 +394,9 @@ function _dispatchContextAction(action, txnData) {
       break;
     case 'unhide':
       _handleContextUnhide(txnData);
+      break;
+    case 'inspect-data':
+      _handleContextInspectData(txnData);
       break;
     default:
       console.warn('Unknown context menu action:', action);
@@ -689,6 +705,20 @@ async function _handleContextUnhide(txnData) {
     await fetchAllTransactions(true);
   } catch (networkError) {
     showStatus(`Failed to unhide transaction: ${networkError.message}`, 'error');
+  }
+}
+
+// ─── Inspect Data handler ─────────────────────────────────────
+
+/**
+ * Inspect Data: opens a side-by-side view of the immutable Plaid raw
+ * blob and the app's current working data for a plaid-sourced transaction.
+ */
+function _handleContextInspectData(txnData) {
+  if (typeof openInspectDataModal === 'function') {
+    openInspectDataModal(txnData.txnId);
+  } else {
+    showStatus('Inspect data modal not available', 'error');
   }
 }
 

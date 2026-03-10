@@ -356,6 +356,21 @@
     </div>
   </div>
 
+  <!-- ── Inspect Transaction Data modal ────────────────────── -->
+  <div id="inspect-data-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeInspectDataModal()">
+    <div class="modal modal-inspect-data">
+      <div class="modal-header">
+        <h2>Inspect Transaction Data</h2>
+        <button class="modal-close" onclick="closeInspectDataModal()">✕</button>
+      </div>
+      <div class="modal-body" id="inspect-data-body">
+      </div>
+      <div class="modal-footer">
+        <button class="secondary" onclick="closeInspectDataModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="config.js"></script>
   <script src="date-helpers.js"></script>
   <script src="nav-sidebar.js"></script>
@@ -381,6 +396,7 @@
   <script src="transactions/manual-transactions.js"></script>
   <script src="transactions/split-transactions.js"></script>
   <script src="transactions/resolution.js"></script>
+  <script src="transactions/inspect-data.js"></script>
   <script src="transactions/context-menu.js"></script>
   <script src="transactions/transfer-modal.js"></script>
   <script src="transactions/inline-edit.js"></script>
