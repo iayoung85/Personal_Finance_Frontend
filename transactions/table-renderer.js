@@ -324,7 +324,7 @@ function renderTransactionTable() {
   if (showBankAccountColumn) {
     html += '<th>Bank/Account</th>';
   }
-  html += '<th>Description</th>';
+  html += '<th>Merchant</th>';
   
   if (optionalFields.includes('source')) html += '<th>Type</th>';
   html += '<th class="th-category">Category</th>';
@@ -477,8 +477,10 @@ function renderTransactionTable() {
           <td>${pendingBadge}${escapeHtml(txn.description || txn.name || '—')}</td>`;
 
         if (optionalFields.includes('source')) {
-          const sourceLabel = txn.is_manual ? 'Manual' : 'Downloaded';
-          html += `<td><span class="source-badge ${txn.is_manual ? 'manual' : 'plaid'}">${sourceLabel}</span></td>`;
+          const isConverted = txn.source === 'plaid' && txn.status === 'converted';
+          const sourceLabel = txn.is_manual ? 'Manual' : isConverted ? 'Prior Download' : 'Downloaded';
+          const sourceCssClass = txn.is_manual ? 'manual' : isConverted ? 'plaid-converted' : 'plaid';
+          html += `<td><span class="source-badge ${sourceCssClass}">${sourceLabel}</span></td>`;
         }
 
         html += `<td class="split-mismatch-cell">
@@ -576,8 +578,10 @@ function renderTransactionTable() {
         
         // Add source column if needed
         if (optionalFields.includes('source')) {
-          const sourceLabel = split.is_manual ? 'Manual' : 'Downloaded';
-          const sourceBadge = `<span class="source-badge ${split.is_manual ? 'manual' : 'plaid'}">${sourceLabel}</span>`;
+          const isConverted = txn.source === 'plaid' && txn.status === 'converted';
+          const sourceLabel = split.is_manual ? 'Manual' : isConverted ? 'Prior Download' : 'Downloaded';
+          const sourceCssClass = split.is_manual ? 'manual' : isConverted ? 'plaid-converted' : 'plaid';
+          const sourceBadge = `<span class="source-badge ${sourceCssClass}">${sourceLabel}</span>`;
           html += `<td>${sourceBadge}</td>`;
         }
         

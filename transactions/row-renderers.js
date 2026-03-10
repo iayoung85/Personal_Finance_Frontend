@@ -15,11 +15,11 @@
 
 /**
  * Return the user-facing description for a transaction.
- * New backend blobs store 'description', older blobs may only have 'name'.
- * This accessor provides a single fallback chain everywhere in the frontend.
+ * Prefers merchant_name from Plaid, falls back to the raw name field,
+ * then to the legacy description field for backward compatibility.
  */
 function _txnDescription(txn) {
-  return txn.description || txn.name || '';
+  return txn.merchant_name || txn.name || txn.description || '';
 }
 
 
@@ -373,6 +373,43 @@ function _renderOrphanedRow(ctx) {
 }
 
 
+/**
+ * PLAID_CONVERTED: transactions originally downloaded from Plaid that were
+ * converted to offline when the bank was disconnected. Fully editable
+ * (amount, description, date) like manual transactions, with delete & split.
+ */
+function _renderPlaidConvertedRow(ctx) {
+  const clearOverrideBtn = ctx.txn.is_override
+    ? `<button class='clear-override' data-txn-id='${ctx.txnId}' onclick='clearOverride(event)' title='Remove override'>✕</button>`
+    : '';
+
+  const buttons = clearOverrideBtn
+    + _confirmButton(ctx.txnId, ctx.accountId)
+    + `<button class="category-rule" data-txn-id="${ctx.txnId}" data-account-id="${ctx.accountId}">Rule</button>`
+    + `<button class="category-split" data-txn-id="${ctx.txnId}" onclick="window.splitModalTxnId='${escapeHtml(ctx.txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(ctx.txnId)}')); return false;" title="Split this transaction">Split</button>`;
+
+  const categoryCell = _buildCategoryAutocomplete(
+    ctx.txnId, ctx.accountId, ctx.currentFullCategory,
+    'Type to search categories…', buttons
+  );
+
+  const actionCell = ctx.txnId
+    ? `<td style="text-align: center;">
+        <button class="delete-transaction-btn" onclick="deleteManualTransaction('${escapeHtml(ctx.txnId)}')" title="Delete converted transaction">🗑</button>
+      </td>`
+    : '<td></td>';
+
+  return {
+    typeBadge: '',
+    categoryCell,
+    actionCell,
+    rowCssClass: '',
+    sourceBadge: { label: 'Prior Download', cssClass: 'plaid-converted', title: 'Originally downloaded from Plaid — now editable (bank disconnected)' },
+    displayName: _txnDescription(ctx.txn),
+  };
+}
+
+
 function _renderTransferRow(ctx) {
   const buttons = _confirmButton(ctx.txnId, ctx.accountId)
     + `<button class="transfer-unlink-btn" data-txn-id="${escapeHtml(ctx.txnId)}" onclick="unlinkTransfer('${escapeHtml(ctx.txnId)}')" title="Break this transfer pair">Unlink</button>`;
@@ -466,6 +503,9 @@ function _getDefaultSourceBadge(ctx) {
   if (ctx.txn.source === 'reconciliation') {
     return { label: 'Reconcil.', cssClass: 'reconciliation', title: 'Auto-generated balance reconciliation' };
   }
+  if (ctx.txn.source === 'plaid' && ctx.txn.status === 'converted') {
+    return { label: 'Prior Download', cssClass: 'plaid-converted', title: 'Originally downloaded from Plaid — now editable (bank disconnected)' };
+  }
   return { label: 'Downloaded', cssClass: 'plaid', title: 'Downloaded from Plaid' };
 }
 
@@ -537,6 +577,11 @@ function renderRowByType(ctx) {
   // Renderer kept for Resolution Center usage if needed.
   if (rowType === TXN_TYPE.MANUAL_ORPHANED) {
     return _renderOrphanedRow(ctx);
+  }
+
+  // PLAID_CONVERTED — formerly plaid-synced, now editable (bank disconnected)
+  if (rowType === TXN_TYPE.PLAID_CONVERTED) {
+    return _renderPlaidConvertedRow(ctx);
   }
 
   // Transfer (orthogonal to type) — unlink button, bracket-notation category

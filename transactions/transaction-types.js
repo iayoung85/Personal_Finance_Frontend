@@ -14,6 +14,7 @@
 const TXN_TYPE = Object.freeze({
   PLAID_CLEARED:                'PLAID_CLEARED',
   PLAID_PENDING:                'PLAID_PENDING',
+  PLAID_CONVERTED:              'PLAID_CONVERTED',
   MANUAL_CLEARED:               'MANUAL_CLEARED',
   MANUAL_ORPHANED:              'MANUAL_ORPHANED',
   MANUAL_FUTURE:                'MANUAL_FUTURE',
@@ -33,6 +34,7 @@ const TXN_TYPE = Object.freeze({
 const _SOURCE_STATUS_MAP = Object.freeze({
   'plaid:cleared':                TXN_TYPE.PLAID_CLEARED,
   'plaid:pending':                TXN_TYPE.PLAID_PENDING,
+  'plaid:converted':              TXN_TYPE.PLAID_CONVERTED,
   'manual:cleared':               TXN_TYPE.MANUAL_CLEARED,
   'manual:orphaned':              TXN_TYPE.MANUAL_ORPHANED,
   'manual:future':                TXN_TYPE.MANUAL_FUTURE,
@@ -84,6 +86,7 @@ const EDITABLE_TYPES = new Set([
   TXN_TYPE.MANUAL_FUTURE,
   TXN_TYPE.MANUAL_MISSING,
   TXN_TYPE.MANUAL_ORPHANED,
+  TXN_TYPE.PLAID_CONVERTED,
   TXN_TYPE.BILL_FUTURE,
   TXN_TYPE.BILL_MISSING,
 ]);
@@ -98,6 +101,7 @@ const MATCHABLE_TYPES = new Set([
 
 const SPLITTABLE_TYPES = new Set([
   TXN_TYPE.PLAID_CLEARED,
+  TXN_TYPE.PLAID_CONVERTED,
   TXN_TYPE.MANUAL_CLEARED,
   // BILL_FUTURE intentionally excluded: virtual rows have no DB record
   // for split children to reference. User must materialize first (→ MANUAL_FUTURE).

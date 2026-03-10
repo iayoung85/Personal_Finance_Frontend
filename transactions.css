@@ -2454,6 +2454,12 @@ tr:hover {
   color: var(--accent-purple);
 }
 
+.source-badge.plaid-converted {
+  background: var(--badge-plaid-bg);
+  color: var(--text-secondary);
+  border: 1px dashed var(--text-secondary);
+}
+
 .source-badge.reconciliation {
   background: var(--bg-surface-elevated);
   color: var(--text-secondary);

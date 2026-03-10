@@ -100,6 +100,7 @@ function _buildMenuItems(txnData) {
 
   const isPlaid = txnType === TXN_TYPE.PLAID_CLEARED || txnType === TXN_TYPE.PLAID_PENDING;
   const isManual = txnType === TXN_TYPE.MANUAL_CLEARED;
+  const isPlaidConverted = txnType === TXN_TYPE.PLAID_CONVERTED;
   const isPending = txnType === TXN_TYPE.PLAID_PENDING;
   const isBillFuture = txnType === TXN_TYPE.BILL_FUTURE;
   const isManualFuture = txnType === TXN_TYPE.MANUAL_FUTURE;
@@ -209,8 +210,8 @@ function _buildMenuItems(txnData) {
     return items;
   }
 
-  // "Modify" — manual transactions and MANUAL_FUTURE (including bill-originated)
-  const showModify = isManual || isManualFuture;
+  // "Modify" — manual transactions, MANUAL_FUTURE, and PLAID_CONVERTED
+  const showModify = isManual || isManualFuture || isPlaidConverted;
   if (showModify) {
     items.push({
       label: '✏️ Modify',
@@ -236,8 +237,8 @@ function _buildMenuItems(txnData) {
     }
   }
 
-  // "This is a Bill" — plaid, manual, pending (NOT scheduled, missing, split, opening, orphaned)
-  const showBill = isPlaid || (isManual && !isOrphaned) || isPending;
+  // "This is a Bill" — plaid, manual, plaid-converted, pending (NOT scheduled, missing, split, opening, orphaned)
+  const showBill = isPlaid || (isManual && !isOrphaned) || isPlaidConverted || isPending;
   if (showBill) {
     items.push({
       label: '📅 This is a Bill',
@@ -246,9 +247,9 @@ function _buildMenuItems(txnData) {
     });
   }
 
-  // "Make Transfer" — plaid, manual, pending, MANUAL_FUTURE, missing
+  // "Make Transfer" — plaid, manual, plaid-converted, pending, MANUAL_FUTURE, missing
   // (NOT split, opening balance, orphaned, matched, BILL_FUTURE)
-  const showTransfer = isPlaid || isManual || isPending || isManualFuture || isMissing;
+  const showTransfer = isPlaid || isManual || isPlaidConverted || isPending || isManualFuture || isMissing;
   if (showTransfer) {
     items.push({
       label: '⇄ Make Transfer',
@@ -262,8 +263,8 @@ function _buildMenuItems(txnData) {
     items[items.length - 1].separator = true;
   }
 
-  // "Delete" — manual cleared and MANUAL_FUTURE (not matched, not orphaned)
-  if ((isManual || isManualFuture) && !isOrphaned) {
+  // "Delete" — manual cleared, MANUAL_FUTURE, and PLAID_CONVERTED (not matched, not orphaned)
+  if ((isManual || isManualFuture || isPlaidConverted) && !isOrphaned) {
     items.push({
       label: '🗑️ Delete',
       action: 'delete',
