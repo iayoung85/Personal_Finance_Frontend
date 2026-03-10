@@ -66,6 +66,8 @@ const IndexConnectionsList = (() => {
     switch (connectionStatus) {
       case 'linked':
         return '<span class="conn-status conn-status-linked" title="Actively connected via Plaid">● Linked</span>';
+      case 'relink_pending':
+        return '<span class="conn-status conn-status-relink-pending" title="Waiting for complete transaction history from Plaid">⏳ Relink in progress</span>';
       case 'converted':
         return '<span class="conn-status conn-status-converted" title="Disconnected from Plaid, operates manually">● Manual (converted)</span>';
       case 'manual':
@@ -99,6 +101,7 @@ const IndexConnectionsList = (() => {
 
   function _renderActionButtons(bank) {
     const isLinked = bank.connection_status === 'linked';
+    const isRelinkPending = bank.connection_status === 'relink_pending';
     const isConverted = bank.connection_status === 'converted';
     const isManual = bank.connection_status === 'manual';
     const hasInstitution = !!bank.institution_id;
@@ -109,7 +112,13 @@ const IndexConnectionsList = (() => {
 
     const buttons = [];
 
-    if (isLinked) {
+    if (isRelinkPending) {
+      // No action buttons while waiting for Plaid history — just a status note
+      buttons.push(
+        `<span class="bank-btn-info" title="Waiting for Plaid to deliver complete transaction history">` +
+        `⏳ Awaiting history from Plaid...</span>`
+      );
+    } else if (isLinked) {
       // Refresh: behavior depends on plaid_item_status
       // Broken statuses need update-mode link session; healthy ones just refresh
       const isBroken = ['error', 'needs_update', 'permission_revoked'].includes(bank.plaid_item_status);
@@ -238,14 +247,24 @@ const IndexConnectionsList = (() => {
             const exchangeResult = await IndexApi.exchangePublicToken(publicToken, bankId);
             invalidateItemInfoCache();
 
-            // Check if pass 4 flagged accounts for user-driven matching
-            const relinkDetails = exchangeResult.relink_details || {};
-            const pendingMatching = relinkDetails.pending_account_matching;
-
-            if (pendingMatching && pendingMatching.needed) {
-              _showAccountMatchingModal(bankId, bankName, pendingMatching);
+            // Two-phase relink: if backend returned relink_pending, show
+            // waiting message instead of the old instant-success flow.
+            if (exchangeResult.connection_status === 'relink_pending') {
+              IndexUtils.showMessage(
+                'dashboard-message',
+                `⏳ ${bankName} relink initiated — waiting for Plaid to deliver complete history. This may take a few minutes.`,
+                'success',
+              );
             } else {
-              IndexUtils.showMessage('dashboard-message', `✓ ${bankName} relinked successfully!`, 'success');
+              // Legacy path / pass 4 account matching (kept for compatibility)
+              const relinkDetails = exchangeResult.relink_details || {};
+              const pendingMatching = relinkDetails.pending_account_matching;
+
+              if (pendingMatching && pendingMatching.needed) {
+                _showAccountMatchingModal(bankId, bankName, pendingMatching);
+              } else {
+                IndexUtils.showMessage('dashboard-message', `✓ ${bankName} relinked successfully!`, 'success');
+              }
             }
 
             loadBanks();

@@ -281,12 +281,29 @@ input:focus {
   color: var(--color-success);
 }
 
+.conn-status-relink-pending {
+  color: var(--color-info, #3b82f6);
+  animation: pulse-opacity 2s ease-in-out infinite;
+}
+
+@keyframes pulse-opacity {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .conn-status-converted {
   color: var(--color-warning);
 }
 
 .conn-status-manual {
   color: var(--text-muted);
+}
+
+/* Info label shown in action buttons area when no actions available */
+.bank-btn-info {
+  font-size: 12px;
+  color: var(--color-info, #3b82f6);
+  font-style: italic;
 }
 
 /* Sync badges — only shown for linked banks */
