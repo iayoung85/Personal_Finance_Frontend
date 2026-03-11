@@ -113,10 +113,14 @@ const IndexConnectionsList = (() => {
     const buttons = [];
 
     if (isRelinkPending) {
-      // No action buttons while waiting for Plaid history — just a status note
       buttons.push(
         `<span class="bank-btn-info" title="Waiting for Plaid to deliver complete transaction history">` +
         `⏳ Awaiting history from Plaid...</span>`
+      );
+      buttons.push(
+        `<button class="bank-btn bank-btn-retry" title="Retry syncing if relink appears stuck" ` +
+        `onclick="IndexConnectionsList.handleRetryRelink('${bankIdAttr}', '${nameAttr}')">` +
+        `🔄 Retry Sync</button>`
       );
     } else if (isLinked) {
       // Refresh: behavior depends on plaid_item_status
@@ -281,6 +285,39 @@ const IndexConnectionsList = (() => {
       handler.open();
     } catch (linkError) {
       IndexUtils.showMessage('dashboard-message', 'Error: ' + linkError.message, 'error');
+    }
+  }
+
+  /**
+   * Retry Phase 2 of a stuck relink — calls backend retry-relink endpoint
+   * and reloads the bank list on success.
+   */
+  async function handleRetryRelink(bankId, bankName) {
+    if (!IndexState.getAuthToken()) {
+      IndexUtils.showMessage('dashboard-message', 'Please login first', 'error');
+      return;
+    }
+
+    IndexUtils.showMessage(
+      'dashboard-message',
+      `🔄 Retrying sync for ${bankName}... this may take a moment.`,
+      'info',
+    );
+
+    try {
+      const result = await IndexApi.retryRelink(bankId);
+      IndexUtils.showMessage(
+        'dashboard-message',
+        `✅ ${bankName}: ${result.message}`,
+        'success',
+      );
+      await loadBanks();
+    } catch (retryError) {
+      IndexUtils.showMessage(
+        'dashboard-message',
+        `❌ Retry failed for ${bankName}: ${retryError.message}`,
+        'error',
+      );
     }
   }
 
@@ -549,5 +586,6 @@ const IndexConnectionsList = (() => {
     handleRefresh,
     handleRelink,
     handleDisconnect,
+    handleRetryRelink,
   };
 })();

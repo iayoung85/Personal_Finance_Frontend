@@ -251,6 +251,21 @@ const IndexApi = (() => {
     return data;
   }
 
+  async function retryRelink(bankId) {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/connections/banks/${encodeURIComponent(bankId)}/retry-relink`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to retry relink');
+    }
+    return data;
+  }
+
   // ── Expose for other modules ────────────────────────────
 
   return {
@@ -267,5 +282,6 @@ const IndexApi = (() => {
     refreshItemAccounts,
     removeBank,
     confirmAccountMatching,
+    retryRelink,
   };
 })();
