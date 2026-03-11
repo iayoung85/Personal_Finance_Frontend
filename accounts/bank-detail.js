@@ -379,7 +379,7 @@ function activateTransactions(bankId, bankDisplayName) {
       try {
         showToast('Activating transactions…', 'info');
         const response = await authenticatedFetch(
-          `${BACKEND_URL}/api/accounts/banks/${bankId}/activate-transactions`,
+          `${BACKEND_URL}/api/connections/banks/${bankId}/activate-transactions`,
           { method: 'POST' }
         );
         const result = await response.json();

@@ -151,7 +151,7 @@ function _getSnapshotDate() {
 /** Fetch balance snapshot data from the backend. */
 async function _fetchBalanceSnapshot(snapshotDate) {
   const response = await authenticatedFetch(
-    `${BACKEND_URL}/api/accounts/balance-snapshot?date=${encodeURIComponent(snapshotDate)}`
+    `${BACKEND_URL}/api/balances/balance-snapshot?date=${encodeURIComponent(snapshotDate)}`
   );
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

@@ -284,7 +284,7 @@ async function apiFetchBankDetail(bankId) {
  */
 async function apiConvertBankToManual(bankId) {
   const response = await authenticatedFetch(
-    `${BACKEND_URL}/api/accounts/banks/${bankId}/convert-to-manual`,
+    `${BACKEND_URL}/api/connections/banks/${bankId}/convert-to-manual`,
     { method: 'POST' }
   );
   const data = await response.json();
