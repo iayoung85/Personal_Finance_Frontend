@@ -239,11 +239,16 @@ function renderTransactionTable() {
     return txn.date < txn.transfer_partner_date ? txn.date : txn.transfer_partner_date;
   };
 
-  // Sort helper: date descending, then transaction ID descending within same day
-  // Mirrors backend balance engine order (date ASC, txn_id ASC) reversed
+  // Sort helper: date descending, then anchor priority descending (so anchor
+  // rows sink to the bottom of their day group — matching balance engine's
+  // ASC order where anchors sort first), then transaction ID descending.
+  // Mirrors backend: (date ASC, anchor_priority ASC, txn_id ASC) reversed.
   const sortNewestFirst = (rowA, rowB) => {
     const dateComparison = _transferSortDate(rowB).localeCompare(_transferSortDate(rowA));
     if (dateComparison !== 0) return dateComparison;
+    const priorityA = anchorSortPriority(rowA.source);
+    const priorityB = anchorSortPriority(rowB.source);
+    if (priorityA !== priorityB) return priorityB - priorityA;
     const idA = rowA.transaction_id || '';
     const idB = rowB.transaction_id || '';
     return idB.localeCompare(idA);

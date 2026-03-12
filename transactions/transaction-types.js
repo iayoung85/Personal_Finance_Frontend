@@ -118,3 +118,22 @@ const SPLITTABLE_TYPES = new Set([
 function isSystemType(txnType) {
   return SYSTEM_TYPES.has(txnType);
 }
+
+// ── Sort priority for anchor transactions ──────────────────────────
+// Mirrors: transaction_types.py  anchor_sort_priority()
+// Anchor rows (opening balance, manual opening balance) must always sort
+// before regular transactions within the same day in the balance walk.
+// In linked accounts this is a non-issue (OB date is the day before the
+// earliest plaid transaction), but in converted accounts OB shares its
+// date with other transactions.
+const ANCHOR_SORT_PRIORITIES = { 'manual_opening_balance': 0, 'opening_balance': 1 };
+const DEFAULT_SORT_PRIORITY = 2;
+
+/**
+ * Return an integer sort key that orders anchors before regular rows.
+ * @param {string} source - Transaction source string (e.g. 'plaid', 'opening_balance').
+ * @returns {number} 0 for manual_opening_balance, 1 for opening_balance, 2 for all others.
+ */
+function anchorSortPriority(source) {
+  return ANCHOR_SORT_PRIORITIES[source] ?? DEFAULT_SORT_PRIORITY;
+}
