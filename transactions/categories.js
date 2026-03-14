@@ -1535,7 +1535,7 @@ async function loadAvailableCategories(forceNetwork = false) {
 
 /**
  * Trigger backend recategorization of all transactions.
- * Updates the encrypted_transactions table with computed user_category values.
+ * Updates the transactions table with computed user_category values.
  */
 async function recategorizeTransactions() {
   try {
