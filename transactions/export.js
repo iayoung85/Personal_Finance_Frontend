@@ -1,122 +1,224 @@
 // ============================================================
 // transactions/export.js — Data Export Functions
 // JSON export, CSV copy-to-clipboard, CSV download.
+//
+// CSV format is "PFC Export v1" — always includes backup/restore
+// columns (account_id, transaction_id, source, status, etc.)
+// plus a header comment with a category_list_hash so the
+// re-importer can detect category drift.
 // ============================================================
 
-function exportJSON() {
-  const dataStr = JSON.stringify(transactions, null, 2);
-  const dataBlob = new Blob([dataStr], {type: 'application/json'});
-  const url = URL.createObjectURL(dataBlob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `transactions_${getDateRange()}.json`;
-  link.click();
+// Cached export metadata — fetched once per export action
+let _exportMetadataCache = null;
+
+async function _fetchExportMetadata() {
+  if (_exportMetadataCache) return _exportMetadataCache;
+
+  const [catResponse, acctResponse] = await Promise.all([
+    authenticatedFetch(`${BACKEND_URL}/api/categorization/categories`),
+    authenticatedFetch(`${BACKEND_URL}/api/accounts`),
+  ]);
+
+  const categoryData = catResponse.ok ? await catResponse.json() : {};
+  const accountData = acctResponse.ok ? await acctResponse.json() : {};
+
+  _exportMetadataCache = {
+    categoryListHash: categoryData.category_list_hash || 'unknown',
+    categoryMappings: categoryData.category_mappings || {},
+    customCategories: categoryData.custom_categories || [],
+    accounts: accountData.accounts || [],
+    userId: currentUser?.user_id || 'unknown',
+  };
+  return _exportMetadataCache;
+}
+
+function _invalidateExportMetadataCache() {
+  _exportMetadataCache = null;
+}
+
+async function exportJSON() {
+  try {
+    showStatus('Preparing JSON export...', 'info');
+    const metadata = await _fetchExportMetadata();
+
+    const exportPayload = {
+      metadata: {
+        format: 'pfc_json_v1',
+        exported: new Date().toISOString(),
+        user_id: metadata.userId,
+        category_list_hash: metadata.categoryListHash,
+        category_mappings: metadata.categoryMappings,
+        custom_categories: metadata.customCategories,
+        accounts: metadata.accounts,
+      },
+      transactions: transactions,
+    };
+
+    const dataStr = JSON.stringify(exportPayload, null, 2);
+    const dataBlob = new Blob([dataStr], {type: 'application/json'});
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `transactions_${getDateRange()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showStatus('JSON exported', 'success');
+    setTimeout(() => clearStatus(), 2000);
+  } catch (exportError) {
+    console.error('JSON export failed:', exportError);
+    showStatus('JSON export failed', 'error');
+  }
 }
 
 // Balance snapshot export functions are at the bottom of this file (exportBalanceSnapshotJSON, etc.)
-function copyCSV() {
-  const csv = generateCSV();
-  navigator.clipboard.writeText(csv).then(() => {
+async function copyCSV() {
+  try {
+    showStatus('Preparing CSV...', 'info');
+    const metadata = await _fetchExportMetadata();
+    const csv = generateCSV(metadata);
+    await navigator.clipboard.writeText(csv);
     showStatus('CSV copied to clipboard!', 'success');
     setTimeout(() => clearStatus(), 2000);
-  }).catch(err => {
+  } catch (clipboardError) {
     showStatus('Failed to copy to clipboard', 'error');
-  });
+  }
 }
 
-function downloadCSV() {
-  const csv = generateCSV();
-  const dataBlob = new Blob([csv], {type: 'text/csv'});
-  const url = URL.createObjectURL(dataBlob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `transactions_${getDateRange()}.csv`;
-  link.click();
+async function downloadCSV() {
+  try {
+    showStatus('Preparing CSV...', 'info');
+    const metadata = await _fetchExportMetadata();
+    const csv = generateCSV(metadata);
+    const dataBlob = new Blob([csv], {type: 'text/csv'});
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `transactions_${getDateRange()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    clearStatus();
+  } catch (exportError) {
+    console.error('CSV export failed:', exportError);
+    showStatus('CSV export failed', 'error');
+  }
 }
 
-function generateCSV() {
-  // Get selected optional fields
+/**
+ * Emit one CSV row for a given transaction + optional fields config.
+ * Extracted so both parent-level and split-child-level rows share the
+ * same serialization logic.
+ */
+function _formatCsvRow(txn, optionalFields, parentTransactionId) {
+  const dateStr = toISODateStr(new Date(txn.date));
+  const description = (txn.description || txn.name || '').replace(/"/g, '""');
+  const bankAccount = (txn.bank_account || '').replace(/"/g, '""');
+
+  // Core columns (always present)
+  let row = `"${dateStr}","${bankAccount}","${description}",${txn.amount}`;
+
+  // Backup/restore columns (always present in PFC Export v1)
+  row += `,"${txn.account_id || ''}"`;
+  row += `,"${txn.transaction_id || ''}"`;
+  row += `,"${txn.source || ''}"`;
+  row += `,"${txn.status || ''}"`;
+  row += `,"${(txn.user_category || '').replace(/"/g, '""')}"`;
+  row += `,"${(txn.user_memo || '').replace(/"/g, '""')}"`;
+  row += `,"${parentTransactionId || ''}"`;
+  row += `,"${txn.transfer_pair_id || ''}"`;
+  row += `,"${(txn.user_description_override || '').replace(/"/g, '""')}"`;
+
+  // Optional Plaid-specific columns
+  if (optionalFields.includes('personal_finance_category')) {
+    const pfc = txn.personal_finance_category;
+    if (pfc) {
+      const primaryRaw = (pfc.primary || '').replace(/_/g, ' ').trim();
+      const detailedRaw = (pfc.detailed || '').replace(/_/g, ' ').trim();
+      let detailedTrimmed = detailedRaw;
+      if (primaryRaw && detailedRaw.toLowerCase().startsWith(primaryRaw.toLowerCase() + ' ')) {
+        detailedTrimmed = detailedRaw.slice(primaryRaw.length).trim();
+      } else {
+        detailedTrimmed = detailedRaw.replace(/^\S+\s*/, '').trim();
+      }
+      row += `,"${primaryRaw.replace(/"/g, '""')}","${detailedTrimmed.replace(/"/g, '""')}","${(pfc.confidence_level || '').replace(/_/g, ' ').replace(/"/g, '""')}"`;
+    } else {
+      let cat = txn.category;
+      if (typeof cat === 'string' && cat.startsWith('{')) {
+        cat = cat.replace(/^{|}$/g, '').replace(/,/g, ', ');
+      } else if (Array.isArray(cat)) {
+        cat = cat.join(', ');
+      }
+      row += `,"${(cat || '').replace(/"/g, '""')}","",""`;
+    }
+  }
+  if (optionalFields.includes('payment_channel')) {
+    row += `,"${(txn.payment_channel || '').replace(/"/g, '""')}"`;
+  }
+  if (optionalFields.includes('original_description')) {
+    const preOverrideExport = txn.user_description_override ? (txn.description || txn.name || '') : 'no override';
+    row += `,"${preOverrideExport.replace(/"/g, '""')}"`;
+  }
+  if (optionalFields.includes('authorized_datetime')) {
+    let authDisplay = '';
+    if (txn.authorized_datetime) {
+      const dt = new Date(txn.authorized_datetime);
+      authDisplay = dt.toLocaleString('en-US', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        timeZoneName: 'short'
+      });
+    } else if (txn.authorized_date) {
+      authDisplay = txn.authorized_date;
+    }
+    row += `,"${authDisplay}"`;
+  }
+
+  return row;
+}
+
+function generateCSV(metadata) {
   const optionalFields = [];
   $('.field-checkbox:checked').each(function() {
     optionalFields.push($(this).val());
   });
 
-  let csv = 'Date,Bank/Account,Description,Amount';
-  
-  // Add optional headers — values must match .field-checkbox values in transactions.html
+  // Header comment for format auto-detection on re-import
+  let csv = `# PFC Export v1, exported=${new Date().toISOString()}, category_list_hash=${metadata.categoryListHash}\n`;
+
+  // Column headers — core 4 + always-included backup columns + optional
+  csv += 'Date,Bank/Account,Description,Amount';
+  csv += ',Account ID,Transaction ID,Source,Status,User Category,Memo,Parent Transaction ID,Transfer Pair ID,User Description Override';
+
   if (optionalFields.includes('personal_finance_category')) csv += ',Category (Primary),Category (Detailed),Confidence';
   if (optionalFields.includes('payment_channel')) csv += ',Channel';
   if (optionalFields.includes('original_description')) csv += ',Pre-Override Desc';
   if (optionalFields.includes('authorized_datetime')) csv += ',Authorized';
-  if (optionalFields.includes('user_memo')) csv += ',Memo';
-  if (optionalFields.includes('source')) csv += ',Type';
-  
+
   csv += '\n';
 
-  transactions.forEach(txn => {
-    const dateObj = new Date(txn.date);
-    const dateStr = toISODateStr(dateObj);
-    const amount = txn.amount;
-    const name = (txn.description || txn.name || '').replace(/"/g, '""');
-    
-    csv += `"${dateStr}","${txn.bank_account}","${name}",${amount}`;
-    
-    // Add optional fields
-    if (optionalFields.includes('personal_finance_category')) {
-         // Use new personal_finance_category if available
-         const pfc = txn.personal_finance_category;
-         if (pfc) {
-           const primaryRaw = (pfc.primary || '').replace(/_/g, ' ').trim();
-           const detailedRaw = (pfc.detailed || '').replace(/_/g, ' ').trim();
-           let detailedTrimmed = detailedRaw;
-           if (primaryRaw && detailedRaw.toLowerCase().startsWith(primaryRaw.toLowerCase() + ' ')) {
-             detailedTrimmed = detailedRaw.slice(primaryRaw.length).trim();
-           } else {
-             detailedTrimmed = detailedRaw.replace(/^\S+\s*/, '').trim();
-           }
-           const primary = primaryRaw.replace(/"/g, '""');
-           const detailed = detailedTrimmed.replace(/"/g, '""');
-           const confidence = (pfc.confidence_level || '').replace(/_/g, ' ').replace(/"/g, '""');
-           csv += `,"${primary}","${detailed}","${confidence}"`;
-         } else {
-           // Fallback to legacy category
-           let cat = txn.category;
-           if (typeof cat === 'string' && cat.startsWith('{')) {
-             cat = cat.replace(/^{|}$/g, '').replace(/,/g, ', ');
-           } else if (Array.isArray(cat)) {
-             cat = cat.join(', ');
-           }
-           csv += `,"${(cat || '').replace(/"/g, '""')}","",""`;
-         }
+  for (const txn of transactions) {
+    // Split children are nested under their parent — skip any that
+    // leaked into the top-level array (source='split')
+    if (txn.source === 'split') continue;
+
+    csv += _formatCsvRow(txn, optionalFields, '') + '\n';
+
+    // Export split children immediately after their parent.
+    // Children from the API have a reduced field set (no source/status/bank_account),
+    // so fill in known values before formatting.
+    if (txn.is_split && Array.isArray(txn.splits)) {
+      for (const child of txn.splits) {
+        const enrichedChild = Object.assign({}, child, {
+          source: 'split',
+          status: txn.status,
+          bank_account: txn.bank_account,
+          transfer_pair_id: child.transfer_pair_id || '',
+          user_description_override: child.user_description_override || '',
+        });
+        csv += _formatCsvRow(enrichedChild, optionalFields, txn.transaction_id) + '\n';
+      }
     }
-    if (optionalFields.includes('payment_channel')) csv += `,"${(txn.payment_channel || '').replace(/"/g, '""')}"`;
-    if (optionalFields.includes('original_description')) {
-      const preOverrideExport = txn.user_description_override ? (txn.description || txn.name || '') : 'no override';
-      csv += `,"${preOverrideExport.replace(/"/g, '""')}"`;
-    }
-    if (optionalFields.includes('authorized_datetime')) {
-        let authDisplay = '';
-        if (txn.authorized_datetime) {
-            const dt = new Date(txn.authorized_datetime);
-            authDisplay = dt.toLocaleString('en-US', {
-                year: 'numeric', 
-                month: '2-digit', 
-                day: '2-digit',
-                hour: '2-digit', 
-                minute: '2-digit',
-                second: '2-digit',
-                timeZoneName: 'short'
-            });
-        } else if (txn.authorized_date) {
-            authDisplay = txn.authorized_date;
-        }
-        csv += `,"${authDisplay}"`;
-    }
-    if (optionalFields.includes('user_memo')) csv += `,"${(txn.user_memo || '').replace(/"/g, '""')}"`;
-    if (optionalFields.includes('source')) csv += `,"${(txn.source || '').replace(/"/g, '""')}"`;
-    
-    csv += '\n';
-  });
+  }
+
   return csv;
 }
 
