@@ -136,17 +136,21 @@ const IndexConnectionsList = (() => {
         `onclick="IndexConnectionsList.handleRefresh('${itemIdAttr}', '${nameAttr}', '${itemStatusAttr}')">` +
         `${refreshLabel}</button>`
       );
-    } else if (isConverted || (isManual && hasInstitution)) {
-      // Bank can be (re-)linked via Plaid if it has an institution_id.
-      // This covers scenario 7 (manual → linked) and converted → linked.
+    } else if (isConverted || isManual) {
+      // Any converted or manual bank can be (re-)linked via Plaid.
+      // Banks without an institution_id go through the institution picker first.
       const linkLabel = isConverted ? '🔗 Relink' : '🔗 Link to Plaid';
       const linkTitle = isConverted
         ? 'Reconnect to Plaid'
         : 'Connect this bank to Plaid for automatic syncing';
 
+      const onClickHandler = hasInstitution
+        ? `IndexConnectionsList.handleRelink('${bankIdAttr}', '${nameAttr}')`
+        : `IndexConnectionsList.showInstitutionPicker('${bankIdAttr}', '${nameAttr}')`;
+
       buttons.push(
         `<button class="bank-btn bank-btn-relink" title="${linkTitle}" ` +
-        `onclick="IndexConnectionsList.handleRelink('${bankIdAttr}', '${nameAttr}')">` +
+        `onclick="${onClickHandler}">` +
         `${linkLabel}</button>`
       );
     }
@@ -231,8 +235,11 @@ const IndexConnectionsList = (() => {
   /**
    * Relink a converted bank by starting a new Plaid Link session.
    * This connects a new Plaid item to the existing bank record.
+   * @param {string} bankId
+   * @param {string} bankName
+   * @param {string|null} institutionId - Pre-selected institution for made-up banks.
    */
-  async function handleRelink(bankId, bankName) {
+  async function handleRelink(bankId, bankName, institutionId = null) {
     if (!IndexState.getAuthToken()) {
       IndexUtils.showMessage('dashboard-message', 'Please login first', 'error');
       return;
@@ -242,8 +249,9 @@ const IndexConnectionsList = (() => {
       // Relink mode: pass bankId so backend scopes the link token to this bank's
       // institution and products, and set_access_token reattaches the new Plaid
       // item to the existing bank record (works for converted AND manual banks
-      // that have a valid institution_id).
-      const linkToken = await IndexApi.fetchLinkToken({ bankId });
+      // that have a valid institution_id). institutionId is passed when the user
+      // selected a real bank via the institution picker for made-up banks.
+      const linkToken = await IndexApi.fetchLinkToken({ bankId, institutionId });
       const handler = Plaid.create({
         token: linkToken,
         onSuccess: async (publicToken) => {
@@ -581,11 +589,152 @@ const IndexConnectionsList = (() => {
     });
   }
 
+  // ── Institution Picker (for made-up banks without institution_id) ──
+
+  let _pickerBankId = null;
+  let _pickerBankName = null;
+  let _pickerSelectedInstitutionId = null;
+  let _pickerSearchTimeout = null;
+
+  /**
+   * Show the institution picker modal so the user can select which real
+   * bank corresponds to their made-up bank name.
+   */
+  async function showInstitutionPicker(bankId, bankName) {
+    _pickerBankId = bankId;
+    _pickerBankName = bankName;
+    _pickerSelectedInstitutionId = null;
+
+    const overlay = document.getElementById('institution-picker-overlay');
+    const bankNameSpan = document.getElementById('institution-picker-bank-name');
+    const searchInput = document.getElementById('institution-picker-search');
+    const confirmBtn = document.getElementById('institution-picker-confirm');
+    const resultsContainer = document.getElementById('institution-picker-results');
+
+    bankNameSpan.textContent = bankName;
+    searchInput.value = '';
+    confirmBtn.disabled = true;
+    resultsContainer.innerHTML = '<div class="institution-picker-empty">Loading popular banks...</div>';
+    overlay.style.display = 'flex';
+    searchInput.focus();
+
+    // Wire up search input with debounce
+    searchInput.oninput = () => {
+      clearTimeout(_pickerSearchTimeout);
+      _pickerSearchTimeout = setTimeout(() => _searchInstitutions(searchInput.value.trim()), 300);
+    };
+
+    // Wire up confirm button
+    confirmBtn.onclick = () => {
+      if (_pickerSelectedInstitutionId && _pickerBankId) {
+        closeInstitutionPicker();
+        handleRelink(_pickerBankId, _pickerBankName, _pickerSelectedInstitutionId);
+      }
+    };
+
+    // Load popular institutions as initial list
+    try {
+      const response = await fetch(
+        `${window.BACKEND_URL || 'http://localhost:8000'}/api/accounts/reference/popular-institutions`,
+      );
+      const data = await response.json();
+      _renderInstitutionResults(data.institutions || []);
+    } catch (fetchError) {
+      resultsContainer.innerHTML =
+        '<div class="institution-picker-empty">Failed to load institutions. Try searching.</div>';
+    }
+  }
+
+  async function _searchInstitutions(query) {
+    const resultsContainer = document.getElementById('institution-picker-results');
+    if (query.length < 2) {
+      // Too short — reload popular list
+      try {
+        const response = await fetch(
+          `${window.BACKEND_URL || 'http://localhost:8000'}/api/accounts/reference/popular-institutions`,
+        );
+        const data = await response.json();
+        _renderInstitutionResults(data.institutions || []);
+      } catch {
+        resultsContainer.innerHTML =
+          '<div class="institution-picker-empty">Failed to load institutions.</div>';
+      }
+      return;
+    }
+
+    resultsContainer.innerHTML = '<div class="institution-picker-empty">Searching...</div>';
+    try {
+      const response = await fetch(
+        `${window.BACKEND_URL || 'http://localhost:8000'}/api/accounts/reference/search-institutions?q=${encodeURIComponent(query)}`,
+      );
+      const data = await response.json();
+      const institutions = data.institutions || [];
+      if (institutions.length === 0) {
+        resultsContainer.innerHTML =
+          '<div class="institution-picker-empty">No matching banks found. Try different keywords.</div>';
+        return;
+      }
+      _renderInstitutionResults(institutions);
+    } catch {
+      resultsContainer.innerHTML =
+        '<div class="institution-picker-empty">Search failed. Please try again.</div>';
+    }
+  }
+
+  function _renderInstitutionResults(institutions) {
+    const resultsContainer = document.getElementById('institution-picker-results');
+    const confirmBtn = document.getElementById('institution-picker-confirm');
+
+    if (!institutions.length) {
+      resultsContainer.innerHTML =
+        '<div class="institution-picker-empty">No institutions available.</div>';
+      return;
+    }
+
+    resultsContainer.innerHTML = institutions.map(inst => {
+      const isSelected = inst.institution_id === _pickerSelectedInstitutionId;
+      return `<div class="institution-picker-item${isSelected ? ' selected' : ''}"
+                   data-institution-id="${inst.institution_id}">
+                <span class="inst-name">${_escapeHtml(inst.name)}</span>
+                <span class="inst-id">${_escapeHtml(inst.institution_id)}</span>
+              </div>`;
+    }).join('');
+
+    // Click handlers for each item
+    resultsContainer.querySelectorAll('.institution-picker-item').forEach(item => {
+      item.addEventListener('click', () => {
+        _pickerSelectedInstitutionId = item.dataset.institutionId;
+        // Update visual selection
+        resultsContainer.querySelectorAll('.institution-picker-item').forEach(el =>
+          el.classList.remove('selected'),
+        );
+        item.classList.add('selected');
+        confirmBtn.disabled = false;
+      });
+    });
+  }
+
+  function _escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+  }
+
+  function closeInstitutionPicker() {
+    const overlay = document.getElementById('institution-picker-overlay');
+    overlay.style.display = 'none';
+    _pickerBankId = null;
+    _pickerBankName = null;
+    _pickerSelectedInstitutionId = null;
+  }
+
   return {
     loadBanks,
     handleRefresh,
     handleRelink,
     handleDisconnect,
     handleRetryRelink,
+    showInstitutionPicker,
+    closeInstitutionPicker,
   };
 })();

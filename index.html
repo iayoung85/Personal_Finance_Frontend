@@ -146,6 +146,34 @@
     </div>
   </div>
 
+  <!-- Institution Picker Modal (shown when linking a made-up bank without institution_id) -->
+  <div id="institution-picker-overlay" class="institution-picker-overlay" style="display: none;">
+    <div class="institution-picker-modal">
+      <h2 id="institution-picker-title">Select the Real Bank</h2>
+      <p class="institution-picker-description">
+        Your bank "<span id="institution-picker-bank-name"></span>" isn't linked to
+        a real institution yet. Search for and select the actual bank it represents.
+      </p>
+      <input
+        type="text"
+        id="institution-picker-search"
+        class="institution-picker-search"
+        placeholder="Search banks (e.g. Chase, Wells Fargo)..."
+        autocomplete="off"
+      />
+      <div id="institution-picker-results" class="institution-picker-results"></div>
+      <div class="institution-picker-actions">
+        <button id="institution-picker-confirm" class="btn btn-primary" disabled>
+          Link Selected Bank
+        </button>
+        <button id="institution-picker-cancel" class="btn btn-secondary"
+          onclick="IndexConnectionsList.closeInstitutionPicker()">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Account Matching Modal (shown after relink when auto-matching fails) -->
   <div id="account-matching-overlay" class="matching-overlay" style="display: none;">
     <div class="matching-modal">
@@ -281,6 +309,131 @@
     }
     .matching-modal-actions .btn-secondary:hover {
       background: #d0d0d0;
+    }
+
+    /* Institution Picker Modal */
+    .institution-picker-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg-overlay);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .institution-picker-modal {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-primary);
+      border-radius: 12px;
+      padding: 28px 32px;
+      max-width: 480px;
+      width: 90%;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--shadow-lg);
+    }
+    .institution-picker-modal h2 {
+      margin: 0 0 8px;
+      font-size: 20px;
+      color: var(--text-heading);
+    }
+    .institution-picker-description {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin: 0 0 16px;
+    }
+    .institution-picker-search {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--border-primary);
+      border-radius: 6px;
+      font-size: 14px;
+      margin-bottom: 12px;
+      box-sizing: border-box;
+      background: var(--bg-input);
+      color: var(--text-primary);
+    }
+    .institution-picker-search::placeholder {
+      color: var(--text-muted);
+    }
+    .institution-picker-search:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px var(--accent-focus);
+    }
+    .institution-picker-results {
+      flex: 1;
+      overflow-y: auto;
+      max-height: 300px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      margin-bottom: 16px;
+      min-height: 60px;
+      background: var(--bg-surface);
+    }
+    .institution-picker-item {
+      padding: 10px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-primary);
+    }
+    .institution-picker-item:last-child {
+      border-bottom: none;
+    }
+    .institution-picker-item:hover {
+      background: var(--bg-hover);
+    }
+    .institution-picker-item.selected {
+      background: var(--bg-selected);
+      font-weight: 600;
+    }
+    .institution-picker-item .inst-name {
+      flex: 1;
+    }
+    .institution-picker-item .inst-id {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+    .institution-picker-empty {
+      padding: 20px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    .institution-picker-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+    .institution-picker-actions .btn {
+      padding: 10px 24px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+    }
+    .institution-picker-actions .btn-primary {
+      background: var(--accent-primary);
+      color: var(--text-bright);
+    }
+    .institution-picker-actions .btn-primary:hover {
+      background: var(--accent-primary-hover);
+    }
+    .institution-picker-actions .btn-primary:disabled {
+      background: var(--bg-input);
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
+    .institution-picker-actions .btn-secondary {
+      background: var(--bg-input);
+      color: var(--text-primary);
+    }
+    .institution-picker-actions .btn-secondary:hover {
+      background: var(--bg-hover);
     }
   </style>
 

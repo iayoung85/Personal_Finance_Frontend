@@ -160,13 +160,15 @@ const IndexApi = (() => {
    * @param {string|null} options.itemId  - Pass for update mode (fix broken connection).
    * @param {string|null} options.bankId  - Pass for relink mode (reconnect converted/manual bank).
    * @param {string|null} options.mode    - 'investments_only' for investment-focused new connections.
+   * @param {string|null} options.institutionId - Pre-selected institution for banks without one.
    */
-  async function fetchLinkToken({ itemId = null, bankId = null, mode = null } = {}) {
+  async function fetchLinkToken({ itemId = null, bankId = null, mode = null, institutionId = null } = {}) {
     let url = `${BACKEND_URL}/api/connections/create_link_token`;
     const params = [];
     if (itemId) params.push(`item_id=${encodeURIComponent(itemId)}`);
     if (bankId) params.push(`bank_id=${encodeURIComponent(bankId)}`);
     if (mode) params.push(`mode=${encodeURIComponent(mode)}`);
+    if (institutionId) params.push(`institution_id=${encodeURIComponent(institutionId)}`);
     if (params.length) url += `?${params.join('&')}`;
 
     const response = await authenticatedFetch(url, { method: 'GET' });
