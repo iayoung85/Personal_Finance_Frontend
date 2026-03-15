@@ -253,6 +253,52 @@ const IndexApi = (() => {
     return data;
   }
 
+  async function skipAccountMatching(bankId) {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/accounts/banks/${encodeURIComponent(bankId)}/skip-account-matching`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to skip account matching');
+    }
+    return data;
+  }
+
+  async function activateTransactions(bankId) {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/connections/banks/${encodeURIComponent(bankId)}/activate-transactions`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to activate transactions');
+    }
+    return data;
+  }
+
+  async function activateInvestments(itemId) {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/investments/sync`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: itemId, activate: true }),
+      },
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to activate investments');
+    }
+    return data;
+  }
+
   async function retryRelink(bankId) {
     const response = await authenticatedFetch(
       `${BACKEND_URL}/api/connections/banks/${encodeURIComponent(bankId)}/retry-relink`,
@@ -284,6 +330,9 @@ const IndexApi = (() => {
     refreshItemAccounts,
     removeBank,
     confirmAccountMatching,
+    skipAccountMatching,
+    activateTransactions,
+    activateInvestments,
     retryRelink,
   };
 })();

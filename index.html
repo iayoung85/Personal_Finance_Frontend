@@ -204,9 +204,9 @@
       padding: 20px;
     }
     .matching-modal {
-      background: #fff;
+      background: var(--bg-surface-elevated);
       border-radius: 12px;
-      box-shadow: 0 10px 50px rgba(0,0,0,0.35);
+      box-shadow: var(--shadow-lg);
       max-width: 720px;
       width: 100%;
       max-height: 85vh;
@@ -216,10 +216,10 @@
     .matching-modal h2 {
       margin-bottom: 8px;
       font-size: 22px;
-      color: #333;
+      color: var(--text-heading);
     }
     .matching-modal-description {
-      color: #666;
+      color: var(--text-secondary);
       font-size: 14px;
       margin-bottom: 24px;
       line-height: 1.5;
@@ -229,10 +229,10 @@
       align-items: flex-start;
       gap: 16px;
       padding: 16px;
-      border: 1px solid #e0e0e0;
+      border: 1px solid var(--border-subtle);
       border-radius: 8px;
       margin-bottom: 12px;
-      background: #fafafa;
+      background: var(--bg-surface);
     }
     .matching-pair-row .matching-existing-card,
     .matching-pair-row .matching-arrow,
@@ -243,41 +243,42 @@
       flex: 0 0 40px;
       text-align: center;
       font-size: 22px;
-      color: #999;
+      color: var(--text-muted);
       padding-top: 14px;
     }
     .matching-existing-card {
-      background: #fff;
-      border: 1px solid #d0d0d0;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-primary);
       border-radius: 6px;
       padding: 12px;
     }
     .matching-existing-card .card-name {
       font-weight: 600;
       font-size: 15px;
-      color: #333;
+      color: var(--text-primary);
     }
     .matching-existing-card .card-meta {
       font-size: 12px;
-      color: #888;
+      color: var(--text-muted);
       margin-top: 4px;
     }
     .matching-existing-card .card-balance {
       font-size: 13px;
-      color: #555;
+      color: var(--text-secondary);
       margin-top: 6px;
     }
     .matching-plaid-select select {
       width: 100%;
       padding: 10px;
       border-radius: 6px;
-      border: 1px solid #ccc;
+      border: 1px solid var(--border-primary);
       font-size: 14px;
-      background: #fff;
+      background: var(--bg-input);
+      color: var(--text-primary);
     }
     .matching-plaid-select .plaid-option-detail {
       font-size: 12px;
-      color: #888;
+      color: var(--text-muted);
       margin-top: 4px;
     }
     .matching-modal-actions {
@@ -286,7 +287,7 @@
       justify-content: flex-end;
       margin-top: 24px;
       padding-top: 16px;
-      border-top: 1px solid #e0e0e0;
+      border-top: 1px solid var(--border-subtle);
     }
     .matching-modal-actions .btn {
       padding: 10px 24px;
@@ -296,20 +297,36 @@
       border: none;
     }
     .matching-modal-actions .btn-primary {
-      background: #1967d2;
+      background: var(--accent-primary);
       color: #fff;
     }
     .matching-modal-actions .btn-primary:disabled {
-      background: #a0c4f1;
+      background: var(--accent-primary);
+      opacity: 0.4;
       cursor: not-allowed;
     }
     .matching-modal-actions .btn-secondary {
-      background: #e0e0e0;
-      color: #333;
+      background: var(--bg-hover);
+      color: var(--text-primary);
     }
     .matching-modal-actions .btn-secondary:hover {
-      background: #d0d0d0;
+      background: var(--bg-selected);
     }
+    /* Status badge styles for account matching */
+    .status-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .status-manual { background: #2d4a2d; color: #8bc18b; }
+    .status-linked { background: #1a3a5c; color: #6db3f8; }
+    .status-converted { background: #4a3a1a; color: #d4a854; }
+    .status-dormant { background: #3a2a2a; color: #c08080; }
+    .status-relink_pending { background: #4a3a1a; color: #d4a854; }
 
     /* Institution Picker Modal */
     .institution-picker-overlay {

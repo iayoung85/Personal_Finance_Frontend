@@ -136,7 +136,25 @@ const IndexConnectionsList = (() => {
         `onclick="IndexConnectionsList.handleRefresh('${itemIdAttr}', '${nameAttr}', '${itemStatusAttr}')">` +
         `${refreshLabel}</button>`
       );
-    } else if (isConverted || isManual) {
+      // Activate buttons for linked banks missing a product
+      const billedProducts = bank.billed_products || [];
+      const hasTransactions = billedProducts.includes('transactions');
+      const hasInvestments = billedProducts.includes('investments');
+
+      if (!hasTransactions) {
+        buttons.push(
+          `<button class="bank-btn bank-btn-activate" title="Activate the transactions product for this bank (Plaid billing applies)" ` +
+          `onclick="IndexConnectionsList.handleActivateTransactions('${bankIdAttr}', '${nameAttr}')">`  +
+          `📊 Activate Transactions</button>`
+        );
+      }
+      if (!hasInvestments) {
+        buttons.push(
+          `<button class="bank-btn bank-btn-activate" title="Activate the investments product for this bank (Plaid billing applies)" ` +
+          `onclick="IndexConnectionsList.handleActivateInvestments('${bankIdAttr}', '${nameAttr}', '${itemIdAttr}')">`  +
+          `📈 Activate Investments</button>`
+        );
+      }    } else if (isConverted || isManual) {
       // Any converted or manual bank can be (re-)linked via Plaid.
       // Banks without an institution_id go through the institution picker first.
       const linkLabel = isConverted ? '🔗 Relink' : '🔗 Link to Plaid';
@@ -259,24 +277,31 @@ const IndexConnectionsList = (() => {
             const exchangeResult = await IndexApi.exchangePublicToken(publicToken, bankId);
             invalidateItemInfoCache();
 
-            // Two-phase relink: if backend returned relink_pending, show
-            // waiting message instead of the old instant-success flow.
-            if (exchangeResult.connection_status === 'relink_pending') {
+            // Check for pending account matching FIRST — this takes priority
+            // regardless of whether the bank is relink_pending or already linked.
+            // Pass 4 data is included in the response whenever auto-matching
+            // couldn't resolve all accounts.
+            const relinkDetails = exchangeResult.relink_details || {};
+            const pendingMatching = relinkDetails.pending_account_matching;
+
+            if (pendingMatching && pendingMatching.needed) {
+              const statusMsg = exchangeResult.connection_status === 'relink_pending'
+                ? ' Waiting for Plaid to deliver transaction history.'
+                : '';
+              IndexUtils.showMessage(
+                'dashboard-message',
+                `✓ ${bankName} linked! We found accounts that need your input.${statusMsg}`,
+                'success',
+              );
+              _showAccountMatchingModal(bankId, bankName, pendingMatching);
+            } else if (exchangeResult.connection_status === 'relink_pending') {
               IndexUtils.showMessage(
                 'dashboard-message',
                 `⏳ ${bankName} relink initiated — waiting for Plaid to deliver complete history. This may take a few minutes.`,
                 'success',
               );
             } else {
-              // Legacy path / pass 4 account matching (kept for compatibility)
-              const relinkDetails = exchangeResult.relink_details || {};
-              const pendingMatching = relinkDetails.pending_account_matching;
-
-              if (pendingMatching && pendingMatching.needed) {
-                _showAccountMatchingModal(bankId, bankName, pendingMatching);
-              } else {
-                IndexUtils.showMessage('dashboard-message', `✓ ${bankName} relinked successfully!`, 'success');
-              }
+              IndexUtils.showMessage('dashboard-message', `✓ ${bankName} relinked successfully!`, 'success');
             }
 
             loadBanks();
@@ -456,11 +481,13 @@ const IndexConnectionsList = (() => {
         return `<option value="${plaidIndex}">${plaidLabel}${plaidMask} — ${plaidType} — ${plaidBalance}</option>`;
       }).join('');
 
+      const statusLabel = existingAccount.connection_status || existingAccount.origin || 'manual';
+
       return `
         <div class="matching-pair-row" data-row-index="${rowIndex}">
           <div class="matching-existing-card">
             <div class="card-name">${displayName}</div>
-            <div class="card-meta">${categoryLabel} · ${existingAccount.origin || 'manual'}</div>
+            <div class="card-meta">${categoryLabel} · <span class="status-badge status-${statusLabel}">${statusLabel}</span></div>
             <div class="card-balance">Balance: ${balanceFormatted}</div>
           </div>
           <div class="matching-arrow">→</div>
@@ -486,7 +513,7 @@ const IndexConnectionsList = (() => {
 
     // Wire up buttons
     confirmBtn.onclick = () => _handleConfirmMatches(bankId, bankName, existingCandidates, plaidCandidates);
-    skipBtn.onclick = () => _closeAccountMatchingModal(bankName, /* skipped */ true);
+    skipBtn.onclick = () => _skipAccountMatching(bankId, bankName);
 
     overlay.style.display = 'flex';
   }
@@ -526,7 +553,7 @@ const IndexConnectionsList = (() => {
     });
 
     if (!matches.length) {
-      _closeAccountMatchingModal(bankName, /* skipped */ true);
+      _skipAccountMatching(bankId, bankName);
       return;
     }
 
@@ -536,7 +563,7 @@ const IndexConnectionsList = (() => {
 
     try {
       const confirmResult = await IndexApi.confirmAccountMatching(bankId, matches);
-      _closeAccountMatchingModal(bankName, /* skipped */ false);
+      _closeAccountMatchingModal();
       IndexUtils.showMessage(
         'dashboard-message',
         `✓ ${bankName} updated! ${confirmResult.matches_processed || 0} account(s) merged, ` +
@@ -552,26 +579,51 @@ const IndexConnectionsList = (() => {
   }
 
   /**
-   * Close the account matching modal and show an appropriate message.
+   * Skip account matching — tell the backend to finalize without merges.
    */
-  function _closeAccountMatchingModal(bankName, skipped) {
-    const overlay = document.getElementById('account-matching-overlay');
-    if (overlay) overlay.style.display = 'none';
-
-    // Reset button state
-    const confirmBtn = document.getElementById('matching-confirm-btn');
-    if (confirmBtn) {
-      confirmBtn.disabled = true;
-      confirmBtn.textContent = 'Confirm Matches';
+  async function _skipAccountMatching(bankId, bankName) {
+    const skipBtn = document.getElementById('matching-skip-btn');
+    if (skipBtn) {
+      skipBtn.disabled = true;
+      skipBtn.textContent = 'Skipping…';
     }
 
-    if (skipped) {
+    try {
+      await IndexApi.skipAccountMatching(bankId);
+      _closeAccountMatchingModal();
       IndexUtils.showMessage(
         'dashboard-message',
         `✓ ${bankName} updated successfully! (Account matching skipped — ` +
         `you can manually merge accounts later from the Accounts page.)`,
         'success',
       );
+      loadBanks();
+    } catch (skipError) {
+      if (skipBtn) {
+        skipBtn.disabled = false;
+        skipBtn.textContent = 'Skip';
+      }
+      IndexUtils.showMessage('dashboard-message', 'Error: ' + skipError.message, 'error');
+    }
+  }
+
+  /**
+   * Close the account matching modal and reset button state.
+   */
+  function _closeAccountMatchingModal() {
+    const overlay = document.getElementById('account-matching-overlay');
+    if (overlay) overlay.style.display = 'none';
+
+    const confirmBtn = document.getElementById('matching-confirm-btn');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Confirm Matches';
+    }
+
+    const skipBtn = document.getElementById('matching-skip-btn');
+    if (skipBtn) {
+      skipBtn.disabled = false;
+      skipBtn.textContent = 'Skip';
     }
   }
 
@@ -728,12 +780,63 @@ const IndexConnectionsList = (() => {
     _pickerSelectedInstitutionId = null;
   }
 
+  async function handleActivateTransactions(bankId, bankName) {
+    const confirmed = confirm(
+      `Activate Transactions for ${bankName}?\n\n` +
+      `This will enable the transactions product on your Plaid connection. ` +
+      `Plaid billing for transactions will begin immediately.\n\n` +
+      `Dormant accounts under this bank will be promoted to linked and ` +
+      `historical transaction data will be synced from Plaid.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      IndexUtils.showMessage('dashboard-message', `Activating transactions for ${bankName}…`, 'info');
+      const result = await IndexApi.activateTransactions(bankId);
+      const activatedCount = (result.accounts_activated || []).length;
+      IndexUtils.showMessage(
+        'dashboard-message',
+        `✓ Transactions activated for ${bankName}! ${activatedCount} account(s) promoted. ` +
+        `Historical data will sync shortly via webhook.`,
+        'success',
+      );
+      loadBanks();
+    } catch (activateError) {
+      IndexUtils.showMessage('dashboard-message', 'Error: ' + activateError.message, 'error');
+    }
+  }
+
+  async function handleActivateInvestments(bankId, bankName, itemId) {
+    const confirmed = confirm(
+      `Activate Investments for ${bankName}?\n\n` +
+      `This will enable the investments product on your Plaid connection. ` +
+      `Plaid billing for investments will begin immediately.\n\n` +
+      `Holdings data will be fetched and synced.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      IndexUtils.showMessage('dashboard-message', `Activating investments for ${bankName}…`, 'info');
+      await IndexApi.activateInvestments(itemId);
+      IndexUtils.showMessage(
+        'dashboard-message',
+        `✓ Investments activated for ${bankName}! Holdings data synced.`,
+        'success',
+      );
+      loadBanks();
+    } catch (activateError) {
+      IndexUtils.showMessage('dashboard-message', 'Error: ' + activateError.message, 'error');
+    }
+  }
+
   return {
     loadBanks,
     handleRefresh,
     handleRelink,
     handleDisconnect,
     handleRetryRelink,
+    handleActivateTransactions,
+    handleActivateInvestments,
     showInstitutionPicker,
     closeInstitutionPicker,
   };

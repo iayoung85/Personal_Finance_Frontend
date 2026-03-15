@@ -373,6 +373,11 @@ input:focus {
   color: #ffffff;
 }
 
+.bank-btn-activate {
+  background: var(--accent-primary, #007acc);
+  color: #ffffff;
+}
+
 .banks-empty-state {
   color: var(--text-secondary);
   font-style: italic;
