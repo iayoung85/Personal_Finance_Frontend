@@ -22,6 +22,8 @@ refreshAuthState();
 const TRANSACTION_CACHE_KEY = 'pf_cached_transactions';
 const TRANSACTION_CACHE_TS_KEY = 'pf_transactions_cached_at';
 const TRANSACTION_CACHE_MAX_AGE_MS = 10 * 1000; // 10 seconds — kept ultra-short during development to avoid stale-data confusion
+const TRANSACTION_ETAG_KEY = 'pf_transactions_etag';
+const RECENT_WINDOW_DAYS = 90;
 const BALANCE_HISTORY_CACHE_KEY = 'pf_balance_history_by_account';
 const BALANCE_HISTORY_CACHE_MAX_AGE_MS = 10 * 1000; // 10 seconds — kept ultra-short during development
 const NO_ACTIVE_PLAID_SYNC_CACHE_KEY = 'pf_sync_no_active_plaid_items';
@@ -267,6 +269,7 @@ function logout() {
   // Clear data caches on logout for security
   localStorage.removeItem('pf_cached_transactions');
   localStorage.removeItem('pf_transactions_cached_at');
+  localStorage.removeItem(TRANSACTION_ETAG_KEY);
   localStorage.removeItem('pf_cached_categories');
   localStorage.removeItem('pf_cached_taxonomy');
   localStorage.removeItem('pf_categories_cached_at');
@@ -442,7 +445,10 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
 }
 
 async function fetchAllTransactions(forceNetwork = false) {
-  // Fetch all transactions for the user (backend returns all, frontend filters)
+  // Two-phase loading with ETag caching:
+  // Phase 1: Fetch recent window (last N days) for instant render.
+  // Phase 2: Backfill full history in background.
+  // ETag: On repeat calls, backend returns 304 if nothing changed.
   const cachedTransactionsRaw = localStorage.getItem(TRANSACTION_CACHE_KEY);
   const cachedAtRaw = localStorage.getItem(TRANSACTION_CACHE_TS_KEY);
   const cachedAgeMs = cachedAtRaw ? (Date.now() - parseInt(cachedAtRaw)) : Infinity;
@@ -463,42 +469,119 @@ async function fetchAllTransactions(forceNetwork = false) {
   }
 
   _recordFullHistoryCallMetric('transactions_full_history');
-  
+
+  // --- Phase 1: Recent window for fast first paint ---
+  const sinceDate = _formatDateForApi(_daysAgo(RECENT_WINDOW_DAYS));
   try {
-    showStatus('Loading all transactions...', 'info');
-    
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions`, {
-      method: 'GET',
-      mode: 'cors'
-    });
-    
-    const data = await response.json();
-    
-    if (data.error) {
-      showStatus(`Error: ${data.error}`, 'error');
+    showStatus('Loading recent transactions...', 'info');
+
+    const recentResponse = await _fetchTransactionsFromServer(sinceDate);
+    if (recentResponse === null) {
+      // 304 — cached data is still current, nothing to do
+      showStatus(`Transactions are up to date — ${transactions.length} loaded`, 'success');
+      setTimeout(() => clearStatus(), 2000);
       return;
     }
-    
-    transactions = data.transactions || [];
-    _clearBalanceHistoryCache();
-    
-    // Cache transactions in localStorage for instant page loads
-    try {
-      localStorage.setItem(TRANSACTION_CACHE_KEY, JSON.stringify(transactions));
-      localStorage.setItem(TRANSACTION_CACHE_TS_KEY, String(Date.now()));
-    } catch (cacheErr) {
-      console.warn('Could not cache transactions to localStorage:', cacheErr);
-      // localStorage might be full — not fatal
-    }
-    
-    autoExtendEndDateForScheduled(); // Extend end-date to show all scheduled future txns
+
+    transactions = recentResponse;
+    autoExtendEndDateForScheduled();
     renderTransactionTable();
-    renderDynamicPeriodButtons(); // Update period buttons when transactions change
-    showStatus(`Loaded ${transactions.length} total transactions (filters applied on frontend)`, 'success');
-    setTimeout(() => clearStatus(), 2000);
-    
+    renderDynamicPeriodButtons();
+    showStatus(`Loaded ${transactions.length} recent transactions, loading full history...`, 'info');
+
   } catch (error) {
     showStatus(`Load failed: ${error.message}`, 'error');
+    return;
+  }
+
+  // --- Phase 2: Full history backfill (no date filter) ---
+  try {
+    const fullResponse = await _fetchTransactionsFromServer(null);
+    if (fullResponse === null) {
+      // 304 on full request — recent set was same as full set, we're done
+      _cacheTransactions(transactions);
+      showStatus(`Loaded ${transactions.length} total transactions`, 'success');
+      setTimeout(() => clearStatus(), 2000);
+      return;
+    }
+
+    transactions = fullResponse;
+    _clearBalanceHistoryCache();
+    _cacheTransactions(transactions);
+
+    autoExtendEndDateForScheduled();
+    renderTransactionTable();
+    renderDynamicPeriodButtons();
+    showStatus(`Loaded ${transactions.length} total transactions (filters applied on frontend)`, 'success');
+    setTimeout(() => clearStatus(), 2000);
+
+  } catch (error) {
+    // Phase 1 already rendered — user sees recent data; log but don't block
+    console.error('Full-history backfill failed (recent data still visible):', error);
+    _cacheTransactions(transactions);
+    showStatus(`Loaded ${transactions.length} recent transactions (full history unavailable)`, 'warning');
+    setTimeout(() => clearStatus(), 3000);
+  }
+}
+
+function _daysAgo(numberOfDays) {
+  const target = new Date();
+  target.setDate(target.getDate() - numberOfDays);
+  return target;
+}
+
+function _formatDateForApi(dateObject) {
+  return dateObject.toISOString().slice(0, 10);
+}
+
+async function _fetchTransactionsFromServer(sinceDate) {
+  /**
+   * Low-level fetch helper. Sends ETag header, handles 304.
+   * Returns the transactions array on success, or null on 304 (no changes).
+   */
+  let url = `${BACKEND_URL}/api/transactions`;
+  if (sinceDate) {
+    url += `?since_date=${sinceDate}`;
+  }
+
+  const headers = {};
+  const storedEtag = localStorage.getItem(TRANSACTION_ETAG_KEY);
+  if (storedEtag && !sinceDate) {
+    // Only send ETag for full (non-windowed) requests so the 304
+    // comparison is apples-to-apples with the cached full dataset.
+    headers['If-None-Match'] = storedEtag;
+  }
+
+  const response = await authenticatedFetch(url, {
+    method: 'GET',
+    mode: 'cors',
+    headers,
+  });
+
+  if (response.status === 304) {
+    return null;
+  }
+
+  const data = await response.json();
+  if (data.error) {
+    throw new Error(data.error);
+  }
+
+  // Persist the ETag for future 304 short-circuits (full requests only).
+  const newEtag = response.headers.get('ETag');
+  if (newEtag && !sinceDate) {
+    localStorage.setItem(TRANSACTION_ETAG_KEY, newEtag);
+  }
+
+  return data.transactions || [];
+}
+
+function _cacheTransactions(transactionsToCache) {
+  try {
+    localStorage.setItem(TRANSACTION_CACHE_KEY, JSON.stringify(transactionsToCache));
+    localStorage.setItem(TRANSACTION_CACHE_TS_KEY, String(Date.now()));
+  } catch (cacheErr) {
+    console.warn('Could not cache transactions to localStorage:', cacheErr);
   }
 }
 
