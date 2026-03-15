@@ -467,7 +467,7 @@ async function fetchAllTransactions(forceNetwork = false) {
   try {
     showStatus('Loading all transactions...', 'info');
     
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transactions`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions`, {
       method: 'GET',
       mode: 'cors'
     });

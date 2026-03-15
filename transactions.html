@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="nav-sidebar.css">
   <link rel="stylesheet" href="transactions.css">
+  <link rel="stylesheet" href="import-wizard.css">
 </head>
 <body data-nav-mode="collapsed" data-nav-page="transactions">
   <div class="container">
@@ -136,6 +137,10 @@
 
         <!-- ── Export Bar (pinned bottom) ───────────────────── -->
         <div class="export-bar">
+          <div class="import-group">
+            <span class="export-group-label">Import</span>
+            <button onclick="openImportWizard()" class="btn-import">📥 Import</button>
+          </div>
           <div class="export-group">
             <span class="export-group-label">Transactions</span>
             <div id="export-buttons" class="export-buttons hidden">
@@ -371,6 +376,30 @@
     </div>
   </div>
 
+  <!-- ═══ Import Wizard Overlay (full-screen) ═══ -->
+  <div id="import-wizard-overlay" class="import-wizard-overlay hidden">
+    <div class="import-wizard">
+      <div class="import-wizard-header" id="import-wizard-header"></div>
+      <div class="import-wizard-body" id="import-wizard-body"></div>
+      <div class="import-wizard-footer" id="import-wizard-footer"></div>
+    </div>
+  </div>
+
+  <!-- ═══ Import Report Modal ═══ -->
+  <div id="import-report-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeImportReportModal()">
+    <div class="modal modal-import-report">
+      <div class="modal-header">
+        <h2>Import Report</h2>
+        <button class="modal-close" onclick="closeImportReportModal()">✕</button>
+      </div>
+      <div class="modal-body" id="import-report-body"></div>
+      <div class="modal-footer">
+        <button class="secondary" onclick="closeImportReportModal()">Close</button>
+        <button onclick="downloadImportReport()">Download Summary</button>
+      </div>
+    </div>
+  </div>
+
   <script src="config.js"></script>
   <script src="date-helpers.js"></script>
   <script src="nav-sidebar.js"></script>
@@ -400,6 +429,12 @@
   <script src="transactions/context-menu.js"></script>
   <script src="transactions/transfer-modal.js"></script>
   <script src="transactions/inline-edit.js"></script>
+  <script src="transactions/import/main.js"></script>
+  <script src="transactions/import/file-upload.js"></script>
+  <script src="transactions/import/account-mapping.js"></script>
+  <script src="transactions/import/category-mapping.js"></script>
+  <script src="transactions/import/review.js"></script>
+  <script src="transactions/import/report.js"></script>
   <script src="transactions/main.js"></script>
 </body>
 </html>
