@@ -297,6 +297,22 @@ function _renderAnalysisSummary() {
     html += '</div>';
   }
 
+  // Turbo import button — auto-generate accounts + categories and import
+  html += `
+    <div class="import-turbo-section" style="margin-top: 20px; padding: 16px; border: 2px dashed var(--accent-color, #4a9eff); border-radius: 8px; text-align: center;">
+      <button class="import-turbo-btn" onclick="_executeTurboImport()"
+              style="padding: 12px 24px; font-size: 15px; font-weight: 600; cursor: pointer;
+                     background: var(--accent-color, #4a9eff); color: white; border: none;
+                     border-radius: 6px;">
+        Auto-Generate Accounts, Auto-Detect Categories &amp; Import
+      </button>
+      <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary, #888);">
+        Creates new accounts for all ${accountCount} CSV accounts (bank names auto-extracted),
+        accepts all category suggestions, and imports everything in one shot.
+      </div>
+    </div>
+  `;
+
   return html;
 }
 
@@ -332,6 +348,75 @@ function _removeImportFile() {
   const body = document.getElementById('import-wizard-body');
   renderFileUploadStep(body);
   _renderImportFooter();
+}
+
+/**
+ * Turbo import: send the file to /import/turbo-execute (no mappings needed).
+ * The backend auto-generates all account and category mappings and runs
+ * the full write pipeline in one shot.
+ */
+async function _executeTurboImport() {
+  if (!importFile || !importFileBytes) {
+    _showImportUploadError('No file loaded. Please select a file first.');
+    return;
+  }
+
+  const body = document.getElementById('import-wizard-body');
+  _showImportLoading(body, 'Auto-generating accounts, detecting categories, and importing…');
+
+  // Disable the turbo button to prevent double-clicks
+  const turboBtn = document.querySelector('.import-turbo-btn');
+  if (turboBtn) {
+    turboBtn.disabled = true;
+    turboBtn.style.opacity = '0.5';
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('file', new Blob([importFileBytes]), importFile.name);
+
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/import/turbo-execute`,
+      { method: 'POST', body: formData }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Turbo import failed');
+    }
+
+    // Store report for power-user localStorage retrieval
+    importLastReport = data;
+    try {
+      localStorage.setItem('pf_last_import_report', JSON.stringify(data));
+    } catch (_storageError) {
+      // localStorage full or unavailable — non-critical
+    }
+
+    _clearImportProgress();
+
+    // Close wizard and show report modal
+    closeImportWizard();
+    openImportReportModal(data);
+
+    // Refresh transaction table and accounts to reflect new data
+    await loadAccounts();
+    await loadAvailableCategories(true);
+
+    localStorage.removeItem('pf_cached_transactions');
+    localStorage.removeItem('pf_transactions_cached_at');
+    await fetchAllTransactions(true);
+    renderTransactionTable();
+
+    showStatus('Turbo import completed successfully!', 'success');
+
+  } catch (turboError) {
+    let errorHtml = _renderFileSelectedBadge();
+    errorHtml += _renderAnalysisSummary();
+    errorHtml += `<div class="import-error-banner">${escapeHtml(turboError.message)}</div>`;
+    body.innerHTML = errorHtml;
+  }
 }
 
 function _showImportUploadError(message) {
