@@ -191,6 +191,29 @@
     </div>
   </div>
 
+  <!-- ═══ Move Account to Bank Modal ═══ -->
+  <div id="move-account-modal" class="modal-overlay hidden">
+    <div class="modal" style="max-width: 440px;">
+      <div class="modal-header">
+        <h2>Move Account to Bank</h2>
+        <button class="modal-close" onclick="closeMoveAccountModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 10px; color: var(--text-secondary); font-size: 13px;">
+          Select a bank to move this account under.
+        </p>
+        <input type="text" id="move-bank-search" placeholder="Filter banks…"
+               oninput="filterMoveBankList()" autocomplete="off"
+               style="width: 100%; margin-bottom: 8px;">
+        <div id="move-bank-list" class="move-bank-list" style="max-height: 320px; overflow-y: auto;"></div>
+        <div id="move-account-error" class="form-error hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeMoveAccountModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Status toast -->
   <div id="status-toast" class="status-toast hidden"></div>
 

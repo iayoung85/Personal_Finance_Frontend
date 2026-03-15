@@ -262,6 +262,42 @@ async function apiHardDeleteAccount(accountId) {
   return data;
 }
 
+/**
+ * Move a manual account to a different bank.
+ * Only works for origin=manual, connection_status=manual accounts.
+ */
+async function apiMoveAccountToBank(accountId, targetBankId) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/accounts/${accountId}/move`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_bank_id: targetBankId })
+    }
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to move account');
+  }
+  return data;
+}
+
+/**
+ * Unlink a single linked account from Plaid sync, reset its data, and archive it.
+ * The parent bank stays linked — only this account is disconnected.
+ */
+async function apiUnlinkAndArchiveAccount(accountId) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/accounts/${accountId}/unlink-archive`,
+    { method: 'POST' }
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to unlink and archive account');
+  }
+  return data;
+}
+
 // ── Bank Mutations ───────────────────────────────────────────
 
 /**

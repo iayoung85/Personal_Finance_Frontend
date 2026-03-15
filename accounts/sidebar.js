@@ -102,14 +102,19 @@ function _renderAccountList() {
   const archivedAccounts = [];
 
   for (const account of visibleAccounts) {
-    // If the parent bank is archived AND the account is archived → archived group
     const parentBank = banksCache.find(b => b.bank_id === account.bank_id);
-    const inArchivedGroup = showArchivedAccounts && account.is_archived && parentBank && parentBank.is_archived;
+    const bankIsArchived = parentBank && parentBank.is_archived;
+
+    // When toggle is off, hide ALL accounts under archived banks
+    if (!showArchivedAccounts && bankIsArchived) continue;
+    if (!showArchivedAccounts && account.is_archived) continue;
+
+    // When toggle is on, route archived items to the collapsed group
+    const inArchivedGroup = account.is_archived || bankIsArchived;
 
     if (inArchivedGroup) {
       archivedAccounts.push(account);
-    } else if (!account.is_archived || showArchivedAccounts) {
-      // Show active accounts always; show individually-archived accounts only when toggle is on
+    } else {
       activeAccounts.push(account);
     }
   }

@@ -161,6 +161,17 @@ function _buildAccountActions(account) {
     'Changes the account classification (e.g., depository, credit, investment). All existing transaction data is preserved.'
   );
 
+  // ── Move to Bank (manual accounts only) ──
+  if (account.origin === 'manual' && account.connection_status === 'manual') {
+    actions += _actionItem(
+      'Move to Different Bank',
+      'Reassign this account to a different bank group.',
+      `<button class="btn-action" onclick="promptMoveAccountToBank('${account.account_id}')">Move</button>`,
+      'info-move-bank',
+      'Moves this manual account under a different bank. If the source bank has no remaining accounts and no Plaid item, it is automatically removed.'
+    );
+  }
+
   // ── Archive / Unarchive ──
   if (account.is_archived) {
     actions += _actionItem(
@@ -191,21 +202,28 @@ function _buildAccountActions(account) {
     'For Plaid accounts: deletes transaction history, resets sync cursor, and re-derives opening balance on next sync. For manual accounts: deletes all transactions and prompts for a new opening balance. Requires confirmation.'
   );
 
-  // ── Delete Account ──
-  const deleteDisabled = account.origin === 'plaid' && account.connection_status === 'linked';
-  const deleteButton = deleteDisabled
-    ? `<button class="btn-danger btn-sm" disabled title="Convert to manual or archive before deleting a linked Plaid account">Delete</button>`
-    : `<button class="btn-danger btn-sm" onclick="deleteAccount('${account.account_id}', '${_escapeAttr(account.custom_name || account.account_name)}')">Delete</button>`;
+  // ── Delete Account / Unlink & Archive ──
+  const isLinked = account.connection_status === 'linked';
 
-  actions += _actionItem(
-    'Delete Account & All Data',
-    'Permanently removes this account, all transactions, balance history, and snapshots. Irreversible.',
-    deleteButton,
-    'info-delete',
-    deleteDisabled
-      ? 'Plaid-linked accounts cannot be hard-deleted directly. Archive the account, or convert the bank to manual first, then delete.'
-      : 'This is a permanent, irreversible action. All transaction data, balance history, and snapshots for this account will be destroyed. You will need to type the account name to confirm.'
-  );
+  if (isLinked) {
+    // Linked accounts cannot be hard-deleted. Offer "Unlink & Archive" instead:
+    // disconnects this account from Plaid sync, wipes its data, and archives it.
+    actions += _actionItem(
+      'Unlink, Reset & Archive',
+      'Disconnect this account from Plaid sync, delete all its transaction data, and archive it. The rest of the bank stays linked.',
+      `<button class="btn-warn btn-sm" onclick="unlinkAndArchiveAccount('${account.account_id}', '${_escapeAttr(account.custom_name || account.account_name)}')">Unlink & Archive</button>`,
+      'info-unlink-archive',
+      'Removes this account from Plaid transaction sync (the bank and its other accounts remain linked). All transaction data, balance history, and snapshots for this account are permanently deleted. The account is then archived. Future syncs will ignore it. This action cannot be undone.'
+    );
+  } else {
+    actions += _actionItem(
+      'Delete Account & All Data',
+      'Permanently removes this account, all transactions, balance history, and snapshots. Irreversible.',
+      `<button class="btn-danger btn-sm" onclick="deleteAccount('${account.account_id}', '${_escapeAttr(account.custom_name || account.account_name)}')">Delete</button>`,
+      'info-delete',
+      'This is a permanent, irreversible action. All transaction data, balance history, and snapshots for this account will be destroyed. You will need to type the account name to confirm.'
+    );
+  }
 
   return actions;
 }
@@ -297,6 +315,85 @@ async function _doChangeCategory(accountId, category, subcategory) {
   }
 }
 
+let _pendingMoveAccountId = null;
+
+function promptMoveAccountToBank(accountId) {
+  _pendingMoveAccountId = accountId;
+
+  const currentAccount = accountsCache.find(acct => acct.account_id === accountId);
+  const currentBankId = currentAccount ? currentAccount.bank_id : null;
+
+  const availableBanks = banksCache
+    .filter(bank => bank.bank_id !== currentBankId)
+    .sort((bankA, bankB) => buildBankDisplayName(bankA).localeCompare(buildBankDisplayName(bankB)));
+
+  // Store for filter use
+  _moveBankChoices = availableBanks;
+
+  const searchInput = document.getElementById('move-bank-search');
+  searchInput.value = '';
+  _renderMoveBankList(availableBanks);
+
+  document.getElementById('move-account-error').classList.add('hidden');
+  document.getElementById('move-account-modal').classList.remove('hidden');
+
+  // Auto-focus the search field
+  setTimeout(() => searchInput.focus(), 50);
+}
+
+let _moveBankChoices = [];
+
+function filterMoveBankList() {
+  const query = (document.getElementById('move-bank-search').value || '').toLowerCase();
+  const filtered = query
+    ? _moveBankChoices.filter(bank => buildBankDisplayName(bank).toLowerCase().includes(query))
+    : _moveBankChoices;
+  _renderMoveBankList(filtered);
+}
+
+function _renderMoveBankList(banks) {
+  const container = document.getElementById('move-bank-list');
+  if (banks.length === 0) {
+    container.innerHTML = '<div style="padding: 12px; color: var(--text-muted); text-align: center; font-size: 13px;">No matching banks</div>';
+    return;
+  }
+  container.innerHTML = banks.map(bank => {
+    const displayName = buildBankDisplayName(bank);
+    const accountCount = (bank.accounts || []).length;
+    return `
+      <div class="move-bank-item" onclick="selectMoveBank('${bank.bank_id}', '${_escapeAttr(displayName)}')">
+        <span class="status-dot ${getStatusDotClass(bank.connection_status, bank.item_health)}"></span>
+        <span>${_escapeHtml(displayName)}</span>
+        <span class="bank-account-count">${accountCount} acct${accountCount !== 1 ? 's' : ''}</span>
+      </div>`;
+  }).join('');
+}
+
+function selectMoveBank(targetBankId, targetBankName) {
+  closeMoveAccountModal();
+
+  openConfirmModal(
+    'Move Account',
+    `Move this account to "${targetBankName}"?`,
+    async () => {
+      try {
+        showToast('Moving account…', 'info');
+        await apiMoveAccountToBank(_pendingMoveAccountId, targetBankId);
+        showToast(`Account moved to ${targetBankName}`, 'success');
+        await reloadAndReselect();
+      } catch (moveError) {
+        showToast(`Failed to move: ${moveError.message}`, 'error');
+      }
+    },
+    { buttonLabel: 'Move', buttonClass: 'btn-action' }
+  );
+}
+
+function closeMoveAccountModal() {
+  document.getElementById('move-account-modal').classList.add('hidden');
+  _pendingMoveAccountId = null;
+}
+
 function archiveAccount(accountId) {
   openConfirmModal(
     'Archive Account',
@@ -345,6 +442,30 @@ function deleteAccount(accountId, accountName) {
       typedConfirmation: accountName,
       buttonLabel: 'Delete Permanently',
       buttonClass: 'btn-danger'
+    }
+  );
+}
+
+function unlinkAndArchiveAccount(accountId, accountName) {
+  openConfirmModal(
+    'Unlink, Reset & Archive',
+    `This will disconnect "${accountName}" from Plaid sync, permanently delete ALL its transaction data, ` +
+    'balance history, and snapshots, then archive it. The rest of the bank stays linked. This action cannot be undone.',
+    async () => {
+      try {
+        showToast('Unlinking and archiving…', 'info');
+        await apiUnlinkAndArchiveAccount(accountId);
+        showToast('Account unlinked, data cleared, and archived', 'success');
+        selectedAccountId = null;
+        await reloadAndReselect();
+      } catch (unlinkError) {
+        showToast(`Failed to unlink: ${unlinkError.message}`, 'error');
+      }
+    },
+    {
+      typedConfirmation: accountName,
+      buttonLabel: 'Unlink & Archive',
+      buttonClass: 'btn-warn'
     }
   );
 }

@@ -1152,3 +1152,35 @@ details[open] > .collapsible-trigger::before {
     max-height: 40vh;
   }
 }
+
+/* ── Move-to-Bank Modal ── */
+.move-bank-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.move-bank-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--bg-surface-elevated);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  transition: background 0.1s;
+}
+
+.move-bank-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-primary);
+}
+
+.move-bank-item .bank-account-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
