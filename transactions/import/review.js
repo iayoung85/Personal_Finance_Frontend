@@ -133,9 +133,11 @@ function renderReviewStep(container) {
   if (newAccounts.length > 0) {
     html += `<div class="import-review-section full-width"><h3>New Accounts</h3><ul class="import-review-list">`;
     for (const newAccount of newAccounts) {
+      const bankLabel = newAccount.bank_name ? escapeHtml(newAccount.bank_name) : 'No bank';
+      const institutionTag = newAccount.institution_id ? ' \uD83C\uDFE6' : '';
       html += `<li>
         <span>${escapeHtml(newAccount.account_name)} (${escapeHtml(newAccount.account_category)})</span>
-        <span class="review-muted">${newAccount.bank_name ? escapeHtml(newAccount.bank_name) : 'No bank'}</span>
+        <span class="review-muted">${bankLabel}${institutionTag}</span>
       </li>`;
     }
     html += '</ul></div>';

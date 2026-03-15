@@ -5,6 +5,9 @@
 // account warnings.
 // ============================================================
 
+// Cached popular institutions so we only fetch once per session
+let _importPopularInstitutionsCache = null;
+
 /**
  * Render the account mapping step into the wizard body.
  */
@@ -132,6 +135,9 @@ function _onAccountMappingChange(csvName, selectedValue) {
       new_account_config: {
         account_name: csvName,
         bank_name: '',
+        bank_id: null,
+        institution_id: null,
+        bank_selection_mode: '',
         account_category: 'depository',
         opening_balance: 0,
         balance_date: '',
@@ -159,6 +165,7 @@ function _renderCreateAccountForm(csvName, config) {
   const safeId = _safeId(csvName);
   const accountName = (config && config.account_name) || csvName;
   const bankName = (config && config.bank_name) || '';
+  const bankSelectionMode = (config && config.bank_selection_mode) || '';
   const accountCategory = (config && config.account_category) || 'depository';
   const openingBalance = (config && config.opening_balance) || '';
   const balanceDate = (config && config.balance_date) || '';
@@ -179,11 +186,9 @@ function _renderCreateAccountForm(csvName, config) {
              onchange="_updateNewAccountConfig('${_escapeAttr(csvName)}', 'account_name', this.value)"
              placeholder="e.g., Chase Checking">
     </div>
-    <div>
-      <label>Bank Name</label>
-      <input type="text" value="${escapeHtml(bankName)}"
-             onchange="_updateNewAccountConfig('${_escapeAttr(csvName)}', 'bank_name', this.value)"
-             placeholder="e.g., Chase">
+    <div class="import-create-form-full">
+      <label>Bank / Institution</label>
+      ${_renderBankSelector(csvName, safeId, config)}
     </div>
     <div>
       <label>Account Type *</label>
@@ -211,6 +216,298 @@ function _renderCreateAccountForm(csvName, config) {
 
   html += '</div>';
   return html;
+}
+
+/**
+ * Build the three-tier bank selector: existing banks, official institution
+ * (popular dropdown + full search), or custom free-text.
+ */
+function _renderBankSelector(csvName, safeId, config) {
+  const bankSelectionMode = (config && config.bank_selection_mode) || '';
+  const bankName = (config && config.bank_name) || '';
+  const institutionId = (config && config.institution_id) || '';
+  const bankId = (config && config.bank_id) || '';
+  const escapedCsvName = _escapeAttr(csvName);
+
+  // Collect unique existing banks from the global accounts array
+  const existingBanks = _getUniqueBanks();
+
+  let html = `<select id="import-bank-select-${safeId}"
+               onchange="_onImportBankSelectChange('${escapedCsvName}', this.value)">`;
+  html += '<option value="">— Select a Bank —</option>';
+
+  if (existingBanks.length > 0) {
+    html += '<optgroup label="Your Banks">';
+    for (const bank of existingBanks) {
+      const isSelected = bankSelectionMode === 'existing' && bankName === bank.bank_name;
+      html += `<option value="existing::${escapeHtml(bank.bank_name)}::${escapeHtml(bank.bank_id || '')}"
+               ${isSelected ? 'selected' : ''}>${escapeHtml(bank.bank_name)}</option>`;
+    }
+    html += '</optgroup>';
+  }
+
+  html += `<option value="__official__" ${bankSelectionMode === 'official' ? 'selected' : ''}>` +
+    '\u2795 Use official institution</option>';
+  html += `<option value="__custom__" ${bankSelectionMode === 'custom' ? 'selected' : ''}>` +
+    '\u2795 Enter custom bank name</option>';
+  html += '</select>';
+
+  // Official institution sub-panel
+  const showOfficial = bankSelectionMode === 'official';
+  html += `<div id="import-official-fields-${safeId}" class="import-bank-subpanel ${showOfficial ? '' : 'hidden'}">`;
+  html += `<select id="import-official-bank-${safeId}"
+            onchange="_onImportOfficialBankChange('${escapedCsvName}', '${safeId}')">`;
+  html += '<option value="">— Choose an institution —</option>';
+
+  if (_importPopularInstitutionsCache) {
+    for (const inst of _importPopularInstitutionsCache) {
+      const isSelected = institutionId === inst.institution_id;
+      html += `<option value="${escapeHtml(inst.institution_id)}" ${isSelected ? 'selected' : ''}>`;
+      html += escapeHtml(inst.name);
+      html += '</option>';
+    }
+  }
+
+  // If a search-selected institution isn't in the popular list, add it
+  if (institutionId && bankName && _importPopularInstitutionsCache) {
+    const alreadyInList = _importPopularInstitutionsCache.some(
+      inst => inst.institution_id === institutionId
+    );
+    if (!alreadyInList) {
+      html += `<option value="${escapeHtml(institutionId)}" selected>${escapeHtml(bankName)}</option>`;
+    }
+  }
+
+  html += '</select>';
+  html += `<div class="import-institution-hint">
+    Can\u2019t find yours?
+    <a href="#" onclick="_showImportInstitutionSearch(event, '${escapedCsvName}', '${safeId}')">Search all 9,000+ institutions</a>
+  </div>`;
+  html += `<div id="import-inst-search-panel-${safeId}" class="hidden">`;
+  html += `<div class="import-institution-search-row">`;
+  html += `<input id="import-inst-search-input-${safeId}" placeholder="Search by name\u2026"
+            onkeydown="if(event.key==='Enter'){_searchImportInstitutions('${escapedCsvName}','${safeId}');}" />`;
+  html += `<button onclick="_searchImportInstitutions('${escapedCsvName}','${safeId}')">Search</button>`;
+  html += '</div>';
+  html += `<div id="import-inst-search-results-${safeId}" class="import-institution-search-results"></div>`;
+  html += '</div>';
+  html += '</div>';
+
+  // Custom bank name sub-panel
+  const showCustom = bankSelectionMode === 'custom';
+  html += `<div id="import-custom-bank-fields-${safeId}" class="import-bank-subpanel ${showCustom ? '' : 'hidden'}">`;
+  html += `<input type="text" value="${escapeHtml(showCustom ? bankName : '')}"
+            onchange="_updateNewAccountConfig('${escapedCsvName}', 'bank_name', this.value)"
+            placeholder="e.g., Piggy Bank, My Kid\u2019s Bank">`;
+  html += '</div>';
+
+  // Lazy-load popular institutions on first render
+  if (!_importPopularInstitutionsCache) {
+    _loadImportPopularInstitutions(safeId);
+  }
+
+  return html;
+}
+
+/**
+ * Collect unique banks from the global `accounts` array (already loaded by the transactions page).
+ */
+function _getUniqueBanks() {
+  const bankMap = new Map();
+  for (const accountRecord of accounts) {
+    const name = accountRecord.bank_name || accountRecord.institution_name;
+    if (!name) continue;
+    if (bankMap.has(name)) continue;
+    bankMap.set(name, {
+      bank_name: name,
+      bank_id: accountRecord.bank_id || null,
+    });
+  }
+  return Array.from(bankMap.values()).sort(
+    (a, b) => a.bank_name.localeCompare(b.bank_name)
+  );
+}
+
+/**
+ * Handle bank selector dropdown change for an import create-new form.
+ */
+function _onImportBankSelectChange(csvName, value) {
+  const config = importAccountMappings[csvName] && importAccountMappings[csvName].new_account_config;
+  if (!config) return;
+
+  if (value.startsWith('existing::')) {
+    const parts = value.split('::');
+    config.bank_name = parts[1] || '';
+    config.bank_id = parts[2] || null;
+    config.institution_id = null;
+    config.bank_selection_mode = 'existing';
+  } else if (value === '__official__') {
+    config.bank_name = '';
+    config.bank_id = null;
+    config.institution_id = null;
+    config.bank_selection_mode = 'official';
+  } else if (value === '__custom__') {
+    config.bank_name = '';
+    config.bank_id = null;
+    config.institution_id = null;
+    config.bank_selection_mode = 'custom';
+  } else {
+    config.bank_name = '';
+    config.bank_id = null;
+    config.institution_id = null;
+    config.bank_selection_mode = '';
+  }
+
+  _saveImportProgress();
+
+  // Re-render to toggle sub-panels
+  const body = document.getElementById('import-wizard-body');
+  renderAccountMappingStep(body);
+}
+
+/**
+ * Handle selection from the official institution popular dropdown.
+ */
+function _onImportOfficialBankChange(csvName, safeId) {
+  const config = importAccountMappings[csvName] && importAccountMappings[csvName].new_account_config;
+  if (!config) return;
+
+  const officialSelect = document.getElementById(`import-official-bank-${safeId}`);
+  const selectedOption = officialSelect.options[officialSelect.selectedIndex];
+  config.institution_id = officialSelect.value || null;
+  config.bank_name = selectedOption && officialSelect.value ? selectedOption.textContent : '';
+  config.bank_id = null;
+  _saveImportProgress();
+}
+
+/**
+ * Show the full institution search panel.
+ */
+function _showImportInstitutionSearch(event, csvName, safeId) {
+  event.preventDefault();
+  const panel = document.getElementById(`import-inst-search-panel-${safeId}`);
+  panel.classList.remove('hidden');
+  document.getElementById(`import-inst-search-input-${safeId}`).focus();
+}
+
+/**
+ * Search institutions via backend and render clickable results.
+ */
+async function _searchImportInstitutions(csvName, safeId) {
+  const searchInput = document.getElementById(`import-inst-search-input-${safeId}`);
+  const resultsContainer = document.getElementById(`import-inst-search-results-${safeId}`);
+  const query = searchInput.value.trim();
+
+  if (query.length < 2) {
+    resultsContainer.innerHTML = '<div class="import-institution-search-status">Type at least 2 characters.</div>';
+    return;
+  }
+
+  resultsContainer.innerHTML = '<div class="import-institution-search-status">Searching\u2026</div>';
+
+  try {
+    const url = `${BACKEND_URL}/api/accounts/reference/search-institutions?q=${encodeURIComponent(query)}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Search failed');
+    }
+    const data = await response.json();
+    const results = data.institutions || [];
+
+    if (results.length === 0) {
+      resultsContainer.innerHTML = '<div class="import-institution-search-status">No results found.</div>';
+      return;
+    }
+
+    const currentInstId = importAccountMappings[csvName]
+      && importAccountMappings[csvName].new_account_config
+      && importAccountMappings[csvName].new_account_config.institution_id;
+
+    resultsContainer.innerHTML = results.map(inst => {
+      const selectedClass = inst.institution_id === currentInstId ? ' selected' : '';
+      return `<div class="import-institution-search-result${selectedClass}"
+                   onclick="_selectImportSearchInstitution('${_escapeAttr(csvName)}', '${safeId}', '${_escapeAttr(inst.institution_id)}', '${_escapeAttr(inst.name)}')">
+                ${escapeHtml(inst.name)}
+              </div>`;
+    }).join('');
+  } catch (searchError) {
+    resultsContainer.innerHTML = `<div class="import-institution-search-status" style="color:var(--color-error);">Search failed: ${escapeHtml(searchError.message)}</div>`;
+  }
+}
+
+/**
+ * Select an institution from search results.
+ */
+function _selectImportSearchInstitution(csvName, safeId, institutionId, institutionName) {
+  const config = importAccountMappings[csvName] && importAccountMappings[csvName].new_account_config;
+  if (!config) return;
+
+  config.institution_id = institutionId;
+  config.bank_name = institutionName;
+  config.bank_id = null;
+  _saveImportProgress();
+
+  // Add to the official dropdown if not present, then select it
+  const officialSelect = document.getElementById(`import-official-bank-${safeId}`);
+  let existingOption = officialSelect.querySelector(`option[value="${institutionId}"]`);
+  if (!existingOption) {
+    existingOption = document.createElement('option');
+    existingOption.value = institutionId;
+    existingOption.textContent = institutionName;
+    officialSelect.appendChild(existingOption);
+  }
+  officialSelect.value = institutionId;
+
+  // Highlight selected result
+  const resultsContainer = document.getElementById(`import-inst-search-results-${safeId}`);
+  resultsContainer.querySelectorAll('.import-institution-search-result').forEach(el => {
+    const elId = el.getAttribute('onclick').includes(institutionId);
+    el.classList.toggle('selected', elId);
+  });
+}
+
+/**
+ * Fetch popular institutions from backend (once per session).
+ */
+async function _loadImportPopularInstitutions(safeId) {
+  try {
+    const url = `${BACKEND_URL}/api/accounts/reference/popular-institutions`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch popular institutions');
+    const data = await response.json();
+    _importPopularInstitutionsCache = data.institutions || [];
+
+    // Populate all official bank dropdowns currently rendered
+    _repopulateAllOfficialDropdowns();
+  } catch (fetchError) {
+    console.warn('Could not load popular institutions:', fetchError.message);
+  }
+}
+
+/**
+ * After lazy-loading popular institutions, fill every official dropdown on screen.
+ */
+function _repopulateAllOfficialDropdowns() {
+  if (!_importPopularInstitutionsCache) return;
+  const selects = document.querySelectorAll('select[id^="import-official-bank-"]');
+  for (const officialSelect of selects) {
+    const placeholder = officialSelect.querySelector('option[value=""]');
+    officialSelect.innerHTML = '';
+    if (placeholder) officialSelect.appendChild(placeholder);
+    else {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '\u2014 Choose an institution \u2014';
+      officialSelect.appendChild(opt);
+    }
+    for (const inst of _importPopularInstitutionsCache) {
+      const option = document.createElement('option');
+      option.value = inst.institution_id;
+      option.textContent = inst.name;
+      officialSelect.appendChild(option);
+    }
+  }
 }
 
 /**

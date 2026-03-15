@@ -531,6 +531,107 @@
   padding: 6px 10px;
 }
 
+/* ── Bank / Institution Selector (Create New Account) ──────── */
+
+.import-bank-subpanel {
+  margin-top: 6px;
+}
+
+.import-institution-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 5px;
+}
+
+.import-institution-hint a {
+  color: var(--accent-primary);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.import-institution-hint a:hover {
+  text-decoration: underline;
+}
+
+.import-institution-search-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.import-institution-search-row input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-size: 13px;
+  box-sizing: border-box;
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.import-institution-search-row input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.import-institution-search-row button {
+  padding: 5px 12px;
+  font-size: 13px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.import-institution-search-row button:hover {
+  background: var(--bg-selected);
+}
+
+.import-institution-search-results {
+  max-height: 180px;
+  overflow-y: auto;
+  margin-top: 6px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-surface);
+}
+
+.import-institution-search-results:empty {
+  display: none;
+}
+
+.import-institution-search-result {
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.1s;
+  color: var(--text-primary);
+}
+
+.import-institution-search-result:last-child {
+  border-bottom: none;
+}
+
+.import-institution-search-result:hover {
+  background: var(--bg-selected);
+}
+
+.import-institution-search-result.selected {
+  background: rgba(0, 122, 204, 0.3);
+  font-weight: 500;
+}
+
+.import-institution-search-status {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 /* ── Category Mapping Specifics ────────────────────────────── */
 
 .import-category-filter {
