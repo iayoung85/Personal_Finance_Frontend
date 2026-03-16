@@ -37,6 +37,7 @@ $(document).ready(async function() {
 
   // Render dynamic period buttons after transactions are loaded
   renderDynamicPeriodButtons();
+  initCustomDateListeners();
 
   // Load available categories for manual categorization dropdown
   await loadAvailableCategories();
@@ -140,11 +141,7 @@ $(document).ready(async function() {
     }
   });
 
-  // Re-render on date range change and save custom date to localStorage
-  $(document).on('input change', '#start-date, #end-date', function() {
-    _saveDateRangeToStorage('custom');
-    renderTransactionTable();
-  });
+  // Date filtering is handled by toggle buttons — no text input listeners needed
 
   // Re-render on account selection change
   $(document).on('change', '.account-checkbox', function() {

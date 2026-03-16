@@ -655,13 +655,6 @@ tr:hover {
   flex-wrap: wrap;
 }
 
-.filter-group-periods {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
 .filter-group {
   display: flex;
   align-items: center;
@@ -697,6 +690,59 @@ tr:hover {
 
 .btn-quick-range:hover {
   background: var(--bg-hover) !important;
+}
+
+/* ---- Date filter toggle buttons ---- */
+.btn-date-toggle {
+  padding: 3px 10px !important;
+  font-size: 11px !important;
+  background: var(--bg-surface-elevated) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.btn-date-toggle:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.btn-date-toggle.active {
+  background: var(--accent-primary) !important;
+  color: #fff !important;
+  border-color: var(--accent-primary) !important;
+}
+
+.date-filter-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.date-month-buttons {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.date-year-buttons {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.custom-date-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.custom-date-range .date-input {
+  width: 130px;
 }
 
 /* ============================================

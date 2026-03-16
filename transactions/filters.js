@@ -1,78 +1,67 @@
 // ============================================================
 // transactions/filters.js — Date, Account & Category Filtering
-// Date range helpers, quick-range shortcuts, dynamic period
-// buttons, and category filter dropdown management.
+// Toggle-style date range buttons, dynamic month shortcuts,
+// custom date range picker, and category filter dropdown.
 // ============================================================
 
-// localStorage keys for remembering user's last date range selection
-const DATE_RANGE_PRESET_KEY = 'pf_date_range_preset';
-const DATE_RANGE_START_KEY = 'pf_date_range_start';
-const DATE_RANGE_END_KEY = 'pf_date_range_end';
+// localStorage key for the active date filter toggle
+const DATE_FILTER_ACTIVE_KEY = 'pf_date_filter_active';
+// For custom range, remember user-entered start/end
+const DATE_FILTER_CUSTOM_START_KEY = 'pf_date_filter_custom_start';
+const DATE_FILTER_CUSTOM_END_KEY = 'pf_date_filter_custom_end';
+// For month buttons, remember which year+month was selected
+const DATE_FILTER_MONTH_KEY = 'pf_date_filter_month';
 
-// Delegates to toISODateStr() from date-helpers.js
 function _formatDateLocal(date) {
   return toISODateStr(date);
 }
 
-/**
- * Save the current date range selection to localStorage.
- * Stores both the preset name (for quick-range button highlighting)
- * and the actual start/end values (for restoration on reload).
- */
-function _saveDateRangeToStorage(presetName) {
-  const startDate = document.getElementById('start-date').value;
-  const endDate = document.getElementById('end-date').value;
-  localStorage.setItem(DATE_RANGE_PRESET_KEY, presetName || 'custom');
-  localStorage.setItem(DATE_RANGE_START_KEY, startDate);
-  localStorage.setItem(DATE_RANGE_END_KEY, endDate);
-}
+// ===== "Show all" baseline dates =====
+// Default range: earliest txn to tomorrow — never filters out transactions.
 
-function setDefaultDates() {
-  // Check if user has a saved date range from a previous session
-  const savedPreset = localStorage.getItem(DATE_RANGE_PRESET_KEY);
-  const savedStart = localStorage.getItem(DATE_RANGE_START_KEY);
-  const savedEnd = localStorage.getItem(DATE_RANGE_END_KEY);
-
-  if (savedPreset && savedStart && savedEnd) {
-    // Restore the saved dates directly — they already reflect the preset
-    document.getElementById('start-date').value = savedStart;
-    document.getElementById('end-date').value = savedEnd;
-
-    // For relative presets (MTD, Last Month), recalculate to current calendar
-    // so the dates stay meaningful after midnight rolls over
-    if (savedPreset === 'mtd') {
-      _applyMonthToDate();
-    } else if (savedPreset === 'last_month') {
-      _applyLastMonth();
-    }
-    // For 'earliest', 'period_year', 'period_month', 'custom': keep saved dates as-is
-    // (earliest will be re-evaluated after transactions load anyway)
-    return;
+function _allTimeStartDate() {
+  if (transactions && transactions.length > 0) {
+    const earliest = transactions.reduce((min, txn) => {
+      return (!min || txn.date < min) ? txn.date : min;
+    }, null);
+    if (earliest) return earliest;
   }
+  // Fallback when no txns loaded yet
+  const fallback = new Date();
+  fallback.setFullYear(fallback.getFullYear() - 10);
+  return _formatDateLocal(fallback);
+}
 
-  // No saved preference — fall back to Month-to-Date default
-  _applyMonthToDate();
+function _tomorrowDateStr() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return _formatDateLocal(tomorrow);
 }
 
 /**
- * Internal: set date inputs to Month-to-Date without triggering render/save.
+ * Write "show everything" range into the hidden start-date / end-date inputs.
+ * Future-dated rows beyond tomorrow are handled by autoExtendEndDateForScheduled.
+ */
+function _applyAllTimeDates() {
+  document.getElementById('start-date').value = _allTimeStartDate();
+  document.getElementById('end-date').value = _tomorrowDateStr();
+}
+
+/**
+ * Set start-date/end-date to Month-to-Date. On the 1st of the month
+ * we include the prior month so the view isn't empty.
  */
 function _applyMonthToDate() {
-  const end = new Date();
   const start = new Date();
-  let today = new Date();
-  if (today.getDate() === 1) {
+  if (start.getDate() === 1) {
     start.setMonth(start.getMonth() - 1);
   } else {
     start.setDate(1);
   }
   document.getElementById('start-date').value = _formatDateLocal(start);
-  document.getElementById('end-date').value = _formatDateLocal(end);
+  document.getElementById('end-date').value = _tomorrowDateStr();
 }
 
-/**
- * Internal: set date inputs to Last Month without triggering render/save.
- */
 function _applyLastMonth() {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -81,55 +70,234 @@ function _applyLastMonth() {
   document.getElementById('end-date').value = _formatDateLocal(end);
 }
 
-function setEarliestToDate() {
-  // Find the earliest transaction date from synced data
-  let earliestDate = null;
-  if (transactions && transactions.length > 0) {
-    earliestDate = transactions.reduce((earliest, txn) => {
-      if (!earliest || txn.date < earliest) {
-        return txn.date;
-      }
-      return earliest;
-    }, null);
-  }
-  
-  // If we found an earliest date, use it; otherwise fall back to 90 days ago
-  let start;
-  if (earliestDate) {
-    start = new Date(earliestDate);
-  } else {
-    start = new Date();
-    start.setDate(start.getDate() - 90);
-  }
-  
+function _applyYearToDate() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 1);
   document.getElementById('start-date').value = _formatDateLocal(start);
-  // Reset end-date to encompass all future/scheduled transactions.
-  // Without this, a stale end-date from a previous filter (e.g. "last month")
-  // would cut off current and future transactions.
-  document.getElementById('end-date').value = _formatDateLocal(_latestTransactionDate());
-  _saveDateRangeToStorage('earliest');
+  document.getElementById('end-date').value = _tomorrowDateStr();
+}
+
+function _applyLastYear() {
+  const now = new Date();
+  const start = new Date(now.getFullYear() - 1, 0, 1);
+  const end = new Date(now.getFullYear() - 1, 11, 31);
+  document.getElementById('start-date').value = _formatDateLocal(start);
+  document.getElementById('end-date').value = _formatDateLocal(end);
+}
+
+function _applyYear(year) {
+  const start = new Date(year, 0, 1);
+  const end = new Date(year, 11, 31);
+  document.getElementById('start-date').value = _formatDateLocal(start);
+  document.getElementById('end-date').value = _formatDateLocal(end);
+}
+
+function _applyMonth(year, month) {
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 0);
+  document.getElementById('start-date').value = _formatDateLocal(start);
+  document.getElementById('end-date').value = _formatDateLocal(end);
+}
+
+// ===== Visual toggle helpers =====
+
+function _clearAllDateToggleStyles() {
+  document.querySelectorAll('.btn-date-toggle').forEach(button => {
+    button.classList.remove('active');
+  });
+  document.querySelectorAll('.btn-date-month').forEach(button => {
+    button.classList.remove('active');
+  });
+  document.querySelectorAll('.btn-date-year').forEach(button => {
+    button.classList.remove('active');
+  });
+}
+
+function _setActiveToggle(buttonId) {
+  _clearAllDateToggleStyles();
+  const button = document.getElementById(buttonId);
+  if (button) button.classList.add('active');
+}
+
+function _setActiveMonthButton(year, month) {
+  _clearAllDateToggleStyles();
+  const button = document.getElementById(`btn-month-${year}-${month}`);
+  if (button) button.classList.add('active');
+}
+
+function _setActiveYearButton(year) {
+  _clearAllDateToggleStyles();
+  const button = document.getElementById(`btn-year-${year}`);
+  if (button) button.classList.add('active');
+}
+
+// ===== Core toggle handler =====
+
+/**
+ * Main entry point for all date filter buttons. Clicking a toggled-on
+ * button turns it off (returns to "all dates"). Only one filter active
+ * at a time.
+ */
+function toggleDateFilter(filterName) {
+  const currentActive = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+
+  // Clicking the same filter again → deactivate and show everything
+  if (currentActive === filterName) {
+    _deactivateDateFilter();
+    return;
+  }
+
+  _hideCustomRangeInputs();
+
+  if (filterName === 'mtd') {
+    _applyMonthToDate();
+    _setActiveToggle('btn-date-mtd');
+  } else if (filterName === 'ytd') {
+    _applyYearToDate();
+    _setActiveToggle('btn-date-ytd');
+  } else if (filterName === 'last_month') {
+    _applyLastMonth();
+    _setActiveToggle('btn-date-last-month');
+  } else if (filterName === 'last_year') {
+    _applyLastYear();
+    _setActiveToggle('btn-date-last-year');
+  } else if (filterName === 'custom') {
+    _activateCustomRange();
+    _setActiveToggle('btn-date-custom');
+  }
+
+  localStorage.setItem(DATE_FILTER_ACTIVE_KEY, filterName);
   renderTransactionTable();
 }
 
-function setMonthToDate() {
-  const start = new Date();
-  const today = new Date();
-  if (today.getDate() === 1) {
-    start.setMonth(start.getMonth() - 1);
-  } else {
-    start.setDate(1);
+/**
+ * Called from dynamically rendered month buttons.
+ */
+function toggleMonthFilter(year, month) {
+  const monthKey = `month_${year}_${month}`;
+  const currentActive = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+
+  if (currentActive === monthKey) {
+    _deactivateDateFilter();
+    return;
   }
-  document.getElementById('start-date').value = _formatDateLocal(start);
-  // Reset end-date to encompass all future/scheduled transactions.
-  document.getElementById('end-date').value = _formatDateLocal(_latestTransactionDate());
-  _saveDateRangeToStorage('mtd');
+
+  _applyMonth(year, month);
+  _setActiveMonthButton(year, month);
+  _hideCustomRangeInputs();
+  localStorage.setItem(DATE_FILTER_ACTIVE_KEY, monthKey);
+  localStorage.setItem(DATE_FILTER_MONTH_KEY, `${year}_${month}`);
   renderTransactionTable();
 }
 
-function setLastMonth() {
-  _applyLastMonth();
-  _saveDateRangeToStorage('last_month');
+function toggleYearFilter(year) {
+  const yearKey = `year_${year}`;
+  const currentActive = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+
+  if (currentActive === yearKey) {
+    _deactivateDateFilter();
+    return;
+  }
+
+  _applyYear(year);
+  _setActiveYearButton(year);
+  _hideCustomRangeInputs();
+  localStorage.setItem(DATE_FILTER_ACTIVE_KEY, yearKey);
   renderTransactionTable();
+}
+
+function _deactivateDateFilter() {
+  _clearAllDateToggleStyles();
+  _hideCustomRangeInputs();
+  _applyAllTimeDates();
+  localStorage.removeItem(DATE_FILTER_ACTIVE_KEY);
+  renderTransactionTable();
+}
+
+// ===== Custom date range =====
+
+function _activateCustomRange() {
+  const customInputs = document.getElementById('custom-date-range-inputs');
+  if (customInputs) customInputs.style.display = 'inline-flex';
+
+  const savedStart = localStorage.getItem(DATE_FILTER_CUSTOM_START_KEY);
+  const savedEnd = localStorage.getItem(DATE_FILTER_CUSTOM_END_KEY);
+  const customStartInput = document.getElementById('custom-start-date');
+  const customEndInput = document.getElementById('custom-end-date');
+
+  if (savedStart && savedEnd) {
+    customStartInput.value = savedStart;
+    customEndInput.value = savedEnd;
+    document.getElementById('start-date').value = savedStart;
+    document.getElementById('end-date').value = savedEnd;
+  } else {
+    // Default custom range to current month
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    customStartInput.value = _formatDateLocal(monthStart);
+    customEndInput.value = _formatDateLocal(now);
+    document.getElementById('start-date').value = _formatDateLocal(monthStart);
+    document.getElementById('end-date').value = _formatDateLocal(now);
+  }
+}
+
+function _hideCustomRangeInputs() {
+  const customInputs = document.getElementById('custom-date-range-inputs');
+  if (customInputs) customInputs.style.display = 'none';
+}
+
+function _onCustomDateChange() {
+  const customStart = document.getElementById('custom-start-date').value;
+  const customEnd = document.getElementById('custom-end-date').value;
+  if (customStart && customEnd) {
+    document.getElementById('start-date').value = customStart;
+    document.getElementById('end-date').value = customEnd;
+    localStorage.setItem(DATE_FILTER_CUSTOM_START_KEY, customStart);
+    localStorage.setItem(DATE_FILTER_CUSTOM_END_KEY, customEnd);
+    renderTransactionTable();
+  }
+}
+
+// ===== Initialization =====
+
+/**
+ * Called on page load from main.js. Sets "all dates" baseline,
+ * then restores any saved toggle from localStorage.
+ */
+function setDefaultDates() {
+  _applyAllTimeDates();
+
+  const savedFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  if (!savedFilter) return;
+
+  // Re-apply the saved filter without re-rendering (main.js renders later)
+  if (savedFilter === 'mtd') {
+    _applyMonthToDate();
+    _setActiveToggle('btn-date-mtd');
+  } else if (savedFilter === 'last_month') {
+    _applyLastMonth();
+    _setActiveToggle('btn-date-last-month');
+  } else if (savedFilter === 'custom') {
+    _activateCustomRange();
+    _setActiveToggle('btn-date-custom');
+  } else if (savedFilter === 'ytd') {
+    _applyYearToDate();
+    _setActiveToggle('btn-date-ytd');
+  } else if (savedFilter === 'last_year') {
+    _applyLastYear();
+    _setActiveToggle('btn-date-last-year');
+  } else if (savedFilter.startsWith('year_')) {
+    const yearStr = savedFilter.replace('year_', '');
+    _applyYear(parseInt(yearStr, 10));
+    // Button highlighting happens after renderDynamicPeriodButtons builds the DOM
+  } else if (savedFilter.startsWith('month_')) {
+    const savedMonth = localStorage.getItem(DATE_FILTER_MONTH_KEY);
+    if (savedMonth) {
+      const [yearStr, monthStr] = savedMonth.split('_');
+      _applyMonth(parseInt(yearStr, 10), parseInt(monthStr, 10));
+      // Button highlighting happens after renderDynamicPeriodButtons builds the DOM
+    }
+  }
 }
 
 /**
@@ -170,12 +338,6 @@ function closeChartModal() {
 
 // ===== Helper: latest transaction date =====
 
-/**
- * Returns a Date representing the latest transaction date across all loaded
- * transactions (including scheduled/future). Falls back to today if no
- * transactions are loaded. Used by quick-range shortcuts (earliest, MTD) to
- * guarantee the end-date always encompasses future bills.
- */
 function _latestTransactionDate() {
   let latestDateStr = null;
   if (transactions && transactions.length > 0) {
@@ -187,7 +349,7 @@ function _latestTransactionDate() {
   return latestDateStr ? new Date(latestDateStr) : new Date();
 }
 
-// ===== Dynamic Period Buttons =====
+// ===== Dynamic Month Buttons (last 6 months) =====
 
 /**
  * Auto-extend the end-date to include all projected future transactions.
@@ -211,116 +373,136 @@ function autoExtendEndDateForScheduled() {
     return latest;
   }, null);
 
-  if (!latestScheduledDate) return;
+  if (latestScheduledDate) {
+    const currentEndDate = document.getElementById('end-date').value;
+    if (latestScheduledDate > currentEndDate) {
+      document.getElementById('end-date').value = latestScheduledDate;
+    }
+  }
 
-  const currentEndDate = document.getElementById('end-date').value;
-  if (latestScheduledDate > currentEndDate) {
-    document.getElementById('end-date').value = latestScheduledDate;
+  // When no filter is toggled, snap start-date to real earliest txn
+  // so the "show all" baseline covers every transaction now that data is loaded.
+  const activeFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  if (!activeFilter) {
+    document.getElementById('start-date').value = _allTimeStartDate();
   }
 }
 
+/**
+ * Render the last 6 calendar months as individual toggle buttons.
+ * Always shows 6 months regardless of transaction history depth.
+ * Also re-highlights a saved month toggle if one was active.
+ */
 function renderDynamicPeriodButtons() {
-  const container = document.getElementById('dynamic-period-buttons');
+  const container = document.getElementById('date-month-buttons');
   if (!container) return;
-  
+
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const now = new Date();
+  const months = [];
+
+  // Build last 6 months, skipping current month (MTD) and last month
+  // (Last Month button). So offsets 7→2 give 6 distinct months.
+  for (let offset = 7; offset >= 2; offset--) {
+    const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    months.push({ year: date.getFullYear(), month: date.getMonth() });
+  }
+
+  const multiYear = months[0].year !== months[months.length - 1].year;
+
+  let html = '';
+  months.forEach(m => {
+    const label = multiYear
+      ? `${monthNames[m.month]} '${String(m.year).slice(-2)}`
+      : monthNames[m.month];
+    html += `<button id="btn-month-${m.year}-${m.month}" `
+          + `class="btn-date-toggle btn-date-month" `
+          + `onclick="toggleMonthFilter(${m.year}, ${m.month})">`
+          + `${label}</button>`;
+  });
+
+  container.innerHTML = html;
+
+  // Restore active month highlight if one was saved
+  const savedFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  if (savedFilter && savedFilter.startsWith('month_')) {
+    const savedMonth = localStorage.getItem(DATE_FILTER_MONTH_KEY);
+    if (savedMonth) {
+      const [yearStr, monthStr] = savedMonth.split('_');
+      _setActiveMonthButton(parseInt(yearStr, 10), parseInt(monthStr, 10));
+    }
+  }
+
+  // Render year buttons for historical data (2+ years old)
+  _renderDynamicYearButtons();
+}
+
+/**
+ * Render year buttons for data older than 2 years. Excludes current year
+ * (covered by YTD/MTD) and last year (covered by Last Year button).
+ * Only appears if transactions exist 2+ calendar years back.
+ */
+function _renderDynamicYearButtons() {
+  const container = document.getElementById('date-year-buttons');
+  if (!container) return;
+
   if (!transactions || transactions.length === 0) {
     container.innerHTML = '';
     return;
   }
-  
-  // Find earliest and latest transaction dates
-  let earliest = null;
-  let latest = null;
-  
-  transactions.forEach(txn => {
-    if (!earliest || txn.date < earliest) earliest = txn.date;
-    if (!latest || txn.date > latest) latest = txn.date;
-  });
-  
-  if (!earliest || !latest) {
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const twoYearsAgoThreshold = currentYear - 2;
+
+  // Find the earliest transaction year
+  const earliestDateStr = transactions.reduce((min, txn) => {
+    return (!min || txn.date < min) ? txn.date : min;
+  }, null);
+
+  if (!earliestDateStr) {
     container.innerHTML = '';
     return;
   }
-  
-  const earliestDate = new Date(earliest);
-  const latestDate = new Date(latest);
-  
-  // Calculate span in days
-  const daysDiff = Math.ceil((latestDate - earliestDate) / (1000 * 60 * 60 * 24));
-  
-  // If span is 2+ years, show year buttons; otherwise show month buttons
-  if (daysDiff >= 730) {
-    renderYearButtons(container, earliestDate, latestDate);
-  } else {
-    renderMonthButtons(container, earliestDate, latestDate);
-  }
-}
 
-function renderYearButtons(container, earliestDate, latestDate) {
-  const startYear = earliestDate.getFullYear();
-  const endYear = latestDate.getFullYear();
-  
-  let html = '<span style="font-size: 14px; font-weight: 500; color: #666;">Quick Select:</span>';
-  
-  for (let year = startYear; year <= endYear; year++) {
-    html += `<button onclick="setPeriodYear(${year})" class="secondary" style="padding: 4px 10px; font-size: 12px;">${year}</button>`;
+  const earliestYear = new Date(earliestDateStr).getFullYear();
+
+  // Only show if there are transactions 2+ years old
+  if (earliestYear > twoYearsAgoThreshold) {
+    container.innerHTML = '';
+    return;
   }
-  
+
+  // Build buttons for each year from earliest up to 2 years ago
+  // (current year = YTD, last year = Last Year button)
+  let html = '';
+  for (let year = earliestYear; year <= twoYearsAgoThreshold; year++) {
+    html += `<button id="btn-year-${year}" `
+          + `class="btn-date-toggle btn-date-year" `
+          + `onclick="toggleYearFilter(${year})">`
+          + `${year}</button>`;
+  }
+
   container.innerHTML = html;
-}
 
-function renderMonthButtons(container, earliestDate, latestDate) {
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  
-  let html = '<span style="font-size: 14px; font-weight: 500; color: #666;">Quick Select:</span>';
-  
-  // Build list of year-month combinations
-  const months = [];
-  let current = new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1);
-  const end = new Date(latestDate.getFullYear(), latestDate.getMonth(), 1);
-  
-  while (current <= end) {
-    months.push({
-      year: current.getFullYear(),
-      month: current.getMonth(),
-      label: monthNames[current.getMonth()]
-    });
-    current.setMonth(current.getMonth() + 1);
+  // Restore active year highlight if one was saved
+  const savedFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  if (savedFilter && savedFilter.startsWith('year_')) {
+    const yearStr = savedFilter.replace('year_', '');
+    _setActiveYearButton(parseInt(yearStr, 10));
   }
-  
-  // If multiple years, show year prefix for clarity
-  const multiYear = months.length > 0 && months[0].year !== months[months.length - 1].year;
-  
-  months.forEach(m => {
-    const label = multiYear ? `${m.label} '${String(m.year).slice(-2)}` : m.label;
-    html += `<button onclick="setPeriodMonth(${m.year}, ${m.month})" class="secondary" style="padding: 4px 10px; font-size: 12px;">${label}</button>`;
-  });
-  
-  container.innerHTML = html;
 }
 
-function setPeriodYear(year) {
-  const start = new Date(year, 0, 1);
-  const end = new Date(year, 11, 31);
-  const today = new Date();
-  const actualEnd = end > today ? today : end;
-  
-  document.getElementById('start-date').value = _formatDateLocal(start);
-  document.getElementById('end-date').value = _formatDateLocal(actualEnd);
-  _saveDateRangeToStorage('period_year');
-  renderTransactionTable();
-}
-
-function setPeriodMonth(year, month) {
-  const start = new Date(year, month, 1);
-  const end = new Date(year, month + 1, 0);
-  const today = new Date();
-  const actualEnd = end > today ? today : end;
-  
-  document.getElementById('start-date').value = _formatDateLocal(start);
-  document.getElementById('end-date').value = _formatDateLocal(actualEnd);
-  _saveDateRangeToStorage('period_month');
-  renderTransactionTable();
+/**
+ * Attach change listeners to the custom date inputs.
+ * Called once from main.js init.
+ */
+function initCustomDateListeners() {
+  const customStart = document.getElementById('custom-start-date');
+  const customEnd = document.getElementById('custom-end-date');
+  if (customStart) customStart.addEventListener('change', _onCustomDateChange);
+  if (customEnd) customEnd.addEventListener('change', _onCustomDateChange);
 }
 
 // ===== Category Filter — Smart Text Box =====

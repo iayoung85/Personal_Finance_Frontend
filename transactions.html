@@ -51,13 +51,24 @@
           </div>
           <!-- Date Range Row -->
           <div class="filter-row">
+            <!-- Hidden inputs preserve date values for table-renderer, export, etc. -->
+            <input type="hidden" id="start-date">
+            <input type="hidden" id="end-date">
+
             <div class="filter-group filter-group-dates">
-              <input type="text" id="start-date" class="date-input">
-              <span class="filter-separator">to</span>
-              <input type="text" id="end-date" class="date-input">
-              <button onclick="setEarliestToDate()" class="btn-quick-range">Earliest</button>
-              <button onclick="setMonthToDate()" class="btn-quick-range">MTD</button>
-              <button onclick="setLastMonth()" class="btn-quick-range">Last Month</button>
+              <span class="date-filter-label">Date:</span>
+              <button id="btn-date-mtd" class="btn-date-toggle" onclick="toggleDateFilter('mtd')">MTD</button>
+              <button id="btn-date-ytd" class="btn-date-toggle" onclick="toggleDateFilter('ytd')">YTD</button>
+              <button id="btn-date-last-month" class="btn-date-toggle" onclick="toggleDateFilter('last_month')">Last Month</button>
+              <button id="btn-date-last-year" class="btn-date-toggle" onclick="toggleDateFilter('last_year')">Last Year</button>
+              <span id="date-month-buttons" class="date-month-buttons"></span>
+              <span id="date-year-buttons" class="date-year-buttons"></span>
+              <button id="btn-date-custom" class="btn-date-toggle" onclick="toggleDateFilter('custom')">Custom Range</button>
+              <span id="custom-date-range-inputs" class="custom-date-range" style="display:none;">
+                <input type="date" id="custom-start-date" class="date-input">
+                <span class="filter-separator">to</span>
+                <input type="date" id="custom-end-date" class="date-input">
+              </span>
             </div>
 
             <div class="filter-group filter-group-categories">
@@ -68,10 +79,6 @@
                 <div id="filter-category-ac-list" class="category-ac-list filter-ac-list"></div>
               </div>
               <button onclick="clearCategoryFilters()" class="btn-quick-range">Clear</button>
-            </div>
-
-            <div id="dynamic-period-buttons" class="filter-group filter-group-periods">
-              <!-- Buttons generated dynamically based on transaction data -->
             </div>
 
             <div class="filter-group filter-group-toggles">
