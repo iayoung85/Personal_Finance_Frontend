@@ -139,6 +139,7 @@ function _saveCatPageCache() {
       categoryMappings,
       customCategories,
       availableCategories,
+      categoryListHash,
       rules,
       migrationLog
     };
@@ -190,6 +191,7 @@ async function loadCategorizationData(forceNetwork = false) {
             categoryMappings = cached.categoryMappings;
             customCategories = cached.customCategories || [];
             availableCategories = cached.availableCategories || [];
+            categoryListHash = cached.categoryListHash || null;
             rules = cached.rules || [];
             migrationLog = cached.migrationLog || [];
             plaidTaxonomy = cachedTax;
@@ -230,6 +232,7 @@ async function loadCategorizationData(forceNetwork = false) {
 
     categoryMappings = responses[0].ok ? (categoriesData.category_mappings || {}) : {};
     customCategories = responses[0].ok ? (categoriesData.custom_categories || []) : [];
+    categoryListHash = responses[0].ok ? (categoriesData.category_list_hash || null) : null;
     rules = responses[1].ok ? (rulesData.rules || []) : [];
     migrationLog = responses[2].ok ? (logData.migrations || []) : [];
     overrides = responses[4].ok ? (overridesData.overrides_by_category || []) : [];
@@ -297,4 +300,5 @@ function renderAllCategoryViews() {
   renderMigrationLog();
   renderDetailedMappingFilterOptions();
   renderAvailableCategoriesPreview();
+  updateCategoryHashDisplay();
 }

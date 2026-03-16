@@ -8,6 +8,7 @@
 let categoryMappings = {};
 let customCategories = [];
 let availableCategories = [];
+let categoryListHash = null;
 let rules = [];
 let plaidTaxonomy = [];
 let migrationLog = [];

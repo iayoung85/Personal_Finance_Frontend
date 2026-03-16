@@ -273,7 +273,7 @@ class DevToolsWidget {
     });
     header.innerHTML = `
       <span>🛠 Dev Scenarios</span>
-      <span id="dev-tools-toggle">▼</span>
+      <span id="dev-tools-toggle">▲</span>
     `;
 
     this.body = document.createElement('div');
@@ -371,7 +371,8 @@ class DevToolsWidget {
 
     document.body.appendChild(this.container);
 
-    this.isOpen = true;
+    this.isOpen = false;
+    this.body.style.display = 'none';
     header.onclick = () => this.toggleBody();
   }
 

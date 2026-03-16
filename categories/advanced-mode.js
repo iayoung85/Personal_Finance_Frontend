@@ -21,6 +21,21 @@ function clearCSVDisplay() {
   document.getElementById('csv-file-input').value = '';
 }
 
+// ── Hash Display ───────────────────────────────────────────
+
+function updateCategoryHashDisplay() {
+  const hashDisplay = document.getElementById('category-hash-display');
+  const hashValue = document.getElementById('category-hash-value');
+  if (!hashDisplay || !hashValue) return;
+
+  if (categoryListHash) {
+    hashValue.textContent = categoryListHash;
+    hashDisplay.style.display = 'block';
+  } else {
+    hashDisplay.style.display = 'none';
+  }
+}
+
 // ── Download ───────────────────────────────────────────────
 
 async function downloadCategoriesCSV() {
