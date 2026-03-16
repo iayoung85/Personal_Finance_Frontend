@@ -965,6 +965,56 @@ tr:hover {
 }
 
 /* ============================================
+   BACKUP / RESTORE MODAL + BUTTON
+   ============================================ */
+.btn-backup-restore {
+  background: var(--accent-purple, #7c3aed);
+}
+
+.btn-backup-restore:hover {
+  background: rgba(124, 58, 237, 0.8);
+}
+
+.modal-backup-restore {
+  width: min(420px, 90vw);
+}
+
+.backup-section {
+  margin-bottom: 16px;
+}
+
+.backup-section h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.backup-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+.backup-hint-empty {
+  display: none;
+}
+
+/* Show "load transactions" hint when export buttons are hidden */
+#export-buttons.hidden ~ .backup-hint-empty {
+  display: block;
+}
+
+.btn-backup-import {
+  background: var(--accent-primary);
+  font-size: 13px;
+  padding: 6px 14px;
+}
+
+.btn-backup-import:hover {
+  background: var(--accent-primary-hover);
+}
+
+/* ============================================
    EXPORT BAR (pinned bottom)
    ============================================ */
 .export-bar {

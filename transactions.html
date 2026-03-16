@@ -109,6 +109,7 @@
           <div class="action-row-right">
             <button onclick="syncTransactions()" class="btn-action btn-sync">⟳ Re-sync</button>
             <button onclick="openAddManualTransactionModal()" class="btn-action btn-manual-txn" title="Add a manual transaction. For Plaid accounts, use this only for historical transactions that occurred before the earliest Plaid-downloaded entry. Hotkey: Ctrl+M (Windows/Linux) or Cmd+M (Mac)">+ Manual Txn</button>
+            <button onclick="openBackupRestoreModal()" class="btn-action btn-backup-restore" title="Import or export transaction data">📦 Backup / Restore</button>
             <button onclick="openConfigModal()" class="btn-action btn-config" title="Settings">⚙</button>
           </div>
         </div>
@@ -135,20 +136,8 @@
           </div>
         </div>
 
-        <!-- ── Export Bar (pinned bottom) ───────────────────── -->
+        <!-- ── Reports Bar (pinned bottom) ──────────────────── -->
         <div class="export-bar">
-          <div class="import-group">
-            <span class="export-group-label">Import</span>
-            <button onclick="openImportWizard()" class="btn-import">📥 Import</button>
-          </div>
-          <div class="export-group">
-            <span class="export-group-label">Transactions</span>
-            <div id="export-buttons" class="export-buttons hidden">
-              <button onclick="exportJSON()" class="btn-export">JSON</button>
-              <button onclick="downloadCSV()" class="btn-export">CSV</button>
-              <button onclick="copyCSV()" class="btn-export">Copy CSV</button>
-            </div>
-          </div>
           <div class="export-group">
             <span class="export-group-label">Balance Summary</span>
             <div class="export-buttons">
@@ -372,6 +361,36 @@
       </div>
       <div class="modal-footer">
         <button class="secondary" onclick="closeInspectDataModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Backup / Restore Modal ═══ -->
+  <div id="backup-restore-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeBackupRestoreModal()">
+    <div class="modal modal-backup-restore">
+      <div class="modal-header">
+        <h2>📦 Backup / Restore</h2>
+        <button class="modal-close" onclick="closeBackupRestoreModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="backup-section">
+          <h3>Import Transactions</h3>
+          <p class="backup-hint">Restore from a previous PFC export or import from an external source.</p>
+          <button onclick="closeBackupRestoreModal(); openImportWizard()" class="btn-action btn-backup-import">📥 Import</button>
+        </div>
+        <div class="backup-section">
+          <h3>Export Transactions</h3>
+          <p class="backup-hint">Full backup of all loaded transactions (excludes system-generated balance rows).</p>
+          <div id="export-buttons" class="export-buttons hidden">
+            <button onclick="exportJSON()" class="btn-export">JSON</button>
+            <button onclick="downloadCSV()" class="btn-export">CSV</button>
+            <button onclick="copyCSV()" class="btn-export">Copy CSV</button>
+          </div>
+          <p id="export-buttons-empty" class="backup-hint backup-hint-empty">Load transactions first to enable export.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="secondary" onclick="closeBackupRestoreModal()">Close</button>
       </div>
     </div>
   </div>

@@ -1,5 +1,5 @@
 // ============================================================
-// transactions/export.js — Data Export Functions
+// transactions/export.js — Data Export & Backup/Restore Modal
 // JSON export, CSV copy-to-clipboard, CSV download.
 //
 // CSV format is "PFC Export v1" — always includes backup/restore
@@ -7,6 +7,15 @@
 // plus a header comment with a category_list_hash so the
 // re-importer can detect category drift.
 // ============================================================
+
+// ── Backup / Restore Modal ──────────────────────────────────
+function openBackupRestoreModal() {
+  document.getElementById('backup-restore-modal').classList.remove('hidden');
+}
+
+function closeBackupRestoreModal() {
+  document.getElementById('backup-restore-modal').classList.add('hidden');
+}
 
 // Cached export metadata — fetched once per export action
 let _exportMetadataCache = null;
@@ -41,6 +50,10 @@ async function exportJSON() {
     showStatus('Preparing JSON export...', 'info');
     const metadata = await _fetchExportMetadata();
 
+    const exportableTransactions = transactions.filter(
+      txn => txn.source !== 'opening_balance' && txn.source !== 'manual_opening_balance'
+    );
+
     const exportPayload = {
       metadata: {
         format: 'pfc_json_v1',
@@ -51,7 +64,7 @@ async function exportJSON() {
         custom_categories: metadata.customCategories,
         accounts: metadata.accounts,
       },
-      transactions: transactions,
+      transactions: exportableTransactions,
     };
 
     const dataStr = JSON.stringify(exportPayload, null, 2);
@@ -199,6 +212,9 @@ function generateCSV(metadata) {
     // Split children are nested under their parent — skip any that
     // leaked into the top-level array (source='split')
     if (txn.source === 'split') continue;
+
+    // OB/MOB are system-derived balance anchors, not real transactions
+    if (txn.source === 'opening_balance' || txn.source === 'manual_opening_balance') continue;
 
     csv += _formatCsvRow(txn, optionalFields, '') + '\n';
 
