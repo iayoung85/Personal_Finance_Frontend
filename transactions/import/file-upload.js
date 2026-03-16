@@ -36,7 +36,7 @@ function renderFileUploadStep(container) {
         Drag & drop your file here, or click to browse
       </div>
       <div class="import-upload-zone-hint">
-        Supports: Quicken CSV
+        Supports: Quicken CSV, App CSV Export, App JSON Export
       </div>
       <input type="file" id="import-file-input" accept=".csv,.json"
              style="display:none" onchange="_onImportFileSelected(event)">
@@ -139,9 +139,28 @@ async function _analyzeImportFile() {
 function _initAccountMappingsFromAnalysis() {
   if (!importAnalysis || !importAnalysis.accounts) return;
 
+  const isAppReimport = _isAppReimportFormat();
   importAccountMappings = {};
+
   for (const csvAccount of importAnalysis.accounts) {
-    importAccountMappings[csvAccount.csv_name] = { action: 'ignore' };
+    if (isAppReimport && csvAccount.auto_mapped && csvAccount.account_id) {
+      importAccountMappings[csvAccount.csv_name] = {
+        action: 'map',
+        target_account_id: csvAccount.account_id,
+      };
+    } else if (isAppReimport) {
+      importAccountMappings[csvAccount.csv_name] = {
+        action: 'create_new',
+        new_account_config: {
+          account_name: csvAccount.csv_name,
+          bank_name: csvAccount.inferred_bank_name || csvAccount.csv_name,
+          account_category: csvAccount.inferred_account_category || 'other',
+          opening_balance: 0,
+        },
+      };
+    } else {
+      importAccountMappings[csvAccount.csv_name] = { action: 'ignore' };
+    }
   }
 }
 
@@ -160,6 +179,24 @@ function _initCategoryMappingsFromAnalysis() {
       };
     }
   }
+}
+
+function _isAppReimportFormat() {
+  if (!importAnalysis) return false;
+  const format = importAnalysis.format_detected;
+  return format === 'app_csv' || format === 'app_json';
+}
+
+/**
+ * Check if a fast-path "Restore All" is possible:
+ * all accounts auto-mapped AND category hash matches.
+ */
+function _canRestoreAll() {
+  if (!_isAppReimportFormat()) return false;
+  const accounts = importAnalysis.accounts || [];
+  const allAutoMapped = accounts.length > 0 && accounts.every(acct => acct.auto_mapped);
+  const hashMatch = importAnalysis.metadata && importAnalysis.metadata.category_hash_match;
+  return allAutoMapped && hashMatch;
 }
 
 /**
@@ -233,12 +270,78 @@ function _renderUploadZoneHtml() {
         Drag & drop your file here, or click to browse
       </div>
       <div class="import-upload-zone-hint">
-        Supports: Quicken CSV
+        Supports: Quicken CSV, App CSV Export, App JSON Export
       </div>
       <input type="file" id="import-file-input" accept=".csv,.json"
              style="display:none" onchange="_onImportFileSelected(event)">
     </div>
   `;
+}
+
+function _renderAppReimportBanner() {
+  const metadata = importAnalysis.metadata || {};
+  const exportedAt = metadata.exported_at || 'unknown date';
+  const hashMatch = metadata.category_hash_match;
+  const accounts = importAnalysis.accounts || [];
+  const autoMappedCount = accounts.filter(acct => acct.auto_mapped).length;
+  const needsAttentionCount = accounts.length - autoMappedCount;
+  const canRestore = _canRestoreAll();
+
+  let html = `
+    <div class="import-turbo-section" style="margin-top: 20px; padding: 16px; border: 2px solid var(--accent-color, #4a9eff); border-radius: 8px;">
+      <div style="font-size: 16px; font-weight: 600; margin-bottom: 10px; color: var(--text-heading);">
+        App Backup Detected
+      </div>
+      <div style="font-size: 13px; color: var(--text-secondary, #888); margin-bottom: 12px;">
+        Exported: ${escapeHtml(exportedAt)}
+      </div>
+  `;
+
+  // Account status
+  html += '<div style="margin-bottom: 8px; font-size: 13px;">';
+  if (autoMappedCount === accounts.length) {
+    html += `<span style="color: var(--success-color, #4caf50);">✓</span> All ${accounts.length} accounts matched in your database`;
+  } else {
+    html += `<span style="color: var(--success-color, #4caf50);">✓</span> ${autoMappedCount} account(s) matched`;
+    html += ` · <span style="color: var(--warning-color, #ff9800);">⚠</span> ${needsAttentionCount} need attention`;
+  }
+  html += '</div>';
+
+  // Category hash status
+  html += '<div style="margin-bottom: 14px; font-size: 13px;">';
+  if (hashMatch) {
+    html += '<span style="color: var(--success-color, #4caf50);">✓</span> Categories unchanged since export';
+  } else {
+    html += '<span style="color: var(--warning-color, #ff9800);">⚠</span> Categories have changed since export — review recommended';
+  }
+  html += '</div>';
+
+  // Action buttons
+  html += '<div style="text-align: center;">';
+  if (canRestore) {
+    html += `
+      <button class="import-turbo-btn" onclick="_executeTurboImport()"
+              style="padding: 12px 24px; font-size: 15px; font-weight: 600; cursor: pointer;
+                     background: var(--accent-color, #4a9eff); color: white; border: none;
+                     border-radius: 6px; margin-right: 10px;">
+        Restore All
+      </button>
+      <button class="import-btn import-btn-secondary" onclick="importWizardNext()"
+              style="padding: 10px 20px; font-size: 13px;">
+        Review First →
+      </button>
+    `;
+  } else {
+    html += `
+      <button class="import-btn import-btn-primary" onclick="importWizardNext()"
+              style="padding: 12px 24px; font-size: 15px; font-weight: 600;">
+        Continue to Review →
+      </button>
+    `;
+  }
+  html += '</div></div>';
+
+  return html;
 }
 
 function _renderFileSelectedBadge() {
@@ -297,21 +400,26 @@ function _renderAnalysisSummary() {
     html += '</div>';
   }
 
-  // Turbo import button — auto-generate accounts + categories and import
-  html += `
-    <div class="import-turbo-section" style="margin-top: 20px; padding: 16px; border: 2px dashed var(--accent-color, #4a9eff); border-radius: 8px; text-align: center;">
-      <button class="import-turbo-btn" onclick="_executeTurboImport()"
-              style="padding: 12px 24px; font-size: 15px; font-weight: 600; cursor: pointer;
-                     background: var(--accent-color, #4a9eff); color: white; border: none;
-                     border-radius: 6px;">
-        Auto-Generate Accounts, Auto-Detect Categories &amp; Import
-      </button>
-      <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary, #888);">
-        Creates new accounts for all ${accountCount} CSV accounts (bank names auto-extracted),
-        accepts all category suggestions, and imports everything in one shot.
+  // App re-import: show backup detection banner and restore/review buttons
+  if (_isAppReimportFormat()) {
+    html += _renderAppReimportBanner();
+  } else {
+    // Turbo import button — auto-generate accounts + categories and import
+    html += `
+      <div class="import-turbo-section" style="margin-top: 20px; padding: 16px; border: 2px dashed var(--accent-color, #4a9eff); border-radius: 8px; text-align: center;">
+        <button class="import-turbo-btn" onclick="_executeTurboImport()"
+                style="padding: 12px 24px; font-size: 15px; font-weight: 600; cursor: pointer;
+                       background: var(--accent-color, #4a9eff); color: white; border: none;
+                       border-radius: 6px;">
+          Auto-Generate Accounts, Auto-Detect Categories &amp; Import
+        </button>
+        <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary, #888);">
+          Creates new accounts for all ${accountCount} CSV accounts (bank names auto-extracted),
+          accepts all category suggestions, and imports everything in one shot.
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  }
 
   return html;
 }

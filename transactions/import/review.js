@@ -154,7 +154,19 @@ function renderReviewStep(container) {
   }
 
   html += '</div>'; // close review-grid
+
+  // App re-import specific info
+  if (_isAppReimportFormat && _isAppReimportFormat()) {
+    html += _renderAppReimportReviewInfo();
+    html += _renderDateRangeFilter();
+  }
+
   container.innerHTML = html;
+
+  // Bind date-range filter change handlers if present
+  if (_isAppReimportFormat && _isAppReimportFormat()) {
+    _bindDateRangeHandlers();
+  }
 }
 
 // ── Execute Import ────────────────────────────────────────────
@@ -277,10 +289,22 @@ function _buildMappingsPayload() {
     categoryMappingsList.push(entry);
   }
 
-  return {
+  const payload = {
     account_mappings: accountMappingsList,
     category_mappings: categoryMappingsList,
   };
+
+  // Include date-range filter if the user adjusted it
+  const startInput = document.getElementById('import-date-range-start');
+  const endInput = document.getElementById('import-date-range-end');
+  if (startInput && startInput.value) {
+    payload.date_range_start = startInput.value;
+  }
+  if (endInput && endInput.value) {
+    payload.date_range_end = endInput.value;
+  }
+
+  return payload;
 }
 
 // ── Review Stat Helpers ───────────────────────────────────────
@@ -401,4 +425,108 @@ function _getNewCategoryNames() {
     }
   }
   return results;
+}
+
+function _renderAppReimportReviewInfo() {
+  const metadata = importAnalysis.metadata || {};
+  const splitCount = importAnalysis.split_group_count || 0;
+  const autoMapped = (importAnalysis.auto_mapped_accounts || []).length;
+  const totalAccounts = (importAnalysis.accounts || []).length;
+  const hashMatch = metadata.category_hash_match;
+  const format = importAnalysis.format_detected === 'app_json' ? 'JSON' : 'CSV';
+
+  let html = `
+    <div class="import-info-banner" style="margin-top: 16px;">
+      <strong>App ${escapeHtml(format)} Restore</strong><br>
+      <span style="font-size: 12px; color: var(--text-secondary);">
+        Source/status values from the export will be preserved.
+  `;
+
+  if (splitCount > 0) {
+    html += ` ${splitCount} split group(s) will be reconstructed via exported UUIDs.`;
+  }
+
+  if (autoMapped > 0) {
+    html += ` ${autoMapped} of ${totalAccounts} account(s) auto-matched.`;
+  }
+
+  if (hashMatch) {
+    html += ' Categories unchanged since export.';
+  } else {
+    html += ' <em>Categories changed since export — verify mappings above.</em>';
+  }
+
+  html += `
+      </span>
+    </div>
+  `;
+
+  return html;
+}
+
+function _renderDateRangeFilter() {
+  const dateRange = _computeOverallDateRange();
+  const parts = dateRange.split(' → ');
+  const minDate = parts[0] || '';
+  const maxDate = parts[1] || '';
+
+  return `
+    <div class="import-review-section" style="margin-top: 12px; padding: 12px 16px; border: 1px solid var(--border-color, #333); border-radius: 6px;">
+      <h3 style="margin: 0 0 8px 0; font-size: 14px;">Date Range Filter (optional)</h3>
+      <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;">
+        Restrict the import to a subset of dates. Leave blank for full restore.
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+        <label style="font-size: 13px;">
+          From: <input type="date" id="import-date-range-start" value="${escapeHtml(minDate)}"
+                       min="${escapeHtml(minDate)}" max="${escapeHtml(maxDate)}"
+                       style="margin-left: 4px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-input, #1e1e1e); color: var(--text-primary, #ddd);">
+        </label>
+        <label style="font-size: 13px;">
+          To: <input type="date" id="import-date-range-end" value="${escapeHtml(maxDate)}"
+                     min="${escapeHtml(minDate)}" max="${escapeHtml(maxDate)}"
+                     style="margin-left: 4px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color, #444); background: var(--bg-input, #1e1e1e); color: var(--text-primary, #ddd);">
+        </label>
+        <span id="import-date-range-count" style="font-size: 12px; color: var(--text-secondary);"></span>
+      </div>
+    </div>
+  `;
+}
+
+function _bindDateRangeHandlers() {
+  const startInput = document.getElementById('import-date-range-start');
+  const endInput = document.getElementById('import-date-range-end');
+  if (!startInput || !endInput) return;
+
+  const updateCount = () => {
+    const start = startInput.value;
+    const end = endInput.value;
+    _updateDateRangeCount(start, end);
+  };
+
+  startInput.addEventListener('change', updateCount);
+  endInput.addEventListener('change', updateCount);
+  updateCount();
+}
+
+function _updateDateRangeCount(startDate, endDate) {
+  const countEl = document.getElementById('import-date-range-count');
+  if (!countEl || !importAnalysis) return;
+
+  let totalInRange = 0;
+  for (const account of (importAnalysis.accounts || [])) {
+    const mapping = importAccountMappings[account.csv_name];
+    if (mapping && mapping.action === 'ignore') continue;
+    totalInRange += account.transaction_count;
+  }
+
+  const fullRange = _computeOverallDateRange();
+  const parts = fullRange.split(' → ');
+  const isFullRange = (startDate === parts[0]) && (endDate === parts[1]);
+
+  if (isFullRange || (!startDate && !endDate)) {
+    countEl.textContent = `${totalInRange} transactions (full range)`;
+  } else {
+    countEl.textContent = `Filtered — exact count after import`;
+  }
 }

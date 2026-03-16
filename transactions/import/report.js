@@ -44,17 +44,17 @@ function _renderImportReport(report) {
     </div>`;
   }
 
-  if (report.split_parents_created !== undefined) {
+  if (report.split_parents !== undefined && report.split_parents > 0) {
     html += `<div class="import-report-stat">
       <span>Split parents created</span>
-      <span class="stat-value">${report.split_parents_created}</span>
+      <span class="stat-value">${report.split_parents}</span>
     </div>`;
   }
 
-  if (report.split_children_created !== undefined) {
+  if (report.split_children !== undefined && report.split_children > 0) {
     html += `<div class="import-report-stat">
       <span>Split children created</span>
-      <span class="stat-value">${report.split_children_created}</span>
+      <span class="stat-value">${report.split_children}</span>
     </div>`;
   }
 
@@ -175,10 +175,18 @@ function _renderImportReport(report) {
   }
 
   // ── Skipped / Discarded ───────────────────────────────────
-  const hasSkipped = report.ignored_by_account || report.ignored_by_category || report.discarded_rows;
+  const hasSkipped = report.ignored_by_account || report.ignored_by_category
+    || report.discarded_rows || report.duplicates_skipped;
   if (hasSkipped) {
     html += '<div class="import-report-section">';
     html += '<h3>Skipped / Discarded</h3>';
+
+    if (report.duplicates_skipped) {
+      html += `<div class="import-report-stat">
+        <span>Duplicates skipped (already in DB)</span>
+        <span class="stat-value">${report.duplicates_skipped}</span>
+      </div>`;
+    }
 
     if (report.ignored_by_account) {
       html += `<div class="import-report-stat">

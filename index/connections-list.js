@@ -138,17 +138,26 @@ const IndexConnectionsList = (() => {
       );
       // Activate buttons for linked banks missing a product
       const billedProducts = bank.billed_products || [];
+      const availableProducts = bank.available_products || [];
       const hasTransactions = billedProducts.includes('transactions');
       const hasInvestments = billedProducts.includes('investments');
 
-      if (!hasTransactions) {
+      // Transaction activation needs depository/credit accounts already linked;
+      // investment-only connections have nothing to sync transactions for.
+      const accounts = bank.accounts || [];
+      const hasTransactionEligibleAccounts = accounts.some(
+        account => account.account_category === 'depository' || account.account_category === 'credit'
+      );
+
+      if (!hasTransactions && hasTransactionEligibleAccounts && availableProducts.includes('transactions')) {
         buttons.push(
           `<button class="bank-btn bank-btn-activate" title="Activate the transactions product for this bank (Plaid billing applies)" ` +
           `onclick="IndexConnectionsList.handleActivateTransactions('${bankIdAttr}', '${nameAttr}')">`  +
           `📊 Activate Transactions</button>`
         );
       }
-      if (!hasInvestments) {
+      // Only offer investment activation when the institution advertises it
+      if (!hasInvestments && availableProducts.includes('investments')) {
         buttons.push(
           `<button class="bank-btn bank-btn-activate" title="Activate the investments product for this bank (Plaid billing applies)" ` +
           `onclick="IndexConnectionsList.handleActivateInvestments('${bankIdAttr}', '${nameAttr}', '${itemIdAttr}')">`  +

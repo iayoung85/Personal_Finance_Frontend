@@ -147,6 +147,7 @@ const IndexApi = (() => {
       return {
         ...bank,
         billed_products: plaidItem?.billed_products || [],
+        available_products: plaidItem?.available_products || [],
         plaid_item_status: plaidItem?.status || null,
       };
     });
