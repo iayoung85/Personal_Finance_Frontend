@@ -6,8 +6,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>Investment Holdings Viewer - IAY Financial</title>
+  <title>Investment Holdings - IAY Financial</title>
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <link rel="icon" type="image/png" href="IAY favicon.png">
   <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="nav-sidebar.css">
@@ -16,59 +17,87 @@
 </head>
 <body data-nav-mode="collapsed" data-nav-page="investments">
   <div class="container">
-    
-    <h1>Investment Holdings Viewer</h1>
-    <!-- TODO: 4b: Investments.html should mirror transactions.html more closely with main content wrapper, accounts sidebar, and holdings table. Customized for investments. -->
-    <!-- Configuration Panel -->
-    <div class="config-panel">
-      <div class="config-header" onclick="toggleConfig()">
-        <span>Configuration & Status</span>
-        <span id="toggle-icon">▲</span>
+
+    <!-- Header with Hamburger Toggle for accounts sidebar -->
+    <div class="page-header">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <button id="sidebar-toggle" class="sidebar-toggle" onclick="toggleSidebar()">☰ Accounts</button>
       </div>
-      <div class="config-content open" id="config-content">
-        
-        <!-- Investment Account Selection -->
-        <div class="config-section">
-          <div style="display: flex; justify-content: flex-start; align-items: center; margin-bottom: 10px; gap: 8px; flex-wrap: wrap;">
-            <h3 style="margin: 0;">Select Investment Accounts</h3>
-            <button onclick="selectAllAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Select All</button>
-            <button onclick="deselectAllAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Deselect All</button>
-          </div>
-          <p style="margin: 0 0 10px 0; font-size: 14px; color: #666;">Only investment accounts are shown. Activate investments for a bank to include its accounts.</p>
-          <div id="account-selector"></div>
+    </div>
+
+    <!-- Main Content Wrapper -->
+    <div class="main-wrapper">
+
+      <!-- Accounts Sidebar -->
+      <aside class="accounts-sidebar" id="accounts-sidebar">
+        <div class="sidebar-content">
+          <div id="accounts-list"></div>
         </div>
-        
+      </aside>
+
+      <!-- Main Content Area -->
+      <div class="main-content">
+
+        <!-- Filter Strip -->
+        <div id="filter-strip" class="filter-strip inv-filter-strip"></div>
+
+        <!-- Action Bar -->
+        <div class="action-row">
+          <div class="action-row-left">
+            <button onclick="syncAllHoldings()">Sync All Holdings</button>
+            <div id="status-message" class="status-message"></div>
+          </div>
+          <div class="action-row-right">
+            <div class="export-buttons">
+              <button onclick="exportHoldingsJSON()" class="secondary">Export JSON</button>
+              <button onclick="copyHoldingsCSV()" class="secondary">Copy CSV</button>
+              <button onclick="downloadHoldingsCSV()" class="secondary">Download CSV</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart Panel (collapsible) -->
+        <div id="chart-panel" class="inv-chart-panel" style="display:none;">
+          <div class="inv-chart-header">
+            <span>Portfolio Breakdown</span>
+            <button class="secondary" onclick="toggleChartPanel()" style="padding:2px 8px; font-size:11px;">Hide</button>
+          </div>
+          <div class="inv-chart-body">
+            <div class="inv-chart-toggle">
+              <button id="chart-type-btn" class="btn-chart-toggle active" onclick="switchInvestmentChart('type')">By Type</button>
+              <button id="chart-sector-btn" class="btn-chart-toggle" onclick="switchInvestmentChart('sector')">By Sector</button>
+            </div>
+            <div class="inv-chart-container">
+              <canvas id="investment-chart"></canvas>
+              <div id="chart-empty-state" class="chart-empty-state">No data for chart</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Holdings Table -->
+        <div class="investment-scroll-pane">
+          <div id="table-container">
+            <div class="empty-state">Loading investment holdings…</div>
+          </div>
+        </div>
+
+        <!-- ETF Exposure Panel -->
+        <div id="etf-exposure-panel" style="display:none;"></div>
+
       </div>
     </div>
-    
-    <!-- Action Bar (above table) -->
-    <div class="action-bar">
-      <button onclick="syncAllHoldings()">Sync All Holdings</button>
-      
-      <!-- Export Buttons -->
-      <div id="export-buttons" class="export-buttons">
-        <button onclick="exportJSON()" class="secondary">Export JSON</button>
-        <button onclick="copyCSV()" class="secondary">Copy CSV</button>
-        <button onclick="downloadCSV()" class="secondary">Download CSV</button>
-      </div>
-      <div id="status-message"></div>
-    </div>
-    
-    <!-- Holdings Table -->
-    <div id="table-container">
-      <div class="empty-state">
-        Loading investment holdings...
-      </div>
-    </div>
-    
   </div>
 
-
-  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
-  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+  <!-- Scripts: dependency order -->
   <script src="config.js"></script>
   <script src="date-helpers.js"></script>
   <script src="nav-sidebar.js"></script>
-  <script src="investments.js"></script>
+  <!-- Investment modules: state → utils → api → sidebar → table → main -->
+  <script src="investments/state.js"></script>
+  <script src="investments/utils.js"></script>
+  <script src="investments/api.js"></script>
+  <script src="investments/accounts-sidebar.js"></script>
+  <script src="investments/holdings-table.js"></script>
+  <script src="investments/main.js"></script>
 </body>
 </html>

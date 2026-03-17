@@ -1,79 +1,19 @@
-/* Inherits from transactions.css -- Dark theme variables from theme.css */
+/* ============================================
+   investments.css — Investment page overrides
+   Inherits layout from transactions.css (sidebar, main-wrapper, etc.)
+   Dark theme variables from theme.css
+   ============================================ */
 
-/* Flat list layout for investment accounts */
-.account-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.item-group {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-}
-
-.accounts-column {
+/* ── Holdings table scroll pane ──────────── */
+.investment-scroll-pane {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.account-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: var(--bg-surface-elevated);
-  border-bottom: 1px solid var(--border-subtle);
-  min-height: 40px;
-}
-
-.account-row label {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0;
-  flex: 1;
-}
-
-.account-row .bank-name {
-  font-weight: 500;
-  color: var(--text-heading);
-  min-width: 150px;
-}
-
-.account-row .account-name {
-  color: var(--text-secondary);
-  flex: 1;
-}
-
-.item-group .activate-btn {
-  align-self: stretch;
-  min-width: 100px;
-  background-color: var(--color-success);
-  color: var(--text-inverse);
-  border: none;
-  padding: 8px 16px;
+  overflow-y: auto;
+  min-height: 0;
+  border: 1px solid var(--border-primary);
   border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: background-color 0.2s;
-  white-space: nowrap;
 }
 
-.item-group .activate-btn:hover {
-  background-color: var(--color-success-muted);
-}
-
-.item-group .activate-btn:disabled {
-  background-color: var(--bg-input);
-  color: var(--text-muted);
-  cursor: not-allowed;
-}
-
+/* ── Pool/Account mode group headers ─────── */
 .holding-group-header {
   background-color: var(--table-header-bg);
   font-weight: bold;
@@ -85,6 +25,7 @@
   background-color: var(--bg-hover);
 }
 
+/* ── Expandable detail rows ──────────────── */
 .holding-detail-row {
   background-color: var(--bg-surface);
   display: none;
@@ -111,62 +52,224 @@
   transform: rotate(90deg);
 }
 
+/* ── Gain / Loss coloring ────────────────── */
 .positive-gain {
-  color: var(--color-positive);
+  color: var(--color-positive, #34D399);
 }
 
 .negative-gain {
-  color: var(--color-negative);
+  color: var(--color-negative, #F87171);
 }
 
-.account-status-item {
+/* ── Account-mode section headers ────────── */
+.account-section {
+  margin-bottom: 16px;
+}
+
+.account-section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px;
+  padding: 8px 12px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px 4px 0 0;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-heading);
+}
+
+.account-section-total {
+  font-weight: 700;
+  color: var(--color-success);
+}
+
+.account-section .transactions-table {
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+}
+
+/* ── Sortable column headers ─────────────── */
+.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sortable:hover {
+  color: var(--accent-primary);
+}
+
+/* ── Sidebar inactive account styling ────── */
+.sidebar-account-inactive {
+  opacity: 0.5;
+}
+
+/* ── Filter strip (investments-specific) ─── */
+.inv-filter-strip {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  flex-wrap: wrap;
+}
+
+.inv-filter-strip select {
+  padding: 4px 8px;
+  font-size: 13px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+}
+
+.inv-filter-strip label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* ── Chart panel ─────────────────────────── */
+.inv-chart-panel {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.inv-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 14px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.account-status-item:last-child {
-  border-bottom: none;
+.inv-chart-body {
+  padding: 12px;
 }
 
-.status-badge {
-  padding: 2px 6px;
+.inv-chart-toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.btn-chart-toggle {
+  padding: 4px 12px;
+  font-size: 12px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
   border-radius: 4px;
-  font-size: 11px;
-  font-weight: bold;
+  cursor: pointer;
 }
 
-.status-active {
-  background-color: var(--badge-success-bg);
-  color: var(--badge-success-text);
+.btn-chart-toggle.active {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
 }
 
-.status-inactive {
-  background-color: var(--badge-danger-bg);
-  color: var(--badge-danger-text);
+.inv-chart-container {
+  position: relative;
+  max-height: 320px;
 }
 
-/* Action bar above table */
-.action-bar {
+.inv-chart-container canvas {
+  max-height: 300px;
+}
+
+/* ── Action row overrides ────────────────── */
+.action-row {
   display: flex;
   gap: 10px;
   align-items: center;
-  margin: 20px 0;
-  padding: 12px;
+  padding: 8px 12px;
   background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-primary);
   border-radius: 4px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.action-row-left {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.action-row-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.export-buttons {
+  display: flex;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
-.action-bar button {
-  padding: 8px 12px;
+/* ── Activate button ─────────────────────── */
+.activate-btn {
+  background-color: var(--color-success);
+  color: var(--text-inverse);
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.activate-btn:hover {
+  background-color: var(--color-success-muted);
+}
+
+.activate-btn:disabled {
+  background-color: var(--bg-input);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* ── ETF Exposure panel ──────────────────── */
+.etf-exposure-panel {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.etf-exposure-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.etf-exposure-header h3 {
+  margin: 0;
   font-size: 14px;
 }
 
-.action-bar .export-buttons {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+.etf-exposure-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.direct-overlap-badge {
+  background: var(--accent-primary);
+  color: white;
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 4px;
 }
