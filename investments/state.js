@@ -41,6 +41,9 @@ let chartViewMode = 'type'; // 'type', 'sector', or 'allocation'
 let vocabularySectors = [];
 let vocabularyIndustries = [];
 
+// Allocation categories (populated from backend)
+let allocationCategories = [];
+
 // Pastel color palette (matches transactions chart)
 const PASTEL_COLORS = [
   '#5B9BD5', '#ED7D72', '#70C1B3', '#F6BD60', '#A78BFA',

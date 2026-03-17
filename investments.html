@@ -60,12 +60,14 @@
         <div id="chart-panel" class="inv-chart-panel" style="display:none;">
           <div class="inv-chart-header">
             <span>Portfolio Breakdown</span>
+            <button class="secondary" onclick="openAllocationSettings()" style="padding:2px 8px; font-size:11px;">⚙ Allocations</button>
             <button class="secondary" onclick="toggleChartPanel()" style="padding:2px 8px; font-size:11px;">Hide</button>
           </div>
           <div class="inv-chart-body">
             <div class="inv-chart-toggle">
               <button id="chart-type-btn" class="btn-chart-toggle active" onclick="switchInvestmentChart('type')">By Type</button>
               <button id="chart-sector-btn" class="btn-chart-toggle" onclick="switchInvestmentChart('sector')">By Sector</button>
+              <button id="chart-alloc-btn" class="btn-chart-toggle" onclick="switchInvestmentChart('allocation')">Allocation Drift</button>
             </div>
             <div class="inv-chart-container">
               <canvas id="investment-chart"></canvas>
@@ -100,6 +102,7 @@
   <script src="investments/security-filter.js"></script>
   <script src="investments/holdings-table.js"></script>
   <script src="investments/etf-exposure.js"></script>
+  <script src="investments/chart.js"></script>
   <script src="investments/main.js"></script>
 </body>
 </html>

@@ -34,6 +34,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     vocabularyIndustries = data.industries || [];
   }).catch(error => console.warn('Failed to load vocabulary:', error));
 
+  // Load allocation categories (non-blocking)
+  fetchAllocationCategories().then(data => {
+    allocationCategories = data.categories || [];
+  }).catch(error => console.warn('Failed to load allocation categories:', error));
+
   // Check for newly connected investment items and auto-sync
   const newInvItems = JSON.parse(sessionStorage.getItem('newInvestmentItems') || '[]');
   if (newInvItems.length > 0) {
@@ -65,6 +70,7 @@ async function loadInvestmentHoldings() {
     renderFilterStrip();
     renderHoldingsTable();
     loadEtfExposurePanel();
+    renderInvestmentChart();
   } catch (error) {
     console.error('Error loading holdings:', error);
     container.innerHTML = `<div class="error">Error loading holdings: ${error.message}</div>`;
@@ -78,6 +84,7 @@ function onAccountSelectionChanged() {
   renderFilterStrip();
   renderHoldingsTable();
   loadEtfExposurePanel();
+  renderInvestmentChart();
 }
 
 /**
@@ -145,12 +152,15 @@ function _buildHoldingsCSV() {
 
 function toggleChartPanel() {
   const panel = document.getElementById('chart-panel');
-  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  const isHidden = panel.style.display === 'none';
+  panel.style.display = isHidden ? 'block' : 'none';
+  if (isHidden) renderInvestmentChart();
 }
 
 function switchInvestmentChart(mode) {
   chartViewMode = mode;
   document.getElementById('chart-type-btn').classList.toggle('active', mode === 'type');
   document.getElementById('chart-sector-btn').classList.toggle('active', mode === 'sector');
-  // Chart rendering will be implemented in Phase 5
+  document.getElementById('chart-alloc-btn').classList.toggle('active', mode === 'allocation');
+  renderInvestmentChart();
 }

@@ -146,3 +146,61 @@ async function submitEtfHoldingsApi(etfTicker, etfName, holdings) {
   if (!response.ok) throw new Error(data.error || 'Failed to submit ETF holdings');
   return data;
 }
+
+async function fetchAllocationCategories() {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/allocation-categories`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Failed to fetch categories');
+  return data;
+}
+
+async function createAllocationCategoryApi(categoryName, targetPct) {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/allocation-categories`, {
+    method: 'POST',
+    body: JSON.stringify({ category_name: categoryName, target_pct: targetPct }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Failed to create category');
+  return data;
+}
+
+async function updateAllocationCategoryApi(categoryId, updates) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/investments/allocation-categories/${categoryId}`,
+    { method: 'PUT', body: JSON.stringify(updates) }
+  );
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Failed to update category');
+  return data;
+}
+
+async function deleteAllocationCategoryApi(categoryId) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/investments/allocation-categories/${categoryId}`,
+    { method: 'DELETE' }
+  );
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Failed to delete category');
+  return data;
+}
+
+async function allocateSecurityApi(securityId, categoryName) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/investments/securities/${encodeURIComponent(securityId)}/allocate`,
+    { method: 'POST', body: JSON.stringify({ category_name: categoryName }) }
+  );
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Failed to allocate security');
+  return data;
+}
+
+async function fetchAllocationSummary(accountIds) {
+  let url = `${BACKEND_URL}/api/investments/allocation-summary`;
+  if (accountIds && accountIds.length > 0) {
+    url += `?account_ids=${accountIds.join(',')}`;
+  }
+  const response = await authenticatedFetch(url);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Failed to fetch allocation summary');
+  return data;
+}

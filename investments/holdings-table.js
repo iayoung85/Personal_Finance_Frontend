@@ -61,8 +61,8 @@ function _renderPoolModeTable(container, selectedIds) {
           <th class="sortable" onclick="changeSort('total_value')">Value ${_sortIcon('total_value')}</th>
           <th class="sortable" onclick="changeSort('cost_basis')">Cost Basis ${_sortIcon('cost_basis')}</th>
           <th class="sortable" onclick="changeSort('gain_loss')">Gain/Loss ${_sortIcon('gain_loss')}</th>
+          <th>Alloc</th>
         </tr>
-      </thead>
       <tbody>
   `;
 
@@ -83,6 +83,7 @@ function _renderPoolModeTable(container, selectedIds) {
         <td>${formatCurrency(group.total_value)}</td>
         <td>${formatCurrency(group.total_cost_basis)}</td>
         <td class="${gainLossClass}">${_formatGainLoss(gainLoss)}</td>
+        <td>${_renderAllocCell(group.security_id)}</td>
       </tr>
     `;
 
@@ -103,6 +104,7 @@ function _renderPoolModeTable(container, selectedIds) {
           <td>${formatCurrency(holding.value)}</td>
           <td>${formatCurrency(holding.cost_basis)}</td>
           <td class="${holdingGainClass}">${_formatGainLoss(holdingGainLoss)}</td>
+          <td></td>
         </tr>
       `;
     });
@@ -112,7 +114,7 @@ function _renderPoolModeTable(container, selectedIds) {
   html += `
       <tr class="holding-group-header" style="border-top: 2px solid var(--border-primary);">
         <td></td>
-        <td colspan="7" style="text-align:right; font-weight:bold;">Total Portfolio Value:</td>
+        <td colspan="8" style="text-align:right; font-weight:bold;">Total Portfolio Value:</td>
         <td style="font-weight:bold;">${formatCurrency(grandTotal)}</td>
         <td></td>
         <td></td>
@@ -163,6 +165,7 @@ function _renderAccountModeTable(container, selectedIds) {
               <th class="sortable" onclick="changeSort('total_value')">Value ${_sortIcon('total_value')}</th>
               <th class="sortable" onclick="changeSort('cost_basis')">Cost Basis ${_sortIcon('cost_basis')}</th>
               <th class="sortable" onclick="changeSort('gain_loss')">Gain/Loss ${_sortIcon('gain_loss')}</th>
+              <th>Alloc</th>
             </tr>
           </thead>
           <tbody>
@@ -184,6 +187,7 @@ function _renderAccountModeTable(container, selectedIds) {
           <td>${formatCurrency(holding.value)}</td>
           <td>${formatCurrency(holding.cost_basis)}</td>
           <td class="${gainLossClass}">${_formatGainLoss(gainLoss)}</td>
+          <td>${_renderAllocCell(holding.security_id)}</td>
         </tr>
       `;
     });
@@ -431,6 +435,46 @@ function _formatGainLoss(gainLoss) {
 function toggleGroup(groupId, headerRow) {
   document.querySelectorAll(`.${groupId}`).forEach(row => row.classList.toggle('expanded'));
   headerRow.classList.toggle('expanded');
+}
+
+// ─── Allocation cell rendering ───────────────────────────────
+
+function _renderAllocCell(securityId) {
+  if (!securityId || allocationCategories.length === 0) return '—';
+
+  const security = securitiesData.find(s => s.security_id === securityId);
+  const allocId = security ? security.allocation_category_id : null;
+
+  if (allocId) {
+    const cat = allocationCategories.find(c => c.id === allocId);
+    return cat ? `<span class="alloc-badge">${cat.category_name}</span>` : '—';
+  }
+
+  const options = allocationCategories.map(cat =>
+    `<option value="${cat.id}">${cat.category_name}</option>`
+  ).join('');
+
+  return `<select class="alloc-assign-select" onchange="assignAllocation('${securityId}', this.value); event.stopPropagation();" onclick="event.stopPropagation();">
+    <option value="">—</option>
+    ${options}
+  </select>`;
+}
+
+async function assignAllocation(securityId, categoryId) {
+  if (!categoryId) return;
+  try {
+    await allocateSecurityApi(securityId, parseInt(categoryId));
+    // Update local state
+    const secIdx = securitiesData.findIndex(s => s.security_id === securityId);
+    if (secIdx >= 0) {
+      securitiesData[secIdx].allocation_category_id = parseInt(categoryId);
+    }
+    renderHoldingsTable();
+    renderInvestmentChart();
+    showInvestmentMessage('Security assigned to allocation category', 'success');
+  } catch (error) {
+    showInvestmentMessage(error.message || 'Failed to assign allocation', 'error');
+  }
 }
 
 // ─── Sector/Industry cell rendering ──────────────────────────
