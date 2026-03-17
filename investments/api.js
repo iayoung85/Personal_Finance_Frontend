@@ -125,3 +125,24 @@ async function fetchVocabulary() {
   if (!response.ok) throw new Error(data.error || 'Failed to load vocabulary');
   return data;
 }
+
+async function fetchEtfExposure(tickers, values) {
+  const tickersParam = tickers.join(',');
+  const valuesParam = values.join(',');
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/investments/etf-exposure?tickers=${encodeURIComponent(tickersParam)}&values=${encodeURIComponent(valuesParam)}`
+  );
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Failed to fetch ETF exposure');
+  return data;
+}
+
+async function submitEtfHoldingsApi(etfTicker, etfName, holdings) {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/etf-holdings`, {
+    method: 'POST',
+    body: JSON.stringify({ etf_ticker: etfTicker, etf_name: etfName, holdings }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Failed to submit ETF holdings');
+  return data;
+}
