@@ -28,6 +28,16 @@ document.addEventListener('DOMContentLoaded', async function() {
   // Load accounts first so sidebar exists
   await loadInvestmentAccounts();
 
+  // Load saved viewer settings (view mode, chart preference)
+  try {
+    const settingsData = await loadViewerSettings();
+    const prefs = _parseViewerPrefs(settingsData.optional_fields);
+    if (prefs.chartViewMode) chartViewMode = prefs.chartViewMode;
+    if (prefs.poolAllMode === false) poolAllMode = false;
+  } catch (_settingsError) {
+    // Settings may not exist yet — defaults are fine
+  }
+
   // Load vocabulary for sector/industry dropdowns (non-blocking)
   fetchVocabulary().then(data => {
     vocabularySectors = data.sectors || [];
@@ -97,57 +107,6 @@ function showInvestmentMessage(msg, type) {
   setTimeout(() => { el.innerHTML = ''; }, 5000);
 }
 
-// ── Stub: Export functions (Phase 6 will implement fully) ────
-
-function exportHoldingsJSON() {
-  const selected = getSelectedAccountIds();
-  if (selected.length === 0) { alert('Select at least one account.'); return; }
-  // Minimal JSON export of grouped holdings
-  const grouped = _buildGroupedByTicker(selected);
-  const jsonStr = JSON.stringify(grouped, null, 2);
-  downloadAsFile(jsonStr, 'holdings.json', 'application/json');
-}
-
-function copyHoldingsCSV() {
-  const csv = _buildHoldingsCSV();
-  if (!csv) return;
-  navigator.clipboard.writeText(csv)
-    .then(() => showInvestmentMessage('CSV copied to clipboard', 'success'))
-    .catch(() => alert('Failed to copy CSV'));
-}
-
-function downloadHoldingsCSV() {
-  const csv = _buildHoldingsCSV();
-  if (!csv) return;
-  downloadAsFile(csv, 'holdings.csv', 'text/csv;charset=utf-8;');
-}
-
-function _buildHoldingsCSV() {
-  const selected = getSelectedAccountIds();
-  if (selected.length === 0) { alert('Select at least one account.'); return null; }
-  const grouped = _buildGroupedByTicker(selected);
-  if (grouped.length === 0) { alert('No holdings found.'); return null; }
-
-  const rows = [['Ticker', 'Name', 'Type', 'Sector', 'Industry', 'Qty', 'Price', 'Value', 'Cost Basis', 'Gain/Loss']];
-  grouped.forEach(group => {
-    const gainLoss = _computeGainLoss(group.total_value, group.total_cost_basis);
-    rows.push([
-      group.ticker || '',
-      group.name || '',
-      group.type || '',
-      group.sector || '',
-      group.industry || '',
-      group.total_quantity.toFixed(4),
-      group.price != null ? group.price.toFixed(2) : '',
-      group.total_value != null ? group.total_value.toFixed(2) : '',
-      group.total_cost_basis != null ? group.total_cost_basis.toFixed(2) : '',
-      gainLoss != null ? gainLoss.toFixed(2) : ''
-    ]);
-  });
-
-  return rows.map(row => row.map(csvEscape).join(',')).join('\n');
-}
-
 // ── Stub: Chart panel toggle (Phase 5 will implement fully) ──
 
 function toggleChartPanel() {
@@ -163,4 +122,40 @@ function switchInvestmentChart(mode) {
   document.getElementById('chart-sector-btn').classList.toggle('active', mode === 'sector');
   document.getElementById('chart-alloc-btn').classList.toggle('active', mode === 'allocation');
   renderInvestmentChart();
+  _saveViewerPrefs();
+}
+
+// ─── Export dropdown ─────────────────────────────────────────
+
+function toggleExportDropdown() {
+  const dropdown = document.getElementById('export-dropdown');
+  dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+}
+
+// Close export dropdown on outside click
+document.addEventListener('click', function(event) {
+  const dropdown = document.getElementById('export-dropdown');
+  const wrapper = event.target.closest('.export-dropdown-wrapper');
+  if (!wrapper && dropdown) dropdown.style.display = 'none';
+});
+
+// ─── Settings persistence ────────────────────────────────────
+
+function _parseViewerPrefs(optionalFields) {
+  if (!optionalFields) return {};
+  if (typeof optionalFields === 'string') {
+    try { return JSON.parse(optionalFields); } catch (_) { return {}; }
+  }
+  if (typeof optionalFields === 'object' && !Array.isArray(optionalFields)) return optionalFields;
+  return {};
+}
+
+function _saveViewerPrefs() {
+  const prefs = {
+    chartViewMode: chartViewMode,
+    poolAllMode: poolAllMode,
+  };
+  saveViewerSettings(prefs, []).catch(error =>
+    console.warn('Failed to save viewer settings:', error)
+  );
 }

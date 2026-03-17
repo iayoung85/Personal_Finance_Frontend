@@ -210,6 +210,7 @@ function togglePoolAll() {
   renderInvestmentSidebar();
   _applyPoolAllSelection();
   onAccountSelectionChanged();
+  if (typeof _saveViewerPrefs === 'function') _saveViewerPrefs();
 }
 
 function toggleAccountSelection(accountId) {
@@ -232,6 +233,7 @@ function toggleAccountSelection(accountId) {
 
   renderInvestmentSidebar();
   onAccountSelectionChanged();
+  if (typeof _saveViewerPrefs === 'function') _saveViewerPrefs();
 }
 
 function _applyPoolAllSelection() {

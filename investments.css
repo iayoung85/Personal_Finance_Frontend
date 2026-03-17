@@ -507,3 +507,38 @@
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
 }
+
+/* ── Export dropdown ─────────────────────── */
+.export-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.export-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 100;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  min-width: 180px;
+  padding: 4px 0;
+}
+
+.export-dropdown button {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.export-dropdown button:hover {
+  background: var(--bg-hover);
+}

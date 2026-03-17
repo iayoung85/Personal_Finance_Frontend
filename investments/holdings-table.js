@@ -443,15 +443,14 @@ function _renderAllocCell(securityId) {
   if (!securityId || allocationCategories.length === 0) return '—';
 
   const security = securitiesData.find(s => s.security_id === securityId);
-  const allocId = security ? security.allocation_category_id : null;
+  const allocName = security ? security.enriched_allocation_category : null;
 
-  if (allocId) {
-    const cat = allocationCategories.find(c => c.id === allocId);
-    return cat ? `<span class="alloc-badge">${cat.category_name}</span>` : '—';
+  if (allocName) {
+    return `<span class="alloc-badge">${allocName}</span>`;
   }
 
   const options = allocationCategories.map(cat =>
-    `<option value="${cat.id}">${cat.category_name}</option>`
+    `<option value="${cat.category_name}">${cat.category_name}</option>`
   ).join('');
 
   return `<select class="alloc-assign-select" onchange="assignAllocation('${securityId}', this.value); event.stopPropagation();" onclick="event.stopPropagation();">
@@ -460,14 +459,13 @@ function _renderAllocCell(securityId) {
   </select>`;
 }
 
-async function assignAllocation(securityId, categoryId) {
-  if (!categoryId) return;
+async function assignAllocation(securityId, categoryName) {
+  if (!categoryName) return;
   try {
-    await allocateSecurityApi(securityId, parseInt(categoryId));
-    // Update local state
+    await allocateSecurityApi(securityId, categoryName);
     const secIdx = securitiesData.findIndex(s => s.security_id === securityId);
     if (secIdx >= 0) {
-      securitiesData[secIdx].allocation_category_id = parseInt(categoryId);
+      securitiesData[secIdx].enriched_allocation_category = categoryName;
     }
     renderHoldingsTable();
     renderInvestmentChart();

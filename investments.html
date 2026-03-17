@@ -48,10 +48,14 @@
             <div id="status-message" class="status-message"></div>
           </div>
           <div class="action-row-right">
-            <div class="export-buttons">
-              <button onclick="exportHoldingsJSON()" class="secondary">Export JSON</button>
-              <button onclick="copyHoldingsCSV()" class="secondary">Copy CSV</button>
-              <button onclick="downloadHoldingsCSV()" class="secondary">Download CSV</button>
+            <div class="export-dropdown-wrapper">
+              <button class="secondary" onclick="toggleExportDropdown()">Export ▾</button>
+              <div id="export-dropdown" class="export-dropdown" style="display:none;">
+                <button onclick="downloadHoldingsCSV(); toggleExportDropdown();">Holdings CSV</button>
+                <button onclick="exportHoldingsJSON(); toggleExportDropdown();">Holdings JSON</button>
+                <button onclick="exportEtfExposureCSV(); toggleExportDropdown();">ETF Exposure CSV</button>
+                <button onclick="copyHoldingsCSV(); toggleExportDropdown();">Copy CSV to Clipboard</button>
+              </div>
             </div>
           </div>
         </div>
@@ -103,6 +107,7 @@
   <script src="investments/holdings-table.js"></script>
   <script src="investments/etf-exposure.js"></script>
   <script src="investments/chart.js"></script>
+  <script src="investments/export.js"></script>
   <script src="investments/main.js"></script>
 </body>
 </html>
