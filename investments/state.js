@@ -37,6 +37,10 @@ let filterIndustry = '';
 let investmentChart = null;
 let chartViewMode = 'type'; // 'type', 'sector', or 'allocation'
 
+// Vocabulary (populated from backend on page load)
+let vocabularySectors = [];
+let vocabularyIndustries = [];
+
 // Pastel color palette (matches transactions chart)
 const PASTEL_COLORS = [
   '#5B9BD5', '#ED7D72', '#70C1B3', '#F6BD60', '#A78BFA',

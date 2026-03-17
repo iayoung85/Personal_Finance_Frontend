@@ -28,6 +28,12 @@ document.addEventListener('DOMContentLoaded', async function() {
   // Load accounts first so sidebar exists
   await loadInvestmentAccounts();
 
+  // Load vocabulary for sector/industry dropdowns (non-blocking)
+  fetchVocabulary().then(data => {
+    vocabularySectors = data.sectors || [];
+    vocabularyIndustries = data.industries || [];
+  }).catch(error => console.warn('Failed to load vocabulary:', error));
+
   // Check for newly connected investment items and auto-sync
   const newInvItems = JSON.parse(sessionStorage.getItem('newInvestmentItems') || '[]');
   if (newInvItems.length > 0) {
@@ -56,6 +62,7 @@ async function loadInvestmentHoldings() {
     const data = await fetchHoldings();
     holdingsData = data.items || [];
     securitiesData = data.securities || [];
+    renderFilterStrip();
     renderHoldingsTable();
   } catch (error) {
     console.error('Error loading holdings:', error);
@@ -67,6 +74,7 @@ async function loadInvestmentHoldings() {
  * Called whenever account selection changes — re-render everything.
  */
 function onAccountSelectionChanged() {
+  renderFilterStrip();
   renderHoldingsTable();
 }
 

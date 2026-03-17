@@ -273,3 +273,129 @@
   border-radius: 3px;
   margin-left: 4px;
 }
+
+/* ── Filter strip ────────────────────────── */
+.inv-filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.inv-filter-label select {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  max-width: 200px;
+}
+
+.btn-clear-filters {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid var(--border-primary);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.btn-clear-filters:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ── Assign link in table cells ──────────── */
+.assign-link {
+  color: var(--accent-primary);
+  font-size: 11px;
+  text-decoration: none;
+  cursor: pointer;
+  opacity: 0.8;
+}
+.assign-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+/* ── Assign modal overlay ────────────────── */
+.assign-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.assign-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  width: 360px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.assign-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-primary);
+  font-weight: bold;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.assign-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+}
+.assign-modal-close:hover {
+  color: var(--text-primary);
+}
+
+.assign-modal-body {
+  padding: 16px;
+}
+
+.assign-field {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.assign-field select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.assign-error {
+  color: var(--accent-danger, #f87171);
+  font-size: 12px;
+  min-height: 16px;
+}
+
+.assign-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-primary);
+}

@@ -76,8 +76,8 @@ function _renderPoolModeTable(container, selectedIds) {
         <td>${group.ticker || '—'}</td>
         <td>${group.name}</td>
         <td>${group.type || '—'}</td>
-        <td>${group.sector || '—'}</td>
-        <td>${group.industry || '—'}</td>
+        <td>${_renderSectorCell(group.sector, group.security_id)}</td>
+        <td>${_renderIndustryCell(group.industry, group.security_id)}</td>
         <td>${group.total_quantity.toFixed(4)}</td>
         <td>${formatCurrency(group.price)}</td>
         <td>${formatCurrency(group.total_value)}</td>
@@ -177,8 +177,8 @@ function _renderAccountModeTable(container, selectedIds) {
           <td>${holding.ticker || '—'}</td>
           <td>${holding.name}</td>
           <td>${holding.type || '—'}</td>
-          <td>${holding.sector || '—'}</td>
-          <td>${holding.industry || '—'}</td>
+          <td>${_renderSectorCell(holding.sector, holding.security_id)}</td>
+          <td>${_renderIndustryCell(holding.industry, holding.security_id)}</td>
           <td>${holding.quantity.toFixed(4)}</td>
           <td>${formatCurrency(holding.price)}</td>
           <td>${formatCurrency(holding.value)}</td>
@@ -233,6 +233,7 @@ function _buildGroupedByTicker(selectedAccountIds) {
             type: security.type,
             sector: security.enriched_sector || security.sector || '',
             industry: security.enriched_industry || security.industry || '',
+            security_id: holding.security_id,
             price: price,
             total_quantity: 0,
             total_value: 0,
@@ -430,4 +431,114 @@ function _formatGainLoss(gainLoss) {
 function toggleGroup(groupId, headerRow) {
   document.querySelectorAll(`.${groupId}`).forEach(row => row.classList.toggle('expanded'));
   headerRow.classList.toggle('expanded');
+}
+
+// ─── Sector/Industry cell rendering ──────────────────────────
+
+function _renderSectorCell(value, securityId) {
+  if (value) return value;
+  if (!securityId) return '—';
+  return `<a href="#" class="assign-link" onclick="event.stopPropagation(); openAssignModal('${securityId}'); return false;">Assign</a>`;
+}
+
+function _renderIndustryCell(value, securityId) {
+  if (value) return value;
+  if (!securityId) return '—';
+  return `<a href="#" class="assign-link" onclick="event.stopPropagation(); openAssignModal('${securityId}'); return false;">Assign</a>`;
+}
+
+// ─── Assign modal ────────────────────────────────────────────
+
+function openAssignModal(securityId) {
+  _removeExistingAssignModal();
+
+  const security = securitiesData.find(s => s.security_id === securityId);
+  const displayName = security
+    ? (security.ticker_symbol || security.name || securityId)
+    : securityId;
+
+  const sectorOptions = vocabularySectors.map(sector =>
+    `<option value="${sector}">${sector}</option>`
+  ).join('');
+
+  const industryOptions = vocabularyIndustries.map(industry =>
+    `<option value="${industry}">${industry}</option>`
+  ).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'assign-modal-overlay';
+  modal.className = 'assign-modal-overlay';
+  modal.innerHTML = `
+    <div class="assign-modal">
+      <div class="assign-modal-header">
+        Classify: ${displayName}
+        <button class="assign-modal-close" onclick="closeAssignModal()">✕</button>
+      </div>
+      <div class="assign-modal-body">
+        <label class="assign-field">
+          Sector
+          <select id="assign-sector">
+            <option value="">— Select Sector —</option>
+            ${sectorOptions}
+          </select>
+        </label>
+        <label class="assign-field">
+          Industry
+          <select id="assign-industry">
+            <option value="">— Select Industry —</option>
+            ${industryOptions}
+          </select>
+        </label>
+        <div id="assign-error" class="assign-error"></div>
+      </div>
+      <div class="assign-modal-footer">
+        <button class="secondary" onclick="closeAssignModal()">Cancel</button>
+        <button onclick="submitAssignment('${securityId}')">Save</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(event) {
+    if (event.target === modal) closeAssignModal();
+  });
+}
+
+function closeAssignModal() {
+  _removeExistingAssignModal();
+}
+
+async function submitAssignment(securityId) {
+  const sector = document.getElementById('assign-sector').value;
+  const industry = document.getElementById('assign-industry').value;
+  const errorEl = document.getElementById('assign-error');
+
+  if (!sector && !industry) {
+    errorEl.textContent = 'Select at least a sector or industry.';
+    return;
+  }
+
+  try {
+    errorEl.textContent = '';
+    const result = await classifySecurityApi(securityId, sector, industry);
+
+    // Update the local securities data so the table re-renders with the new values
+    const securityIndex = securitiesData.findIndex(s => s.security_id === securityId);
+    if (securityIndex >= 0) {
+      if (result.enriched_sector) securitiesData[securityIndex].enriched_sector = result.enriched_sector;
+      if (result.enriched_industry) securitiesData[securityIndex].enriched_industry = result.enriched_industry;
+    }
+
+    closeAssignModal();
+    renderHoldingsTable();
+    renderFilterStrip();
+    showInvestmentMessage('Security classified successfully', 'success');
+  } catch (error) {
+    errorEl.textContent = error.message || 'Failed to classify security.';
+  }
+}
+
+function _removeExistingAssignModal() {
+  const existing = document.getElementById('assign-modal-overlay');
+  if (existing) existing.remove();
 }

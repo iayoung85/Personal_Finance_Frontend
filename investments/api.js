@@ -105,3 +105,23 @@ async function loadViewerSettings() {
   const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/settings`);
   return await response.json();
 }
+
+async function classifySecurityApi(securityId, sector, industry) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/investments/securities/${encodeURIComponent(securityId)}/classify`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ sector, industry }),
+    }
+  );
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Classification failed');
+  return data;
+}
+
+async function fetchVocabulary() {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/vocabulary`);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Failed to load vocabulary');
+  return data;
+}
