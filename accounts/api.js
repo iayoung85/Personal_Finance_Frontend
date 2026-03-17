@@ -207,7 +207,8 @@ async function apiArchiveAccount(accountId) {
   return data;
 }
 
-/**
+/** DEAD CODE could be a tool in the future for a user to fix a balance problem if they see
+ *  it is a problem a lot. will implement in future if we get user feedback asking for it.
  * Reset balance history for an account (re-derive opening balance + rebuild ledger).
  * This is the lightweight version — re-derives without wiping transactions.
  */
