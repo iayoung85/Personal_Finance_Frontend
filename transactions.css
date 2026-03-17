@@ -1908,6 +1908,243 @@ tr:hover {
   background: var(--bg-page);
 }
 
+/* ── Reports Modal ────────────────────────────────────────── */
+
+.modal-reports {
+  width: min(95vw, 1200px);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-reports .modal-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.reports-form-row {
+  margin-bottom: 12px;
+}
+
+.reports-form-row label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.reports-date-row {
+  display: flex;
+  gap: 12px;
+}
+
+.reports-date-row > div {
+  flex: 1;
+}
+
+.reports-options-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.reports-checkbox-label {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px !important;
+  cursor: pointer;
+  color: var(--text-primary) !important;
+}
+
+.reports-checkbox-label input[type="checkbox"] {
+  accent-color: var(--accent-link);
+}
+
+.reports-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.reports-form-actions {
+  margin-top: 14px;
+}
+
+.reports-form-actions button {
+  padding: 7px 18px;
+  font-size: 13px;
+  background: var(--accent-link);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.reports-form-actions button:hover {
+  filter: brightness(1.15);
+}
+
+.reports-form-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Output area */
+.reports-output-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.reports-output-header span {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.reports-output-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.reports-output-actions .btn-export {
+  font-size: 11px;
+  padding: 4px 10px;
+}
+
+.reports-table-container {
+  overflow-x: auto;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+/* Report table */
+.reports-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+  width: auto;
+  min-width: 100%;
+}
+
+.reports-table th,
+.reports-table td {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.reports-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-surface);
+  font-weight: 600;
+  text-align: right;
+  color: var(--text-secondary);
+  z-index: 1;
+}
+
+.reports-label-col {
+  text-align: left !important;
+  min-width: 200px;
+  position: sticky;
+  left: 0;
+  background: var(--bg-surface);
+  z-index: 2;
+}
+
+.reports-table td:first-child {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: var(--bg-surface);
+  z-index: 1;
+}
+
+.reports-num-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.reports-section-header td {
+  font-weight: 700;
+  font-size: 13px;
+  padding-top: 10px;
+  color: var(--text-primary);
+  background: var(--bg-surface) !important;
+}
+
+.reports-subgroup-header td {
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding-top: 6px;
+  background: var(--bg-surface) !important;
+}
+
+.reports-indent-1 {
+  padding-left: 16px !important;
+}
+
+.reports-indent-2 {
+  padding-left: 32px !important;
+}
+
+.reports-account-row td {
+  color: var(--text-primary);
+}
+
+.reports-category-row td {
+  color: var(--text-primary);
+}
+
+.reports-subtotal-row td {
+  font-weight: 600;
+  border-top: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  background: var(--bg-surface) !important;
+}
+
+.reports-section-total-row td {
+  font-weight: 700;
+  border-top: 2px solid var(--border-primary);
+  padding-top: 6px;
+  color: var(--text-primary);
+  background: var(--bg-surface) !important;
+}
+
+.reports-net-worth-row td {
+  font-weight: 700;
+  border-top: 3px double var(--border-primary);
+  padding-top: 8px;
+  font-size: 13px;
+  color: var(--accent-link);
+  background: var(--bg-surface) !important;
+}
+
+.reports-empty {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 20px;
+}
+
+.reports-loading {
+  text-align: center;
+  padding: 16px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.reports-error {
+  color: var(--text-danger, #e74c3c);
+  padding: 8px 0;
+  font-size: 13px;
+}
+
 /* ── Rule creation modal ──────────────────────────────────── */
 /* All components use CSS variables — no hard-coded light-mode colors. */
 

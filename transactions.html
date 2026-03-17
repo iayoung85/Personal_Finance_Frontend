@@ -116,6 +116,7 @@
           <div class="action-row-right">
             <button onclick="syncTransactions()" class="btn-action btn-sync">⟳ Re-sync</button>
             <button onclick="openAddManualTransactionModal()" class="btn-action btn-manual-txn" title="Add a manual transaction. For Plaid accounts, use this only for historical transactions that occurred before the earliest Plaid-downloaded entry. Hotkey: Ctrl+M (Windows/Linux) or Cmd+M (Mac)">+ Manual Txn</button>
+            <button onclick="openReportsModal()" class="btn-action btn-reports" title="Generate balance and category reports">📊 Reports</button>
             <button onclick="openBackupRestoreModal()" class="btn-action btn-backup-restore" title="Import or export transaction data">📦 Backup / Restore</button>
             <button onclick="openConfigModal()" class="btn-action btn-config" title="Settings">⚙</button>
           </div>
@@ -426,6 +427,102 @@
     </div>
   </div>
 
+  <!-- ═══ Reports Modal ═══ -->
+  <div id="reports-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeReportsModal()">
+    <div class="modal modal-reports">
+      <div class="modal-header">
+        <h2>📊 Reports</h2>
+        <button class="modal-close" onclick="closeReportsModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Report Configuration Form -->
+        <div id="reports-config-form">
+          <div class="reports-form-row">
+            <label for="report-type">Report Type</label>
+            <select id="report-type" class="modal-input" onchange="_onReportTypeChange()">
+              <option value="balance">Account Balances</option>
+              <option value="category">Category Summary</option>
+            </select>
+          </div>
+
+          <div class="reports-form-row">
+            <label for="report-interval">Interval</label>
+            <select id="report-interval" class="modal-input" onchange="_onReportIntervalChange()">
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </div>
+
+          <!-- Fiscal Year start-month selector — only visible when interval=monthly and type=category -->
+          <div class="reports-form-row" id="fiscal-year-row" style="display:none;">
+            <label for="report-fiscal-month">Fiscal Year Start Month</label>
+            <select id="report-fiscal-month" class="modal-input">
+              <option value="1">January</option>
+              <option value="2">February</option>
+              <option value="3">March</option>
+              <option value="4">April</option>
+              <option value="5">May</option>
+              <option value="6">June</option>
+              <option value="7">July</option>
+              <option value="8">August</option>
+              <option value="9">September</option>
+              <option value="10">October</option>
+              <option value="11" selected>November</option>
+              <option value="12">December</option>
+            </select>
+            <p class="reports-hint">Aligns the date range to a 12-month fiscal year starting in this month.</p>
+          </div>
+
+          <div class="reports-form-row reports-date-row">
+            <div>
+              <label for="report-start-date">Start Date</label>
+              <input type="date" id="report-start-date" class="modal-input">
+            </div>
+            <div>
+              <label for="report-end-date">End Date</label>
+              <input type="date" id="report-end-date" class="modal-input">
+            </div>
+          </div>
+
+          <!-- Options row — toggles vary by report type -->
+          <div class="reports-form-row reports-options-row">
+            <label id="report-option-zero-label" class="reports-checkbox-label">
+              <input type="checkbox" id="report-hide-zero" checked>
+              Hide zero-balance accounts
+            </label>
+            <label id="report-option-transfers-label" class="reports-checkbox-label" style="display:none;">
+              <input type="checkbox" id="report-include-transfers">
+              Include transfers
+            </label>
+          </div>
+
+          <div class="reports-form-actions">
+            <button id="report-generate-btn" onclick="generateReport()">Generate Report</button>
+          </div>
+        </div>
+
+        <!-- Report Output Area -->
+        <div id="reports-output" class="reports-output hidden">
+          <div id="reports-output-header" class="reports-output-header">
+            <span id="reports-output-title"></span>
+            <div class="reports-output-actions">
+              <button onclick="downloadReportCSV()" class="btn-export" title="Download as CSV">CSV ↓</button>
+              <button onclick="copyReportCSV()" class="btn-export" title="Copy CSV to clipboard">Copy</button>
+            </div>
+          </div>
+          <div id="reports-table-container" class="reports-table-container"></div>
+        </div>
+
+        <!-- Loading / Error -->
+        <div id="reports-loading" class="reports-loading hidden">Generating report…</div>
+        <div id="reports-error" class="reports-error hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="secondary" onclick="closeReportsModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="config.js"></script>
   <script src="date-helpers.js"></script>
   <script src="nav-sidebar.js"></script>
@@ -461,6 +558,7 @@
   <script src="transactions/import/category-mapping.js"></script>
   <script src="transactions/import/review.js"></script>
   <script src="transactions/import/report.js"></script>
+  <script src="transactions/reports.js"></script>
   <script src="transactions/main.js"></script>
 </body>
 </html>
