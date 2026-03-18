@@ -12,6 +12,7 @@ const IndexApi = (() => {
   async function authenticatedFetch(url, options = {}) {
     const headers = {
       'Authorization': `Bearer ${IndexState.getAuthToken()}`,
+      'ngrok-skip-browser-warning': 'true', // Bypass ngrok's interstitial on localhost
       ...options.headers,
     };
     const response = await fetch(url, { ...options, headers, cache: 'no-cache' });
