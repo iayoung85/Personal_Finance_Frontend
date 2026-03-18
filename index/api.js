@@ -60,7 +60,7 @@ const IndexApi = (() => {
 
     const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
       body: JSON.stringify(body),
       cache: 'no-cache',
     });
@@ -71,7 +71,7 @@ const IndexApi = (() => {
   async function register(payload) {
     const response = await fetch(`${BACKEND_URL}/api/auth/register`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
       body: JSON.stringify(payload),
       cache: 'no-cache',
     });
@@ -81,6 +81,7 @@ const IndexApi = (() => {
 
   async function checkRegistrationStatus() {
     const response = await fetch(`${BACKEND_URL}/api/auth/registration-status`, {
+      headers: { 'ngrok-skip-browser-warning': 'true' },
       cache: 'no-cache',
     });
     const data = await response.json();
@@ -90,7 +91,7 @@ const IndexApi = (() => {
   async function forgotPassword(email, frontendUrl) {
     const response = await fetch(`${BACKEND_URL}/api/auth/forgot_password`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
       body: JSON.stringify({ email, frontend_url: frontendUrl }),
       cache: 'no-cache',
     });
