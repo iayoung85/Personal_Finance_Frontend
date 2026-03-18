@@ -24,6 +24,7 @@ function _renderBankList() {
   const allBanksSelected = selectedBankId === null && selectedAccountId === null;
   let html = `
     <div class="sidebar-all-banks ${allBanksSelected ? 'selected' : ''}"
+         data-bank-id="__all__"
          onclick="selectAllBanks()">
       ⊕ All Banks
     </div>
@@ -80,6 +81,7 @@ function _renderBankListItem(bank, isArchived = false) {
 
   return `
     <div class="sidebar-bank-item ${isSelected ? 'selected' : ''} ${archivedClass}"
+         data-bank-id="${bank.bank_id}"
          onclick="selectBank('${bank.bank_id}')"
          title="${displayName}">
       <span class="status-dot ${dotClass}"></span>
@@ -175,6 +177,7 @@ function _renderAccountListItem(account, isInArchivedGroup = false) {
 
   return `
     <div class="sidebar-account-item ${isSelected ? 'selected' : ''} ${archivedClass}"
+         data-account-id="${account.account_id}"
          onclick="selectAccount('${account.account_id}')">
       <span class="status-dot ${dotClass}"></span>
       <div class="account-info">
@@ -233,7 +236,7 @@ function _getFilteredAccounts(filterLower) {
       // Attach bank_name for display convenience
       results.push({
         ...account,
-        bank_name: bank.bank_name || bank.custom_name || '',
+        bank_name: bank.custom_name || bank.bank_name || '',
         bank_is_archived: bank.is_archived,
         item_health: bank.item_health || null
       });
@@ -248,14 +251,18 @@ function _getFilteredAccounts(filterLower) {
 function selectAllBanks() {
   selectedBankId = null;
   selectedAccountId = null;
+  _activeColumn = 'banks';
   renderSidebar();
+  _highlightActiveColumn();
   renderEmptyMainContent();
 }
 
 function selectBank(bankId) {
   selectedBankId = bankId;
   selectedAccountId = null;
+  _activeColumn = 'banks';
   renderSidebar();
+  _highlightActiveColumn();
   renderBankDetail(bankId);
 }
 
@@ -269,7 +276,9 @@ function selectAccount(accountId) {
     }
   }
   selectedAccountId = accountId;
+  _activeColumn = 'accounts';
   renderSidebar();
+  _highlightActiveColumn();
   renderAccountDetail(accountId);
 }
 
@@ -319,3 +328,117 @@ function _escapeHtml(text) {
   div.appendChild(document.createTextNode(text));
   return div.innerHTML;
 }
+
+// ── Keyboard Navigation ──────────────────────────────────────
+
+/** Which sidebar column currently accepts arrow-key input: 'banks' or 'accounts'. */
+let _activeColumn = 'banks';
+
+/**
+ * Return the ordered list of selectable DOM nodes in a column.
+ * Banks column: .sidebar-all-banks + visible .sidebar-bank-item
+ * Accounts column: visible .sidebar-account-item (excludes "+ New Account" button)
+ */
+function _getColumnItems(column) {
+  if (column === 'banks') {
+    return Array.from(document.querySelectorAll('#bank-list .sidebar-all-banks, #bank-list .sidebar-bank-item'));
+  }
+  return Array.from(document.querySelectorAll('#account-list .sidebar-account-item'));
+}
+
+/**
+ * Find the index of the currently selected item within a column's node list.
+ * Returns -1 when nothing is selected.
+ */
+function _findSelectedIndex(items) {
+  return items.findIndex(node => node.classList.contains('selected'));
+}
+
+/**
+ * Activate a bank or account item by reading its data attribute and calling
+ * the existing selection handler.
+ */
+function _activateItem(node, column) {
+  if (column === 'banks') {
+    const bankId = node.dataset.bankId;
+    if (bankId === '__all__') {
+      selectAllBanks();
+    } else {
+      selectBank(bankId);
+    }
+  } else {
+    const accountId = node.dataset.accountId;
+    if (accountId) selectAccount(accountId);
+  }
+}
+
+/**
+ * Scroll selected item into view within its scrollable column.
+ */
+function _scrollSelectedIntoView(column) {
+  const containerId = column === 'banks' ? 'bank-list' : 'account-list';
+  const container = document.getElementById(containerId);
+  const selected = container?.querySelector('.selected');
+  if (selected) {
+    selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+}
+
+function _handleSidebarKeydown(event) {
+  // Only act when the sidebar (or body) has focus — ignore when typing in inputs/textareas
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+  // Don't hijack modifier combos (Cmd+arrows, etc.)
+  if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+  const key = event.key;
+
+  // Left/Right switches active column
+  if (key === 'ArrowLeft') {
+    event.preventDefault();
+    _activeColumn = 'banks';
+    _highlightActiveColumn();
+    return;
+  }
+  if (key === 'ArrowRight') {
+    event.preventDefault();
+    _activeColumn = 'accounts';
+    _highlightActiveColumn();
+    return;
+  }
+
+  if (key !== 'ArrowUp' && key !== 'ArrowDown') return;
+  event.preventDefault();
+
+  const items = _getColumnItems(_activeColumn);
+  if (items.length === 0) return;
+
+  const currentIndex = _findSelectedIndex(items);
+  let nextIndex;
+
+  if (key === 'ArrowUp') {
+    nextIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1;
+  } else {
+    nextIndex = currentIndex >= items.length - 1 ? 0 : currentIndex + 1;
+  }
+
+  _activateItem(items[nextIndex], _activeColumn);
+  // renderSidebar() is called inside the selection handler, so re-query after render
+  requestAnimationFrame(() => _scrollSelectedIntoView(_activeColumn));
+}
+
+/**
+ * Visual indicator showing which column is the keyboard-active one.
+ */
+function _highlightActiveColumn() {
+  const bankCol = document.getElementById('bank-list');
+  const accountCol = document.getElementById('account-list');
+  if (!bankCol || !accountCol) return;
+
+  bankCol.classList.toggle('keyboard-active', _activeColumn === 'banks');
+  accountCol.classList.toggle('keyboard-active', _activeColumn === 'accounts');
+}
+
+// Attach once on page load
+document.addEventListener('keydown', _handleSidebarKeydown);

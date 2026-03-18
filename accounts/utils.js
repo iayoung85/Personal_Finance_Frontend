@@ -130,11 +130,10 @@ function showToast(message, type = 'info') {
  * @param {string} title - Modal title.
  * @param {string} message - Description of what will happen.
  * @param {Function} onConfirm - Callback when user confirms.
- * @param {object} options - { typedConfirmation: string|null, buttonLabel: string, buttonClass: string }
+ * @param {object} options - { buttonLabel: string, buttonClass: string }
  */
 function openConfirmModal(title, message, onConfirm, options = {}) {
   const {
-    typedConfirmation = null,
     buttonLabel = 'Confirm',
     buttonClass = 'btn-danger'
   } = options;
@@ -142,24 +141,16 @@ function openConfirmModal(title, message, onConfirm, options = {}) {
   document.getElementById('confirm-modal-title').textContent = title;
   document.getElementById('confirm-modal-message').textContent = message;
 
-  const typedSection = document.getElementById('confirm-modal-typed');
-  const typedInput = document.getElementById('confirm-modal-typed-input');
-  if (typedConfirmation) {
-    document.getElementById('confirm-modal-typed-label').textContent =
-      `Type "${typedConfirmation}" to confirm:`;
-    typedInput.value = '';
-    typedSection.classList.remove('hidden');
-  } else {
-    typedSection.classList.add('hidden');
-  }
-
   const confirmBtn = document.getElementById('confirm-modal-btn');
   confirmBtn.textContent = buttonLabel;
   confirmBtn.className = buttonClass;
 
-  pendingConfirmAction = { onConfirm, typedConfirmation };
+  pendingConfirmAction = { onConfirm };
 
   document.getElementById('confirm-modal').classList.remove('hidden');
+
+  // Auto-focus the confirm button so Enter triggers it immediately
+  confirmBtn.focus();
 }
 
 function closeConfirmModal() {
@@ -169,17 +160,7 @@ function closeConfirmModal() {
 
 function executeConfirmedAction() {
   if (!pendingConfirmAction) return;
-
-  const { onConfirm, typedConfirmation } = pendingConfirmAction;
-
-  if (typedConfirmation) {
-    const typedValue = document.getElementById('confirm-modal-typed-input').value.trim();
-    if (typedValue !== typedConfirmation) {
-      showToast(`You must type "${typedConfirmation}" exactly to confirm.`, 'error');
-      return;
-    }
-  }
-
+  const { onConfirm } = pendingConfirmAction;
   closeConfirmModal();
   onConfirm();
 }

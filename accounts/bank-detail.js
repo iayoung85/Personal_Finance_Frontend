@@ -350,7 +350,6 @@ function hardDeleteBank(bankId, bankDisplayName) {
       }
     },
     {
-      typedConfirmation: bankDisplayName,
       buttonLabel: 'Delete Permanently',
       buttonClass: 'btn-danger'
     }

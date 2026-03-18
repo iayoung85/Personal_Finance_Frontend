@@ -253,6 +253,11 @@ body {
   margin-top: 6px;
 }
 
+/* Keyboard-active column indicator */
+.sidebar-col.keyboard-active {
+  box-shadow: inset 0 0 0 1px var(--accent-primary);
+}
+
 .sidebar-archived-toggle {
   padding: 6px 10px;
   font-size: 12px;
@@ -905,31 +910,6 @@ details[open] > .collapsible-trigger::before {
   border-radius: 4px;
 }
 .form-error.hidden {
-  display: none;
-}
-
-/* Confirm typed section */
-.confirm-typed-section {
-  margin-top: 12px;
-}
-.confirm-typed-section label {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 6px;
-  color: var(--text-secondary);
-}
-.confirm-typed-section input {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border-primary);
-  border-radius: 4px;
-  font-size: 14px;
-  box-sizing: border-box;
-  background-color: var(--bg-input);
-  color: var(--text-primary);
-}
-.confirm-typed-section.hidden {
   display: none;
 }
 

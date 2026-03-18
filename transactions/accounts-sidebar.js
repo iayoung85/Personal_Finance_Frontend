@@ -342,8 +342,8 @@ function renderAccountsSidebar() {
       categories: ['depository', 'credit']
     },
     {
-      id: 'property-debt',
-      label: 'Property/Debt Net:',
+      id: 'assets-liabilities',
+      label: 'Assets/Liabilities:',
       categories: ['investment', 'loan', 'asset', 'liability']
     }
   ];

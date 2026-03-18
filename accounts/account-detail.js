@@ -370,6 +370,7 @@ function _renderMoveBankList(banks) {
 }
 
 function selectMoveBank(targetBankId, targetBankName) {
+  const accountIdToMove = _pendingMoveAccountId;
   closeMoveAccountModal();
 
   openConfirmModal(
@@ -378,7 +379,7 @@ function selectMoveBank(targetBankId, targetBankName) {
     async () => {
       try {
         showToast('Moving account…', 'info');
-        await apiMoveAccountToBank(_pendingMoveAccountId, targetBankId);
+        await apiMoveAccountToBank(accountIdToMove, targetBankId);
         showToast(`Account moved to ${targetBankName}`, 'success');
         await reloadAndReselect();
       } catch (moveError) {
@@ -439,7 +440,6 @@ function deleteAccount(accountId, accountName) {
       }
     },
     {
-      typedConfirmation: accountName,
       buttonLabel: 'Delete Permanently',
       buttonClass: 'btn-danger'
     }
@@ -463,7 +463,6 @@ function unlinkAndArchiveAccount(accountId, accountName) {
       }
     },
     {
-      typedConfirmation: accountName,
       buttonLabel: 'Unlink & Archive',
       buttonClass: 'btn-warn'
     }

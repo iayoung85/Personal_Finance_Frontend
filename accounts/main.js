@@ -99,7 +99,7 @@ function _rebuildFlatAccountsCache() {
     for (const account of bank.accounts || []) {
       accountsCache.push({
         ...account,
-        bank_name: bank.bank_name || bank.custom_name || '',
+        bank_name: bank.custom_name || bank.bank_name,
         bank_is_archived: bank.is_archived,
         item_health: bank.item_health || null
       });
