@@ -4,8 +4,16 @@
 var BACKEND_URL;
 window.LOCAL_AUTO_LOGIN_ENABLED = false;
 
-function isLocalBackendUrl(url) {
-  return url.startsWith('http://localhost:') || url.startsWith('http://127.0.0.1:');
+const DEV_SERVER_PORT = 5501;
+
+function isLocalDevBackend(url) {
+  try {
+    const parsed = new URL(url);
+    const isLoopback = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+    return isLoopback && parseInt(parsed.port, 10) === DEV_SERVER_PORT;
+  } catch (_ignored) {
+    return false;
+  }
 }
 
 function ensureLocalDevSession() {
@@ -48,13 +56,13 @@ function detectBackendUrl() {
   const hostname = window.location.hostname;
   // Try local ports if on localhost
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    const ports = [8000, 3000];
+    const ports = [5501, 8000];
     let checked = 0;
     return new Promise((resolve) => {
       function tryNext() {
         if (checked >= ports.length) {
           // Fallback to production if none work (silent)
-          resolve('https://pythonplaidbackend-iayfinancialprod.up.railway.app');
+          resolve('https://lenient-present-terrapin.ngrok-free.app');
           return;
         }
         const url = `http://${hostname}:${ports[checked]}`;
@@ -79,23 +87,9 @@ function detectBackendUrl() {
       }
       tryNext();
     });
-  } else if (hostname.includes('ngrok')) {
-    // If running on ngrok (likely demo mode), check if current origin serves the API
-    const origin = window.location.origin;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-    
-    return fetch(`${origin}/api/auth/health`, { signal: controller.signal, cache: 'no-cache' })
-      .then(r => {
-        clearTimeout(timeoutId);
-        if (r.ok) return origin;
-        // Fallback or likely misconfigured if ngrok is used without backend
-        return 'https://pythonplaidbackend-iayfinancialprod.up.railway.app';
-      })
-      .catch(() => 'https://pythonplaidbackend-iayfinancialprod.up.railway.app');
   } else {
-    // Production
-    return Promise.resolve('https://pythonplaidbackend-iayfinancialprod.up.railway.app');
+    // Production — backend is proxied through the permanent ngrok tunnel
+    return Promise.resolve('https://lenient-present-terrapin.ngrok-free.app');
   }
 }
 
@@ -103,7 +97,7 @@ function detectBackendUrl() {
 window.BACKEND_URL_PROMISE = detectBackendUrl().then(url => {
   BACKEND_URL = url;
   window.BACKEND_URL = url;
-  window.LOCAL_AUTO_LOGIN_ENABLED = isLocalBackendUrl(url);
+  window.LOCAL_AUTO_LOGIN_ENABLED = isLocalDevBackend(url);
   window.ensureLocalDevSession();
   console.log('[Backend Detection] Using backend URL:', url);
   console.log('[Backend Detection] Local auto-login enabled:', window.LOCAL_AUTO_LOGIN_ENABLED);

@@ -317,6 +317,9 @@ class DevToolsWidget {
     // --- Scenario 5: Populate manual txns with account picker ---
     this._buildScenario5Section();
 
+    // --- Webhook Simulator ---
+    this._buildWebhookSection();
+
     const metricsButton = document.createElement('button');
     metricsButton.innerText = '📊 Show Top 10 Modules';
     Object.assign(metricsButton.style, {
@@ -548,6 +551,188 @@ class DevToolsWidget {
       }
     } catch (triggerError) {
       this.log(`Fail: ${triggerError.message}`);
+    } finally {
+      btnElement.innerText = originalText;
+      btnElement.disabled = false;
+    }
+  }
+
+  _buildWebhookSection() {
+    const wrapper = document.createElement('div');
+    Object.assign(wrapper.style, {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '4px',
+      borderTop: '1px solid #444',
+      paddingTop: '8px',
+      marginTop: '4px',
+    });
+
+    const label = document.createElement('span');
+    label.textContent = '⚡ Webhook Simulator';
+    Object.assign(label.style, {
+      fontWeight: 'bold',
+      fontSize: '11px',
+      color: '#ccc',
+    });
+    wrapper.appendChild(label);
+
+    this.webhookItemSelect = document.createElement('select');
+    Object.assign(this.webhookItemSelect.style, {
+      padding: '6px',
+      backgroundColor: '#2a2a3d',
+      color: '#fff',
+      border: '1px solid #555',
+      borderRadius: '4px',
+      fontSize: '11px',
+    });
+
+    const placeholderOption = document.createElement('option');
+    placeholderOption.value = '';
+    placeholderOption.textContent = 'Select a Plaid item...';
+    placeholderOption.disabled = true;
+    placeholderOption.selected = true;
+    this.webhookItemSelect.appendChild(placeholderOption);
+
+    const loadingOption = document.createElement('option');
+    loadingOption.value = '__loading__';
+    loadingOption.textContent = 'Loading items...';
+    loadingOption.disabled = true;
+    this.webhookItemSelect.appendChild(loadingOption);
+
+    wrapper.appendChild(this.webhookItemSelect);
+
+    const webhookButtons = [
+      {
+        label: 'Txn Sync (SYNC_UPDATES_AVAILABLE)',
+        color: '#4a6a4c',
+        hoverColor: '#5c8c5e',
+        payload: (itemId) => ({
+          webhook_type: 'TRANSACTIONS',
+          webhook_code: 'SYNC_UPDATES_AVAILABLE',
+          item_id: itemId,
+          historical_update_complete: true,
+        }),
+      },
+      {
+        label: 'Holdings Sync (DEFAULT_UPDATE)',
+        color: '#4a5a6a',
+        hoverColor: '#5c7a8e',
+        payload: (itemId) => ({
+          webhook_type: 'INVESTMENTS',
+          webhook_code: 'DEFAULT_UPDATE',
+          item_id: itemId,
+        }),
+      },
+      {
+        label: 'Item Error (LOGIN_REQUIRED)',
+        color: '#6a4a4a',
+        hoverColor: '#8c5c5c',
+        payload: (itemId) => ({
+          webhook_type: 'ITEM',
+          webhook_code: 'ERROR',
+          item_id: itemId,
+          error: {
+            error_code: 'ITEM_LOGIN_REQUIRED',
+            error_message: 'the login details have changed',
+          },
+        }),
+      },
+    ];
+
+    webhookButtons.forEach(({ label: buttonLabel, color, hoverColor, payload }) => {
+      const btn = document.createElement('button');
+      btn.innerText = buttonLabel;
+      Object.assign(btn.style, {
+        padding: '8px',
+        backgroundColor: color,
+        color: '#fff',
+        border: 'none',
+        borderRadius: '4px',
+        cursor: 'pointer',
+        textAlign: 'left',
+        fontSize: '11px',
+      });
+      btn.onmouseover = () => btn.style.backgroundColor = hoverColor;
+      btn.onmouseout = () => btn.style.backgroundColor = color;
+      btn.onclick = () => this._fireWebhook(btn, payload);
+      wrapper.appendChild(btn);
+    });
+
+    this.body.appendChild(wrapper);
+    this._loadPlaidItems();
+  }
+
+  async _loadPlaidItems() {
+    try {
+      if (!window.BACKEND_URL) return;
+
+      const response = await fetch(`${window.BACKEND_URL}/api/connections/items`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+        },
+      });
+
+      if (!response.ok) return;
+
+      const items = await response.json();
+
+      const loadingPlaceholder = this.webhookItemSelect.querySelector('option[value="__loading__"]');
+      if (loadingPlaceholder) loadingPlaceholder.remove();
+
+      items.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.plaid_item_id;
+        option.textContent = `${item.institution_name || 'Unknown'} (${item.status || '?'})`;
+        this.webhookItemSelect.appendChild(option);
+      });
+
+      if (items.length === 0) {
+        const emptyOption = document.createElement('option');
+        emptyOption.value = '';
+        emptyOption.textContent = 'No Plaid items found';
+        emptyOption.disabled = true;
+        this.webhookItemSelect.appendChild(emptyOption);
+      }
+    } catch (fetchError) {
+      console.debug('[DevTools] Failed to load Plaid items:', fetchError);
+    }
+  }
+
+  async _fireWebhook(btnElement, buildPayload) {
+    const selectedItemId = this.webhookItemSelect.value;
+    if (!selectedItemId || selectedItemId === '__loading__') {
+      this.log('Pick a Plaid item first.');
+      return;
+    }
+
+    const originalText = btnElement.innerText;
+    btnElement.innerText = 'Firing...';
+    btnElement.disabled = true;
+
+    const payload = buildPayload(selectedItemId);
+    this.log(`Firing ${payload.webhook_type}/${payload.webhook_code}...`);
+
+    try {
+      if (!window.BACKEND_URL) {
+        throw new Error('BACKEND_URL not ready');
+      }
+
+      const response = await fetch(`${window.BACKEND_URL}/api/connections/webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        this.log(`${payload.webhook_code}: ${data.message || data.status}`);
+      } else {
+        this.log(`Error ${response.status}: ${data.error || 'unknown'}`);
+      }
+    } catch (fireError) {
+      this.log(`Fail: ${fireError.message}`);
     } finally {
       btnElement.innerText = originalText;
       btnElement.disabled = false;
