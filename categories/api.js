@@ -48,6 +48,7 @@ async function refreshAccessToken() {
 
 async function authenticatedFetch(url, options = {}) {
   const headers = {
+    'ngrok-skip-browser-warning': 'true',
     'Authorization': `Bearer ${token}`,
     ...options.headers
   };
