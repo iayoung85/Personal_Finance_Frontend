@@ -5,6 +5,9 @@
  */
 
 const IndexConnectionsList = (() => {
+  // Polling state for pending banks (auto-refresh while waiting for Plaid)
+  let _pendingPollId = null;
+  const PENDING_POLL_INTERVAL = 30 * 1000; // 30s
 
   /** Fetch banks from backend and render the list. */
   async function loadBanks() {
@@ -17,6 +20,29 @@ const IndexConnectionsList = (() => {
       const banks = await IndexApi.fetchDashboardBanks();
       IndexState.setBanksCache(banks);
 
+      // Clear timestamps for banks that are no longer pending, and
+      // decide whether to start/stop the pending poll based on current state.
+      try {
+        let hasPending = false;
+        banks.forEach(bank => {
+          const itemId = bank.plaid_item_id || bank.item_id || null;
+          if (!itemId) return;
+          if (bank.connection_status === 'pending_initial_sync') {
+            hasPending = true;
+          } else {
+            IndexState.clearActionTimestamp(itemId, 'initial_sync');
+          }
+          if (bank.connection_status === 'relink_pending') {
+            hasPending = true;
+          } else {
+            IndexState.clearActionTimestamp(itemId, 'relink');
+          }
+        });
+        if (hasPending) _startPendingPoll(); else _stopPendingPoll();
+      } catch (err) {
+        console.warn('Error clearing pending timestamps', err);
+      }
+
       if (!banks.length) {
         listElement.innerHTML = '<p class="banks-empty-state">No connected banks yet. Click "Connect New Bank" to get started.</p>';
         return;
@@ -26,6 +52,20 @@ const IndexConnectionsList = (() => {
     } catch (loadError) {
       listElement.innerHTML = `<p class="banks-error">Error loading connected banks: ${loadError.message}</p>`;
     }
+  }
+
+  // Start polling the backend while any bank is in a pending state.
+  function _startPendingPoll() {
+    if (_pendingPollId) return; // already running
+    _pendingPollId = setInterval(() => {
+      loadBanks().catch(err => console.warn('Pending poll loadBanks failed', err));
+    }, PENDING_POLL_INTERVAL);
+  }
+
+  function _stopPendingPoll() {
+    if (!_pendingPollId) return;
+    clearInterval(_pendingPollId);
+    _pendingPollId = null;
   }
 
   // ── Rendering helpers ──────────────────────────────────
@@ -66,6 +106,8 @@ const IndexConnectionsList = (() => {
     switch (connectionStatus) {
       case 'linked':
         return '<span class="conn-status conn-status-linked" title="Actively connected via Plaid">● Linked</span>';
+      case 'pending_initial_sync':
+        return '<span class="conn-status conn-status-pending-sync" title="Initial sync in progress, bank will be linked once complete">⏳ Syncing...</span>';
       case 'relink_pending':
         return '<span class="conn-status conn-status-relink-pending" title="Waiting for complete transaction history from Plaid">⏳ Relink in progress</span>';
       case 'converted':
@@ -101,7 +143,10 @@ const IndexConnectionsList = (() => {
 
   function _renderActionButtons(bank) {
     const isLinked = bank.connection_status === 'linked';
+    // don't allow button rendering unless the relink attempt or initial sync has been pending 
+    // for at least 5 minutes, to avoid confusion while waiting for Plaid
     const isRelinkPending = bank.connection_status === 'relink_pending';
+    const isInitialSyncPending = bank.connection_status === 'pending_initial_sync';
     const isConverted = bank.connection_status === 'converted';
     const isManual = bank.connection_status === 'manual';
     const hasInstitution = !!bank.institution_id;
@@ -113,15 +158,46 @@ const IndexConnectionsList = (() => {
     const buttons = [];
 
     if (isRelinkPending) {
+      // Only show the retry button once the relink has been pending for at least 5 minutes.
+      const FIVE_MIN = 5 * 60 * 1000;
+      const pendingItemId = bank.plaid_item_id || bank.item_id || null;
+      const pendingSince = pendingItemId ? IndexState.getActionTimestamp(pendingItemId, 'relink') : null;
+      // If there's no stored timestamp, fall back to showing the Retry button
+      // (backend will still enforce any server-side timing rules).
+      const canRetry = pendingSince ? (Date.now() - pendingSince >= FIVE_MIN) : true;
+
       buttons.push(
         `<span class="bank-btn-info" title="Waiting for Plaid to deliver complete transaction history">` +
         `⏳ Awaiting history from Plaid...</span>`
       );
+      if (canRetry) {
+        buttons.push(
+          `<button class="bank-btn bank-btn-retry" title="Retry syncing if relink appears stuck" ` +
+          `onclick="IndexConnectionsList.handleRetryRelink('${bankIdAttr}', '${nameAttr}')">` +
+          `🔄 Retry Sync</button>`
+        );
+      }
+    } else if (isInitialSyncPending) {
+      // Only show the retry button once the initial sync has been pending for at least 5 minutes.
+      const FIVE_MIN = 5 * 60 * 1000;
+      const pendingItemId = bank.plaid_item_id || bank.item_id || null;
+      const pendingSince = pendingItemId ? IndexState.getActionTimestamp(pendingItemId, 'initial_sync') : null;
+      // If there's no stored timestamp, fall back to showing the Retry button
+      // (backend will still enforce any server-side timing rules).
+      const canRetry = pendingSince ? (Date.now() - pendingSince >= FIVE_MIN) : true;
+
       buttons.push(
-        `<button class="bank-btn bank-btn-retry" title="Retry syncing if relink appears stuck" ` +
-        `onclick="IndexConnectionsList.handleRetryRelink('${bankIdAttr}', '${nameAttr}')">` +
-        `🔄 Retry Sync</button>`
+        `<span class="bank-btn-info" title="Initial sync in progress, bank will be linked once complete">` +
+        `⏳ Initial sync in progress... may take up to 5 minutes</span>`
       );
+      if (canRetry) {
+        buttons.push(
+          `<button class="bank-btn bank-btn-retry" title="Retry initial sync if it takes longer than 5 minutes" ` +
+          `onclick="IndexConnectionsList.handleRetryInitialSync('${bankIdAttr}', '${nameAttr}')">` +
+          `🔄 Retry Sync</button>`
+        );
+      }
+
     } else if (isLinked) {
       // Refresh: behavior depends on plaid_item_status
       // Broken statuses need update-mode link session; healthy ones just refresh
@@ -284,6 +360,13 @@ const IndexConnectionsList = (() => {
         onSuccess: async (publicToken) => {
           try {
             const exchangeResult = await IndexApi.exchangePublicToken(publicToken, bankId);
+            // Record relink timestamp under the Plaid item id only.
+            try {
+              const itemId = exchangeResult.item_id || exchangeResult.plaid_item_id || null;
+              if (itemId) IndexState.setActionTimestamp(itemId, 'relink');
+            } catch (tsErr) {
+              console.warn('Could not persist relink timestamp', tsErr);
+            }
             invalidateItemInfoCache();
 
             // Check for pending account matching FIRST — this takes priority
@@ -306,7 +389,7 @@ const IndexConnectionsList = (() => {
             } else if (exchangeResult.connection_status === 'relink_pending') {
               IndexUtils.showMessage(
                 'dashboard-message',
-                `⏳ ${bankName} relink initiated — waiting for Plaid to deliver complete history. This may take a few minutes.`,
+                `⏳ ${bankName} relink initiated — waiting for Plaid to deliver complete history. This may take a up to 5 minutes. if not successfull by then, you will be able to attempt a manual retry.`,
                 'success',
               );
             } else {
@@ -329,6 +412,46 @@ const IndexConnectionsList = (() => {
       IndexUtils.showMessage('dashboard-message', 'Error: ' + linkError.message, 'error');
     }
   }
+  /** Retry initial sync for a bank that is stuck in pending_initial_sync state 
+   * only show this button if it has been 5 minutes since the initial sync started, 
+   * otherwise it may cause confusion if users click it while the initial sync is still in progress.
+  */
+  async function handleRetryInitialSync(bankId, bankName) {
+    if (!IndexState.getAuthToken()) {
+      IndexUtils.showMessage('dashboard-message', 'Please login first', 'error');
+      return;
+    }
+
+    IndexUtils.showMessage(
+      'dashboard-message',
+      `🔄 Retrying initial sync for ${bankName}... this may take a moment.`,
+      'info',
+    );
+
+    try {
+      const result = await IndexApi.retryInitialSync(bankId);
+      // Clear stored initial_sync timestamp — resolve by finding the bank's item id
+      try {
+        const banks = IndexState.getBanksCache() || [];
+        const bank = banks.find(b => b.bank_id === bankId);
+        const itemId = bank?.plaid_item_id || bank?.item_id || null;
+        if (itemId) IndexState.clearActionTimestamp(itemId, 'initial_sync');
+      } catch (e) { /* noop */ }
+      IndexUtils.showMessage(
+        'dashboard-message',
+        `✅ ${bankName}: ${result.message}`,
+        'success',
+      );
+      await loadBanks();
+    } catch (retryError) {
+      IndexUtils.showMessage(
+        'dashboard-message',
+        `❌ Retry failed for ${bankName}: ${retryError.message}`,
+        'error',
+      );
+    }
+  }
+
 
   /**
    * Retry Phase 2 of a stuck relink — calls backend retry-relink endpoint
@@ -348,6 +471,13 @@ const IndexConnectionsList = (() => {
 
     try {
       const result = await IndexApi.retryRelink(bankId);
+      // Clear stored relink timestamp — resolve by finding the bank's item id
+      try {
+        const banks = IndexState.getBanksCache() || [];
+        const bank = banks.find(b => b.bank_id === bankId);
+        const itemId = bank?.plaid_item_id || bank?.item_id || null;
+        if (itemId) IndexState.clearActionTimestamp(itemId, 'relink');
+      } catch (e) { /* noop */ }
       IndexUtils.showMessage(
         'dashboard-message',
         `✅ ${bankName}: ${result.message}`,
@@ -848,5 +978,6 @@ const IndexConnectionsList = (() => {
     handleActivateInvestments,
     showInstitutionPicker,
     closeInstitutionPicker,
+    handleRetryInitialSync,
   };
 })();

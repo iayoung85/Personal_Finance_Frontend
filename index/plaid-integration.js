@@ -49,6 +49,15 @@ const IndexPlaidIntegration = (() => {
               sessionStorage.setItem('newInvestmentItems', JSON.stringify([result.item_id]));
             }
 
+            // Record when the initial sync for this newly-connected bank started.
+            // Store strictly under the Plaid item id key.
+            try {
+              const itemId = result.item_id || result.plaid_item_id || null;
+              if (itemId) IndexState.setActionTimestamp(itemId, 'initial_sync');
+            } catch (tsErr) {
+              console.warn('Could not persist initial sync timestamp', tsErr);
+            }
+
             IndexConnectionsList.loadBanks();
           } catch (exchangeError) {
             IndexUtils.showMessage('dashboard-message', 'Error: ' + exchangeError.message, 'error');

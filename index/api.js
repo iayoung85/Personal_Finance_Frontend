@@ -302,6 +302,21 @@ const IndexApi = (() => {
     return data;
   }
 
+  async function retryInitialSync(bankId) {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/connections/banks/${encodeURIComponent(bankId)}/retry-initial-sync`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to retry initial sync');
+    }
+    return data;
+  }
+
   async function retryRelink(bankId) {
     const response = await authenticatedFetch(
       `${BACKEND_URL}/api/connections/banks/${encodeURIComponent(bankId)}/retry-relink`,
@@ -337,5 +352,6 @@ const IndexApi = (() => {
     activateTransactions,
     activateInvestments,
     retryRelink,
+    retryInitialSync,
   };
 })();

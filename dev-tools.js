@@ -237,7 +237,6 @@ window.resetDevNetworkMetrics = function() {
 class DevToolsWidget {
   constructor() {
     this.createWidget();
-    this.attachEvents();
   }
 
   createWidget() {
@@ -665,7 +664,10 @@ class DevToolsWidget {
 
   async _loadPlaidItems() {
     try {
-      if (!window.BACKEND_URL) return;
+      if (!window.BACKEND_URL) {
+        console.log('[DevTools] BACKEND_URL not set');
+        return;
+      }
 
       const response = await fetch(`${window.BACKEND_URL}/api/connections/items`, {
         headers: {
@@ -675,7 +677,19 @@ class DevToolsWidget {
 
       if (!response.ok) return;
 
-      const items = await response.json();
+      let items = await response.json();
+
+      // Normalize common API response shapes to an array so `.forEach` is safe.
+      if (!Array.isArray(items)) {
+        if (items && Array.isArray(items.items)) {
+          items = items.items;
+        } else if (items && Array.isArray(items.data)) {
+          items = items.data;
+        } else {
+          console.debug('[DevTools] Unexpected items response shape:', items);
+          items = [];
+        }
+      }
 
       const loadingPlaceholder = this.webhookItemSelect.querySelector('option[value="__loading__"]');
       if (loadingPlaceholder) loadingPlaceholder.remove();
