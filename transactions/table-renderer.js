@@ -329,7 +329,7 @@ function renderTransactionTable() {
   if (showBankAccountColumn) {
     html += '<th>Bank/Account</th>';
   }
-  html += '<th>Merchant</th>';
+  html += '<th class="th-merchant">Merchant</th>';
   
   if (optionalFields.includes('source')) html += '<th>Type</th>';
   html += '<th class="th-category">Category</th>';
@@ -810,7 +810,7 @@ function renderTransactionTable() {
     if (showBankAccountColumn) {
       html += `<td>${txn.bank_account}</td>`;
     }
-    html += `<td${isDescEditable ? ' data-field="description" class="inline-editable"' : ''}>${fullBadge}${pendingBadge}${escapeHtml(effectiveDisplayName)}</td>`;
+    html += `<td class="description-column"${isDescEditable ? ' data-field="description"' : ''}>${fullBadge}${pendingBadge}<span class="txn-description-text" title="${escapeHtml(effectiveDisplayName)}">${escapeHtml(effectiveDisplayName)}</span></td>`;
 
     // Type badge column (optional field)
     if (optionalFields.includes('source')) {
@@ -819,7 +819,7 @@ function renderTransactionTable() {
     }
 
     // Category cell
-    html += `<td>${rendered.categoryCell}</td>`;
+    html += `<td class="category-column">${rendered.categoryCell}</td>`;
 
     // Optional field cells (type-agnostic)
     if (optionalFields.includes('payment_channel')) html += `<td>${txn.payment_channel || ''}</td>`;

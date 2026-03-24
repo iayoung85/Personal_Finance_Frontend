@@ -515,11 +515,39 @@ th {
 th.th-category {
   padding-left: 10px;
 }
+th.th-merchant {
+  max-width: 10px;
+}
 td {
   padding: 3px 8px;
   border-bottom: 1px solid var(--border-subtle);
   font-size: 13px;
   vertical-align: middle;
+}
+/* Truncate long merchant/description text and show full text on hover (native tooltip) */
+.transaction-scroll-pane td .txn-description-text {
+  display: inline-block;
+  max-width: 100%; /* adjust to taste */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+td.description-column {
+/*min-width: 100px;*/
+max-width: 10px;
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+}
+/* Ensure category column remains readable: reserve minimum width */
+td.category-column {
+  min-width: 300px; /* prevents merchant name from completely collapsing category */
+}
+/* The inner category cell should allow its controls to layout correctly */
+td.category-column .category-cell {
+  min-width: 300px;
+  max-width: 320px;
 }
 tr:nth-child(even) {
   background: var(--bg-surface-elevated);
@@ -4418,6 +4446,7 @@ td.inline-staged {
   box-shadow: inset 0 0 0 1px var(--accent-primary);
 }
 
+
 /* Shared input styles for all inline editors */
 .inline-edit-input {
   width: 100%;
@@ -4442,6 +4471,15 @@ td.inline-staged {
 /* Date input specific */
 .inline-edit-date {
   max-width: 160px;
+}
+
+/* Date cell specific: keep the Date column on one line and give it
+   a stable minimum width so dates don't wrap into two rows. Targets
+   the inline-editable date cells used by the table renderer. */
+td.inline-editable[data-field="date"] {
+  white-space: nowrap;
+  min-width: 80px;
+  width: 80px;
 }
 
 /* Description input stretches to fill */
