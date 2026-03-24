@@ -28,6 +28,16 @@ const BALANCE_HISTORY_CACHE_KEY = 'pf_balance_history_by_account';
 const BALANCE_HISTORY_CACHE_MAX_AGE_MS = 10 * 1000; // 10 seconds — kept ultra-short during development
 const NO_ACTIVE_PLAID_SYNC_CACHE_KEY = 'pf_sync_no_active_plaid_items';
 const NO_ACTIVE_PLAID_SYNC_TTL_MS = 5 * 60 * 1000;
+
+// In-memory parsed cache — avoids repeated JSON.parse of the localStorage blob.
+// Populated on first read, invalidated on write. Survives across render cycles
+// within the same page session without re-parsing.
+let _inMemoryTransactionCache = null;
+let _inMemoryTransactionCacheTs = 0;
+
+// AbortController for in-flight transaction fetches — allows cancelling stale
+// requests when a newer fetch is triggered before the previous one completes.
+let _fetchAbortController = null;
 const NO_ACTIVE_PLAID_ITEMS_ERROR_MESSAGE = 'No active Plaid items found';
 
 function _recordNetworkMetric(url, method, status) {
@@ -352,24 +362,17 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
   // 2. Sync with Plaid in background (may be skipped by backend cooldown)
   // 3. Only re-fetch from server if Plaid returned actual changes
   
-  const cachedData = localStorage.getItem(TRANSACTION_CACHE_KEY);
-  const cachedAt = localStorage.getItem(TRANSACTION_CACHE_TS_KEY);
-  const cacheAge = cachedAt ? (Date.now() - parseInt(cachedAt)) : Infinity;
-  const cacheValid = cachedData && cacheAge < TRANSACTION_CACHE_MAX_AGE_MS;
+  const cached = _readCachedTransactions();
+  const cacheValid = cached && cached.age < TRANSACTION_CACHE_MAX_AGE_MS;
 
   if (!forceNetwork) {
     const syncBlockState = _getNoActivePlaidItemsSyncErrorState();
     if (syncBlockState.blocked) {
       if (cacheValid) {
-        try {
-          transactions = JSON.parse(cachedData);
-          autoExtendEndDateForScheduled();
-          renderTransactionTable();
-          renderDynamicPeriodButtons();
-        } catch (cacheParseError) {
-          console.warn('Unable to read cached transactions while sync is blocked:', cacheParseError);
-          await fetchAllTransactions(false);
-        }
+        transactions = cached.data;
+        autoExtendEndDateForScheduled();
+        renderTransactionTable();
+        renderDynamicPeriodButtons();
       } else {
         await fetchAllTransactions(false);
       }
@@ -383,15 +386,11 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
   
   // Show cached data immediately for instant page load
   if (cacheValid && !forceNetwork) {
-    try {
-      transactions = JSON.parse(cachedData);
-      autoExtendEndDateForScheduled();
-      renderTransactionTable();
-      renderDynamicPeriodButtons();
-      showStatus(`Loaded ${transactions.length} transactions from cache. Checking for updates...`, 'info');
-    } catch (e) {
-      console.error('Cache parse error, will fetch from server:', e);
-    }
+    transactions = cached.data;
+    autoExtendEndDateForScheduled();
+    renderTransactionTable();
+    renderDynamicPeriodButtons();
+    showStatus(`Loaded ${transactions.length} transactions from cache. Checking for updates...`, 'info');
   }
   
   try {
@@ -450,23 +449,17 @@ async function fetchAllTransactions(forceNetwork = false) {
   // Phase 1: Fetch recent window (last N days) for instant render.
   // Phase 2: Backfill full history in background.
   // ETag: On repeat calls, backend returns 304 if nothing changed.
-  const cachedTransactionsRaw = localStorage.getItem(TRANSACTION_CACHE_KEY);
-  const cachedAtRaw = localStorage.getItem(TRANSACTION_CACHE_TS_KEY);
-  const cachedAgeMs = cachedAtRaw ? (Date.now() - parseInt(cachedAtRaw)) : Infinity;
-  const hasFreshCache = Boolean(cachedTransactionsRaw) && cachedAgeMs < TRANSACTION_CACHE_MAX_AGE_MS;
+  const cached = _readCachedTransactions();
+  const hasFreshCache = cached && cached.age < TRANSACTION_CACHE_MAX_AGE_MS;
 
   if (!forceNetwork && hasFreshCache) {
-    try {
-      transactions = JSON.parse(cachedTransactionsRaw);
-      autoExtendEndDateForScheduled();
-      renderTransactionTable();
-      renderDynamicPeriodButtons();
-      showStatus(`Loaded ${transactions.length} transactions from local cache`, 'success');
-      setTimeout(() => clearStatus(), 1500);
-      return;
-    } catch (cacheParseError) {
-      console.warn('Cached transactions unreadable, falling back to network:', cacheParseError);
-    }
+    transactions = cached.data;
+    autoExtendEndDateForScheduled();
+    renderTransactionTable();
+    renderDynamicPeriodButtons();
+    showStatus(`Loaded ${transactions.length} transactions from local cache`, 'success');
+    setTimeout(() => clearStatus(), 1500);
+    return;
   }
 
   _recordFullHistoryCallMetric('transactions_full_history');
@@ -495,34 +488,40 @@ async function fetchAllTransactions(forceNetwork = false) {
     return;
   }
 
-  // --- Phase 2: Full history backfill (no date filter) ---
-  try {
-    const fullResponse = await _fetchTransactionsFromServer(null);
-    if (fullResponse === null) {
-      // 304 on full request — recent set was same as full set, we're done
+  // --- Phase 2: Full history backfill (non-blocking) ---
+  // Use requestIdleCallback so the backfill network call doesn't block
+  // initial paint or user interaction after Phase 1 renders.
+  const _scheduleIdle = window.requestIdleCallback || (cb => setTimeout(cb, 50));
+  _scheduleIdle(async () => {
+    try {
+      const fullResponse = await _fetchTransactionsFromServer(null);
+      if (fullResponse === null) {
+        // 304 on full request — recent set was same as full set, we're done
+        _cacheTransactions(transactions);
+        showStatus(`Loaded ${transactions.length} total transactions`, 'success');
+        setTimeout(() => clearStatus(), 2000);
+        return;
+      }
+
+      transactions = fullResponse;
+      _clearBalanceHistoryCache();
       _cacheTransactions(transactions);
-      showStatus(`Loaded ${transactions.length} total transactions`, 'success');
+
+      autoExtendEndDateForScheduled();
+      renderTransactionTable();
+      renderDynamicPeriodButtons();
+      showStatus(`Loaded ${transactions.length} total transactions (filters applied on frontend)`, 'success');
       setTimeout(() => clearStatus(), 2000);
-      return;
+
+    } catch (error) {
+      if (error.name === 'AbortError') return; // Cancelled by a newer request
+      // Phase 1 already rendered — user sees recent data; log but don't block
+      console.error('Full-history backfill failed (recent data still visible):', error);
+      _cacheTransactions(transactions);
+      showStatus(`Loaded ${transactions.length} recent transactions (full history unavailable)`, 'warning');
+      setTimeout(() => clearStatus(), 3000);
     }
-
-    transactions = fullResponse;
-    _clearBalanceHistoryCache();
-    _cacheTransactions(transactions);
-
-    autoExtendEndDateForScheduled();
-    renderTransactionTable();
-    renderDynamicPeriodButtons();
-    showStatus(`Loaded ${transactions.length} total transactions (filters applied on frontend)`, 'success');
-    setTimeout(() => clearStatus(), 2000);
-
-  } catch (error) {
-    // Phase 1 already rendered — user sees recent data; log but don't block
-    console.error('Full-history backfill failed (recent data still visible):', error);
-    _cacheTransactions(transactions);
-    showStatus(`Loaded ${transactions.length} recent transactions (full history unavailable)`, 'warning');
-    setTimeout(() => clearStatus(), 3000);
-  }
+  });
 }
 
 function _daysAgo(numberOfDays) {
@@ -539,7 +538,14 @@ async function _fetchTransactionsFromServer(sinceDate) {
   /**
    * Low-level fetch helper. Sends ETag header, handles 304.
    * Returns the transactions array on success, or null on 304 (no changes).
+   * Cancels any in-flight previous request via AbortController.
    */
+  // Cancel any previous in-flight request to avoid stale race conditions
+  if (_fetchAbortController) {
+    _fetchAbortController.abort();
+  }
+  _fetchAbortController = new AbortController();
+
   let url = `${BACKEND_URL}/api/transactions`;
   if (sinceDate) {
     url += `?since_date=${sinceDate}`;
@@ -557,6 +563,7 @@ async function _fetchTransactionsFromServer(sinceDate) {
     method: 'GET',
     mode: 'cors',
     headers,
+    signal: _fetchAbortController.signal,
   });
 
   if (response.status === 304) {
@@ -577,10 +584,46 @@ async function _fetchTransactionsFromServer(sinceDate) {
   return data.transactions || [];
 }
 
+/**
+ * Read the transaction cache without redundant JSON.parse calls.
+ * First call per session parses localStorage and stores the result
+ * in _inMemoryTransactionCache. Subsequent calls return the
+ * in-memory copy instantly.
+ * Returns { data: Array, age: number } or null if no cache exists.
+ */
+function _readCachedTransactions() {
+  const cachedTs = localStorage.getItem(TRANSACTION_CACHE_TS_KEY);
+  const cachedAt = cachedTs ? parseInt(cachedTs) : 0;
+  const age = cachedAt ? (Date.now() - cachedAt) : Infinity;
+
+  // If in-memory cache is current, skip localStorage entirely
+  if (_inMemoryTransactionCache && _inMemoryTransactionCacheTs === cachedAt) {
+    return { data: _inMemoryTransactionCache, age };
+  }
+
+  // Parse from localStorage once and keep in memory
+  const raw = localStorage.getItem(TRANSACTION_CACHE_KEY);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    _inMemoryTransactionCache = parsed;
+    _inMemoryTransactionCacheTs = cachedAt;
+    return { data: parsed, age };
+  } catch (e) {
+    console.warn('Transaction cache parse failed:', e);
+    return null;
+  }
+}
+
 function _cacheTransactions(transactionsToCache) {
   try {
+    const now = Date.now();
     localStorage.setItem(TRANSACTION_CACHE_KEY, JSON.stringify(transactionsToCache));
-    localStorage.setItem(TRANSACTION_CACHE_TS_KEY, String(Date.now()));
+    localStorage.setItem(TRANSACTION_CACHE_TS_KEY, String(now));
+    // Keep in-memory copy in sync so next read avoids re-parsing
+    _inMemoryTransactionCache = transactionsToCache;
+    _inMemoryTransactionCacheTs = now;
   } catch (cacheErr) {
     console.warn('Could not cache transactions to localStorage:', cacheErr);
   }

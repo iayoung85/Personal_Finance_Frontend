@@ -57,6 +57,7 @@
 
             <div class="filter-group filter-group-dates">
               <span class="date-filter-label">Date:</span>
+              <button id="btn-date-last-12-months" class="btn-date-toggle" onclick="toggleDateFilter('last_12_months')">Last 12 Months</button>
               <button id="btn-date-mtd" class="btn-date-toggle" onclick="toggleDateFilter('mtd')">MTD</button>
               <button id="btn-date-ytd" class="btn-date-toggle" onclick="toggleDateFilter('ytd')">YTD</button>
               <button id="btn-date-last-month" class="btn-date-toggle" onclick="toggleDateFilter('last_month')">Last Month</button>
@@ -64,6 +65,7 @@
               <span id="date-month-buttons" class="date-month-buttons"></span>
               <span id="date-year-buttons" class="date-year-buttons"></span>
               <button id="btn-date-custom" class="btn-date-toggle" onclick="toggleDateFilter('custom')">Custom Range</button>
+              <button id="btn-date-all" class="btn-date-toggle" onclick="toggleDateFilter('all')">Show All Dates</button>
               <span id="custom-date-range-inputs" class="custom-date-range" style="display:none;">
                 <input type="date" id="custom-start-date" class="date-input">
                 <span class="filter-separator">to</span>

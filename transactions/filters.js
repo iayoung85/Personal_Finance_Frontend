@@ -48,6 +48,18 @@ function _applyAllTimeDates() {
 }
 
 /**
+ * Set start-date/end-date to the last 12 months from today.
+ * This is the default filter — keeps the initial render fast by
+ * limiting DOM rows while still showing a useful range.
+ */
+function _applyLast12Months() {
+  const start = new Date();
+  start.setFullYear(start.getFullYear() - 1);
+  document.getElementById('start-date').value = _formatDateLocal(start);
+  document.getElementById('end-date').value = _tomorrowDateStr();
+}
+
+/**
  * Set start-date/end-date to Month-to-Date. On the 1st of the month
  * we include the prior month so the view isn't empty.
  */
@@ -141,7 +153,7 @@ function _setActiveYearButton(year) {
 function toggleDateFilter(filterName) {
   const currentActive = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
 
-  // Clicking the same filter again → deactivate and show everything
+  // Clicking the same filter again → deactivate (back to default 12-month view)
   if (currentActive === filterName) {
     _deactivateDateFilter();
     return;
@@ -149,7 +161,13 @@ function toggleDateFilter(filterName) {
 
   _hideCustomRangeInputs();
 
-  if (filterName === 'mtd') {
+  if (filterName === 'last_12_months') {
+    _applyLast12Months();
+    _setActiveToggle('btn-date-last-12-months');
+  } else if (filterName === 'all') {
+    _applyAllTimeDates();
+    _setActiveToggle('btn-date-all');
+  } else if (filterName === 'mtd') {
     _applyMonthToDate();
     _setActiveToggle('btn-date-mtd');
   } else if (filterName === 'ytd') {
@@ -209,8 +227,10 @@ function toggleYearFilter(year) {
 function _deactivateDateFilter() {
   _clearAllDateToggleStyles();
   _hideCustomRangeInputs();
-  _applyAllTimeDates();
-  localStorage.removeItem(DATE_FILTER_ACTIVE_KEY);
+  // Default baseline is now last 12 months (not all-time)
+  _applyLast12Months();
+  _setActiveToggle('btn-date-last-12-months');
+  localStorage.setItem(DATE_FILTER_ACTIVE_KEY, 'last_12_months');
   renderTransactionTable();
 }
 
@@ -265,13 +285,25 @@ function _onCustomDateChange() {
  * then restores any saved toggle from localStorage.
  */
 function setDefaultDates() {
-  _applyAllTimeDates();
+  // Default baseline is last 12 months (fast initial render)
+  _applyLast12Months();
 
   const savedFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
-  if (!savedFilter) return;
+  if (!savedFilter) {
+    // No saved preference — apply last 12 months as default and persist it
+    localStorage.setItem(DATE_FILTER_ACTIVE_KEY, 'last_12_months');
+    _setActiveToggle('btn-date-last-12-months');
+    return;
+  }
 
   // Re-apply the saved filter without re-rendering (main.js renders later)
-  if (savedFilter === 'mtd') {
+  if (savedFilter === 'last_12_months') {
+    _applyLast12Months();
+    _setActiveToggle('btn-date-last-12-months');
+  } else if (savedFilter === 'all') {
+    _applyAllTimeDates();
+    _setActiveToggle('btn-date-all');
+  } else if (savedFilter === 'mtd') {
     _applyMonthToDate();
     _setActiveToggle('btn-date-mtd');
   } else if (savedFilter === 'last_month') {
@@ -380,10 +412,10 @@ function autoExtendEndDateForScheduled() {
     }
   }
 
-  // When no filter is toggled, snap start-date to real earliest txn
-  // so the "show all" baseline covers every transaction now that data is loaded.
+  // When "Show All Dates" is active, snap start-date to real earliest txn.
+  // Otherwise the default (last_12_months) handles itself.
   const activeFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
-  if (!activeFilter) {
+  if (activeFilter === 'all') {
     document.getElementById('start-date').value = _allTimeStartDate();
   }
 }

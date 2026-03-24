@@ -1,7 +1,7 @@
 # IndexedDB + Background Worker Migration Plan
 
 ## Summary
-Move the large transaction cache out of `localStorage` into an async, non-blocking IndexedDB store and introduce a background worker (Web Worker) to handle heavy parsing, syncing, and incremental updates. This eliminates main-thread JSON.parse/stringify jank for large datasets (10k–20k transactions), enables per-transaction storage and incremental writes, and allows an off-main-thread sync process that keeps the local DB aligned with the backend.
+Move the large transaction cache out of `localStorage` into an async, non-blocking IndexedDB store and introduce a background worker (Web Worker) to handle heavy parsing, syncing, and incremental updates. This eliminates main-thread JSON.parse/stringify jank for large datasets (10k–100k transactions), enables per-transaction storage and incremental writes, and allows an off-main-thread sync process that keeps the local DB aligned with the backend.
 
 ## Goals
 - Eliminate synchronous localStorage parsing of large JSON blobs.
