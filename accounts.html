@@ -34,6 +34,7 @@
               <input type="checkbox" id="show-archived-toggle" onchange="toggleArchivedVisibility()">
               Show archived
             </label>
+            <button class="btn-sidebar-action" onclick="openBackupRestoreModal()" title="Backup / Restore">⇅ Backup</button>
           </div>
         </div>
         <div class="sidebar-columns">
@@ -206,6 +207,79 @@
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" onclick="closeMoveAccountModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Backup / Restore Modal ═══ -->
+  <div id="backup-restore-modal" class="modal-overlay hidden">
+    <div class="modal" style="max-width: 520px;">
+      <div class="modal-header">
+        <h2>Backup / Restore</h2>
+        <button class="modal-close" onclick="closeBackupRestoreModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Backup Section -->
+        <div class="backup-section">
+          <h3 class="backup-section-title">Download Backup</h3>
+          <p class="backup-section-desc">Export all your banks and accounts as a JSON file. Balances and timestamps are excluded — only structural data is saved.</p>
+          <button class="btn-primary" id="backup-download-btn" onclick="handleBackupDownload()">
+            ⬇ Download Backup
+          </button>
+        </div>
+
+        <hr class="backup-divider">
+
+        <!-- Restore Section -->
+        <div class="restore-section">
+          <h3 class="backup-section-title">Restore from Backup</h3>
+          <p class="backup-section-desc">Upload a previously exported JSON backup. Existing banks and accounts are preserved — only missing items are created.</p>
+          <div class="restore-upload-area" id="restore-upload-area">
+            <input type="file" id="restore-file-input" accept=".json" onchange="onRestoreFileSelected()" style="display: none;">
+            <button class="btn-secondary" onclick="document.getElementById('restore-file-input').click()">
+              📁 Choose JSON File
+            </button>
+            <span id="restore-file-name" class="restore-file-name">No file selected</span>
+          </div>
+          <button class="btn-primary" id="restore-upload-btn" onclick="handleRestoreUpload()" disabled>
+            ⬆ Upload &amp; Restore
+          </button>
+          <div id="restore-error" class="form-error hidden"></div>
+        </div>
+
+        <!-- Restore Summary (hidden until restore completes) -->
+        <div id="restore-summary" class="restore-summary hidden">
+          <h3 class="backup-section-title">Restore Summary</h3>
+          <div class="restore-summary-grid">
+            <div class="summary-stat">
+              <span class="summary-label">Banks created</span>
+              <span class="summary-value" id="summary-banks-created">0</span>
+            </div>
+            <div class="summary-stat">
+              <span class="summary-label">Banks skipped</span>
+              <span class="summary-value" id="summary-banks-skipped">0</span>
+            </div>
+            <div class="summary-stat">
+              <span class="summary-label">Accounts created</span>
+              <span class="summary-value" id="summary-accounts-created">0</span>
+            </div>
+            <div class="summary-stat">
+              <span class="summary-label">Accounts skipped</span>
+              <span class="summary-value" id="summary-accounts-skipped">0</span>
+            </div>
+          </div>
+          <div class="hash-match-row" id="hash-bank-row">
+            <span class="hash-label">Bank structure</span>
+            <span class="hash-status" id="hash-bank-status"></span>
+          </div>
+          <div class="hash-match-row" id="hash-account-row">
+            <span class="hash-label">Account structure</span>
+            <span class="hash-status" id="hash-account-status"></span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeBackupRestoreModal()">Close</button>
       </div>
     </div>
   </div>

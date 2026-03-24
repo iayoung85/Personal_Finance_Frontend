@@ -393,3 +393,48 @@ async function apiUnarchiveBank(bankId) {
   }
   return data;
 }
+
+// ── Backup / Restore ─────────────────────────────────────────
+
+/**
+ * Export all banks+accounts as a JSON backup file.
+ * Returns a Blob so the caller can trigger a browser download.
+ */
+async function apiExportAccounts() {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/accounts/backup/export`
+  );
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to export accounts backup');
+  }
+  const blob = await response.blob();
+  // Extract filename from Content-Disposition header or use a default
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const filenameMatch = disposition.match(/filename="?([^";\n]+)"?/);
+  const filename = filenameMatch
+    ? filenameMatch[1]
+    : `pfc-accounts-backup-${todayISO()}.json`;
+  return { blob, filename };
+}
+
+/**
+ * Upload a JSON backup to restore banks and accounts.
+ * @param {object} jsonData - The parsed JSON backup object.
+ * @returns {object} Summary with banks/accounts created/skipped and hash match info.
+ */
+async function apiImportAccounts(jsonData) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/accounts/backup/import`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(jsonData)
+    }
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to import accounts backup');
+  }
+  return data;
+}

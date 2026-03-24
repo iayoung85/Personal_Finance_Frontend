@@ -573,6 +573,154 @@ Understanding the origin/connection badge system is critical for the frontend:
 - `Bank.is_archived=true` + `connection_status='linked'` is **invalid**. Archiving a linked bank auto-converts it first.
 - `Account.is_archived=true` + `connection_status='linked'` is **valid**. Plaid keeps syncing in background.
 
+
+
+---
+
+## Backup / Restore Endpoints
+
+### `GET /api/accounts/backup/export`
+
+Download a JSON backup of all banks and accounts. The response is a JSON file with a `Content-Disposition: attachment` header so the browser triggers a download.
+
+Banks with zero accounts are excluded. Balance fields, timestamps, and investment metrics are **not** included — only structural/identity data.
+
+**Response `200`:**
+```json
+{
+  "format": "PFC_ACCOUNTS_BACKUP",
+  "version": 1,
+  "exported_at": "2026-03-24T14:30:00Z",
+  "user_id": "user_1",
+  "bank_list_hash": "a1b2c3d4e5f6",
+  "account_list_hash": "f6e5d4c3b2a1",
+  "banks": [
+    {
+      "bank_id": "bank_abc123",
+      "bank_name": "Unknown Bank",
+      "custom_name": "My Assets",
+      "origin": "manual",
+      "connection_status": "manual",
+      "institution_id": null,
+      "plaid_item_id": null,
+      "is_archived": false,
+      "notes": "Personal tracking accounts",
+      "user_phone": null,
+      "user_address": null,
+      "preserved_item_metadata": null,
+      "accounts": [
+        {
+          "account_id": "manual_def456",
+          "account_name": "Ankeny House est sale value",
+          "custom_name": "Ankeny House est sale value",
+          "origin": "manual",
+          "connection_status": "manual",
+          "account_category": "asset",
+          "account_subcategory": "real_estate",
+          "plaid_account_id": null,
+          "plaid_item_id": null,
+          "plaid_type": null,
+          "plaid_subtype": null,
+          "mask": null,
+          "currency": "USD",
+          "is_archived": false,
+          "notes": null
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Response headers:**
+```
+Content-Disposition: attachment; filename="pfc-accounts-backup-2026-03-24.json"
+Content-Type: application/json
+```
+
+**Error `500`:**
+```json
+{ "error": "Failed to export accounts backup" }
+```
+
+**Frontend notes:**
+- Call via `fetch()`, read the response as a blob, create an object URL, and trigger a download via a temporary `<a>` element.
+- The `bank_list_hash` and `account_list_hash` are deterministic fingerprints. Calling the endpoint twice with no DB changes produces identical hashes. These will be used by transaction import (Phase 4) to detect structural drift.
+
+---
+
+### `POST /api/accounts/backup/import`
+
+Upload a JSON backup to restore banks and accounts. Merge-only — **no existing data is destroyed**.
+
+**Request body:** The full JSON backup object (same schema as the export response above).
+
+```
+Content-Type: application/json
+```
+
+**Merge rules:**
+- If a `bank_id` already exists for this user → **skip** that bank (no update).
+- If an `account_id` already exists for this user → **skip** that account.
+- New banks/accounts are created preserving the original IDs (so transaction restore FKs match).
+- Originally `linked` banks/accounts are restored with `connection_status = "dormant"` (no active Plaid connection after restore).
+- Balance fields are set to `0` / `null`. Timestamps are set to the restore time.
+
+**Response `200`:**
+```json
+{
+  "banks_created": 3,
+  "banks_skipped": 0,
+  "accounts_created": 12,
+  "accounts_skipped": 0,
+  "file_bank_list_hash": "a1b2c3d4e5f6",
+  "file_account_list_hash": "f6e5d4c3b2a1",
+  "current_bank_list_hash": "a1b2c3d4e5f6",
+  "current_account_list_hash": "f6e5d4c3b2a1",
+  "bank_hash_match": true,
+  "account_hash_match": true
+}
+```
+
+**Response fields:**
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `banks_created` | int | Number of new banks inserted |
+| `banks_skipped` | int | Banks that already existed (by `bank_id`) |
+| `accounts_created` | int | Number of new accounts inserted |
+| `accounts_skipped` | int | Accounts that already existed (by `account_id`) |
+| `file_bank_list_hash` | string | Hash from the uploaded backup file |
+| `file_account_list_hash` | string | Hash from the uploaded backup file |
+| `current_bank_list_hash` | string | Recomputed hash of DB state after import |
+| `current_account_list_hash` | string | Recomputed hash of DB state after import |
+| `bank_hash_match` | bool | `true` if file hash matches current DB hash |
+| `account_hash_match` | bool | `true` if file hash matches current DB hash |
+
+**Hash match interpretation:**
+- Both `true` → restore to empty DB produced an exact structural match. All good.
+- `false` → the user had pre-existing banks/accounts that differ from the backup. Some items were skipped. Not necessarily an error, but worth flagging.
+
+**Error `400`:**
+```json
+{ "error": "Request body must be valid JSON" }
+```
+```json
+{ "error": "Invalid backup format: expected 'PFC_ACCOUNTS_BACKUP', got 'null'" }
+```
+```json
+{ "error": "Unsupported backup version: 2. Supported: [1]" }
+```
+
+**Error `500`:**
+```json
+{ "error": "Failed to import accounts backup" }
+```
+
+**Frontend notes:**
+- Read the file via `FileReader`, `JSON.parse()` the contents, then POST the parsed object as the request body.
+- After a successful restore, reload the accounts sidebar to reflect newly created banks/accounts.
+- Display the summary card showing created/skipped counts and hash match status (green checkmark if match, yellow warning if mismatch).
 ---
 
 ## Migration Notes for React + IndexedDB

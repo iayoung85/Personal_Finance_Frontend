@@ -1164,3 +1164,125 @@ details[open] > .collapsible-trigger::before {
   font-size: 11px;
   color: var(--text-muted);
 }
+
+/* ── Sidebar Backup Button ── */
+.btn-sidebar-action {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-sidebar-action:hover {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+/* ── Backup / Restore Modal ── */
+.backup-section,
+.restore-section {
+  margin-bottom: 4px;
+}
+
+.backup-section-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.backup-section-desc {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.backup-divider {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 14px 0;
+}
+
+/* Restore file picker area */
+.restore-upload-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.restore-file-name {
+  font-size: 13px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+/* Restore summary card */
+.restore-summary {
+  margin-top: 16px;
+  padding: 14px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+}
+
+.restore-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.summary-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summary-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.summary-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+/* Hash match rows */
+.hash-match-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 13px;
+}
+
+.hash-label {
+  color: var(--text-secondary);
+}
+
+.hash-status {
+  font-weight: 600;
+}
+
+.hash-status.hash-match {
+  color: var(--status-success, #22c55e);
+}
+
+.hash-status.hash-mismatch {
+  color: var(--status-warning, #eab308);
+}

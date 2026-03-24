@@ -516,7 +516,7 @@ th.th-category {
   padding-left: 10px;
 }
 th.th-merchant {
-  max-width: 10px;
+  min-width: 150px;
 }
 td {
   padding: 3px 8px;
@@ -534,20 +534,19 @@ td {
   vertical-align: middle;
 }
 td.description-column {
-/*min-width: 100px;*/
-max-width: 10px;
-white-space: nowrap;
-overflow: hidden;
-text-overflow: ellipsis;
+  min-width: 150px;
+  max-width: 250px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* Ensure category column remains readable: reserve minimum width */
 td.category-column {
-  min-width: 300px; /* prevents merchant name from completely collapsing category */
+  min-width: 260px; /* prevents merchant name from completely collapsing category */
 }
 /* The inner category cell should allow its controls to layout correctly */
 td.category-column .category-cell {
-  min-width: 300px;
-  max-width: 320px;
+  min-width: 0;
 }
 tr:nth-child(even) {
   background: var(--bg-surface-elevated);

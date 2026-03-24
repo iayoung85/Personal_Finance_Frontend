@@ -461,3 +461,149 @@ async function submitCreateAccount() {
     errorEl.classList.remove('hidden');
   }
 }
+
+// ── Backup / Restore Modal ───────────────────────────────────
+
+function openBackupRestoreModal() {
+  // Reset state each time the modal opens
+  document.getElementById('restore-file-input').value = '';
+  document.getElementById('restore-file-name').textContent = 'No file selected';
+  document.getElementById('restore-upload-btn').disabled = true;
+  document.getElementById('restore-error').classList.add('hidden');
+  document.getElementById('restore-summary').classList.add('hidden');
+  document.getElementById('backup-download-btn').disabled = false;
+
+  document.getElementById('backup-restore-modal').classList.remove('hidden');
+}
+
+function closeBackupRestoreModal() {
+  document.getElementById('backup-restore-modal').classList.add('hidden');
+}
+
+/**
+ * Download the accounts backup JSON file.
+ */
+async function handleBackupDownload() {
+  const btn = document.getElementById('backup-download-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Exporting…';
+
+  try {
+    const { blob, filename } = await apiExportAccounts();
+    // Create a temporary link to trigger the download
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Backup downloaded', 'success');
+  } catch (exportError) {
+    showToast(`Backup failed: ${exportError.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⬇ Download Backup';
+  }
+}
+
+/**
+ * Handle file selection for restore.
+ */
+function onRestoreFileSelected() {
+  const fileInput = document.getElementById('restore-file-input');
+  const fileNameSpan = document.getElementById('restore-file-name');
+  const uploadBtn = document.getElementById('restore-upload-btn');
+  const errorEl = document.getElementById('restore-error');
+
+  errorEl.classList.add('hidden');
+  document.getElementById('restore-summary').classList.add('hidden');
+
+  if (fileInput.files.length > 0) {
+    fileNameSpan.textContent = fileInput.files[0].name;
+    uploadBtn.disabled = false;
+  } else {
+    fileNameSpan.textContent = 'No file selected';
+    uploadBtn.disabled = true;
+  }
+}
+
+/**
+ * Read the selected JSON file and POST it to the restore endpoint.
+ */
+async function handleRestoreUpload() {
+  const fileInput = document.getElementById('restore-file-input');
+  const uploadBtn = document.getElementById('restore-upload-btn');
+  const errorEl = document.getElementById('restore-error');
+
+  errorEl.classList.add('hidden');
+  document.getElementById('restore-summary').classList.add('hidden');
+
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  uploadBtn.disabled = true;
+  uploadBtn.textContent = '⏳ Restoring…';
+
+  try {
+    // Read file contents
+    const text = await file.text();
+    let jsonData;
+    try {
+      jsonData = JSON.parse(text);
+    } catch (parseErr) {
+      throw new Error('Invalid JSON file. Please select a valid backup file.');
+    }
+
+    // Basic format validation
+    if (jsonData.format !== 'PFC_ACCOUNTS_BACKUP') {
+      throw new Error('This file does not appear to be a PFC accounts backup (wrong format header).');
+    }
+
+    const summary = await apiImportAccounts(jsonData);
+    renderRestoreSummary(summary);
+
+    // Reload the sidebar to show any newly created banks/accounts
+    await reloadAndReselect();
+    showToast('Restore complete', 'success');
+  } catch (restoreError) {
+    errorEl.textContent = restoreError.message;
+    errorEl.classList.remove('hidden');
+  } finally {
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = '⬆ Upload & Restore';
+  }
+}
+
+/**
+ * Populate the restore summary card with results from the import.
+ */
+function renderRestoreSummary(summary) {
+  document.getElementById('summary-banks-created').textContent = summary.banks_created ?? 0;
+  document.getElementById('summary-banks-skipped').textContent = summary.banks_skipped ?? 0;
+  document.getElementById('summary-accounts-created').textContent = summary.accounts_created ?? 0;
+  document.getElementById('summary-accounts-skipped').textContent = summary.accounts_skipped ?? 0;
+
+  // Hash match indicators
+  const bankHashEl = document.getElementById('hash-bank-status');
+  const accountHashEl = document.getElementById('hash-account-status');
+
+  if (summary.bank_hash_match) {
+    bankHashEl.textContent = '✓ Match';
+    bankHashEl.className = 'hash-status hash-match';
+  } else {
+    bankHashEl.textContent = '⚠ Mismatch';
+    bankHashEl.className = 'hash-status hash-mismatch';
+  }
+
+  if (summary.account_hash_match) {
+    accountHashEl.textContent = '✓ Match';
+    accountHashEl.className = 'hash-status hash-match';
+  } else {
+    accountHashEl.textContent = '⚠ Mismatch';
+    accountHashEl.className = 'hash-status hash-mismatch';
+  }
+
+  document.getElementById('restore-summary').classList.remove('hidden');
+}

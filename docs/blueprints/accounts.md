@@ -246,5 +246,44 @@ Sidebar list items show a compact composite: a small colored dot combining conne
 - Main content area should never be empty without guidance — show contextual prompts ("Select a bank or account to view details").
 - Keep the page responsive: sidebar collapses to a single-column or drawer on narrow viewports.
 
+## Backup / Restore Modal
+
+A modal accessible from the sidebar filter row via a small "⇅ Backup" button next to the "Show archived" checkbox. Opens a two-section dialog for data portability.
+
+### Sidebar Entry Point
+- Small secondary-styled button (`btn-sidebar-action`) in the `.sidebar-filter-row`, right-aligned alongside the "Show archived" label.
+- Label: "⇅ Backup". On hover: accent color fill.
+
+### Modal Structure (`#backup-restore-modal`)
+
+**Backup Section (top):**
+- Title: "Download Backup".
+- Description text explaining that the export contains structural bank/account data only (no balances, timestamps, or investment metrics).
+- "⬇ Download Backup" button. On click: calls `GET /api/accounts/backup/export`, receives a JSON blob, triggers a browser download with the filename from the `Content-Disposition` header (or falls back to `pfc-accounts-backup-{date}.json`). Button shows "⏳ Exporting…" while in flight.
+
+**Restore Section (below divider):**
+- Title: "Restore from Backup".
+- Description text explaining merge-only behavior — existing data is never destroyed, only missing banks/accounts are created.
+- File picker: hidden `<input type="file" accept=".json">` activated by a "📁 Choose JSON File" button. Selected filename displayed inline.
+- "⬆ Upload & Restore" button (disabled until a file is selected). On click:
+  1. Reads the file via `file.text()`, parses as JSON.
+  2. Validates `format === "PFC_ACCOUNTS_BACKUP"` before sending.
+  3. POSTs the parsed JSON to `POST /api/accounts/backup/import`.
+  4. On success: renders the restore summary card and reloads the sidebar.
+  5. On error: shows inline error message.
+
+**Restore Summary Card (`#restore-summary`, hidden until restore completes):**
+- 2×2 grid displaying: Banks Created, Banks Skipped, Accounts Created, Accounts Skipped.
+- Two hash-match rows below the grid:
+  - "Bank structure" — shows "✓ Match" (green) or "⚠ Mismatch" (yellow) comparing the file's `bank_list_hash` against the post-import DB hash.
+  - "Account structure" — same for `account_list_hash`.
+- Hash match meaning: ✓ Match = the DB now contains exactly the bank/account topology from the file. ⚠ Mismatch = the DB has additional or different banks/accounts beyond what the file contained (expected when restoring into a DB with pre-existing data).
+
+### File Ownership
+- Modal markup: `accounts.html` (alongside other modals).
+- API calls: `accounts/api.js` — `apiExportAccounts()` (returns `{blob, filename}`), `apiImportAccounts(jsonData)` (returns summary object).
+- Modal handlers: `accounts/main.js` — `openBackupRestoreModal()`, `closeBackupRestoreModal()`, `handleBackupDownload()`, `onRestoreFileSelected()`, `handleRestoreUpload()`, `renderRestoreSummary(summary)`.
+- Styles: `accounts.css` — `.btn-sidebar-action`, `.backup-section`, `.restore-section`, `.backup-divider`, `.restore-upload-area`, `.restore-summary`, `.restore-summary-grid`, `.summary-stat`, `.hash-match-row`, `.hash-status.hash-match`, `.hash-status.hash-mismatch`.
+
 
 # BUGS and Changes needed
