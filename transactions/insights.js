@@ -21,10 +21,7 @@ function generateSpendingInsights() {
     if (txn.is_hidden) return false;
     // Exclude system-generated bookkeeping entries (opening balances, reconciliation, etc.)
     if (isSystemType(getTransactionType(txn))) return false;
-    if (hideTransfers) {
-      const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
-      if (/transfer/i.test(primaryCat)) return false;
-    }
+    if (hideTransfers && isTransferCategory(txn.user_category)) return false;
     if (showOverridesOnly && !txn.is_override) return false;
     if (txn.personal_finance_category && txn.personal_finance_category.primary) {
       if (/income/i.test(txn.personal_finance_category.primary)) return false;

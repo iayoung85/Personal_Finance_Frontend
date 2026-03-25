@@ -39,24 +39,35 @@ function _tomorrowDateStr() {
 }
 
 /**
- * Write "show everything" range into the hidden start-date / end-date inputs.
- * Future-dated rows beyond tomorrow are handled by autoExtendEndDateForScheduled.
+ * Return a date string for today + bills-future-days.
+ * Used by filters that should include projected future bills.
  */
-function _applyAllTimeDates() {
-  document.getElementById('start-date').value = _allTimeStartDate();
-  document.getElementById('end-date').value = _tomorrowDateStr();
+function _futureEndDateStr() {
+  const futureDays = parseInt(document.getElementById('bills-future-days')?.value, 10) || 90;
+  const end = new Date();
+  end.setDate(end.getDate() + futureDays);
+  return _formatDateLocal(end);
 }
 
 /**
- * Set start-date/end-date to the last 12 months from today.
- * This is the default filter — keeps the initial render fast by
- * limiting DOM rows while still showing a useful range.
+ * Write "show everything" range into the hidden start-date / end-date inputs.
+ * End date extends by bills-future-days so projected bills remain visible.
+ */
+function _applyAllTimeDates() {
+  document.getElementById('start-date').value = _allTimeStartDate();
+  document.getElementById('end-date').value = _futureEndDateStr();
+}
+
+/**
+ * Set start-date/end-date to the last 12 months from today,
+ * plus bills-future-days into the future so projected bills
+ * are visible by default.
  */
 function _applyLast12Months() {
   const start = new Date();
   start.setFullYear(start.getFullYear() - 1);
   document.getElementById('start-date').value = _formatDateLocal(start);
-  document.getElementById('end-date').value = _tomorrowDateStr();
+  document.getElementById('end-date').value = _futureEndDateStr();
 }
 
 /**
@@ -71,7 +82,7 @@ function _applyMonthToDate() {
     start.setDate(1);
   }
   document.getElementById('start-date').value = _formatDateLocal(start);
-  document.getElementById('end-date').value = _tomorrowDateStr();
+  document.getElementById('end-date').value = _futureEndDateStr();
 }
 
 function _applyLastMonth() {
@@ -86,7 +97,7 @@ function _applyYearToDate() {
   const now = new Date();
   const start = new Date(now.getFullYear(), 0, 1);
   document.getElementById('start-date').value = _formatDateLocal(start);
-  document.getElementById('end-date').value = _tomorrowDateStr();
+  document.getElementById('end-date').value = _futureEndDateStr();
 }
 
 function _applyLastYear() {

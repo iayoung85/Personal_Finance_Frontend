@@ -97,14 +97,10 @@ function renderTransactionTable() {
       return false;
     }
 
-    // Hide transfers if requested (checks personal finance primary category,
-    // transfer_pair_id, and [AccountName] category notation)
+    // Hide transfers if requested based only on user-assigned transfer
+    // category notation: [AccountName]
     if (hideTransfers) {
-      const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
-      if (/transfer/i.test(primaryCat)) {
-        return false;
-      }
-      if (txn.transfer_pair_id || isTransferCategory(txn.user_category)) {
+      if (isTransferCategory(txn.user_category)) {
         return false;
       }
     }
