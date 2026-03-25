@@ -759,9 +759,19 @@ function renderTransactionTable() {
       if (isMissingRow) {
         ledgerBalanceHtml = '<td class="ledger-cell ledger-unavailable">N/A</td>';
       } else {
-        const runningBalance = isFutureBlockRow
-          ? scheduledLedgerLookup[txn.transaction_id]
-          : isPendingRow ? pendingLedgerLookup[txn.transaction_id] : balanceHistoryLookup[txn.transaction_id];
+        // Investment trending rows have backend-calculated ledger values
+        // even though they are future-dated; use the backend history
+        // instead of the projection to avoid double-counting market gains
+        // that are already reflected in current_balance.
+        const useBackendHistory = isFutureBlockRow
+          && txn.source === 'investment_trending'
+          && balanceHistoryLookup[txn.transaction_id] !== undefined;
+
+        const runningBalance = useBackendHistory
+          ? balanceHistoryLookup[txn.transaction_id]
+          : isFutureBlockRow
+            ? scheduledLedgerLookup[txn.transaction_id]
+            : isPendingRow ? pendingLedgerLookup[txn.transaction_id] : balanceHistoryLookup[txn.transaction_id];
         if (runningBalance !== undefined) {
           const formattedBalance = new Intl.NumberFormat('en-US', {
             style: 'currency',

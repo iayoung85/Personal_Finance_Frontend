@@ -143,6 +143,7 @@ function _renderExposurePanel(panel, data, directTickers, etfHoldings) {
     });
 
     html += '</tbody></table>';
+    html += `<div class="etf-exposure-footer">Showing all ${data.exposure.length} implied holdings</div>`;
   }
 
   // Unrecognized ETFs section
@@ -169,6 +170,7 @@ function _renderExposurePanel(panel, data, directTickers, etfHoldings) {
     });
 
     html += '</div>';
+    html += `<div class="etf-exposure-footer">Showing all ${data.unrecognized.length} unrecognized ETF${data.unrecognized.length !== 1 ? 's' : ''}</div>`;
   }
 
   html += '</div>';

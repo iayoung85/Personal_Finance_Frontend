@@ -53,6 +53,7 @@
               <button class="secondary" onclick="toggleExportDropdown()">Export ▾</button>
               <div id="export-dropdown" class="export-dropdown" style="display:none;">
                 <button onclick="downloadHoldingsCSV(); toggleExportDropdown();">Holdings CSV</button>
+                <button onclick="downloadHoldingsByAccountCSV(); toggleExportDropdown();">Holdings by Account CSV</button>
                 <button onclick="exportHoldingsJSON(); toggleExportDropdown();">Holdings JSON</button>
                 <button onclick="exportEtfExposureCSV(); toggleExportDropdown();">ETF Exposure CSV</button>
                 <button onclick="copyHoldingsCSV(); toggleExportDropdown();">Copy CSV to Clipboard</button>

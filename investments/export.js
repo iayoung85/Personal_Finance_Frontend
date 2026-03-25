@@ -103,3 +103,39 @@ function _buildHoldingsCSV() {
 
   return rows.map(row => row.join(',')).join('\n');
 }
+
+/**
+ * Download holdings as CSV broken out per account.
+ */
+function downloadHoldingsByAccountCSV() {
+  const selected = getSelectedAccountIds();
+  if (selected.length === 0) { alert('Select at least one account.'); return; }
+  const accountGroups = _buildGroupedByAccount(selected);
+  if (accountGroups.length === 0) { alert('No holdings found.'); return; }
+
+  const rows = [['Account', 'Ticker', 'Name', 'Type', 'Sector', 'Industry', 'Qty', 'Price', 'Value', 'Cost Basis', 'Gain/Loss']];
+
+  accountGroups.forEach(group => {
+    const accountLabel = `${group.institution} — ${group.account_name}`;
+    group.holdings.forEach(h => {
+      const gainLoss = (h.value != null && h.cost_basis != null) ? (h.value - h.cost_basis) : null;
+      rows.push([
+        accountLabel,
+        h.ticker || '',
+        h.name || '',
+        h.type || '',
+        h.sector || '',
+        h.industry || '',
+        h.quantity.toFixed(4),
+        h.price != null ? h.price.toFixed(2) : '',
+        h.value != null ? h.value.toFixed(2) : '',
+        h.cost_basis != null ? h.cost_basis.toFixed(2) : '',
+        gainLoss != null ? gainLoss.toFixed(2) : ''
+      ].map(csvEscape));
+    });
+  });
+
+  const csv = rows.map(row => row.join(',')).join('\n');
+  downloadAsFile(csv, 'holdings-by-account.csv', 'text/csv;charset=utf-8;');
+  showInvestmentMessage('Per-account CSV downloaded', 'success');
+}

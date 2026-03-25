@@ -336,7 +336,16 @@
 }
 
 .etf-exposure-table {
-  margin-bottom: 12px;
+  margin-bottom: 4px;
+}
+
+.etf-exposure-footer {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 6px 0 10px;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 2px;
 }
 
 .etf-unrecognized-section {
