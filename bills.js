@@ -22,14 +22,25 @@ let allCategories = [];
 let editingBillId = null; // null = creating, string = editing
 
 /**
- * Invalidate the transactions localStorage cache so the next visit
+ * Invalidate the transactions cache so the next visit
  * to the transactions page forces a fresh fetch from the server.
  * Why: bill create/update/delete changes the scheduled transactions
  * that the backend generates, but the frontend cache is unaware.
+ * Uses raw IndexedDB API since this page doesn't load the worker.
  */
 function _invalidateTransactionCache() {
-  localStorage.removeItem('pf_cached_transactions');
-  localStorage.removeItem('pf_transactions_cached_at');
+  try {
+    var req = indexedDB.open('PersonalFinanceDB');
+    req.onsuccess = function(e) {
+      var db = e.target.result;
+      if (db.objectStoreNames.contains('transactions')) {
+        var txn = db.transaction(['transactions', 'meta'], 'readwrite');
+        txn.objectStore('transactions').clear();
+        txn.objectStore('meta').clear();
+      }
+      db.close();
+    };
+  } catch (e) { /* non-fatal */ }
 }
 
 // ── Auth helpers (same pattern as other pages) ──────────────

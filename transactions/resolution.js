@@ -694,11 +694,7 @@ async function _submitReconciliationDecisions() {
 // ─── Post-resolution refresh ────────────────────────────────
 
 async function _refreshAfterReconciliation() {
-  try {
-    localStorage.removeItem('pf_cached_transactions');
-    localStorage.removeItem('pf_transactions_cached_at');
-  } catch (cacheError) { /* non-fatal */ }
-
+  _invalidateTransactionCache();
   await fetchAllTransactions(true);
 
   // Re-check whether the banner should still show

@@ -226,9 +226,7 @@ async function executeImportFromWizard() {
     await loadAccounts();
     await loadAvailableCategories(true);
 
-    // Invalidate transaction cache to force a fresh fetch
-    localStorage.removeItem('pf_cached_transactions');
-    localStorage.removeItem('pf_transactions_cached_at');
+    _invalidateTransactionCache();
     await fetchAllTransactions(true);
     renderTransactionTable();
 

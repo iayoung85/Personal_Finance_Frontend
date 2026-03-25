@@ -101,8 +101,18 @@ function logout() {
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('currentUser');
   // Clear data caches on logout for security
-  localStorage.removeItem('pf_cached_transactions');
-  localStorage.removeItem('pf_transactions_cached_at');
+  try {
+    var req = indexedDB.open('PersonalFinanceDB');
+    req.onsuccess = function(e) {
+      var db = e.target.result;
+      if (db.objectStoreNames.contains('transactions')) {
+        var txn = db.transaction(['transactions', 'meta'], 'readwrite');
+        txn.objectStore('transactions').clear();
+        txn.objectStore('meta').clear();
+      }
+      db.close();
+    };
+  } catch (e) { /* non-fatal */ }
   localStorage.removeItem('pf_cached_categories');
   localStorage.removeItem('pf_cached_taxonomy');
   localStorage.removeItem('pf_categories_cached_at');

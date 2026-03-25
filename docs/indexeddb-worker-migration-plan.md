@@ -112,11 +112,19 @@ db.version(1).stores({
 8. **`transactions.html`:** `worker-client.js` script tag added before `state.js` (loads before `api.js`). **DONE**
 
 ### Phase 3 — Remove localStorage, streaming reads, prep for virtualization
-1. **Delete all localStorage transaction cache code.**
-   - Remove constants: `TRANSACTION_CACHE_KEY`, `TRANSACTION_CACHE_TS_KEY`, `TRANSACTION_CACHE_MAX_AGE_MS`.
-   - Remove `_readCachedTransactions()` localStorage fallback path.
-   - Remove `_inMemoryTransactionCache` / `_inMemoryTransactionCacheTs` (IndexedDB + worker replaces this).
-   - Clean up `logout()` — remove `localStorage.removeItem('pf_cached_transactions')` etc.
+1. **Delete all localStorage transaction cache code.** **DONE**
+   - Remove constants: `TRANSACTION_CACHE_KEY`, `TRANSACTION_CACHE_TS_KEY`, `TRANSACTION_CACHE_MAX_AGE_MS`. **DONE** — removed `TRANSACTION_CACHE_KEY`, `TRANSACTION_CACHE_TS_KEY`, `TRANSACTION_ETAG_KEY`; `TRANSACTION_CACHE_MAX_AGE_MS` kept (used for cache-age checks against IndexedDB `cached_at`).
+   - Remove `_readCachedTransactions()` localStorage fallback path. **DONE** — reads from IndexedDB only now.
+   - Remove `_inMemoryTransactionCache` / `_inMemoryTransactionCacheTs` (IndexedDB + worker replaces this). **DONE**
+   - Clean up `logout()` — remove `localStorage.removeItem('pf_cached_transactions')` etc. **DONE** — `logout()` now calls `txnDB.clear()`.
+   - Clean up all other files: `context-menu.js`, `manual-transactions.js`, `row-renderers.js`, `resolution.js`, `inline-edit.js`, `import/file-upload.js`, `import/review.js` — replaced `localStorage.removeItem` calls with `_invalidateTransactionCache()`. **DONE**
+   - Clean up `bills.js` and `categories/api.js` — replaced with raw IndexedDB API calls (these pages don't load the worker). **DONE**
+   - One-time migration in `main.js` preserved — safely migrates any lingering localStorage data + ETag to IndexedDB, then deletes the localStorage keys. **DONE**
+4. **ETag storage in IndexedDB.** **DONE**
+   - Moved `pf_transactions_etag` from localStorage to `meta` store (key: `etag`). **DONE**
+   - `main.js` loads persisted ETag into `_fetchTransactionsFromServer._cachedEtag` on startup. **DONE**
+   - `_fetchTransactionsFromServer` reads/writes ETag from/to IndexedDB meta store. **DONE**
+   - `_invalidateTransactionCache()` clears cached ETag to prevent stale 304s. **DONE**
 2. **Streaming reads for table rendering.**
    - `renderTransactionTable()` requests only the filtered window from worker: `workerClient.query({ dateStart, dateEnd, accountId, offset: 0, limit: PAGE_SIZE })`.
    - Worker returns rows + total count.
@@ -125,9 +133,6 @@ db.version(1).stores({
 3. **Incremental writes on edits.**
    - `stageBatchEdit` / `flushBatchEdits`: after API success, `workerClient.bulkWrite([updatedTxn])` — single-row upsert, not full-array rewrite.
    - Category overrides, memo saves, manual transaction adds: same pattern.
-4. **ETag storage in IndexedDB.**
-   - Move `pf_transactions_etag` from localStorage to `meta` store.
-   - Worker reads etag before fetch, main thread passes it to `_fetchTransactionsFromServer`.
 5. **Balance history in IndexedDB (optional).**
    - Add `balance_history` store: `[account_id+transaction_id]`.
    - Eliminates another localStorage blob that can hit quota.
@@ -189,13 +194,13 @@ db.version(1).stores({
 | Phase 0 — Discovery | 1 day | **DONE** |
 | Phase 1 — Fast wins | 4–8 hours | **DONE** |
 | Phase 2 — Dexie + Worker scaffold | 1–2 days | **DONE** |
-| Phase 3 — Remove localStorage, streaming | 1–2 days | Not started |
+| Phase 3 — Remove localStorage, streaming | 1–2 days | **Partially done** (localStorage removed + ETag migrated; streaming reads + incremental writes not started) |
 | Phase 4 — Virtual scrolling | 1–2 days | Not started |
 | Phase 5 — Cleanup & monitoring | Half day | Not started |
 
 ## Next steps
 1. **Phase 2:** ~~Add Dexie dependency, create `db.js`, `db-worker.js`, `worker-client.js`. Wire into `api.js`. Run one-time localStorage → IndexedDB migration.~~ **DONE**
-2. **Phase 3:** Rip out all localStorage transaction cache code. Implement streaming reads.
+2. **Phase 3:** ~~Rip out all localStorage transaction cache code.~~ **DONE** Remaining: streaming reads, incremental writes.
 3. **Phase 4:** Add virtual scrolling to table renderer.
 
 ---

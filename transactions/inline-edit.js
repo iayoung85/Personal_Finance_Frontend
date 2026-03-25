@@ -559,18 +559,11 @@ function _dismissActiveEditor({ clearRowSession = true } = {}) {
 
 
 async function _refreshAfterInlineEdit() {
-  // Invalidate all caches so fetchAllTransactions does a fresh network fetch
-  _inMemoryTransactionCache = null;
-  _inMemoryTransactionCacheTs = 0;
+  // Invalidate IndexedDB cache so fetchAllTransactions does a fresh network fetch
   if (window.txnDB) {
     try { await window.txnDB.clear(); } catch (e) { /* non-blocking */ }
   }
-  try {
-    localStorage.removeItem('pf_cached_transactions');
-    localStorage.removeItem('pf_transactions_cached_at');
-  } catch (cacheError) {
-    // Cache misses should not block UI refresh.
-  }
+  _fetchTransactionsFromServer._cachedEtag = null;
 
   await fetchAllTransactions(true);
 

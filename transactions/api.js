@@ -19,21 +19,12 @@ function refreshAuthState() {
 // Re-read auth state on script load
 refreshAuthState();
 
-const TRANSACTION_CACHE_KEY = 'pf_cached_transactions';
-const TRANSACTION_CACHE_TS_KEY = 'pf_transactions_cached_at';
 const TRANSACTION_CACHE_MAX_AGE_MS = 10 * 1000; // 10 seconds — kept ultra-short during development to avoid stale-data confusion
-const TRANSACTION_ETAG_KEY = 'pf_transactions_etag';
 const RECENT_WINDOW_DAYS = 90;
 const BALANCE_HISTORY_CACHE_KEY = 'pf_balance_history_by_account';
 const BALANCE_HISTORY_CACHE_MAX_AGE_MS = 10 * 1000; // 10 seconds — kept ultra-short during development
 const NO_ACTIVE_PLAID_SYNC_CACHE_KEY = 'pf_sync_no_active_plaid_items';
 const NO_ACTIVE_PLAID_SYNC_TTL_MS = 5 * 60 * 1000;
-
-// In-memory parsed cache — avoids repeated JSON.parse of the localStorage blob.
-// Populated on first read, invalidated on write. Survives across render cycles
-// within the same page session without re-parsing.
-let _inMemoryTransactionCache = null;
-let _inMemoryTransactionCacheTs = 0;
 
 // AbortController for in-flight transaction fetches — allows cancelling stale
 // requests when a newer fetch is triggered before the previous one completes.
@@ -278,9 +269,9 @@ function logout() {
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('currentUser');
   // Clear data caches on logout for security
-  localStorage.removeItem('pf_cached_transactions');
-  localStorage.removeItem('pf_transactions_cached_at');
-  localStorage.removeItem(TRANSACTION_ETAG_KEY);
+  if (window.txnDB) {
+    window.txnDB.clear().catch(function() {});
+  }
   localStorage.removeItem('pf_cached_categories');
   localStorage.removeItem('pf_cached_taxonomy');
   localStorage.removeItem('pf_categories_cached_at');
@@ -552,7 +543,9 @@ async function _fetchTransactionsFromServer(sinceDate) {
   }
 
   const headers = {};
-  const storedEtag = localStorage.getItem(TRANSACTION_ETAG_KEY);
+  // ETag is stored in IndexedDB meta store — read it synchronously
+  // from the last fetched value stashed on the function itself.
+  const storedEtag = _fetchTransactionsFromServer._cachedEtag || null;
   if (storedEtag && !sinceDate) {
     // Only send ETag for full (non-windowed) requests so the 304
     // comparison is apples-to-apples with the cached full dataset.
@@ -578,88 +571,47 @@ async function _fetchTransactionsFromServer(sinceDate) {
   // Persist the ETag for future 304 short-circuits (full requests only).
   const newEtag = response.headers.get('ETag');
   if (newEtag && !sinceDate) {
-    localStorage.setItem(TRANSACTION_ETAG_KEY, newEtag);
+    _fetchTransactionsFromServer._cachedEtag = newEtag;
+    if (window.txnDB) {
+      window.txnDB.setMeta('etag', newEtag).catch(function() {});
+    }
   }
 
   return data.transactions || [];
 }
 
 /**
- * Read the transaction cache without redundant JSON.parse calls.
- * Checks in-memory cache first, then IndexedDB, then localStorage
- * (legacy fallback during migration).
+ * Read the transaction cache from IndexedDB via the Web Worker.
  * Returns { data: Array, age: number } or null if no cache exists.
  */
 async function _readCachedTransactions() {
-  // Fast path: in-memory cache from this session
-  if (_inMemoryTransactionCache) {
-    const age = _inMemoryTransactionCacheTs ? (Date.now() - _inMemoryTransactionCacheTs) : Infinity;
-    return { data: _inMemoryTransactionCache, age };
-  }
-
-  // Try IndexedDB via worker
-  if (window.txnDB) {
-    try {
-      var results = await Promise.all([
-        window.txnDB.query({}),
-        window.txnDB.getMeta('cached_at'),
-      ]);
-      var data = results[0];
-      var cachedAt = results[1];
-      if (data && data.length > 0) {
-        var ts = cachedAt || 0;
-        _inMemoryTransactionCache = data;
-        _inMemoryTransactionCacheTs = ts;
-        return { data: data, age: ts ? (Date.now() - ts) : Infinity };
-      }
-    } catch (e) {
-      console.warn('IndexedDB read failed, falling through to localStorage:', e);
-    }
-  }
-
-  // Legacy localStorage fallback (will be removed in Phase 3)
-  const cachedTs = localStorage.getItem(TRANSACTION_CACHE_TS_KEY);
-  const cachedAtLs = cachedTs ? parseInt(cachedTs) : 0;
-  const ageLs = cachedAtLs ? (Date.now() - cachedAtLs) : Infinity;
-
-  const raw = localStorage.getItem(TRANSACTION_CACHE_KEY);
-  if (!raw) return null;
+  if (!window.txnDB) return null;
 
   try {
-    const parsed = JSON.parse(raw);
-    _inMemoryTransactionCache = parsed;
-    _inMemoryTransactionCacheTs = cachedAtLs;
-    return { data: parsed, age: ageLs };
+    var results = await Promise.all([
+      window.txnDB.query({}),
+      window.txnDB.getMeta('cached_at'),
+    ]);
+    var data = results[0];
+    var cachedAt = results[1];
+    if (data && data.length > 0) {
+      var ts = cachedAt || 0;
+      return { data: data, age: ts ? (Date.now() - ts) : Infinity };
+    }
   } catch (e) {
-    console.warn('Transaction cache parse failed:', e);
-    return null;
+    console.warn('IndexedDB read failed:', e);
   }
+
+  return null;
 }
 
 function _cacheTransactions(transactionsToCache) {
+  if (!window.txnDB) return;
   const now = Date.now();
-  // Always update in-memory cache — this is what _readCachedTransactions and
-  // the rest of the page session relies on.
-  _inMemoryTransactionCache = transactionsToCache;
-  _inMemoryTransactionCacheTs = now;
-
-  // Write to IndexedDB via worker (primary persistent store)
-  if (window.txnDB) {
-    window.txnDB.bulkWrite(transactionsToCache).catch(function(err) {
-      console.warn('IndexedDB bulk-write failed:', err);
-    });
-    window.txnDB.setMeta('cached_at', now).catch(function() {});
-  }
-
-  // Legacy localStorage write (best-effort fallback, removed in Phase 3)
-  try {
-    localStorage.setItem(TRANSACTION_CACHE_KEY, JSON.stringify(transactionsToCache));
-    localStorage.setItem(TRANSACTION_CACHE_TS_KEY, String(now));
-  } catch (cacheErr) {
-    // QuotaExceededError is expected for large datasets (10k+ transactions).
-    // IndexedDB above handles persistence at scale.
-    console.warn('localStorage cache write failed (IndexedDB is primary):', cacheErr);
-  }
+  window.txnDB.bulkWrite(transactionsToCache).catch(function(err) {
+    console.warn('IndexedDB bulk-write failed:', err);
+  });
+  window.txnDB.setMeta('cached_at', now).catch(function() {});
 }
 
 // ===== Balance History for Ledger Column =====

@@ -32,10 +32,11 @@ $(document).ready(async function() {
     selectAllAccounts();
   }
 
-  // Wait for IndexedDB worker to be ready, then migrate localStorage cache
+  // Wait for IndexedDB worker to be ready, then run one-time migrations
   if (window.txnDB) {
     await window.txnDB.ready();
     try {
+      // One-time: migrate localStorage → IndexedDB (Phase 2 leftover)
       var idbCount = await window.txnDB.count();
       if (idbCount === 0) {
         var lsRaw = localStorage.getItem('pf_cached_transactions');
@@ -44,14 +45,29 @@ $(document).ready(async function() {
           var parsed = JSON.parse(lsRaw);
           await window.txnDB.bulkWrite(parsed);
           if (lsTs) await window.txnDB.setMeta('cached_at', parseInt(lsTs));
-          localStorage.removeItem('pf_cached_transactions');
-          localStorage.removeItem('pf_transactions_cached_at');
           console.log('Migrated ' + parsed.length + ' transactions from localStorage to IndexedDB');
         }
       }
+      // One-time: migrate ETag from localStorage → IndexedDB meta
+      var lsEtag = localStorage.getItem('pf_transactions_etag');
+      if (lsEtag) {
+        await window.txnDB.setMeta('etag', lsEtag);
+        localStorage.removeItem('pf_transactions_etag');
+      }
+      // Clean up any remaining localStorage transaction keys
+      localStorage.removeItem('pf_cached_transactions');
+      localStorage.removeItem('pf_transactions_cached_at');
     } catch (migrationErr) {
       console.warn('localStorage → IndexedDB migration failed (non-fatal):', migrationErr);
     }
+
+    // Load persisted ETag into the fetch function for 304 support
+    try {
+      var savedEtag = await window.txnDB.getMeta('etag');
+      if (savedEtag) {
+        _fetchTransactionsFromServer._cachedEtag = savedEtag;
+      }
+    } catch (e) { /* non-fatal */ }
   }
 
   // Sync transactions with Plaid on page load (after accounts are loaded/selected)

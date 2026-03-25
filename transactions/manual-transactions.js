@@ -371,11 +371,7 @@ async function _updateManualTransaction(transactionId, accountId) {
     showStatus('Transaction updated successfully', 'success');
 
     // Invalidate cache and refresh
-    try {
-      localStorage.removeItem('pf_cached_transactions');
-      localStorage.removeItem('pf_transactions_cached_at');
-    } catch (cacheError) { /* non-fatal */ }
-
+    _invalidateTransactionCache();
     await fetchAllTransactions(true);
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
@@ -590,10 +586,7 @@ async function _submitPendingManualTransaction() {
     }
 
     // Refresh from server for consistency
-    try {
-      localStorage.removeItem('pf_cached_transactions');
-      localStorage.removeItem('pf_transactions_cached_at');
-    } catch (_cacheError) { /* non-fatal */ }
+    _invalidateTransactionCache();
     await fetchAllTransactions(true);
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
@@ -817,14 +810,7 @@ async function deleteManualTransaction(manualTransactionId) {
     }
 
     showStatus('Manual transaction deleted successfully', 'success');
-
-    // Invalidate cache
-    try {
-      localStorage.removeItem('pf_cached_transactions');
-      localStorage.removeItem('pf_transactions_cached_at');
-    } catch (e) { /* non-fatal */ }
-
-    // Refresh transactions
+    _invalidateTransactionCache();
     await fetchAllTransactions(true);
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
@@ -1178,13 +1164,7 @@ async function unmatchScheduledTransaction(transactionId) {
     }
 
     showStatus('Match undone — transaction reverted to missing', 'success');
-
-    // Invalidate cache and refresh
-    try {
-      localStorage.removeItem('pf_cached_transactions');
-      localStorage.removeItem('pf_transactions_cached_at');
-    } catch (cacheError) { /* non-fatal */ }
-
+    _invalidateTransactionCache();
     await fetchAllTransactions(true);
 
   } catch (networkError) {
@@ -1214,12 +1194,7 @@ async function resolveMissingTransaction(transactionId) {
     }
 
     showStatus('Missing transaction resolved', 'success');
-
-    try {
-      localStorage.removeItem('pf_cached_transactions');
-      localStorage.removeItem('pf_transactions_cached_at');
-    } catch (cacheError) { /* non-fatal */ }
-
+    _invalidateTransactionCache();
     await fetchAllTransactions(true);
 
   } catch (networkError) {
@@ -1253,12 +1228,7 @@ async function skipBillOccurrence(billId, occurrenceDate) {
     }
 
     showStatus('Bill occurrence skipped', 'success');
-
-    try {
-      localStorage.removeItem('pf_cached_transactions');
-      localStorage.removeItem('pf_transactions_cached_at');
-    } catch (cacheError) { /* non-fatal */ }
-
+    _invalidateTransactionCache();
     await fetchAllTransactions(true);
 
   } catch (networkError) {

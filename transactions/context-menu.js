@@ -512,12 +512,7 @@ async function _handleContextDeleteMissing(txnData) {
   try {
     await resolveReconciliationBatch({ delete_missing: [txnData.txnId] });
     showStatus('Transaction deleted', 'success');
-
-    try {
-      localStorage.removeItem('pf_cached_transactions');
-      localStorage.removeItem('pf_transactions_cached_at');
-    } catch (cacheErr) { /* non-fatal */ }
-
+    _invalidateTransactionCache();
     await fetchAllTransactions(true);
     await checkAndRenderReconciliationBanner();
   } catch (deleteError) {
@@ -536,12 +531,7 @@ async function _handleContextApproveMatch(txnData) {
   try {
     await approveMatch(approveId);
     showStatus('Match approved — manual transaction removed', 'success');
-
-    try {
-      localStorage.removeItem('pf_cached_transactions');
-      localStorage.removeItem('pf_transactions_cached_at');
-    } catch (cacheErr) { /* non-fatal */ }
-
+    _invalidateTransactionCache();
     await fetchAllTransactions(true);
   } catch (approveError) {
     showStatus(`Failed to approve match: ${approveError.message}`, 'error');
@@ -557,12 +547,7 @@ async function _handleContextApproveAllMatches() {
   try {
     const result = await approveAllMatches();
     showStatus(`Approved ${result.approved_count} match(es)`, 'success');
-
-    try {
-      localStorage.removeItem('pf_cached_transactions');
-      localStorage.removeItem('pf_transactions_cached_at');
-    } catch (cacheErr) { /* non-fatal */ }
-
+    _invalidateTransactionCache();
     await fetchAllTransactions(true);
   } catch (approveError) {
     showStatus(`Failed to approve matches: ${approveError.message}`, 'error');
@@ -605,12 +590,7 @@ async function _handleContextMarkPaid(txnData) {
     }
 
     showStatus('Marked as paid — occurrence materialized', 'success');
-
-    try {
-      localStorage.removeItem('pf_cached_transactions');
-      localStorage.removeItem('pf_transactions_cached_at');
-    } catch (cacheErr) { /* non-fatal */ }
-
+    _invalidateTransactionCache();
     await fetchAllTransactions(true);
   } catch (networkError) {
     showStatus(`Failed to mark as paid: ${networkError.message}`, 'error');
@@ -724,13 +704,15 @@ function _handleContextInspectData(txnData) {
 
 /**
  * Clear the transaction cache so the next fetch pulls fresh data.
- * Extracted to avoid duplicating these localStorage calls.
  */
 function _invalidateTransactionCache() {
-  try {
-    localStorage.removeItem('pf_cached_transactions');
-    localStorage.removeItem('pf_transactions_cached_at');
-  } catch (cacheErr) { /* non-fatal */ }
+  if (window.txnDB) {
+    window.txnDB.clear().catch(function() { /* non-fatal */ });
+  }
+  // Clear cached ETag so the next fetch doesn't 304
+  if (typeof _fetchTransactionsFromServer !== 'undefined') {
+    _fetchTransactionsFromServer._cachedEtag = null;
+  }
 }
 
 /**
