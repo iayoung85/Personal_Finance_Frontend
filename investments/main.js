@@ -116,6 +116,14 @@ function toggleChartPanel() {
   if (isHidden) renderInvestmentChart();
 }
 
+function toggleEtfExposurePanel() {
+  const panel = document.getElementById('etf-exposure-panel');
+  if (!panel) return;
+  const isHidden = panel.style.display === 'none' || !panel.innerHTML.trim();
+  panel.style.display = isHidden ? 'block' : 'none';
+  if (isHidden) loadEtfExposurePanel();
+}
+
 function switchInvestmentChart(mode) {
   chartViewMode = mode;
   document.getElementById('chart-type-btn').classList.toggle('active', mode === 'type');

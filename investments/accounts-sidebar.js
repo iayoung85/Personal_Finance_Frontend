@@ -54,7 +54,7 @@ async function loadInvestmentAccounts() {
         status: status,
         billed_products: billed,
         available_products: available,
-        current_balance: acc.current_balance || 0,
+        current_balance: parseFloat(acc.current_balance) || 0,
         updated_at: acc.last_updated || null
       };
     });
@@ -156,18 +156,19 @@ function renderInvestmentSidebar() {
              tabindex="0"
              data-account-id="${acc.account_id}"
              onclick="toggleAccountSelection('${acc.account_id}')">
-          <button class="secondary" title="Rename account"
-                  style="padding: 0 5px; font-size: 12px; align-self: stretch; min-width: unset; flex-shrink: 0; border-radius: 2px 0 0 2px; margin-left: -1px;"
-                  onclick="event.stopPropagation(); promptInvestmentRename('${acc.account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
-            ✏
-          </button>
           <div class="sidebar-account-label">
             <span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span>
             <span class="sidebar-account-mask">${displayNameSuffix}</span>
           </div>
-          ${isActive
-            ? `<div class="${balanceColorClass}">${balanceStr}</div>`
-            : '<span class="status-badge status-inactive" style="font-size:9px;">Inactive</span>'}
+          <div class="sidebar-account-right">
+            ${isActive
+              ? `<span class="${balanceColorClass}">${balanceStr}</span>`
+              : '<span class="status-badge status-inactive">Inactive</span>'}
+            <button class="inv-sidebar-rename-btn" title="Rename account"
+                    onclick="event.stopPropagation(); promptInvestmentRename('${acc.account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
+              ✏
+            </button>
+          </div>
         </div>
       `;
     });
@@ -217,10 +218,12 @@ function toggleAccountSelection(accountId) {
   const account = investmentAccounts.find(acc => acc.account_id === accountId);
   if (!account || account.status !== 'active') return;
 
-  // Switch out of pool mode
-  poolAllMode = false;
-
-  if (selectedAccountIds.has(accountId)) {
+  // Transitioning from pool-all: select only the clicked account
+  if (poolAllMode) {
+    poolAllMode = false;
+    selectedAccountIds.clear();
+    selectedAccountIds.add(accountId);
+  } else if (selectedAccountIds.has(accountId)) {
     selectedAccountIds.delete(accountId);
     // If nothing selected, revert to pool mode
     if (selectedAccountIds.size === 0) {

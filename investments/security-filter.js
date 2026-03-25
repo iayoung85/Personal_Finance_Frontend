@@ -48,9 +48,14 @@ function renderFilterStrip() {
     <button class="btn-clear-filters" onclick="clearAllFilters()" style="display:${_hasActiveFilters() ? 'inline-block' : 'none'};">
       Clear Filters
     </button>
-    <button class="btn-chart-toggle" onclick="toggleChartPanel()" style="margin-left:auto;">
-      📊 Chart
-    </button>
+    <div class="inv-filter-actions">
+      <button class="btn-chart-toggle" onclick="toggleChartPanel()">
+        📊 Chart
+      </button>
+      <button class="btn-chart-toggle" onclick="toggleEtfExposurePanel()">
+        🔍 ETF Exposure
+      </button>
+    </div>
   `;
 }
 

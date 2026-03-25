@@ -104,7 +104,7 @@ function _renderExposurePanel(panel, data, directTickers, etfHoldings) {
     <div class="etf-exposure-container">
       <div class="etf-exposure-header">
         <h3>ETF Implied Exposure</h3>
-        <button class="secondary" onclick="document.getElementById('etf-exposure-panel').style.display='none'" style="padding:2px 8px; font-size:11px;">Hide</button>
+        <button class="secondary" onclick="toggleEtfExposurePanel()" style="padding:2px 8px; font-size:11px;">Hide</button>
       </div>
       <div class="etf-exposure-note">
         Based on top-10 holdings of your ETFs. These are estimated positions, not direct holdings.
