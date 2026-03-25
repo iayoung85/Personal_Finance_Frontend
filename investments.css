@@ -303,6 +303,9 @@
   border-radius: 4px;
   margin-top: 12px;
   padding: 12px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .etf-exposure-header {

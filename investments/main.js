@@ -79,7 +79,6 @@ async function loadInvestmentHoldings() {
     securitiesData = data.securities || [];
     renderFilterStrip();
     renderHoldingsTable();
-    loadEtfExposurePanel();
     renderInvestmentChart();
   } catch (error) {
     console.error('Error loading holdings:', error);
@@ -93,7 +92,6 @@ async function loadInvestmentHoldings() {
 function onAccountSelectionChanged() {
   renderFilterStrip();
   renderHoldingsTable();
-  loadEtfExposurePanel();
   renderInvestmentChart();
 }
 

@@ -45,6 +45,7 @@
         <div class="action-row">
           <div class="action-row-left">
             <button onclick="syncAllHoldings()">Sync All Holdings</button>
+            <button class="secondary" onclick="openAllocationSettings()">⚙ Allocations</button>
             <div id="status-message" class="status-message"></div>
           </div>
           <div class="action-row-right">
@@ -61,10 +62,9 @@
         </div>
 
         <!-- Chart Panel (collapsible) -->
-        <div id="chart-panel" class="inv-chart-panel" style="display:none;">
+        <div id="chart-panel" class="inv-chart-panel">
           <div class="inv-chart-header">
             <span>Portfolio Breakdown</span>
-            <button class="secondary" onclick="openAllocationSettings()" style="padding:2px 8px; font-size:11px;">⚙ Allocations</button>
             <button class="secondary" onclick="toggleChartPanel()" style="padding:2px 8px; font-size:11px;">Hide</button>
           </div>
           <div class="inv-chart-body">
