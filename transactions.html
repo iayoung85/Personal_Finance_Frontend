@@ -531,7 +531,9 @@
 
   <!-- Modularised transactions scripts -->
   <!-- state.js MUST load first (shared variable declarations) -->
+  <!-- worker-client.js MUST load before api.js (IndexedDB layer) -->
   <!-- main.js MUST load last  ($(document).ready orchestrator) -->
+  <script src="transactions/worker-client.js"></script>
   <script src="transactions/state.js"></script>
   <script src="transactions/transaction-types.js"></script>
   <script src="transactions/utils.js"></script>

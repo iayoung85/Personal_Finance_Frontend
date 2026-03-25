@@ -949,13 +949,8 @@ async function saveTransactionMemo(transactionId, userMemo, buttonEl) {
     if (txn) {
       txn.user_memo = trimmedMemo;
       
-      // Update localStorage with the modified transaction
-      try {
-        localStorage.setItem('pf_cached_transactions', JSON.stringify(transactions));
-        localStorage.setItem('pf_transactions_cached_at', String(Date.now()));
-      } catch (e) {
-        console.warn('Could not update cached transactions in localStorage:', e);
-      }
+      // Update cache with the modified transaction
+      _cacheTransactions(transactions);
     }
 
     showStatus('Memo saved successfully', 'success');

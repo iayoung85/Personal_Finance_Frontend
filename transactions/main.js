@@ -32,6 +32,28 @@ $(document).ready(async function() {
     selectAllAccounts();
   }
 
+  // Wait for IndexedDB worker to be ready, then migrate localStorage cache
+  if (window.txnDB) {
+    await window.txnDB.ready();
+    try {
+      var idbCount = await window.txnDB.count();
+      if (idbCount === 0) {
+        var lsRaw = localStorage.getItem('pf_cached_transactions');
+        if (lsRaw) {
+          var lsTs = localStorage.getItem('pf_transactions_cached_at');
+          var parsed = JSON.parse(lsRaw);
+          await window.txnDB.bulkWrite(parsed);
+          if (lsTs) await window.txnDB.setMeta('cached_at', parseInt(lsTs));
+          localStorage.removeItem('pf_cached_transactions');
+          localStorage.removeItem('pf_transactions_cached_at');
+          console.log('Migrated ' + parsed.length + ' transactions from localStorage to IndexedDB');
+        }
+      }
+    } catch (migrationErr) {
+      console.warn('localStorage → IndexedDB migration failed (non-fatal):', migrationErr);
+    }
+  }
+
   // Sync transactions with Plaid on page load (after accounts are loaded/selected)
   await autoSyncAndLoadTransactions();
 

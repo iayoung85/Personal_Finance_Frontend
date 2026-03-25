@@ -274,12 +274,7 @@ function _clearFlushTimer() {
 }
 
 function _persistTransactionCache() {
-  try {
-    localStorage.setItem('pf_cached_transactions', JSON.stringify(transactions));
-    localStorage.setItem('pf_transactions_cached_at', String(Date.now()));
-  } catch (cacheWriteError) {
-    console.warn('Could not persist transaction cache:', cacheWriteError);
-  }
+  _cacheTransactions(transactions);
 }
 
 // ───── Global Listeners ────────────────────────────────────

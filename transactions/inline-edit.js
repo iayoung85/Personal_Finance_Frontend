@@ -559,6 +559,12 @@ function _dismissActiveEditor({ clearRowSession = true } = {}) {
 
 
 async function _refreshAfterInlineEdit() {
+  // Invalidate all caches so fetchAllTransactions does a fresh network fetch
+  _inMemoryTransactionCache = null;
+  _inMemoryTransactionCacheTs = 0;
+  if (window.txnDB) {
+    try { await window.txnDB.clear(); } catch (e) { /* non-blocking */ }
+  }
   try {
     localStorage.removeItem('pf_cached_transactions');
     localStorage.removeItem('pf_transactions_cached_at');

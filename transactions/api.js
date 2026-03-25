@@ -362,7 +362,7 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
   // 2. Sync with Plaid in background (may be skipped by backend cooldown)
   // 3. Only re-fetch from server if Plaid returned actual changes
   
-  const cached = _readCachedTransactions();
+  const cached = await _readCachedTransactions();
   const cacheValid = cached && cached.age < TRANSACTION_CACHE_MAX_AGE_MS;
 
   if (!forceNetwork) {
@@ -449,7 +449,7 @@ async function fetchAllTransactions(forceNetwork = false) {
   // Phase 1: Fetch recent window (last N days) for instant render.
   // Phase 2: Backfill full history in background.
   // ETag: On repeat calls, backend returns 304 if nothing changed.
-  const cached = _readCachedTransactions();
+  const cached = await _readCachedTransactions();
   const hasFreshCache = cached && cached.age < TRANSACTION_CACHE_MAX_AGE_MS;
 
   if (!forceNetwork && hasFreshCache) {
@@ -586,30 +586,50 @@ async function _fetchTransactionsFromServer(sinceDate) {
 
 /**
  * Read the transaction cache without redundant JSON.parse calls.
- * First call per session parses localStorage and stores the result
- * in _inMemoryTransactionCache. Subsequent calls return the
- * in-memory copy instantly.
+ * Checks in-memory cache first, then IndexedDB, then localStorage
+ * (legacy fallback during migration).
  * Returns { data: Array, age: number } or null if no cache exists.
  */
-function _readCachedTransactions() {
-  const cachedTs = localStorage.getItem(TRANSACTION_CACHE_TS_KEY);
-  const cachedAt = cachedTs ? parseInt(cachedTs) : 0;
-  const age = cachedAt ? (Date.now() - cachedAt) : Infinity;
-
-  // If in-memory cache is current, skip localStorage entirely
-  if (_inMemoryTransactionCache && _inMemoryTransactionCacheTs === cachedAt) {
+async function _readCachedTransactions() {
+  // Fast path: in-memory cache from this session
+  if (_inMemoryTransactionCache) {
+    const age = _inMemoryTransactionCacheTs ? (Date.now() - _inMemoryTransactionCacheTs) : Infinity;
     return { data: _inMemoryTransactionCache, age };
   }
 
-  // Parse from localStorage once and keep in memory
+  // Try IndexedDB via worker
+  if (window.txnDB) {
+    try {
+      var results = await Promise.all([
+        window.txnDB.query({}),
+        window.txnDB.getMeta('cached_at'),
+      ]);
+      var data = results[0];
+      var cachedAt = results[1];
+      if (data && data.length > 0) {
+        var ts = cachedAt || 0;
+        _inMemoryTransactionCache = data;
+        _inMemoryTransactionCacheTs = ts;
+        return { data: data, age: ts ? (Date.now() - ts) : Infinity };
+      }
+    } catch (e) {
+      console.warn('IndexedDB read failed, falling through to localStorage:', e);
+    }
+  }
+
+  // Legacy localStorage fallback (will be removed in Phase 3)
+  const cachedTs = localStorage.getItem(TRANSACTION_CACHE_TS_KEY);
+  const cachedAtLs = cachedTs ? parseInt(cachedTs) : 0;
+  const ageLs = cachedAtLs ? (Date.now() - cachedAtLs) : Infinity;
+
   const raw = localStorage.getItem(TRANSACTION_CACHE_KEY);
   if (!raw) return null;
 
   try {
     const parsed = JSON.parse(raw);
     _inMemoryTransactionCache = parsed;
-    _inMemoryTransactionCacheTs = cachedAt;
-    return { data: parsed, age };
+    _inMemoryTransactionCacheTs = cachedAtLs;
+    return { data: parsed, age: ageLs };
   } catch (e) {
     console.warn('Transaction cache parse failed:', e);
     return null;
@@ -617,15 +637,28 @@ function _readCachedTransactions() {
 }
 
 function _cacheTransactions(transactionsToCache) {
+  const now = Date.now();
+  // Always update in-memory cache — this is what _readCachedTransactions and
+  // the rest of the page session relies on.
+  _inMemoryTransactionCache = transactionsToCache;
+  _inMemoryTransactionCacheTs = now;
+
+  // Write to IndexedDB via worker (primary persistent store)
+  if (window.txnDB) {
+    window.txnDB.bulkWrite(transactionsToCache).catch(function(err) {
+      console.warn('IndexedDB bulk-write failed:', err);
+    });
+    window.txnDB.setMeta('cached_at', now).catch(function() {});
+  }
+
+  // Legacy localStorage write (best-effort fallback, removed in Phase 3)
   try {
-    const now = Date.now();
     localStorage.setItem(TRANSACTION_CACHE_KEY, JSON.stringify(transactionsToCache));
     localStorage.setItem(TRANSACTION_CACHE_TS_KEY, String(now));
-    // Keep in-memory copy in sync so next read avoids re-parsing
-    _inMemoryTransactionCache = transactionsToCache;
-    _inMemoryTransactionCacheTs = now;
   } catch (cacheErr) {
-    console.warn('Could not cache transactions to localStorage:', cacheErr);
+    // QuotaExceededError is expected for large datasets (10k+ transactions).
+    // IndexedDB above handles persistence at scale.
+    console.warn('localStorage cache write failed (IndexedDB is primary):', cacheErr);
   }
 }
 

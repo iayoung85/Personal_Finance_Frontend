@@ -755,11 +755,8 @@ async function saveManualTransaction() {
     // Add to in-memory transactions array
     transactions.unshift(newTxn);
     
-    // Update localStorage immediately
-    try {
-      localStorage.setItem('pf_cached_transactions', JSON.stringify(transactions));
-      localStorage.setItem('pf_transactions_cached_at', String(Date.now()));
-    } catch (e) { /* non-fatal */ }
+    // Update cache immediately
+    _cacheTransactions(transactions);
     
     // Why: expand date filters so the newly created transaction (including
     // historical ones and opening-balance entries) is immediately visible

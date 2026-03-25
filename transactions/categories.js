@@ -761,11 +761,7 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
     if (txn) {
       txn.user_category = categoryString;
       txn.is_override = true;
-      // Update the localStorage cache
-      try {
-        localStorage.setItem('pf_cached_transactions', JSON.stringify(transactions));
-        localStorage.setItem('pf_transactions_cached_at', String(Date.now()));
-      } catch (e) { /* cache write failure is non-fatal */ }
+      _cacheTransactions(transactions);
     }
     renderTransactionTable();
     
@@ -950,11 +946,7 @@ async function clearOverride(event) {
       if (data.updated_category) {
         txn.user_category = data.updated_category;
       }
-      // Update the localStorage cache
-      try {
-        localStorage.setItem('pf_cached_transactions', JSON.stringify(transactions));
-        localStorage.setItem('pf_transactions_cached_at', String(Date.now()));
-      } catch (e) { /* cache write failure is non-fatal */ }
+      _cacheTransactions(transactions);
     }
 
     renderTransactionTable();
@@ -1392,10 +1384,7 @@ async function applyManualCategory(txnId, accountId) {
     if (txn) {
       txn.user_category = selectedCategory;
       txn.is_override = true;
-      try {
-        localStorage.setItem('pf_cached_transactions', JSON.stringify(transactions));
-        localStorage.setItem('pf_transactions_cached_at', String(Date.now()));
-      } catch (e) { /* non-fatal */ }
+      _cacheTransactions(transactions);
     }
     showStatus('Transaction categorized', 'success');
     renderTransactionTable();
