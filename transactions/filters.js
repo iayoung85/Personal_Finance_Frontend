@@ -407,8 +407,7 @@ function autoExtendEndDateForScheduled() {
   const latestScheduledDate = transactions.reduce((latest, txn) => {
     const txnType = getTransactionType(txn);
     const isProjectedFutureType = txnType === TXN_TYPE.BILL_FUTURE
-      || txnType === TXN_TYPE.MANUAL_FUTURE
-      || (txnType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING && txn.date > todayDateStr);
+      || txnType === TXN_TYPE.MANUAL_FUTURE;
 
     if (isProjectedFutureType) {
       if (!latest || txn.date > latest) return txn.date;

@@ -116,19 +116,16 @@ function _renderOpeningBalanceRow(ctx) {
 
 function _renderInvestmentTrendingRow(ctx) {
   const lockedCategory = `<div class="category-cell"><span class="category-locked">${escapeHtml(ctx.currentFullCategory || 'System: Investment Performance')}</span></div>`;
-  const isProjectedFuture = ctx.isFutureBlockRow;
 
   return {
     typeBadge: '<span class="source-badge investment-trending" title="System investment performance estimate">📈</span> ',
     categoryCell: lockedCategory,
     actionCell: '<td></td>',
-    rowCssClass: isProjectedFuture ? 'investment-trending-row scheduled-row' : 'investment-trending-row',
+    rowCssClass: 'investment-trending-row',
     sourceBadge: {
-      label: isProjectedFuture ? 'Trend (Proj)' : 'Trend',
+      label: 'Trend',
       cssClass: 'investment-trending',
-      title: isProjectedFuture
-        ? 'Projected end-of-month investment performance (system generated)'
-        : 'Historical month-end investment performance (system generated)',
+      title: 'Monthly investment performance (system generated)',
     },
     displayName: _txnDescription(ctx.txn),
   };

@@ -205,8 +205,6 @@ function renderTransactionTable() {
     // they are only accessible via the Resolution Center after re-link events.
     if (txnType === TXN_TYPE.MANUAL_ORPHANED) return;
 
-    const isFutureInvestmentTrending = txnType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING && txn.date > _todayDateStr;
-
     if (txn.source === 'scheduled' && txn.status === 'future') {
       scheduledFuture.push(txn);
     } else if (txn.pending) {
@@ -215,10 +213,6 @@ function renderTransactionTable() {
       // Manual transactions with future dates belong above the scheduled
       // separator — they are effectively user-created scheduled entries
       // until their date arrives.
-      scheduledFuture.push(txn);
-    } else if (isFutureInvestmentTrending) {
-      // Current-month system investment trending rows are month-end dated.
-      // Treat them as projected future rows so they render in the future block.
       scheduledFuture.push(txn);
     } else {
       postedTransactions.push(txn);
@@ -759,17 +753,7 @@ function renderTransactionTable() {
       if (isMissingRow) {
         ledgerBalanceHtml = '<td class="ledger-cell ledger-unavailable">N/A</td>';
       } else {
-        // Investment trending rows have backend-calculated ledger values
-        // even though they are future-dated; use the backend history
-        // instead of the projection to avoid double-counting market gains
-        // that are already reflected in current_balance.
-        const useBackendHistory = isFutureBlockRow
-          && txn.source === 'investment_trending'
-          && balanceHistoryLookup[txn.transaction_id] !== undefined;
-
-        const runningBalance = useBackendHistory
-          ? balanceHistoryLookup[txn.transaction_id]
-          : isFutureBlockRow
+        const runningBalance = isFutureBlockRow
             ? scheduledLedgerLookup[txn.transaction_id]
             : isPendingRow ? pendingLedgerLookup[txn.transaction_id] : balanceHistoryLookup[txn.transaction_id];
         if (runningBalance !== undefined) {
