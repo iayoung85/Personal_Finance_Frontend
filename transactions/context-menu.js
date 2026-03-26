@@ -652,8 +652,8 @@ async function _handleContextHide(txnData) {
     }
 
     showStatus('Transaction hidden', 'success');
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    _patchCachedTransaction(txnData.txnId, { is_hidden: true });
+    renderTransactionTable();
   } catch (networkError) {
     showStatus(`Failed to hide transaction: ${networkError.message}`, 'error');
   }
@@ -681,8 +681,8 @@ async function _handleContextUnhide(txnData) {
     }
 
     showStatus('Transaction unhidden', 'success');
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    _patchCachedTransaction(txnData.txnId, { is_hidden: false });
+    renderTransactionTable();
   } catch (networkError) {
     showStatus(`Failed to unhide transaction: ${networkError.message}`, 'error');
   }
@@ -703,15 +703,21 @@ function _handleContextInspectData(txnData) {
 }
 
 /**
- * Clear the transaction cache so the next fetch pulls fresh data.
+ * Mark the transaction cache as stale so the next fetchAllTransactions(true)
+ * pulls fresh data from the server. The cached rows are preserved in IndexedDB
+ * (not deleted) — _cacheTransactions() will atomically replace them once the
+ * fresh network response arrives, preventing a window where the cache is empty.
  */
 function _invalidateTransactionCache() {
-  if (window.txnDB) {
-    window.txnDB.clear().catch(function() { /* non-fatal */ });
-  }
-  // Clear cached ETag so the next fetch doesn't 304
+  // Clear cached ETag so the next fetch doesn't short-circuit with 304
   if (typeof _fetchTransactionsFromServer !== 'undefined') {
     _fetchTransactionsFromServer._cachedEtag = null;
+  }
+  // Mark cache as stale (age → Infinity) so _readCachedTransactions won't
+  // pass the freshness check, but keep the data for interim reads.
+  if (window.txnDB) {
+    window.txnDB.setMeta('etag', null).catch(function() {});
+    window.txnDB.setMeta('cached_at', 0).catch(function() {});
   }
 }
 
@@ -746,8 +752,10 @@ async function batchUnhideSelected() {
     }
 
     showStatus(`Unhid ${data.unhidden_count} transaction(s)`, 'success');
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    var skipped = new Set(data.skipped_ids || []);
+    var unhiddenIds = transactionIds.filter(function(id) { return !skipped.has(id); });
+    _patchCachedTransactions(unhiddenIds, { is_hidden: false });
+    renderTransactionTable();
   } catch (networkError) {
     showStatus(`Failed to batch unhide: ${networkError.message}`, 'error');
   }
@@ -784,9 +792,11 @@ async function batchUnhideAll() {
       return;
     }
 
-    showStatus(`Unhid ${data.unhidden_count} transaction(s)`, 'success');
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    showStatus(`Unhid all ${data.unhidden_count} transaction(s)`, 'success');
+    var skippedAll = new Set(data.skipped_ids || []);
+    var unhiddenAllIds = transactionIds.filter(function(id) { return !skippedAll.has(id); });
+    _patchCachedTransactions(unhiddenAllIds, { is_hidden: false });
+    renderTransactionTable();
   } catch (networkError) {
     showStatus(`Failed to batch unhide: ${networkError.message}`, 'error');
   }

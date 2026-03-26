@@ -473,8 +473,8 @@ function renderTransactionTable() {
 
         if (optionalFields.includes('source')) {
           const isConverted = txn.source === 'plaid' && txn.status === 'converted';
-          const sourceLabel = txn.is_manual ? 'Manual' : isConverted ? 'Prior Download' : 'Downloaded';
-          const sourceCssClass = txn.is_manual ? 'manual' : isConverted ? 'plaid-converted' : 'plaid';
+          const sourceLabel = txn.source === 'manual' ? 'Manual' : isConverted ? 'Prior Download' : 'Downloaded';
+          const sourceCssClass = txn.source === 'manual' ? 'manual' : isConverted ? 'plaid-converted' : 'plaid';
           html += `<td><span class="source-badge ${sourceCssClass}">${sourceLabel}</span></td>`;
         }
 
@@ -574,8 +574,8 @@ function renderTransactionTable() {
         // Add source column if needed
         if (optionalFields.includes('source')) {
           const isConverted = txn.source === 'plaid' && txn.status === 'converted';
-          const sourceLabel = split.is_manual ? 'Manual' : isConverted ? 'Prior Download' : 'Downloaded';
-          const sourceCssClass = split.is_manual ? 'manual' : isConverted ? 'plaid-converted' : 'plaid';
+          const sourceLabel = txn.source === 'manual' ? 'Manual' : isConverted ? 'Prior Download' : 'Downloaded';
+          const sourceCssClass = txn.source === 'manual' ? 'manual' : isConverted ? 'plaid-converted' : 'plaid';
           const sourceBadge = `<span class="source-badge ${sourceCssClass}">${sourceLabel}</span>`;
           html += `<td>${sourceBadge}</td>`;
         }

@@ -516,6 +516,13 @@ async function _executeTurboImport() {
     await fetchAllTransactions(true);
     renderTransactionTable();
 
+    // Backend runs matching synchronously during import — the response
+    // includes a reconciliation object with proposal/orphan counts.
+    var recon = data.reconciliation || {};
+    if ((recon.proposals_created || 0) > 0 || (recon.orphaned || 0) > 0) {
+      await checkAndRenderReconciliationBanner();
+    }
+
     showStatus('Turbo import completed successfully!', 'success');
 
   } catch (turboError) {

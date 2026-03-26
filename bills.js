@@ -33,10 +33,14 @@ function _invalidateTransactionCache() {
     var req = indexedDB.open('PersonalFinanceDB');
     req.onsuccess = function(e) {
       var db = e.target.result;
-      if (db.objectStoreNames.contains('transactions')) {
-        var txn = db.transaction(['transactions', 'meta'], 'readwrite');
-        txn.objectStore('transactions').clear();
-        txn.objectStore('meta').clear();
+      // Mark cache as stale instead of nuking 100k+ rows.
+      // The transactions page will force a network refetch and
+      // atomically replace the data via replaceAll.
+      if (db.objectStoreNames.contains('meta')) {
+        var txn = db.transaction(['meta'], 'readwrite');
+        var store = txn.objectStore('meta');
+        store.put({ key: 'etag', value: null });
+        store.put({ key: 'cached_at', value: 0 });
       }
       db.close();
     };

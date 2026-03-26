@@ -84,6 +84,59 @@ self.onmessage = async function(e) {
         break;
       }
 
+      // ── Granular cache operations ─────────────────────────
+      // Avoid clearing all 100k+ rows for single-field mutations.
+
+      case 'patch': {
+        // Patch specific fields on one cached transaction.
+        // Uses Dexie.update() which is a no-op if the key doesn't exist.
+        const { transactionId, fields } = e.data;
+        const updated = await db.transactions.update(transactionId, fields);
+        result = { patched: updated };
+        break;
+      }
+
+      case 'patch-batch': {
+        // Patch the same fields on multiple transactions (e.g. batch unhide).
+        const { ids, fields } = e.data;
+        let patchCount = 0;
+        await db.transaction('rw', db.transactions, async () => {
+          for (const txnId of ids) {
+            patchCount += await db.transactions.update(txnId, fields);
+          }
+        });
+        result = { patched: patchCount };
+        break;
+      }
+
+      case 'put-one': {
+        // Insert or overwrite a single transaction (upsert).
+        await db.transactions.put(e.data.data);
+        result = {};
+        break;
+      }
+
+      case 'delete-one': {
+        // Remove a single transaction by primary key.
+        await db.transactions.delete(e.data.transactionId);
+        result = {};
+        break;
+      }
+
+      case 'replace-all': {
+        // Atomic clear + bulk-insert of the transactions table.
+        // Meta store (etag, cached_at) is preserved.
+        const txns = e.data.data;
+        await db.transaction('rw', db.transactions, async () => {
+          await db.transactions.clear();
+          if (Array.isArray(txns) && txns.length > 0) {
+            await db.transactions.bulkPut(txns);
+          }
+        });
+        result = { count: txns ? txns.length : 0 };
+        break;
+      }
+
       case 'get-meta': {
         const row = await db.meta.get(e.data.key);
         result = { value: row ? row.value : undefined };

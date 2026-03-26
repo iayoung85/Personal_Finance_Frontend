@@ -230,6 +230,13 @@ async function executeImportFromWizard() {
     await fetchAllTransactions(true);
     renderTransactionTable();
 
+    // Backend runs matching synchronously during import — the response
+    // includes a reconciliation object with proposal/orphan counts.
+    var recon = report.reconciliation || {};
+    if ((recon.proposals_created || 0) > 0 || (recon.orphaned || 0) > 0) {
+      await checkAndRenderReconciliationBanner();
+    }
+
     showStatus('Import completed successfully!', 'success');
 
   } catch (executeError) {

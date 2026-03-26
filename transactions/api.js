@@ -608,10 +608,87 @@ async function _readCachedTransactions() {
 function _cacheTransactions(transactionsToCache) {
   if (!window.txnDB) return;
   const now = Date.now();
-  window.txnDB.bulkWrite(transactionsToCache).catch(function(err) {
-    console.warn('IndexedDB bulk-write failed:', err);
+  // Atomic clear + insert prevents ghost rows from deleted transactions
+  window.txnDB.replaceAll(transactionsToCache).catch(function(err) {
+    console.warn('IndexedDB replace-all failed:', err);
   });
   window.txnDB.setMeta('cached_at', now).catch(function() {});
+}
+
+// ── Granular cache helpers ──────────────────────────────
+// Patch in-memory transactions array AND IndexedDB without a full refetch.
+// Used by single-field mutations (hide, description, delete) to avoid
+// clearing and re-downloading 100k+ cached rows.
+
+/**
+ * Patch fields on a single transaction in both the in-memory array
+ * and IndexedDB cache. Does NOT trigger a re-render — caller must
+ * call renderTransactionTable() when ready.
+ */
+function _patchCachedTransaction(txnId, fields) {
+  // Patch in-memory
+  var txn = transactions.find(function(t) { return t.transaction_id === txnId; });
+  if (txn) {
+    Object.assign(txn, fields);
+  }
+  // Patch IndexedDB (non-blocking)
+  if (window.txnDB) {
+    window.txnDB.patch(txnId, fields).catch(function() {});
+    window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
+  }
+}
+
+/**
+ * Patch the same fields on multiple transactions.
+ */
+function _patchCachedTransactions(txnIds, fields) {
+  var idSet = new Set(txnIds);
+  // Patch in-memory
+  for (var i = 0; i < transactions.length; i++) {
+    if (idSet.has(transactions[i].transaction_id)) {
+      Object.assign(transactions[i], fields);
+    }
+  }
+  // Patch IndexedDB (non-blocking)
+  if (window.txnDB) {
+    window.txnDB.patchBatch(txnIds, fields).catch(function() {});
+    window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
+  }
+}
+
+/**
+ * Remove a single transaction from the in-memory array and IndexedDB.
+ */
+function _removeCachedTransaction(txnId) {
+  // Remove from in-memory
+  var idx = transactions.findIndex(function(t) { return t.transaction_id === txnId; });
+  if (idx !== -1) {
+    transactions.splice(idx, 1);
+  }
+  // Remove from IndexedDB (non-blocking)
+  if (window.txnDB) {
+    window.txnDB.deleteOne(txnId).catch(function() {});
+    window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
+  }
+}
+
+/**
+ * Replace a single transaction in both the in-memory array and IndexedDB
+ * using a full transaction object (e.g. from a PUT response).
+ */
+function _replaceCachedTransaction(txnId, fullTxn) {
+  // Replace in-memory
+  var idx = transactions.findIndex(function(t) { return t.transaction_id === txnId; });
+  if (idx !== -1) {
+    transactions[idx] = fullTxn;
+  } else {
+    transactions.unshift(fullTxn);
+  }
+  // Replace in IndexedDB (non-blocking)
+  if (window.txnDB) {
+    window.txnDB.putOne(fullTxn).catch(function() {});
+    window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
+  }
 }
 
 // ===== Balance History for Ledger Column =====

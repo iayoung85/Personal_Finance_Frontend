@@ -370,12 +370,22 @@ async function _updateManualTransaction(transactionId, accountId) {
     closeModal();
     showStatus('Transaction updated successfully', 'success');
 
-    // Invalidate cache and refresh
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
-    if (selectedAccountMode === 'single' && selectedAccountId) {
-      await fetchBalanceHistory(selectedAccountId);
+    // If the server returned the full updated transaction, patch the cache
+    // directly instead of clearing and re-downloading 100k+ rows.
+    if (data.transaction && data.transaction.transaction_id) {
+      _replaceCachedTransaction(transactionId, data.transaction);
+      if (selectedAccountMode === 'single' && selectedAccountId) {
+        await fetchBalanceHistory(selectedAccountId);
+      }
       renderTransactionTable();
+    } else {
+      // Fallback: full refetch if server didn't return the object
+      _invalidateTransactionCache();
+      await fetchAllTransactions(true);
+      if (selectedAccountMode === 'single' && selectedAccountId) {
+        await fetchBalanceHistory(selectedAccountId);
+        renderTransactionTable();
+      }
     }
 
   } catch (error) {
@@ -810,12 +820,11 @@ async function deleteManualTransaction(manualTransactionId) {
     }
 
     showStatus('Manual transaction deleted successfully', 'success');
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    _removeCachedTransaction(manualTransactionId);
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
-      renderTransactionTable();
     }
+    renderTransactionTable();
 
   } catch (error) {
     showStatus(`Failed to delete transaction: ${error.message}`, 'error');

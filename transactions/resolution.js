@@ -188,6 +188,8 @@ function dismissReconciliationBanner() {
   if (bannerEl) bannerEl.classList.add('hidden');
 }
 
+/**
+ * After a bulk import, the backend may run matching asynchronously.
 // ─── Resolution Center Modal ────────────────────────────────
 
 /**

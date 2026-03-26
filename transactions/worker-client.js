@@ -11,11 +11,15 @@ var txnDB = (function() {
   var readyResolve = null;
   var readyPromise = new Promise(function(resolve) { readyResolve = resolve; });
 
+  var _workerDegraded = false;
+
   function _init() {
     try {
       worker = new Worker('transactions/worker/db-worker.js');
     } catch (err) {
       console.error('Failed to start IndexedDB worker:', err);
+      _workerDegraded = true;
+      _surfaceWorkerFailure('IndexedDB worker failed to start: ' + err.message);
       // Mark ready so callers don't hang; all ops will gracefully no-op
       readyResolve();
       return;
@@ -44,7 +48,19 @@ var txnDB = (function() {
 
     worker.onerror = function(err) {
       console.error('IndexedDB worker error:', err);
+      _workerDegraded = true;
+      _surfaceWorkerFailure('IndexedDB worker encountered an error');
     };
+  }
+
+  function _surfaceWorkerFailure(detail) {
+    // Dev visibility: structured console warning
+    console.warn('[txnDB] DEGRADED — local caching is offline. Detail:', detail);
+
+    // User visibility: show a status message if the transactions page is active
+    if (typeof showStatus === 'function') {
+      showStatus('Local cache unavailable — performance may be reduced', 'warning');
+    }
   }
 
   function _send(type, payload) {
@@ -109,7 +125,45 @@ var txnDB = (function() {
     return _send('set-meta', { key: key, value: value });
   }
 
+  // ── Granular cache operations ───────────────────────────
+
+  /** Patch specific fields on one cached transaction. */
+  function patch(transactionId, fields) {
+    if (!worker || !transactionId) return Promise.resolve();
+    return _send('patch', { transactionId: transactionId, fields: fields });
+  }
+
+  /** Patch the same fields on multiple cached transactions. */
+  function patchBatch(ids, fields) {
+    if (!worker || !Array.isArray(ids) || ids.length === 0) return Promise.resolve();
+    return _send('patch-batch', { ids: ids, fields: fields });
+  }
+
+  /** Insert or overwrite a single transaction (upsert). */
+  function putOne(txn) {
+    if (!worker || !txn) return Promise.resolve();
+    return _send('put-one', { data: txn });
+  }
+
+  /** Remove a single transaction by ID. */
+  function deleteOne(transactionId) {
+    if (!worker || !transactionId) return Promise.resolve();
+    return _send('delete-one', { transactionId: transactionId });
+  }
+
+  /** Atomically clear and replace all cached transactions.
+   *  Meta store (etag, cached_at) is preserved. */
+  function replaceAll(txns) {
+    if (!worker) return Promise.resolve({ count: 0 });
+    return _send('replace-all', { data: txns || [] });
+  }
+
   _init();
+
+  /** Returns true if the worker failed to start or errored at runtime. */
+  function isDegraded() {
+    return _workerDegraded;
+  }
 
   return {
     ready: ready,
@@ -120,5 +174,11 @@ var txnDB = (function() {
     clear: clear,
     getMeta: getMeta,
     setMeta: setMeta,
+    isDegraded: isDegraded,
+    patch: patch,
+    patchBatch: patchBatch,
+    putOne: putOne,
+    deleteOne: deleteOne,
+    replaceAll: replaceAll,
   };
 })();

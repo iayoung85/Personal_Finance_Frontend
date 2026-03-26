@@ -323,7 +323,19 @@ async function _saveRowInlineEdits() {
 
     showStatus('Transaction updated', 'success');
     _dismissActiveEditor({ clearRowSession: true });
-    await _refreshAfterInlineEdit();
+
+    // If the server returned the full updated transaction, patch the cache
+    // directly — avoids clearing and re-downloading 100k+ rows.
+    if (data.transaction && data.transaction.transaction_id) {
+      _replaceCachedTransaction(editSession.txn_id, data.transaction);
+      if (selectedAccountMode === 'single' && selectedAccountId) {
+        await fetchBalanceHistory(selectedAccountId);
+      }
+      renderTransactionTable();
+    } else {
+      // Fallback: full refetch if server didn't return the object
+      await _refreshAfterInlineEdit();
+    }
   } catch (saveError) {
     showStatus(`Inline update failed: ${saveError.message}`, 'error');
   }
@@ -532,9 +544,16 @@ async function _savePlaidDescriptionEdit(txnId, newDescription) {
       }
     }
 
+    // Persist the in-memory patch to IndexedDB (no full refetch needed —
+    // description edits don't affect other rows or balance history).
+    if (window.txnDB && txn) {
+      window.txnDB.putOne(txn).catch(function() {});
+      window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
+    }
+
     showStatus(isClearing ? 'Description override cleared' : 'Description updated', 'success');
     _dismissActiveEditor({ clearRowSession: true });
-    await _refreshAfterInlineEdit();
+    renderTransactionTable();
   } catch (saveError) {
     showStatus(`Description update failed: ${saveError.message}`, 'error');
   }
@@ -559,11 +578,8 @@ function _dismissActiveEditor({ clearRowSession = true } = {}) {
 
 
 async function _refreshAfterInlineEdit() {
-  // Invalidate IndexedDB cache so fetchAllTransactions does a fresh network fetch
-  if (window.txnDB) {
-    try { await window.txnDB.clear(); } catch (e) { /* non-blocking */ }
-  }
-  _fetchTransactionsFromServer._cachedEtag = null;
+  // Mark cache stale (don't nuke 100k rows — replaceAll handles it atomically)
+  _invalidateTransactionCache();
 
   await fetchAllTransactions(true);
 

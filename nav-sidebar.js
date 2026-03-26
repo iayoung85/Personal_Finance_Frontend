@@ -53,6 +53,7 @@ const NAV_SIDEBAR_FOOTER_ITEMS = [
       { id: 'settings-app-config', label: 'App Configuration',  section: 'app-config' },
     ]
   },
+  { id: 'reset-all', label: 'Reset All Data', icon: '🔄', action: 'reset-all' },
   { id: 'logout', label: 'Logout', icon: '🚪', action: 'logout' },
 ];
 
@@ -120,8 +121,8 @@ function _buildNavLink(item, currentPage) {
     }
 
     html += `</ul></li>`;
-  } else if (item.action === 'logout') {
-    html += `<li><a class="nav-sidebar-link" data-nav-id="${item.id}" data-action="logout" href="#">`;
+  } else if (item.action) {
+    html += `<li><a class="nav-sidebar-link${item.action === 'reset-all' ? ' nav-reset-all' : ''}" data-nav-id="${item.id}" data-action="${item.action}" href="#">`;
     html += `<span class="nav-icon">${item.icon}</span>`;
     html += `<span>${item.label}</span>`;
     html += `</a></li>`;
@@ -245,6 +246,13 @@ function _attachNavSidebarEvents() {
     if (link.dataset.action === 'logout') {
       event.preventDefault();
       _handleNavLogout();
+      return;
+    }
+
+    // Reset all data action
+    if (link.dataset.action === 'reset-all') {
+      event.preventDefault();
+      _handleResetAllData();
       return;
     }
 
@@ -386,6 +394,73 @@ function _switchPanel(section, pageId) {
   history.replaceState(null, '', `#${section}`);
 
   window.scrollTo(0, 0);
+}
+
+
+/**
+ * Clears all localStorage and sessionStorage except auth
+ * credentials (authToken, refreshToken, currentUser).
+ * Reloads the page so the app rebuilds from backend data.
+ */
+function _handleResetAllData() {
+  const confirmed = window.confirm(
+    'This will clear ALL local data and caches.\n\n' +
+    'Your login session will be preserved, but everything else ' +
+    '(filters, preferences, cached data) will be wiped.\n\n' +
+    'The page will reload and pull fresh data from the backend.\n\n' +
+    'Continue?'
+  );
+  if (!confirmed) return;
+
+  // Keys to preserve
+  const PRESERVE_KEYS = ['authToken', 'refreshToken', 'currentUser'];
+  const preserved = {};
+  for (const key of PRESERVE_KEYS) {
+    const value = localStorage.getItem(key);
+    if (value !== null) preserved[key] = value;
+  }
+
+  // Nuke everything
+  localStorage.clear();
+  sessionStorage.clear();
+
+  // Restore auth credentials
+  for (const [key, value] of Object.entries(preserved)) {
+    localStorage.setItem(key, value);
+  }
+
+  // Clear all IndexedDB databases, then reload
+  _clearAllIndexedDBs().then(() => {
+    console.info('[NavSidebar] All data reset. Auth credentials preserved. Reloading…');
+    window.location.reload();
+  });
+}
+
+
+/**
+ * Deletes every IndexedDB database the browser knows about.
+ * Uses the modern indexedDB.databases() API where available,
+ * falls back to a best-effort no-op on older browsers.
+ */
+function _clearAllIndexedDBs() {
+  if (typeof indexedDB === 'undefined') return Promise.resolve();
+
+  // Modern browsers expose databases()
+  if (typeof indexedDB.databases === 'function') {
+    return indexedDB.databases().then(dbs => {
+      const deletions = dbs.map(db => new Promise((resolve) => {
+        const req = indexedDB.deleteDatabase(db.name);
+        req.onsuccess = () => { console.debug('[NavSidebar] Deleted IndexedDB:', db.name); resolve(); };
+        req.onerror   = () => { console.warn('[NavSidebar] Failed to delete IndexedDB:', db.name); resolve(); };
+        req.onblocked = () => { console.warn('[NavSidebar] IndexedDB delete blocked:', db.name); resolve(); };
+      }));
+      return Promise.all(deletions);
+    });
+  }
+
+  // Fallback: no databases() API — nothing we can enumerate
+  console.debug('[NavSidebar] indexedDB.databases() not available; skipping IndexedDB clear');
+  return Promise.resolve();
 }
 
 
