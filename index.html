@@ -174,6 +174,32 @@
     </div>
   </div>
 
+  <!-- Link Mode Selection Modal (shown before relink when account types are ambiguous) -->
+  <div id="link-mode-overlay" class="link-mode-overlay" style="display: none;">
+    <div class="link-mode-modal">
+      <h2>What would you like to sync?</h2>
+      <p class="link-mode-description">
+        Choose what data to sync from <strong id="link-mode-bank-name"></strong> via Plaid.
+        You can always add the other product later.
+      </p>
+      <div class="link-mode-options">
+        <button class="link-mode-option" id="link-mode-transactions">
+          <span class="link-mode-icon">📊</span>
+          <span class="link-mode-label">Transactions</span>
+          <span class="link-mode-hint">Sync checking, savings, and credit card transactions</span>
+        </button>
+        <button class="link-mode-option" id="link-mode-investments">
+          <span class="link-mode-icon">📈</span>
+          <span class="link-mode-label">Investments</span>
+          <span class="link-mode-hint">Sync brokerage and retirement holdings</span>
+        </button>
+      </div>
+      <div class="link-mode-actions">
+        <button class="btn btn-secondary" id="link-mode-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Account Matching Modal (shown after relink when auto-matching fails) -->
   <div id="account-matching-overlay" class="matching-overlay" style="display: none;">
     <div class="matching-modal">
@@ -450,6 +476,93 @@
       color: var(--text-primary);
     }
     .institution-picker-actions .btn-secondary:hover {
+      background: var(--bg-hover);
+    }
+
+    /* ── Link Mode Selection Modal ─────────────────────── */
+    .link-mode-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--bg-overlay);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .link-mode-modal {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-primary);
+      border-radius: 12px;
+      padding: 28px 32px;
+      max-width: 440px;
+      width: 90%;
+      box-shadow: var(--shadow-lg);
+    }
+    .link-mode-modal h2 {
+      margin: 0 0 8px;
+      font-size: 20px;
+      color: var(--text-heading);
+    }
+    .link-mode-description {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin: 0 0 20px;
+      line-height: 1.5;
+    }
+    .link-mode-options {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .link-mode-option {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 18px;
+      border: 1px solid var(--border-primary);
+      border-radius: 8px;
+      background: var(--bg-surface);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      text-align: left;
+      color: var(--text-primary);
+    }
+    .link-mode-option:hover {
+      border-color: var(--accent-primary);
+      background: var(--bg-hover);
+    }
+    .link-mode-icon {
+      font-size: 28px;
+      flex-shrink: 0;
+    }
+    .link-mode-label {
+      font-size: 16px;
+      font-weight: 600;
+      display: block;
+    }
+    .link-mode-hint {
+      font-size: 13px;
+      color: var(--text-muted);
+      display: block;
+      margin-top: 2px;
+    }
+    .link-mode-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+    .link-mode-actions .btn {
+      padding: 10px 24px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+    }
+    .link-mode-actions .btn-secondary {
+      background: var(--bg-input);
+      color: var(--text-primary);
+    }
+    .link-mode-actions .btn-secondary:hover {
       background: var(--bg-hover);
     }
   </style>

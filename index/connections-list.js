@@ -258,7 +258,7 @@ const IndexConnectionsList = (() => {
         : 'Connect this bank to Plaid for automatic syncing';
 
       const onClickHandler = hasInstitution
-        ? `IndexConnectionsList.handleRelink('${bankIdAttr}', '${nameAttr}')`
+        ? `IndexConnectionsList.startRelink('${bankIdAttr}', '${nameAttr}')`
         : `IndexConnectionsList.showInstitutionPicker('${bankIdAttr}', '${nameAttr}')`;
 
       buttons.push(
@@ -345,14 +345,85 @@ const IndexConnectionsList = (() => {
     }
   }
 
+  // ── Smart Link Mode Detection ──────────────────────────
+
+  /**
+   * Determine the Plaid link mode based on the bank's account categories.
+   * Returns 'investments_only', null (transactions default), or 'ask' if ambiguous.
+   */
+  function _resolveRelinkMode(bankId) {
+    const banks = IndexState.getBanksCache() || [];
+    const bank = banks.find(b => b.bank_id === bankId);
+    const accounts = bank?.accounts || [];
+
+    if (accounts.length === 0) return 'ask';
+
+    const hasTransactionEligible = accounts.some(
+      a => a.account_category === 'depository' || a.account_category === 'credit'
+    );
+    const hasInvestment = accounts.some(
+      a => (a.account_category || '').toLowerCase() === 'investment'
+    );
+
+    if (hasInvestment && !hasTransactionEligible) return 'investments_only';
+    if (hasTransactionEligible && !hasInvestment) return null; // transactions default
+    return 'ask'; // mixed — need user input
+  }
+
+  /**
+   * Entry point for (re-)linking a bank to Plaid. Auto-detects the best link
+   * mode from the bank's account categories, or shows a modal if ambiguous.
+   * @param {string} bankId
+   * @param {string} bankName
+   * @param {string|null} institutionId - Pre-selected institution (from picker).
+   */
+  function startRelink(bankId, bankName, institutionId = null) {
+    const resolvedMode = _resolveRelinkMode(bankId);
+    if (resolvedMode === 'ask') {
+      _showLinkModeModal(bankId, bankName, institutionId);
+    } else {
+      handleRelink(bankId, bankName, institutionId, resolvedMode);
+    }
+  }
+
+  /**
+   * Show the link mode selection modal for banks with mixed or no accounts.
+   */
+  function _showLinkModeModal(bankId, bankName, institutionId) {
+    const overlay = document.getElementById('link-mode-overlay');
+    const bankNameEl = document.getElementById('link-mode-bank-name');
+    const txnBtn = document.getElementById('link-mode-transactions');
+    const invBtn = document.getElementById('link-mode-investments');
+    const cancelBtn = document.getElementById('link-mode-cancel');
+
+    bankNameEl.textContent = bankName;
+    overlay.style.display = 'flex';
+
+    txnBtn.onclick = () => {
+      closeLinkModeModal();
+      handleRelink(bankId, bankName, institutionId, null);
+    };
+    invBtn.onclick = () => {
+      closeLinkModeModal();
+      handleRelink(bankId, bankName, institutionId, 'investments_only');
+    };
+    cancelBtn.onclick = () => closeLinkModeModal();
+  }
+
+  function closeLinkModeModal() {
+    const overlay = document.getElementById('link-mode-overlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+
   /**
    * Relink a converted bank by starting a new Plaid Link session.
    * This connects a new Plaid item to the existing bank record.
    * @param {string} bankId
    * @param {string} bankName
    * @param {string|null} institutionId - Pre-selected institution for made-up banks.
+   * @param {string|null} mode - 'investments_only' or null (transactions default).
    */
-  async function handleRelink(bankId, bankName, institutionId = null) {
+  async function handleRelink(bankId, bankName, institutionId = null, mode = null) {
     if (!IndexState.getAuthToken()) {
       IndexUtils.showMessage('dashboard-message', 'Please login first', 'error');
       return;
@@ -364,7 +435,9 @@ const IndexConnectionsList = (() => {
       // item to the existing bank record (works for converted AND manual banks
       // that have a valid institution_id). institutionId is passed when the user
       // selected a real bank via the institution picker for made-up banks.
-      const linkToken = await IndexApi.fetchLinkToken({ bankId, institutionId });
+      // mode drives product selection on the backend (null = transactions,
+      // 'investments_only' = investments).
+      const linkToken = await IndexApi.fetchLinkToken({ bankId, institutionId, mode });
       const handler = Plaid.create({
         token: linkToken,
         onSuccess: async (publicToken) => {
@@ -935,7 +1008,7 @@ const IndexConnectionsList = (() => {
         const capturedBankName = _pickerBankName;
         const capturedInstitutionId = _pickerSelectedInstitutionId;
         closeInstitutionPicker();
-        handleRelink(capturedBankId, capturedBankName, capturedInstitutionId);
+        startRelink(capturedBankId, capturedBankName, capturedInstitutionId);
       }
     };
 
@@ -1094,6 +1167,8 @@ const IndexConnectionsList = (() => {
     handleActivateInvestments,
     showInstitutionPicker,
     closeInstitutionPicker,
+    closeLinkModeModal,
+    startRelink,
     handleRetryInitialSync,
   };
 })();
