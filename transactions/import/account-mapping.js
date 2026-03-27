@@ -8,6 +8,9 @@
 // Cached popular institutions so we only fetch once per session
 let _importPopularInstitutionsCache = null;
 
+// Whether auto-suggest has already run for this analysis session
+let _importAutoSuggestApplied = false;
+
 /**
  * Render the account mapping step into the wizard body.
  */
@@ -17,6 +20,9 @@ function renderAccountMappingStep(container) {
     return;
   }
 
+  // Run auto-suggest once per analysis session to pre-fill likely matches
+  _autoSuggestAccountMappings();
+
   const csvAccounts = importAnalysis.accounts;
   let html = '';
 
@@ -24,6 +30,12 @@ function renderAccountMappingStep(container) {
   html += `<p style="color: var(--text-secondary); margin: 0 0 18px 0; font-size: 13px;">
     Assign each CSV account to an existing account, create a new one, or skip it entirely.
   </p>`;
+
+  // Bulk action buttons
+  html += '<div class="import-bulk-actions">';
+  html += '<button class="import-bulk-btn" onclick="_bulkIgnoreAllAccounts()">Skip All</button>';
+  html += '<button class="import-bulk-btn" onclick="_bulkResuggestAllAccounts()">Auto-Suggest All</button>';
+  html += '</div>';
 
   html += '<table class="import-mapping-table">';
   html += `<thead><tr>
@@ -66,6 +78,12 @@ function renderAccountMappingStep(container) {
           extraHtml += _renderLockBalanceCheckbox(csvName, currentMapping);
         }
 
+        // Warn if another CSV account is already mapped to the same app account
+        const dupCsvNames = _getDuplicateMappingsFor(currentMapping.target_account_id, csvName);
+        if (dupCsvNames.length > 0) {
+          extraHtml += _renderDuplicateMappingWarning(targetAccount, dupCsvNames);
+        }
+
         if (extraHtml) {
           html += `<tr><td colspan="4" style="padding-top: 0; border-bottom: none;">${extraHtml}</td></tr>`;
         }
@@ -91,17 +109,26 @@ function _renderAccountMappingDropdown(csvName, currentMapping) {
   html += '<option value="__ignore__"' + (selectedAction === 'ignore' ? ' selected' : '') + '>Skip / Ignore</option>';
   html += '<option value="__create_new__"' + (selectedAction === 'create_new' ? ' selected' : '') + '>+ Create New Account</option>';
 
-  // Group existing accounts by bank
-  const offlineAccounts = accounts.filter(accountRecord => accountRecord.connection_status !== 'linked');
-  const linkedAccounts = accounts.filter(accountRecord => accountRecord.connection_status === 'linked');
+  // Collect account IDs already mapped by OTHER CSV accounts (not this one)
+  const usedAccountIds = _getUsedAccountIds(csvName);
+
+  // Group existing accounts by bank, sort alphabetically by label
+  const offlineAccounts = accounts
+    .filter(accountRecord => accountRecord.connection_status !== 'linked')
+    .sort((a, b) => _buildAccountLabel(a).localeCompare(_buildAccountLabel(b)));
+  const linkedAccounts = accounts
+    .filter(accountRecord => accountRecord.connection_status === 'linked')
+    .sort((a, b) => _buildAccountLabel(a).localeCompare(_buildAccountLabel(b)));
 
   if (offlineAccounts.length > 0) {
     html += '<optgroup label="Offline / Manual Accounts">';
     for (const accountRecord of offlineAccounts) {
       const displayName = _buildAccountLabel(accountRecord);
       const isSelected = selectedAction === 'map' && selectedTarget === accountRecord.account_id;
+      const isUsed = usedAccountIds.has(accountRecord.account_id);
+      const usedSuffix = isUsed ? ' ⚠ (already mapped)' : '';
       html += `<option value="${escapeHtml(accountRecord.account_id)}"${isSelected ? ' selected' : ''}>`;
-      html += escapeHtml(displayName);
+      html += escapeHtml(displayName) + usedSuffix;
       html += '</option>';
     }
     html += '</optgroup>';
@@ -112,8 +139,10 @@ function _renderAccountMappingDropdown(csvName, currentMapping) {
     for (const accountRecord of linkedAccounts) {
       const displayName = _buildAccountLabel(accountRecord);
       const isSelected = selectedAction === 'map' && selectedTarget === accountRecord.account_id;
+      const isUsed = usedAccountIds.has(accountRecord.account_id);
+      const usedSuffix = isUsed ? ' ⚠ (already mapped)' : '';
       html += `<option value="${escapeHtml(accountRecord.account_id)}"${isSelected ? ' selected' : ''}>`;
-      html += escapeHtml(displayName);
+      html += escapeHtml(displayName) + usedSuffix;
       html += '</option>';
     }
     html += '</optgroup>';
@@ -121,6 +150,35 @@ function _renderAccountMappingDropdown(csvName, currentMapping) {
 
   html += '</select>';
   return html;
+}
+
+/**
+ * Bulk: set every CSV account to Skip/Ignore.
+ */
+function _bulkIgnoreAllAccounts() {
+  if (!importAnalysis || !importAnalysis.accounts) return;
+  for (const csvAccount of importAnalysis.accounts) {
+    importAccountMappings[csvAccount.csv_name] = { action: 'ignore' };
+  }
+  _saveImportProgress();
+  const body = document.getElementById('import-wizard-body');
+  renderAccountMappingStep(body);
+}
+
+/**
+ * Bulk: re-run auto-suggest from scratch (clears all current mappings first).
+ */
+function _bulkResuggestAllAccounts() {
+  if (!importAnalysis || !importAnalysis.accounts) return;
+  // Reset all to ignore, then let auto-suggest fill in matches
+  for (const csvAccount of importAnalysis.accounts) {
+    importAccountMappings[csvAccount.csv_name] = { action: 'ignore' };
+  }
+  _importAutoSuggestApplied = false;
+  _autoSuggestAccountMappings();
+  _saveImportProgress();
+  const body = document.getElementById('import-wizard-body');
+  renderAccountMappingStep(body);
 }
 
 /**
@@ -650,4 +708,181 @@ function _safeId(value) {
 
 function _escapeAttr(value) {
   return String(value || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+// ── Duplicate Mapping Helpers ─────────────────────────────────
+
+/**
+ * Get the set of account IDs already mapped by OTHER CSV accounts (excludes the given csvName).
+ */
+function _getUsedAccountIds(excludeCsvName) {
+  const used = new Set();
+  for (const [csvName, mapping] of Object.entries(importAccountMappings)) {
+    if (csvName === excludeCsvName) continue;
+    if (mapping.action === 'map' && mapping.target_account_id) {
+      used.add(mapping.target_account_id);
+    }
+  }
+  return used;
+}
+
+/**
+ * Get CSV account names that are also mapped to the same target account (excluding self).
+ */
+function _getDuplicateMappingsFor(targetAccountId, excludeCsvName) {
+  const duplicates = [];
+  for (const [csvName, mapping] of Object.entries(importAccountMappings)) {
+    if (csvName === excludeCsvName) continue;
+    if (mapping.action === 'map' && mapping.target_account_id === targetAccountId) {
+      duplicates.push(csvName);
+    }
+  }
+  return duplicates;
+}
+
+/**
+ * Render warning when multiple CSV accounts map to the same app account.
+ */
+function _renderDuplicateMappingWarning(targetAccount, otherCsvNames) {
+  const accountLabel = _buildAccountLabel(targetAccount);
+  const othersText = otherCsvNames.map(n => `"${escapeHtml(n)}"`).join(', ');
+  return `
+    <div class="import-linked-warning" style="border-color: var(--color-warning, #e6a700);">
+      ⚠️ <strong>${escapeHtml(accountLabel)}</strong> is also mapped from ${othersText}.
+      All transactions from these CSV accounts will be merged into this single account.
+    </div>
+  `;
+}
+
+// ── Auto-Suggest Matching ─────────────────────────────────────
+
+/**
+ * Auto-suggest account mappings by fuzzy-matching CSV account names
+ * against the user's existing accounts. Only fills in unmapped entries.
+ * Call once after analysis is loaded.
+ */
+function _autoSuggestAccountMappings() {
+  if (!importAnalysis || !importAnalysis.accounts || !accounts || accounts.length === 0) return;
+  if (_importAutoSuggestApplied) return;
+  _importAutoSuggestApplied = true;
+
+  // Build a lookup of all app accounts with normalized search tokens
+  const appAccounts = accounts.map(acct => ({
+    account_id: acct.account_id,
+    account_name: acct.account_name || '',
+    custom_name: acct.custom_name || '',
+    bank_name: acct.bank_name || acct.institution_name || '',
+    mask: acct.mask || '',
+    account_category: acct.account_category || '',
+    label: _buildAccountLabel(acct),
+  }));
+
+  const usedIds = new Set();
+
+  for (const csvAccount of importAnalysis.accounts) {
+    const csvName = csvAccount.csv_name;
+    const existing = importAccountMappings[csvName];
+
+    // Skip if user already made a decision (not just the default 'ignore' from non-app-reimport)
+    if (existing && existing.action === 'map') {
+      if (existing.target_account_id) usedIds.add(existing.target_account_id);
+      continue;
+    }
+    if (existing && existing.action === 'create_new') continue;
+
+    // Find best match
+    const match = _findBestAccountMatch(csvName, appAccounts, usedIds);
+    if (match) {
+      importAccountMappings[csvName] = {
+        action: 'map',
+        target_account_id: match.account_id,
+        lock_current_balance: false,
+      };
+      usedIds.add(match.account_id);
+    }
+  }
+}
+
+/**
+ * Find the best matching app account for a CSV account name.
+ * Returns the matched app account object or null.
+ */
+function _findBestAccountMatch(csvName, appAccounts, usedIds) {
+  const csvNorm = _normalizeForMatch(csvName);
+  if (!csvNorm) return null;
+
+  let bestMatch = null;
+  let bestScore = 0;
+
+  for (const appAcct of appAccounts) {
+    if (usedIds.has(appAcct.account_id)) continue;
+
+    const score = _scoreAccountMatch(csvNorm, csvName, appAcct);
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = appAcct;
+    }
+  }
+
+  // Require a minimum confidence threshold
+  return bestScore >= 3 ? bestMatch : null;
+}
+
+/**
+ * Score how well a CSV name matches an app account. Higher = better match.
+ *
+ * Scoring tiers:
+ *  10 = exact match on full label or name
+ *   8 = CSV name contains full account name or vice-versa
+ *   6 = bank + partial name match
+ *   5 = mask (last 4 digits) + bank match
+ *   4 = strong token overlap (most words match)
+ *   3 = moderate token overlap
+ *   0 = no meaningful match
+ */
+function _scoreAccountMatch(csvNorm, csvRaw, appAcct) {
+  const nameNorm = _normalizeForMatch(appAcct.account_name);
+  const customNorm = _normalizeForMatch(appAcct.custom_name);
+  const bankNorm = _normalizeForMatch(appAcct.bank_name);
+  const labelNorm = _normalizeForMatch(appAcct.label);
+  const mask = appAcct.mask || '';
+
+  // Exact match on label or name
+  if (csvNorm === labelNorm || csvNorm === nameNorm || csvNorm === customNorm) return 10;
+
+  // CSV contains full account name or vice-versa
+  if (nameNorm && csvNorm.includes(nameNorm)) return 8;
+  if (customNorm && csvNorm.includes(customNorm)) return 8;
+  if (nameNorm && nameNorm.includes(csvNorm)) return 8;
+
+  // Bank name match + partial name match
+  const csvHasBank = bankNorm && csvNorm.includes(bankNorm);
+  if (csvHasBank && nameNorm) {
+    const nameTokens = nameNorm.split(/\s+/);
+    const matchedTokens = nameTokens.filter(t => t.length > 2 && csvNorm.includes(t));
+    if (matchedTokens.length >= 1) return 6;
+  }
+
+  // Mask (last 4 digits) + bank match
+  if (mask && csvRaw.includes(mask) && csvHasBank) return 5;
+
+  // Token overlap scoring
+  const csvTokens = csvNorm.split(/\s+/).filter(t => t.length > 2);
+  const acctTokens = labelNorm.split(/\s+/).filter(t => t.length > 2);
+  if (csvTokens.length > 0 && acctTokens.length > 0) {
+    const matchedCount = csvTokens.filter(t => acctTokens.includes(t)).length;
+    const overlapRatio = matchedCount / Math.min(csvTokens.length, acctTokens.length);
+    if (overlapRatio >= 0.7 && matchedCount >= 2) return 4;
+    if (overlapRatio >= 0.5 && matchedCount >= 2) return 3;
+  }
+
+  return 0;
+}
+
+/**
+ * Normalize a string for fuzzy comparison: lowercase, strip punctuation, collapse whitespace.
+ */
+function _normalizeForMatch(str) {
+  if (!str) return '';
+  return str.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }

@@ -71,6 +71,7 @@ function _resetImportWizardInMemory() {
   importAnalysis = null;
   importAccountMappings = {};
   importCategoryMappings = {};
+  _importAutoSuggestApplied = false;
   _importSavedFileName = null;
   _importSavedFileSize = null;
   _importSavedStep = null;

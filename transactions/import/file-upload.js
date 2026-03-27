@@ -139,6 +139,9 @@ async function _analyzeImportFile() {
 function _initAccountMappingsFromAnalysis() {
   if (!importAnalysis || !importAnalysis.accounts) return;
 
+  // Reset auto-suggest flag so it runs fresh for new analysis
+  _importAutoSuggestApplied = false;
+
   const isAppReimport = _isAppReimportFormat();
   importAccountMappings = {};
 

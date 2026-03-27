@@ -395,6 +395,28 @@
   font-size: 13px;
 }
 
+.import-bulk-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.import-bulk-btn {
+  padding: 5px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.import-bulk-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 .import-mapping-table th {
   text-align: left;
   padding: 8px 12px;
