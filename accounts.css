@@ -377,6 +377,8 @@ body {
 .badge-health-error   { background: var(--color-danger-bg); color: var(--color-danger); }
 .badge-archived       { background: var(--color-warning-bg); color: var(--color-warning); }
 .badge-category       { background: var(--bg-selected); color: var(--accent-link); }
+.badge-hidden         { background: var(--bg-selected); color: var(--text-secondary); }
+.badge-holdings-hidden { background: var(--color-info-bg); color: var(--accent-link); }
 
 /* ── Metadata Grid ────────────────────────────────────────── */
 .metadata-grid {

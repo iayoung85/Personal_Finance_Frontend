@@ -55,7 +55,9 @@ async function loadInvestmentAccounts() {
         billed_products: billed,
         available_products: available,
         current_balance: parseFloat(acc.current_balance) || 0,
-        updated_at: acc.last_updated || null
+        updated_at: acc.last_updated || null,
+        holdings_hidden: acc.holdings_hidden || false,
+        is_hidden: acc.is_hidden || false
       };
     });
 
@@ -120,8 +122,8 @@ function renderInvestmentSidebar() {
     </div>
   `;
 
-  // Only show active accounts
-  const activeAccounts = investmentAccounts.filter(acc => acc.status === 'active');
+  // Only show active accounts that are not holdings_hidden
+  const activeAccounts = investmentAccounts.filter(acc => acc.status === 'active' && !acc.holdings_hidden);
 
   // Investment accounts section
   html += '<div class="sidebar-account-group">';
@@ -154,17 +156,14 @@ function renderInvestmentSidebar() {
         <div class="sidebar-account-item ${selectedClass}"
              tabindex="0"
              data-account-id="${acc.account_id}"
-             onclick="toggleAccountSelection('${acc.account_id}')">
+             onclick="toggleAccountSelection('${acc.account_id}')"
+             oncontextmenu="event.preventDefault(); _showInvAccountContextMenu(event, '${acc.account_id}')">
           <div class="sidebar-account-label">
             <span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span>
             <span class="sidebar-account-mask">${displayNameSuffix}</span>
           </div>
           <div class="sidebar-account-right">
             <span class="${balanceColorClass}">${balanceStr}</span>
-            <button class="inv-sidebar-rename-btn" title="Rename account"
-                    onclick="event.stopPropagation(); promptInvestmentRename('${acc.account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
-              ✏
-            </button>
           </div>
         </div>
       `;
@@ -185,6 +184,92 @@ function renderInvestmentSidebar() {
 
 function _sumBalances(accounts) {
   return accounts.reduce((sum, acc) => sum + (acc.current_balance || 0), 0);
+}
+
+// ─── Investment Sidebar Context Menu ─────────────────────────
+
+function _showInvAccountContextMenu(event, accountId) {
+  _dismissInvAccountContextMenu();
+
+  const acc = investmentAccounts.find(a => a.account_id === accountId);
+  if (!acc) return;
+
+  const menu = document.createElement('div');
+  menu.id = 'inv-account-context-menu';
+  menu.className = 'account-context-menu';
+
+  let items = '';
+  // Rename
+  items += `<div class="account-ctx-item" onclick="_ctxInvRenameAccount('${accountId}')">✏ Rename Account</div>`;
+  if (acc.custom_name) {
+    items += `<div class="account-ctx-item" onclick="_ctxInvClearCustomName('${accountId}')">↩ Reset to Default Name</div>`;
+  }
+  items += '<div class="account-ctx-separator"></div>';
+  items += `<div class="account-ctx-item account-ctx-item-warn" onclick="_ctxInvHideHoldings('${accountId}')">🙈 Hide Holdings</div>`;
+
+  menu.innerHTML = items;
+  document.body.appendChild(menu);
+
+  const menuWidth = 200;
+  const menuHeight = menu.offsetHeight || 100;
+  let x = event.clientX;
+  let y = event.clientY;
+  if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 8;
+  if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 8;
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+
+  setTimeout(() => {
+    document.addEventListener('click', _dismissInvAccountContextMenu, { once: true });
+    document.addEventListener('keydown', _handleInvCtxEscape);
+  }, 0);
+}
+
+function _handleInvCtxEscape(event) {
+  if (event.key === 'Escape') _dismissInvAccountContextMenu();
+}
+
+function _dismissInvAccountContextMenu() {
+  const existing = document.getElementById('inv-account-context-menu');
+  if (existing) existing.remove();
+  document.removeEventListener('keydown', _handleInvCtxEscape);
+}
+
+function _ctxInvRenameAccount(accountId) {
+  _dismissInvAccountContextMenu();
+  const acc = investmentAccounts.find(a => a.account_id === accountId);
+  promptInvestmentRename(accountId, (acc && acc.custom_name) || '');
+}
+
+async function _ctxInvClearCustomName(accountId) {
+  _dismissInvAccountContextMenu();
+  try {
+    await renameAccountApi(accountId, null);
+    showInvestmentMessage('Name reset to default', 'success');
+    await loadInvestmentAccounts();
+  } catch (error) {
+    showInvestmentMessage('Reset failed: ' + error.message, 'error');
+  }
+}
+
+async function _ctxInvHideHoldings(accountId) {
+  _dismissInvAccountContextMenu();
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts/${accountId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ holdings_hidden: true })
+    });
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to hide holdings');
+    }
+    showInvestmentMessage('Holdings hidden — manage from Accounts page', 'success');
+    await loadInvestmentAccounts();
+    await loadInvestmentHoldings();
+  } catch (error) {
+    showInvestmentMessage('Failed: ' + error.message, 'error');
+  }
 }
 
 // --- Selection handlers ---
@@ -226,7 +311,7 @@ function toggleAccountSelection(accountId) {
 function _applyPoolAllSelection() {
   selectedAccountIds.clear();
   investmentAccounts
-    .filter(acc => acc.status === 'active')
+    .filter(acc => acc.status === 'active' && !acc.holdings_hidden)
     .forEach(acc => selectedAccountIds.add(acc.account_id));
 }
 

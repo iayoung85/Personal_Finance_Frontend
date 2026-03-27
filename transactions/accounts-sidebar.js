@@ -6,6 +6,7 @@
 
 let _pendingSidebarFocusAccountId = null;
 const _ALL_ACCOUNTS_NAV_ID = '__all_accounts__';
+let _showHiddenAccounts = false;
 
 /**
  * Build the human-readable display name for an account.
@@ -146,6 +147,7 @@ async function loadAccounts() {
       mask: a.mask || null,
       last_updated: a.last_balance_update || a.last_updated || null,
       is_archived: a.is_archived || false,
+      is_hidden: a.is_hidden || false,
       billed_products: a.billed_products || [],
       available_products: a.available_products || [],
       // Backend-authoritative boundary for manual txn date guard (Problem 5 alignment)
@@ -291,8 +293,12 @@ function renderAccountsSidebar() {
     return sum + (account.current_balance || 0);
   }, 0);
 
-  // Compute total balance across all accounts
-  const totalBalance = sumAccountBalances(accounts);
+  // Separate visible vs hidden accounts
+  const visibleAccounts = accounts.filter(acc => !acc.is_hidden);
+  const hiddenAccounts = accounts.filter(acc => acc.is_hidden);
+
+  // Compute total balance across visible accounts only
+  const totalBalance = sumAccountBalances(visibleAccounts);
   const totalBalanceStr = formatSidebarCurrency(totalBalance);
 
   // Group accounts by category
@@ -310,10 +316,7 @@ function renderAccountsSidebar() {
     active: {},
   };
 
-  accounts.forEach(acc => {
-    // All accounts are active in the sidebar.  Dormant accounts (Plaid-born
-    // but transactions product not yet billed) operate as manual.
-    // Activation of the transactions product is handled on accounts.html.
+  visibleAccounts.forEach(acc => {
     const cat = acc.account_category || 'asset';
     if (!grouped.active[cat]) {
       grouped.active[cat] = [];
@@ -399,32 +402,7 @@ function renderAccountsSidebar() {
       `;
 
       grouped.active[cat].forEach(acc => {
-        const displayName = _buildAccountDisplayName(acc);
-        // Split trailing mask suffix e.g. "(9002)" so it never gets ellipsis-clipped.
-        // \d{3,6} — only match real account number masks (3-6 digits), not words like "(old)"
-        const maskMatch = displayName.match(/^(.*?)(\s*\(\d{3,6}\))$/);
-        const displayNameMain = maskMatch ? maskMatch[1] : displayName;
-        const displayNameSuffix = maskMatch ? maskMatch[2] : '';
-        const currentBalance = acc.current_balance || 0;
-        const balanceStr = formatSidebarCurrency(currentBalance);
-        const balanceColorClass = currentBalance < 0 ? 'sidebar-account-balance-negative' : 'sidebar-account-balance';
-
-        const isSelected = selectedAccountMode === 'single' && selectedAccountId === acc.account_id;
-        const selectedClass = isSelected ? 'selected' : '';
-
-        html += `
-          <div class="sidebar-account-item ${selectedClass}" tabindex="0" data-account-id="${acc.account_id}" onclick="selectAccount('${acc.account_id}')">
-            <button class="secondary" title="Rename account"
-                    style="padding: 0 5px; font-size: 12px; align-self: stretch; min-width: unset; flex-shrink: 0; border-radius: 2px 0 0 2px; margin-left: -1px;"
-                    onclick="event.stopPropagation(); promptRename('${acc.account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
-              ✏
-            </button>
-            <div class="sidebar-account-label">
-              <span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span><span class="sidebar-account-mask">${displayNameSuffix}</span>
-            </div>
-            <div class="${balanceColorClass}">${balanceStr}</div>
-          </div>
-        `;
+        html += _renderSidebarAccountItem(acc, formatSidebarCurrency);
       });
 
       html += '</div>';
@@ -435,6 +413,34 @@ function renderAccountsSidebar() {
   categoryOrder.forEach(cat => {
     renderCategoryBlock(cat);
   });
+
+  // ===== HIDDEN ACCOUNTS TOGGLE & LIST =====
+  if (hiddenAccounts.length > 0) {
+    const toggleClass = _showHiddenAccounts ? 'expanded' : '';
+    html += `
+      <div class="sidebar-hidden-toggle ${toggleClass}" onclick="_toggleHiddenAccountsView()">
+        <span>${_showHiddenAccounts ? '▾' : '▸'} Hidden Accounts (${hiddenAccounts.length})</span>
+      </div>
+    `;
+
+    if (_showHiddenAccounts) {
+      html += '<div class="sidebar-hidden-list">';
+      hiddenAccounts.forEach(acc => {
+        const displayName = _buildAccountDisplayName(acc);
+        html += `
+          <div class="sidebar-hidden-account-item"
+               oncontextmenu="event.preventDefault(); _showAccountContextMenu(event, '${acc.account_id}', true)">
+            <span class="sidebar-hidden-account-name" title="${displayName}">${displayName}</span>
+            <button class="sidebar-unhide-btn" title="Unhide account"
+                    onclick="event.stopPropagation(); _unhideAccount('${acc.account_id}')">
+              Unhide
+            </button>
+          </div>
+        `;
+      });
+      html += '</div>';
+    }
+  }
 
   // ===== CREATE MANUAL ACCOUNT LINK =====
   html += `
@@ -453,6 +459,143 @@ function renderAccountsSidebar() {
     }
     _pendingSidebarFocusAccountId = null;
   }
+}
+
+// ─── Sidebar account item renderer ───────────────────────────
+
+function _renderSidebarAccountItem(acc, formatSidebarCurrency) {
+  const displayName = _buildAccountDisplayName(acc);
+  const maskMatch = displayName.match(/^(.*?)(\s*\(\d{3,6}\))$/);
+  const displayNameMain = maskMatch ? maskMatch[1] : displayName;
+  const displayNameSuffix = maskMatch ? maskMatch[2] : '';
+  const currentBalance = acc.current_balance || 0;
+  const balanceStr = formatSidebarCurrency(currentBalance);
+  const balanceColorClass = currentBalance < 0 ? 'sidebar-account-balance-negative' : 'sidebar-account-balance';
+
+  const isSelected = selectedAccountMode === 'single' && selectedAccountId === acc.account_id;
+  const selectedClass = isSelected ? 'selected' : '';
+
+  return `
+    <div class="sidebar-account-item ${selectedClass}" tabindex="0"
+         data-account-id="${acc.account_id}"
+         onclick="selectAccount('${acc.account_id}')"
+         oncontextmenu="event.preventDefault(); _showAccountContextMenu(event, '${acc.account_id}', false)">
+      <div class="sidebar-account-label">
+        <span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span><span class="sidebar-account-mask">${displayNameSuffix}</span>
+      </div>
+      <div class="${balanceColorClass}">${balanceStr}</div>
+    </div>
+  `;
+}
+
+// ─── Account Sidebar Context Menu ────────────────────────────
+
+function _showAccountContextMenu(event, accountId, isHidden) {
+  _dismissAccountContextMenu();
+
+  const acc = accounts.find(a => a.account_id === accountId);
+  if (!acc) return;
+
+  const menu = document.createElement('div');
+  menu.id = 'account-context-menu';
+  menu.className = 'account-context-menu';
+
+  let items = '';
+
+  if (isHidden) {
+    items += `<div class="account-ctx-item" onclick="_unhideAccount('${accountId}')">👁 Unhide Account</div>`;
+  } else {
+    // Rename
+    items += `<div class="account-ctx-item" onclick="_ctxRenameAccount('${accountId}')">✏ Rename Account</div>`;
+    // Clear custom name (only if custom name is set)
+    if (acc.custom_name) {
+      items += `<div class="account-ctx-item" onclick="_ctxClearCustomName('${accountId}')">↩ Reset to Default Name</div>`;
+    }
+    items += '<div class="account-ctx-separator"></div>';
+    // Hide
+    items += `<div class="account-ctx-item account-ctx-item-warn" onclick="_hideAccount('${accountId}')">🙈 Hide Account</div>`;
+  }
+
+  menu.innerHTML = items;
+  document.body.appendChild(menu);
+
+  // Position near the click, keeping it on screen
+  const menuWidth = 200;
+  const menuHeight = menu.offsetHeight || 120;
+  let x = event.clientX;
+  let y = event.clientY;
+  if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 8;
+  if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 8;
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+
+  // Dismiss on click outside or Escape
+  setTimeout(() => {
+    document.addEventListener('click', _dismissAccountContextMenu, { once: true });
+    document.addEventListener('keydown', _handleAccountCtxEscape);
+  }, 0);
+}
+
+function _handleAccountCtxEscape(event) {
+  if (event.key === 'Escape') _dismissAccountContextMenu();
+}
+
+function _dismissAccountContextMenu() {
+  const existing = document.getElementById('account-context-menu');
+  if (existing) existing.remove();
+  document.removeEventListener('keydown', _handleAccountCtxEscape);
+}
+
+// ─── Context menu actions ────────────────────────────────────
+
+function _ctxRenameAccount(accountId) {
+  _dismissAccountContextMenu();
+  const acc = accounts.find(a => a.account_id === accountId);
+  promptRename(accountId, (acc && acc.custom_name) || '');
+}
+
+function _ctxClearCustomName(accountId) {
+  _dismissAccountContextMenu();
+  _updateAccountField(accountId, { custom_name: null }, 'Name reset to default');
+}
+
+async function _hideAccount(accountId) {
+  _dismissAccountContextMenu();
+  await _updateAccountField(accountId, { is_hidden: true }, 'Account hidden');
+}
+
+async function _unhideAccount(accountId) {
+  _dismissAccountContextMenu();
+  await _updateAccountField(accountId, { is_hidden: false }, 'Account unhidden');
+}
+
+async function _updateAccountField(accountId, fields, successMessage) {
+  try {
+    showStatus('Updating account…', 'info');
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts/${accountId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields)
+    });
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to update account');
+    }
+    showStatus(successMessage, 'success');
+    setTimeout(() => clearStatus(), 2000);
+    await loadAccounts(true);
+    renderTransactionTable();
+  } catch (error) {
+    console.error('_updateAccountField error:', error);
+    showStatus(`Failed: ${error.message}`, 'error');
+  }
+}
+
+// ─── Hidden accounts toggle ─────────────────────────────────
+
+function _toggleHiddenAccountsView() {
+  _showHiddenAccounts = !_showHiddenAccounts;
+  renderAccountsSidebar();
 }
 
 function getSelectedAccounts() {

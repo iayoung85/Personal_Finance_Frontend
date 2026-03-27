@@ -37,7 +37,9 @@ function _buildAccountDetailHtml(account) {
     renderConnectionBadge(account.connection_status),
     renderHealthBadge(account.connection_status, itemHealth),
     renderArchivedBadge(account.is_archived),
-    renderCategoryBadge(account.account_category)
+    renderCategoryBadge(account.account_category),
+    account.is_hidden ? '<span class="badge badge-hidden">Hidden</span>' : '',
+    account.holdings_hidden ? '<span class="badge badge-holdings-hidden">Holdings Hidden</span>' : ''
   ].filter(Boolean).join(' ');
 
   // Subcategory label
@@ -160,6 +162,46 @@ function _buildAccountActions(account) {
     'info-change-type',
     'Changes the account classification (e.g., depository, credit, investment). All existing transaction data is preserved.'
   );
+
+  // ── Hide / Unhide (sidebar visibility) ──
+  if (account.is_hidden) {
+    actions += _actionItem(
+      'Unhide Account',
+      'Show this account again in the transactions sidebar. Transactions are always included regardless.',
+      `<button class="btn-action" onclick="toggleAccountHidden('${account.account_id}', false)">Unhide</button>`,
+      'info-unhide',
+      'Removes the hidden flag. The account reappears in the transactions sidebar. Transactions, reports, and net-worth calculations always include this account regardless of hidden state.'
+    );
+  } else {
+    actions += _actionItem(
+      'Hide Account',
+      'Remove from transactions sidebar. Transactions, reports, and net-worth still include this account.',
+      `<button class="btn-action" onclick="toggleAccountHidden('${account.account_id}', true)">Hide</button>`,
+      'info-hide',
+      'Hides the account from the transactions sidebar only. All transactions, balance calculations, reports, and net-worth are unaffected. Use this to declutter the sidebar for accounts you rarely need to view individually.'
+    );
+  }
+
+  // ── Hide / Unhide Holdings (investment accounts only) ──
+  if ((account.account_category || '').toLowerCase() === 'investment') {
+    if (account.holdings_hidden) {
+      actions += _actionItem(
+        'Show Holdings',
+        'Include this account in investment holdings and allocation views.',
+        `<button class="btn-action" onclick="toggleAccountHoldingsHidden('${account.account_id}', false)">Show Holdings</button>`,
+        'info-show-holdings',
+        'Removes the holdings-hidden flag. This account\'s holdings will appear in investment holdings tables and allocation calculations.'
+      );
+    } else {
+      actions += _actionItem(
+        'Hide Holdings',
+        'Exclude from investment holdings and allocation views. Transactions sidebar and transactions are unaffected.',
+        `<button class="btn-action" onclick="toggleAccountHoldingsHidden('${account.account_id}', true)">Hide Holdings</button>`,
+        'info-hide-holdings',
+        'Hides this account\'s holdings from the investments page and allocation summary. Useful for brokerage cash accounts or emergency fund accounts at brokerages that skew allocation percentages. Cannot be overridden — holdings are always excluded.'
+      );
+    }
+  }
 
   // ── Move to Bank (manual accounts only) ──
   if (account.origin === 'manual' && account.connection_status === 'manual') {
@@ -312,6 +354,28 @@ async function _doChangeCategory(accountId, category, subcategory) {
     await reloadAndReselect();
   } catch (categoryError) {
     showToast(`Failed to change type: ${categoryError.message}`, 'error');
+  }
+}
+
+async function toggleAccountHidden(accountId, hidden) {
+  try {
+    showToast(hidden ? 'Hiding account…' : 'Unhiding account…', 'info');
+    await apiUpdateAccount(accountId, { is_hidden: hidden });
+    showToast(hidden ? 'Account hidden from sidebar' : 'Account visible in sidebar', 'success');
+    await reloadAndReselect();
+  } catch (error) {
+    showToast(`Failed: ${error.message}`, 'error');
+  }
+}
+
+async function toggleAccountHoldingsHidden(accountId, hidden) {
+  try {
+    showToast(hidden ? 'Hiding holdings…' : 'Showing holdings…', 'info');
+    await apiUpdateAccount(accountId, { holdings_hidden: hidden });
+    showToast(hidden ? 'Holdings hidden from investments' : 'Holdings visible in investments', 'success');
+    await reloadAndReselect();
+  } catch (error) {
+    showToast(`Failed: ${error.message}`, 'error');
   }
 }
 

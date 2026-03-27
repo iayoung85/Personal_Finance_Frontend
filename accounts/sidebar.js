@@ -174,6 +174,12 @@ function _renderAccountListItem(account, isInArchivedGroup = false) {
   const archivedIndicator = account.is_archived && !isInArchivedGroup
     ? '<span class="badge badge-archived" style="font-size:9px; padding:1px 4px;">Archived</span>'
     : '';
+  const hiddenIndicator = account.is_hidden
+    ? '<span class="badge badge-hidden" style="font-size:9px; padding:1px 4px;">Hidden</span>'
+    : '';
+  const holdingsHiddenIndicator = account.holdings_hidden
+    ? '<span class="badge badge-holdings-hidden" style="font-size:9px; padding:1px 4px;">Holdings Hidden</span>'
+    : '';
 
   return `
     <div class="sidebar-account-item ${isSelected ? 'selected' : ''} ${archivedClass}"
@@ -188,6 +194,8 @@ function _renderAccountListItem(account, isInArchivedGroup = false) {
           <span class="account-balance ${isNegative ? 'negative' : ''}">${balanceStr}</span>
           <span class="account-type-badge">${account.account_subcategory || account.account_category || ''}</span>
           ${archivedIndicator}
+          ${hiddenIndicator}
+          ${holdingsHiddenIndicator}
         </div>
       </div>
     </div>
