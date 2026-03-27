@@ -239,8 +239,11 @@ const IndexConnectionsList = (() => {
           `📊 Activate Transactions</button>`
         );
       }
-      // Only offer investment activation when the institution advertises it
-      if (!hasInvestments && availableProducts.includes('investments')) {
+      // Only offer investment activation when the bank has investment accounts
+      const hasInvestmentAccounts = accounts.some(
+        account => (account.account_category || '').toLowerCase() === 'investment'
+      );
+      if (!hasInvestments && hasInvestmentAccounts && availableProducts.includes('investments')) {
         buttons.push(
           `<button class="bank-btn bank-btn-activate" title="Activate the investments product for this bank (Plaid billing applies)" ` +
           `onclick="IndexConnectionsList.handleActivateInvestments('${bankIdAttr}', '${nameAttr}', '${itemIdAttr}')">`  +

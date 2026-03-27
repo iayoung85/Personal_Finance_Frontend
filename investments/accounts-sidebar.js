@@ -120,25 +120,26 @@ function renderInvestmentSidebar() {
     </div>
   `;
 
-  // Group by plaid_item_id for activate button logic
-  const groupedByItem = {};
-  investmentAccounts.forEach(acc => {
-    const itemId = acc.plaid_item_id || 'no_item';
-    if (!groupedByItem[itemId]) groupedByItem[itemId] = [];
-    groupedByItem[itemId].push(acc);
-  });
+  // Only show active accounts
+  const activeAccounts = investmentAccounts.filter(acc => acc.status === 'active');
 
   // Investment accounts section
   html += '<div class="sidebar-account-group">';
   html += `<div class="sidebar-group-title">
     <span>📈 Investment</span>
-    <span class="sidebar-group-total">${formatCompactCurrency(_sumBalances(investmentAccounts))}</span>
+    <span class="sidebar-group-total">${formatCompactCurrency(_sumBalances(activeAccounts))}</span>
   </div>`;
 
-  Object.keys(groupedByItem).forEach(itemId => {
-    const accounts = groupedByItem[itemId];
-    const canActivate = accounts.some(acc => acc.status === 'available');
-    const allActive = accounts.every(acc => acc.status === 'active');
+  // Regroup active accounts by item
+  const activeGroupedByItem = {};
+  activeAccounts.forEach(acc => {
+    const itemId = acc.plaid_item_id || 'no_item';
+    if (!activeGroupedByItem[itemId]) activeGroupedByItem[itemId] = [];
+    activeGroupedByItem[itemId].push(acc);
+  });
+
+  Object.keys(activeGroupedByItem).forEach(itemId => {
+    const accounts = activeGroupedByItem[itemId];
 
     accounts.forEach(acc => {
       const displayName = buildAccountDisplayName(acc);
@@ -149,10 +150,8 @@ function renderInvestmentSidebar() {
       const balanceColorClass = acc.current_balance < 0 ? 'sidebar-account-balance-negative' : 'sidebar-account-balance';
       const isSelected = !poolAllMode && selectedAccountIds.has(acc.account_id);
       const selectedClass = isSelected ? 'selected' : '';
-      const isActive = acc.status === 'active';
-
       html += `
-        <div class="sidebar-account-item ${selectedClass} ${!isActive ? 'sidebar-account-inactive' : ''}"
+        <div class="sidebar-account-item ${selectedClass}"
              tabindex="0"
              data-account-id="${acc.account_id}"
              onclick="toggleAccountSelection('${acc.account_id}')">
@@ -161,9 +160,7 @@ function renderInvestmentSidebar() {
             <span class="sidebar-account-mask">${displayNameSuffix}</span>
           </div>
           <div class="sidebar-account-right">
-            ${isActive
-              ? `<span class="${balanceColorClass}">${balanceStr}</span>`
-              : '<span class="status-badge status-inactive">Inactive</span>'}
+            <span class="${balanceColorClass}">${balanceStr}</span>
             <button class="inv-sidebar-rename-btn" title="Rename account"
                     onclick="event.stopPropagation(); promptInvestmentRename('${acc.account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
               ✏
@@ -172,19 +169,6 @@ function renderInvestmentSidebar() {
         </div>
       `;
     });
-
-    // Activate & Sync button for available items
-    if (canActivate && !allActive) {
-      html += `
-        <div style="padding: 4px 8px;">
-          <button class="activate-btn" data-item="${itemId}"
-                  onclick="event.stopPropagation(); activateAndSyncItem('${itemId}')"
-                  style="width:100%; padding:6px 8px; font-size:12px;">
-            Activate & Sync
-          </button>
-        </div>
-      `;
-    }
   });
 
   html += '</div>'; // close sidebar-account-group
