@@ -8,6 +8,7 @@ const IndexConnectionsList = (() => {
   // Polling state for pending banks (auto-refresh while waiting for Plaid)
   let _pendingPollId = null;
   const PENDING_POLL_INTERVAL = 30 * 1000; // 30s
+  const ACCOUNT_MATCHING_DRAFT_KEY = 'index_account_matching_draft';
 
   /** Fetch banks from backend and render the list. */
   async function loadBanks() {
@@ -19,6 +20,11 @@ const IndexConnectionsList = (() => {
     try {
       const banks = await IndexApi.fetchDashboardBanks();
       IndexState.setBanksCache(banks);
+
+      // Restore unfinished account matching — try localStorage draft first,
+      // then fall back to re-deriving from backend if any bank has matching_pending.
+      _restorePendingAccountMatchingDraft(banks);
+      _checkForPendingAccountMatching(banks);
 
       // Clear timestamps for banks that are no longer pending, and
       // decide whether to start/stop the pending poll based on current state.
@@ -44,6 +50,7 @@ const IndexConnectionsList = (() => {
       }
 
       if (!banks.length) {
+        _clearPendingAccountMatchingDraft();
         listElement.innerHTML = '<p class="banks-empty-state">No connected banks yet. Click "Connect New Bank" to get started.</p>';
         return;
       }
@@ -596,6 +603,8 @@ const IndexConnectionsList = (() => {
 
     if (!overlay || !body) return;
 
+    _persistPendingAccountMatchingDraft(bankId, bankName, pendingMatching);
+
     title.textContent = `Match Accounts — ${bankName}`;
 
     const existingCandidates = pendingMatching.existing_candidates || [];
@@ -642,13 +651,32 @@ const IndexConnectionsList = (() => {
 
     body.innerHTML = rowsHtml;
 
-    // Enable confirm button when at least one match is selected
+    // Enable confirm button when at least one match is selected,
+    // and keep dropdowns in sync so a Plaid account can only be chosen once.
     const selects = body.querySelectorAll('select');
-    const _updateConfirmState = () => {
-      const hasAnyMatch = Array.from(selects).some(selectElement => selectElement.value !== '');
+
+    const _syncDropdowns = () => {
+      // Collect every non-empty value that is currently selected
+      const selectedValues = new Set(
+        Array.from(selects)
+          .map(s => s.value)
+          .filter(v => v !== '')
+      );
+
+      selects.forEach(selectElement => {
+        const ownValue = selectElement.value;
+        Array.from(selectElement.options).forEach(opt => {
+          if (opt.value === '') return; // always keep "No match"
+          // Disable if another row already claimed this Plaid account
+          opt.disabled = selectedValues.has(opt.value) && opt.value !== ownValue;
+        });
+      });
+
+      const hasAnyMatch = selectedValues.size > 0;
       confirmBtn.disabled = !hasAnyMatch;
     };
-    selects.forEach(selectElement => selectElement.addEventListener('change', _updateConfirmState));
+
+    selects.forEach(selectElement => selectElement.addEventListener('change', _syncDropdowns));
 
     // Wire up buttons
     confirmBtn.onclick = () => _handleConfirmMatches(bankId, bankName, existingCandidates, plaidCandidates);
@@ -702,6 +730,7 @@ const IndexConnectionsList = (() => {
 
     try {
       const confirmResult = await IndexApi.confirmAccountMatching(bankId, matches);
+      _clearPendingAccountMatchingDraft();
       _closeAccountMatchingModal();
       IndexUtils.showMessage(
         'dashboard-message',
@@ -729,6 +758,7 @@ const IndexConnectionsList = (() => {
 
     try {
       await IndexApi.skipAccountMatching(bankId);
+      _clearPendingAccountMatchingDraft();
       _closeAccountMatchingModal();
       IndexUtils.showMessage(
         'dashboard-message',
@@ -763,6 +793,86 @@ const IndexConnectionsList = (() => {
     if (skipBtn) {
       skipBtn.disabled = false;
       skipBtn.textContent = 'Skip';
+    }
+  }
+
+  function _persistPendingAccountMatchingDraft(bankId, bankName, pendingMatching) {
+    try {
+      localStorage.setItem(
+        ACCOUNT_MATCHING_DRAFT_KEY,
+        JSON.stringify({ bankId, bankName, pendingMatching, savedAt: Date.now() }),
+      );
+    } catch (persistError) {
+      console.warn('Could not persist account matching draft', persistError);
+    }
+  }
+
+  function _clearPendingAccountMatchingDraft() {
+    try {
+      localStorage.removeItem(ACCOUNT_MATCHING_DRAFT_KEY);
+    } catch (_clearError) {
+      // no-op
+    }
+  }
+
+  function _restorePendingAccountMatchingDraft(banks) {
+    const overlay = document.getElementById('account-matching-overlay');
+    if (overlay && overlay.style.display === 'flex') return;
+
+    let draft = null;
+    try {
+      draft = JSON.parse(localStorage.getItem(ACCOUNT_MATCHING_DRAFT_KEY) || 'null');
+    } catch (parseError) {
+      console.warn('Invalid account matching draft payload', parseError);
+      _clearPendingAccountMatchingDraft();
+      return;
+    }
+
+    if (!draft?.bankId || !draft?.pendingMatching) return;
+
+    const targetBank = (banks || []).find(bank => bank.bank_id === draft.bankId);
+    if (!targetBank) {
+      _clearPendingAccountMatchingDraft();
+      return;
+    }
+
+    const existingCandidates = draft.pendingMatching.existing_candidates || [];
+    const plaidCandidates = draft.pendingMatching.plaid_candidates || [];
+    if (!existingCandidates.length || !plaidCandidates.length) {
+      _clearPendingAccountMatchingDraft();
+      return;
+    }
+
+    _showAccountMatchingModal(
+      draft.bankId,
+      draft.bankName || targetBank.custom_name || targetBank.bank_name || 'Bank',
+      draft.pendingMatching,
+    );
+  }
+
+  /**
+   * If any bank has matching_pending=true and the localStorage draft didn't
+   * already restore the modal, fetch the matching data from the backend and
+   * show the modal. Fires once per loadBanks cycle — the first matching_pending
+   * bank wins (multiple pending banks at once is not a realistic scenario).
+   */
+  async function _checkForPendingAccountMatching(banks) {
+    const overlay = document.getElementById('account-matching-overlay');
+    if (overlay && overlay.style.display === 'flex') return;
+
+    const pendingBank = (banks || []).find(bank => bank.matching_pending);
+    if (!pendingBank) return;
+
+    try {
+      const matchingData = await IndexApi.fetchPendingAccountMatching(pendingBank.bank_id);
+      if (!matchingData?.needed) return;
+
+      const bankDisplayName = pendingBank.custom_name || pendingBank.bank_name || 'Bank';
+
+      _persistPendingAccountMatchingDraft(pendingBank.bank_id, bankDisplayName, matchingData);
+      _showAccountMatchingModal(pendingBank.bank_id, bankDisplayName, matchingData);
+    } catch (fetchError) {
+      console.warn('Could not restore pending account matching from backend', fetchError);
     }
   }
 
@@ -818,8 +928,11 @@ const IndexConnectionsList = (() => {
     // Wire up confirm button
     confirmBtn.onclick = () => {
       if (_pickerSelectedInstitutionId && _pickerBankId) {
+        const capturedBankId = _pickerBankId;
+        const capturedBankName = _pickerBankName;
+        const capturedInstitutionId = _pickerSelectedInstitutionId;
         closeInstitutionPicker();
-        handleRelink(_pickerBankId, _pickerBankName, _pickerSelectedInstitutionId);
+        handleRelink(capturedBankId, capturedBankName, capturedInstitutionId);
       }
     };
 

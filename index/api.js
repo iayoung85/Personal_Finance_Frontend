@@ -317,6 +317,18 @@ const IndexApi = (() => {
     return data;
   }
 
+  async function fetchPendingAccountMatching(bankId) {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/accounts/banks/${encodeURIComponent(bankId)}/pending-account-matching`,
+      { method: 'GET' },
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to fetch pending account matching');
+    }
+    return data;
+  }
+
   async function retryRelink(bankId) {
     const response = await authenticatedFetch(
       `${BACKEND_URL}/api/connections/banks/${encodeURIComponent(bankId)}/retry-relink`,
@@ -351,6 +363,7 @@ const IndexApi = (() => {
     skipAccountMatching,
     activateTransactions,
     activateInvestments,
+    fetchPendingAccountMatching,
     retryRelink,
     retryInitialSync,
   };

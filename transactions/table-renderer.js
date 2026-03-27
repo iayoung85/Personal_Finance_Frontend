@@ -48,6 +48,44 @@ function _logoFallbackChar(txn) {
   }
 }
 
+/**
+ * Build a child transaction object suitable for existing search helpers.
+ * Child values override parent values while inheriting missing fields.
+ */
+function _buildSplitSearchCandidate(parentTxn, splitTxn) {
+  return {
+    ...parentTxn,
+    ...splitTxn,
+    bank_account: splitTxn.bank_account || parentTxn.bank_account || '',
+  };
+}
+
+/**
+ * Check whether a split child matches the active text search.
+ */
+function _splitMatchesSearch(parentTxn, splitTxn) {
+  if (!searchTokens || searchTokens.length === 0) return true;
+  const splitCandidate = _buildSplitSearchCandidate(parentTxn, splitTxn);
+  return transactionMatchesSearch(splitCandidate, searchTokens);
+}
+
+/**
+ * Check whether a split child matches active category filters.
+ */
+function _splitMatchesCategoryFilter(splitTxn) {
+  if (!filterPrimaryCategory && !filterDetailedCategory) return true;
+
+  const splitCategoryStr = splitTxn.user_category
+    || (splitTxn.personal_finance_category
+      ? `${splitTxn.personal_finance_category.primary || ''}${splitTxn.personal_finance_category.detailed ? ': ' + splitTxn.personal_finance_category.detailed : ''}`
+      : '');
+
+  const parsed = parseCategoryString(splitCategoryStr);
+  if (filterPrimaryCategory && parsed.primary !== filterPrimaryCategory) return false;
+  if (filterDetailedCategory && parsed.detailed !== filterDetailedCategory) return false;
+  return true;
+}
+
 
 function renderTransactionTable() {
   const container = document.getElementById('table-container');
@@ -113,7 +151,13 @@ function renderTransactionTable() {
     
     // Filter by search query (broad text + advanced operators)
     if (searchTokens && searchTokens.length > 0) {
-      if (!transactionMatchesSearch(txn, searchTokens)) {
+      if (txn.is_split && Array.isArray(txn.splits) && txn.splits.length > 0) {
+        const parentMatchesSearch = transactionMatchesSearch(txn, searchTokens);
+        const anySplitMatchesSearch = txn.splits.some(split => _splitMatchesSearch(txn, split));
+        if (!parentMatchesSearch && !anySplitMatchesSearch) {
+          return false;
+        }
+      } else if (!transactionMatchesSearch(txn, searchTokens)) {
         return false;
       }
     }
@@ -123,24 +167,7 @@ function renderTransactionTable() {
       // For split transactions, check if any split child matches the filter
       if (txn.is_split && txn.splits && txn.splits.length > 0) {
         // Check if at least one split child matches the category filter
-        const hasMatchingSplit = txn.splits.some(split => {
-          const splitCategoryStr = split.user_category
-            || (split.personal_finance_category
-              ? `${split.personal_finance_category.primary || ''}${split.personal_finance_category.detailed ? ': ' + split.personal_finance_category.detailed : ''}`
-              : '');
-          
-          const parsed = parseCategoryString(splitCategoryStr);
-          
-          // Check if this split matches the filter criteria
-          let matches = true;
-          if (filterPrimaryCategory && parsed.primary !== filterPrimaryCategory) {
-            matches = false;
-          }
-          if (filterDetailedCategory && parsed.detailed !== filterDetailedCategory) {
-            matches = false;
-          }
-          return matches;
-        });
+        const hasMatchingSplit = txn.splits.some(split => _splitMatchesCategoryFilter(split));
         
         // Only include the split group if at least one child matches
         if (!hasMatchingSplit) {
@@ -513,28 +540,17 @@ function renderTransactionTable() {
         return;
       }
       
-      // Filter and render each split child as actual table rows
-      let renderedSplitCount = 0;
-      txn.splits.forEach((split, idx) => {
-        // Apply category filter to individual splits
-        if (filterPrimaryCategory || filterDetailedCategory) {
-          const splitCategoryStr = split.user_category
-            || (split.personal_finance_category
-              ? `${split.personal_finance_category.primary || ''}${split.personal_finance_category.detailed ? ': ' + split.personal_finance_category.detailed : ''}`
-              : '');
-          
-          const parsed = parseCategoryString(splitCategoryStr);
-          
-          // Check if this split matches the filter criteria
-          if (filterPrimaryCategory && parsed.primary !== filterPrimaryCategory) {
-            return; // Skip this split
-          }
-          if (filterDetailedCategory && parsed.detailed !== filterDetailedCategory) {
-            return; // Skip this split
-          }
-        }
-        
-        renderedSplitCount++;
+      // Render only split children that match active search/category filters.
+      const visibleSplits = txn.splits.filter(split => (
+        _splitMatchesSearch(txn, split) && _splitMatchesCategoryFilter(split)
+      ));
+
+      if (visibleSplits.length === 0) {
+        renderedTxnIds.add(txn.transaction_id);
+        return;
+      }
+
+      visibleSplits.forEach((split, idx) => {
         const dateStr = formatDate(split.date);
         
         // Amount is already in ledger convention (positive=inflow, negative=outflow)
@@ -549,19 +565,8 @@ function renderTransactionTable() {
         
         // Add split styling class and border class
         // Note: isFirstSplit/isLastSplit now refer to rendered splits, not original splits
-        const isFirstSplit = renderedSplitCount === 1;
-        const isLastSplit = renderedSplitCount === txn.splits.filter(s => {
-          if (filterPrimaryCategory || filterDetailedCategory) {
-            const sCategoryStr = s.user_category
-              || (s.personal_finance_category
-                ? `${s.personal_finance_category.primary || ''}${s.personal_finance_category.detailed ? ': ' + s.personal_finance_category.detailed : ''}`
-                : '');
-            const sParsed = parseCategoryString(sCategoryStr);
-            if (filterPrimaryCategory && sParsed.primary !== filterPrimaryCategory) return false;
-            if (filterDetailedCategory && sParsed.detailed !== filterDetailedCategory) return false;
-          }
-          return true;
-        }).length;
+        const isFirstSplit = idx === 0;
+        const isLastSplit = idx === visibleSplits.length - 1;
         const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}${isPendingRow ? ' pending-row' : ''}`;
         
         const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
