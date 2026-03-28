@@ -120,7 +120,7 @@ function _buildMenuItems(txnData) {
 
   const items = [];
 
-  // Investment trending rows: Edit Account Balance only
+  // Investment trending rows: Edit Account Balance + Add new trending
   if (isInvestmentTrending) {
     const account = accounts.find(a => a.account_id === txnData.accountId);
     const isLinked = account && account.connection_status === 'linked';
@@ -134,6 +134,11 @@ function _buildMenuItems(txnData) {
       action: 'edit-investment-balance',
       separator: false,
       disabled: isLocked,
+    });
+    items.push({
+      label: '📈 Add Trending Transaction',
+      action: 'add-trending',
+      separator: false,
     });
     return items;
   }
@@ -423,6 +428,9 @@ function _dispatchContextAction(action, txnData) {
       break;
     case 'edit-investment-balance':
       _handleContextEditInvestmentBalance(txnData);
+      break;
+    case 'add-trending':
+      _openAddTrendingModal(txnData.accountId);
       break;
     case 'delete-trending':
       _handleContextDeleteTrending(txnData);

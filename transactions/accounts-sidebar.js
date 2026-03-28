@@ -511,6 +511,11 @@ function _showAccountContextMenu(event, accountId, isHidden) {
     if (acc.custom_name) {
       items += `<div class="account-ctx-item" onclick="_ctxClearCustomName('${accountId}')">↩ Reset to Default Name</div>`;
     }
+    // Add Trending Transaction (investment accounts only)
+    if (acc.account_category === 'investment') {
+      items += '<div class="account-ctx-separator"></div>';
+      items += `<div class="account-ctx-item" onclick="_ctxAddTrendingTransaction('${accountId}')">📈 Add Trending Transaction</div>`;
+    }
     items += '<div class="account-ctx-separator"></div>';
     // Hide
     items += `<div class="account-ctx-item account-ctx-item-warn" onclick="_hideAccount('${accountId}')">🙈 Hide Account</div>`;
@@ -567,6 +572,137 @@ async function _hideAccount(accountId) {
 async function _unhideAccount(accountId) {
   _dismissAccountContextMenu();
   await _updateAccountField(accountId, { is_hidden: false }, 'Account unhidden');
+}
+
+function _ctxAddTrendingTransaction(accountId) {
+  _dismissAccountContextMenu();
+  _openAddTrendingModal(accountId);
+}
+
+function _openAddTrendingModal(accountId) {
+  const account = accounts.find(a => a.account_id === accountId);
+  const accountName = account?.custom_name || account?.name || account?.official_name || 'Account';
+
+  let overlay = document.getElementById('add-trending-modal');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'add-trending-modal';
+    overlay.className = 'modal-overlay hidden';
+    document.body.appendChild(overlay);
+  }
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const currentMonth = todayIso.slice(0, 7);
+
+  overlay.innerHTML = `
+    <div class="modal modal-edit-balance">
+      <div class="modal-header">
+        <h2>📈 Add Trending Transaction</h2>
+        <button class="modal-close" id="add-trending-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="edit-balance-context">
+          <strong>${escapeHtml(accountName)}</strong>
+        </p>
+        <div class="form-group">
+          <label for="add-trending-month">Month</label>
+          <input type="month" id="add-trending-month" value="${currentMonth}" max="${currentMonth}">
+        </div>
+        <div class="form-group">
+          <label for="add-trending-balance">Account Balance at End of Month ($)</label>
+          <input type="number" id="add-trending-balance" step="0.01" placeholder="e.g. 105000.00" autofocus>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="secondary" id="add-trending-cancel">Cancel</button>
+        <button class="primary" id="add-trending-save">Create</button>
+      </div>
+    </div>
+  `;
+
+  overlay.classList.remove('hidden');
+
+  const closeModal = () => overlay.classList.add('hidden');
+  document.getElementById('add-trending-close').onclick = closeModal;
+  document.getElementById('add-trending-cancel').onclick = closeModal;
+  overlay.onclick = (event) => { if (event.target === overlay) closeModal(); };
+
+  const balanceInput = document.getElementById('add-trending-balance');
+  balanceInput.focus();
+
+  const saveTrending = async () => {
+    const month = document.getElementById('add-trending-month').value;
+    const balanceValue = parseFloat(balanceInput.value);
+
+    if (!month) {
+      showStatus('Please select a month', 'error');
+      return;
+    }
+    if (isNaN(balanceValue)) {
+      showStatus('Please enter a valid dollar amount', 'error');
+      return;
+    }
+
+    try {
+      const response = await authenticatedFetch(
+        `${BACKEND_URL}/api/transactions/investment-trending`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            account_id: accountId,
+            balance_at_date: balanceValue,
+            month: month,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        showStatus(data.error || 'Failed to create trending transaction', 'error');
+        return;
+      }
+
+      closeModal();
+
+      if (data.created_transaction) {
+        const newTxn = data.created_transaction;
+        newTxn.account_id = accountId;
+        newTxn.iso_currency_code = 'USD';
+        newTxn.status = 'cleared';
+        newTxn.user_category = 'System: Investment Performance';
+        newTxn.date = newTxn.transaction_date;
+        transactions.unshift(newTxn);
+      }
+
+      if (data.next_month_transaction) {
+        const nextId = data.next_month_transaction.transaction_id;
+        _patchCachedTransactions([nextId], data.next_month_transaction);
+      }
+
+      _cacheTransactions(transactions);
+
+      _expandDateFiltersForTransaction(
+        data.created_transaction?.transaction_date
+      );
+
+      showStatus('Trending transaction created', 'success');
+
+      if (selectedAccountMode === 'single' && selectedAccountId) {
+        await fetchBalanceHistory(selectedAccountId);
+      }
+      renderTransactionTable();
+    } catch (networkError) {
+      showStatus(`Failed to create trending: ${networkError.message}`, 'error');
+    }
+  };
+
+  document.getElementById('add-trending-save').onclick = saveTrending;
+  balanceInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') saveTrending();
+    if (event.key === 'Escape') closeModal();
+  });
 }
 
 async function _updateAccountField(accountId, fields, successMessage) {
