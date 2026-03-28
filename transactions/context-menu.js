@@ -81,6 +81,7 @@ function _handleContextMenu(event) {
     merchantName: row.dataset.merchantName || '',
     matchManualTxnId: row.dataset.matchManualTxnId || '',
     isHidden: row.dataset.isHidden === 'true',
+    txnDate: row.dataset.txnDate || '',
   };
 
   const menuItems = _buildMenuItems(txnData);
@@ -112,10 +113,30 @@ function _buildMenuItems(txnData) {
   const isOrphaned = txnType === TXN_TYPE.MANUAL_ORPHANED;
   const isReconciliation = txnType === TXN_TYPE.SYSTEM_RECONCILIATION;
 
+  const isInvestmentTrending = txnType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING;
+
   // Opening balance, reconciliation, and split children have no context menu
   if (isOpeningBalance || isReconciliation || isSplit) return [];
 
   const items = [];
+
+  // Investment trending rows: Edit Account Balance only
+  if (isInvestmentTrending) {
+    const account = accounts.find(a => a.account_id === txnData.accountId);
+    const isLinked = account && account.connection_status === 'linked';
+    const txnMonth = (txnData.txnDate || '').slice(0, 7);
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const isCurrentMonth = txnMonth === currentMonth;
+    const isLocked = isLinked && isCurrentMonth;
+
+    items.push({
+      label: isLocked ? '🔒 Edit Account Balance (locked)' : '💰 Edit Account Balance',
+      action: 'edit-investment-balance',
+      separator: false,
+      disabled: isLocked,
+    });
+    return items;
+  }
 
   // Orphaned transactions get the same edit capability as manual, plus
   // reconciliation-specific quick-fix actions (force match, relocate).
@@ -304,7 +325,9 @@ function _showContextMenu(cursorX, cursorY, menuItems, txnData) {
   let html = '';
   menuItems.forEach(item => {
     const destructiveClass = item.destructive ? ' ctx-destructive' : '';
-    html += `<button class="ctx-menu-item${destructiveClass}" data-action="${item.action}">${item.label}</button>`;
+    const disabledClass = item.disabled ? ' ctx-disabled' : '';
+    const disabledAttr = item.disabled ? ' disabled' : '';
+    html += `<button class="ctx-menu-item${destructiveClass}${disabledClass}" data-action="${item.action}"${disabledAttr}>${item.label}</button>`;
     if (item.separator) {
       html += '<div class="ctx-menu-separator"></div>';
     }
@@ -397,6 +420,12 @@ function _dispatchContextAction(action, txnData) {
       break;
     case 'inspect-data':
       _handleContextInspectData(txnData);
+      break;
+    case 'edit-investment-balance':
+      _handleContextEditInvestmentBalance(txnData);
+      break;
+    case 'delete-trending':
+      _handleContextDeleteTrending(txnData);
       break;
     default:
       console.warn('Unknown context menu action:', action);
@@ -799,5 +828,155 @@ async function batchUnhideAll() {
     renderTransactionTable();
   } catch (networkError) {
     showStatus(`Failed to batch unhide: ${networkError.message}`, 'error');
+  }
+}
+
+
+// ─── Investment trending context menu handlers ──────────────
+
+/**
+ * Edit Account Balance: opens a focused modal to edit balance_at_date
+ * on a trending row. PATCH /api/transactions/<id>/investment-balance
+ */
+function _handleContextEditInvestmentBalance(txnData) {
+  const txn = transactions.find(t => t.transaction_id === txnData.txnId);
+  const currentBalance = txn?.balance_at_date ?? '';
+  const txnDate = txn?.date || txnData.txnDate || '';
+
+  // Find account name for display
+  const account = accounts.find(a => a.account_id === txnData.accountId);
+  const accountName = account?.name || account?.official_name || 'Account';
+
+  // Build and show the modal
+  let overlay = document.getElementById('edit-balance-modal');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'edit-balance-modal';
+    overlay.className = 'modal-overlay hidden';
+    document.body.appendChild(overlay);
+  }
+
+  overlay.innerHTML = `
+    <div class="modal modal-edit-balance">
+      <div class="modal-header">
+        <h2>💰 Edit Account Balance</h2>
+        <button class="modal-close" id="edit-balance-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="edit-balance-context">
+          <strong>${escapeHtml(accountName)}</strong> — ${escapeHtml(txnDate)}
+        </p>
+        <div class="form-group">
+          <label for="edit-balance-input">Account Balance ($)</label>
+          <input type="number" id="edit-balance-input" step="0.01"
+                 value="${currentBalance}" placeholder="e.g. 53000.00"
+                 autofocus>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="secondary" id="edit-balance-cancel">Cancel</button>
+        <button class="primary" id="edit-balance-save">Save</button>
+      </div>
+    </div>
+  `;
+
+  overlay.classList.remove('hidden');
+
+  // Wire up events
+  const closeModal = () => overlay.classList.add('hidden');
+  document.getElementById('edit-balance-close').onclick = closeModal;
+  document.getElementById('edit-balance-cancel').onclick = closeModal;
+  overlay.onclick = (e) => { if (e.target === overlay) closeModal(); };
+
+  const input = document.getElementById('edit-balance-input');
+  input.focus();
+  input.select();
+
+  const saveBalance = async () => {
+    const newBalance = parseFloat(input.value);
+    if (isNaN(newBalance)) {
+      showStatus('Please enter a valid dollar amount', 'error');
+      return;
+    }
+
+    try {
+      const response = await authenticatedFetch(
+        `${BACKEND_URL}/api/transactions/${encodeURIComponent(txnData.txnId)}/investment-balance`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ balance_at_date: newBalance }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        showStatus(data.error || 'Failed to update balance', 'error');
+        return;
+      }
+
+      closeModal();
+
+      // Handle deletion response (balance set to $0 on oldest row)
+      if (data.deleted) {
+        _removeCachedTransaction(txnData.txnId);
+        showStatus(`Trending row removed (${data.rows_deleted} row${data.rows_deleted !== 1 ? 's' : ''} deleted)`, 'success');
+      } else {
+        // Update the edited transaction in cache
+        if (data.updated_transaction) {
+          _patchCachedTransactions([txnData.txnId], data.updated_transaction);
+        }
+        // Update next month's transaction if recalculated
+        if (data.next_month_transaction) {
+          const nextId = data.next_month_transaction.transaction_id;
+          _patchCachedTransactions([nextId], data.next_month_transaction);
+        }
+        showStatus('Account balance updated', 'success');
+      }
+
+      if (selectedAccountMode === 'single' && selectedAccountId) {
+        await fetchBalanceHistory(selectedAccountId);
+      }
+      renderTransactionTable();
+    } catch (networkError) {
+      showStatus(`Failed to update balance: ${networkError.message}`, 'error');
+    }
+  };
+
+  document.getElementById('edit-balance-save').onclick = saveBalance;
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveBalance();
+    if (e.key === 'Escape') closeModal();
+  });
+}
+
+/**
+ * Delete a trending row via the standard manual transaction delete endpoint.
+ * The backend state machine now allows DELETE on investment_trending rows.
+ */
+async function _handleContextDeleteTrending(txnData) {
+  if (!confirm('Delete this trending row? The backend will recalculate adjacent months.')) return;
+
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(txnData.txnId)}`,
+      { method: 'DELETE' }
+    );
+
+    if (!response.ok) {
+      const data = await response.json();
+      showStatus(data.error || 'Failed to delete trending row', 'error');
+      return;
+    }
+
+    showStatus('Trending row deleted', 'success');
+    _removeCachedTransaction(txnData.txnId);
+    if (selectedAccountMode === 'single' && selectedAccountId) {
+      await fetchBalanceHistory(selectedAccountId);
+    }
+    renderTransactionTable();
+  } catch (networkError) {
+    showStatus(`Failed to delete trending row: ${networkError.message}`, 'error');
   }
 }

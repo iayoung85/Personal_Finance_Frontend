@@ -788,6 +788,123 @@
   color: var(--text-muted);
 }
 
+/* ── Investment Detection Help Button ───────────────────────── */
+
+.import-help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--text-muted);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 4px;
+  vertical-align: middle;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.import-help-btn:hover {
+  color: var(--text-bright);
+  border-color: var(--text-bright);
+  background: var(--bg-surface-elevated);
+}
+
+/* ── Investment Route Toggle Row ────────────────────────────── */
+
+.import-inv-toggle-row td {
+  border-top: none !important;
+}
+
+.import-inv-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding-left: 4px;
+}
+
+.import-inv-toggle-label input[type="checkbox"] {
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+/* ── Investment Detection Help Modal ────────────────────────── */
+
+.inv-detection-help-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  width: 520px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.inv-detection-help-body {
+  padding: 16px 20px 20px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.inv-detection-help-body h4 {
+  margin: 16px 0 8px;
+  font-size: 14px;
+  color: var(--text-bright);
+}
+
+.inv-detection-help-body p {
+  margin: 0 0 10px;
+}
+
+.inv-gate {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+}
+
+.inv-gate strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-bright);
+  font-size: 13px;
+}
+
+.inv-gate span {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.inv-gate code {
+  background: var(--bg-input);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--color-accent);
+}
+
+.inv-detection-help-body ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.inv-detection-help-body li {
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
 /* ── Loading Spinner ───────────────────────────────────────── */
 
 .import-loading {

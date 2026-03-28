@@ -139,6 +139,29 @@ function _renderImportReport(report) {
       </div>`;
     }
 
+    // Expanded investment trending stats (new overhaul format)
+    if (report.investment_trending && typeof report.investment_trending === 'object') {
+      const it = report.investment_trending;
+      if (it.rows_created) {
+        html += `<div class="import-report-stat success">
+          <span>Investment trending rows created</span>
+          <span class="stat-value">${it.rows_created}</span>
+        </div>`;
+      }
+      if (it.rows_updated) {
+        html += `<div class="import-report-stat">
+          <span>Investment trending rows updated</span>
+          <span class="stat-value">${it.rows_updated}</span>
+        </div>`;
+      }
+      if (it.months_adjusted) {
+        html += `<div class="import-report-stat">
+          <span>Investment trending months adjusted</span>
+          <span class="stat-value">${it.months_adjusted}</span>
+        </div>`;
+      }
+    }
+
     if (report.overlap_results) {
       const overlap = report.overlap_results;
       if (overlap.duplicates_found) {

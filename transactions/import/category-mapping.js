@@ -120,11 +120,11 @@ function renderCategoryMappingStep(container) {
   if (investmentCategories.length > 0) {
     html += _renderCategoryGroup(
       'investment',
-      `Investment Adjustments`,
+      `Investment Adjustments <button class="import-help-btn" onclick="_openInvestmentDetectionHelp()" title="How does the app detect these?">?</button>`,
       investmentCategories,
       investmentCategories.length,
       false,
-      'These appear to be end-of-month gains/losses entries. Map them to an investment trending category so the app incorporates them into your investment performance timeline.'
+      'These look like end-of-month investment gains/losses. By default they\'ll be routed to your investment performance timeline instead of creating regular transactions. You can toggle this off per category below.'
     );
   }
 
@@ -153,7 +153,7 @@ function _renderCategoryGroup(groupKey, title, categories, count, defaultExpande
       <button class="import-category-group-toggle" onclick="_toggleCategoryGroup('${groupKey}')">
         ${chevron}
       </button>
-      ${escapeHtml(title)}
+      ${title}
       <span class="import-mapping-badge">${count}</span>
     </div>
   `;
@@ -204,6 +204,21 @@ function _renderCategoryRow(category, groupKey) {
   html += `<td class="import-txn-count">${category.transaction_count}</td>`;
   html += `<td>${_renderCategoryMappingDropdown(csvName, currentMapping, category)}</td>`;
   html += '</tr>';
+
+  // Investment adjustment toggle row: let user opt out of trending routing
+  if (category.is_investment_adjustment) {
+    const routeEnabled = currentMapping ? (currentMapping.route_to_investment_trending !== false) : true;
+    const toggleId = `inv-route-${_escapeAttr(csvName)}`;
+    html += `<tr class="import-inv-toggle-row">`;
+    html += `<td></td>`;
+    html += `<td colspan="3" style="padding-top: 2px; padding-bottom: 6px;">`;
+    html += `<label class="import-inv-toggle-label" for="${toggleId}">`;
+    html += `<input type="checkbox" id="${toggleId}" ${routeEnabled ? 'checked' : ''}
+               onchange="_onInvestmentRouteToggle('${_escapeAttr(csvName)}', this.checked)">`;
+    html += ` Route to investment trending`;
+    html += `</label>`;
+    html += `</td></tr>`;
+  }
 
   // If create_new, show inline input
   if (currentMapping && currentMapping.action === 'create_new') {
@@ -284,7 +299,10 @@ function _onCategoryMappingChange(csvName, selectedValue) {
   // Check if this is an investment adjustment category being mapped
   const analysisCategory = importAnalysis.categories.find(cat => cat.csv_name === csvName);
   if (analysisCategory && analysisCategory.is_investment_adjustment && selectedValue && selectedValue !== '__ignore__' && selectedValue !== '__create_new__') {
-    importCategoryMappings[csvName].route_to_investment_trending = true;
+    // Preserve user's toggle choice if they've already set one, otherwise default to true
+    if (importCategoryMappings[csvName].route_to_investment_trending === undefined) {
+      importCategoryMappings[csvName].route_to_investment_trending = true;
+    }
   }
 
   const body = document.getElementById('import-wizard-body');
@@ -483,4 +501,77 @@ function _hasCategoryMapping(csvName) {
 function _getSortedAvailableCategories() {
   const unique = new Set(availableCategories || []);
   return Array.from(unique).sort((catA, catB) => catA.localeCompare(catB));
+}
+
+// ── Investment Routing Toggle ─────────────────────────────────
+
+function _onInvestmentRouteToggle(csvName, isChecked) {
+  if (importCategoryMappings[csvName]) {
+    importCategoryMappings[csvName].route_to_investment_trending = isChecked;
+  }
+  _saveImportProgress();
+}
+
+// ── Investment Detection Help Modal ───────────────────────────
+
+function _openInvestmentDetectionHelp() {
+  const existing = document.getElementById('inv-detection-help-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'inv-detection-help-overlay';
+  overlay.className = 'modal-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  overlay.innerHTML = `
+    <div class="inv-detection-help-modal">
+      <div class="modal-header">
+        <h3>How Investment Adjustment Detection Works</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('inv-detection-help-overlay').remove()">&times;</button>
+      </div>
+      <div class="modal-body inv-detection-help-body">
+        <p>When you import a Quicken file, the app automatically identifies rows that look like
+        end-of-month investment gains or losses. These get routed to your <strong>investment
+        performance timeline</strong> instead of appearing as regular transactions.</p>
+
+        <h4>Detection Rules</h4>
+        <p>A row must pass <em>all three</em> checks to be flagged:</p>
+
+        <div class="inv-gate">
+          <strong>1. Category is "Adjustment"</strong>
+          <span>The CSV category column must be exactly "Adjustment" (case-insensitive).
+          Any other category is ignored.</span>
+        </div>
+
+        <div class="inv-gate">
+          <strong>2. Payee or Memo contains a gain/loss keyword</strong>
+          <span>The combined payee + memo text must include one of these words:<br>
+          <code>investment gains</code>, <code>investment losses</code>,
+          <code>gain</code>, <code>gains</code>,
+          <code>loss</code>, <code>losses</code><br>
+          Matched as whole words — "regain" or "glossy" won't trigger it.</span>
+        </div>
+
+        <div class="inv-gate">
+          <strong>3. No "contribution" in Payee or Memo</strong>
+          <span>If the word "contribution" appears anywhere in the payee or memo, the row
+          is excluded. This prevents 401(k) contributions categorized as "Adjustment"
+          from being misrouted.</span>
+        </div>
+
+        <h4>Enabling &amp; Disabling</h4>
+        <ul>
+          <li><strong>It's automatic.</strong> If your Quicken file has rows matching all three
+          rules, they'll appear in this "Investment Adjustments" group.</li>
+          <li><strong>To route to trending:</strong> Map the category to any app category and
+          leave the "Route to investment trending" toggle checked (the default).</li>
+          <li><strong>To import as a regular transaction instead:</strong> Uncheck the
+          "Route to investment trending" toggle next to the category.</li>
+          <li><strong>To skip entirely:</strong> Set the mapping dropdown to "Skip / Ignore".</li>
+        </ul>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
 }

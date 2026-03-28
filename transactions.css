@@ -2952,6 +2952,16 @@ tr:hover {
   background: rgba(99,102,241,0.03);
 }
 
+/* Investment trending row: green for gains, red for losses */
+.investment-trending-row .trending-gain {
+  color: var(--color-success);
+  font-weight: 600;
+}
+.investment-trending-row .trending-loss {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
 .scheduled-row td {
   color: var(--accent-link);
   background: rgba(99,102,241,0.04);
@@ -3867,6 +3877,17 @@ tr:hover {
 .ctx-menu-item.ctx-destructive:hover {
   background: var(--color-danger, #e74c3c);
   color: #fff;
+}
+
+.ctx-menu-item.ctx-disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ctx-menu-item.ctx-disabled:hover {
+  background: none;
+  color: var(--text-muted);
 }
 
 .ctx-menu-separator {
@@ -4819,4 +4840,81 @@ td.inline-editable[data-field="date"] {
 
 .inspect-empty-val {
   color: var(--text-muted, #777);
+}
+
+/* ============================================
+   EDIT ACCOUNT BALANCE MODAL
+   ============================================ */
+.modal-edit-balance {
+  width: min(400px, 90vw);
+}
+
+.edit-balance-context {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 16px !important;
+}
+
+.modal-edit-balance .form-group {
+  margin-bottom: 0;
+}
+
+.modal-edit-balance .form-group label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.modal-edit-balance .form-group input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.modal-edit-balance .form-group input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+.modal-edit-balance .modal-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.modal-edit-balance .modal-footer button {
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  border: none;
+}
+
+.modal-edit-balance .modal-footer .primary {
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+.modal-edit-balance .modal-footer .primary:hover {
+  background: var(--accent-primary-hover);
+}
+
+.modal-edit-balance .modal-footer .secondary {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.modal-edit-balance .modal-footer .secondary:hover {
+  background: var(--bg-selected);
 }

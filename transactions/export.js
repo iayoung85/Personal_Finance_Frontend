@@ -140,6 +140,10 @@ function _formatCsvRow(txn, optionalFields, parentTransactionId) {
   row += `,"${txn.transfer_pair_id || ''}"`;
   row += `,"${(txn.user_description_override || '').replace(/"/g, '""')}"`;
 
+  // Balance At Date column (populated only for investment_trending rows)
+  const balAtDate = txn.balance_at_date != null ? txn.balance_at_date : '';
+  row += `,"${balAtDate}"`;
+
   // Optional Plaid-specific columns
   if (optionalFields.includes('personal_finance_category')) {
     const pfc = txn.personal_finance_category;
@@ -199,7 +203,7 @@ function generateCSV(metadata) {
 
   // Column headers — core 4 + always-included backup columns + optional
   csv += 'Date,Bank/Account,Description,Amount';
-  csv += ',Account ID,Transaction ID,Source,Status,User Category,Memo,Parent Transaction ID,Transfer Pair ID,User Description Override';
+  csv += ',Account ID,Transaction ID,Source,Status,User Category,Memo,Parent Transaction ID,Transfer Pair ID,User Description Override,Balance At Date';
 
   if (optionalFields.includes('personal_finance_category')) csv += ',Category (Primary),Category (Detailed),Confidence';
   if (optionalFields.includes('payment_channel')) csv += ',Channel';

@@ -753,10 +753,18 @@ function renderTransactionTable() {
     // ── Ledger balance cell (single-account view only) ──
     // Missing rows (BILL_MISSING, MANUAL_MISSING) are excluded from the
     // running balance continuity — they display "N/A" instead of a number.
+    // Investment trending rows show balance_at_date as their ledger value.
     let ledgerBalanceHtml = '';
     if (showLedgerColumn) {
       if (isMissingRow) {
         ledgerBalanceHtml = '<td class="ledger-cell ledger-unavailable">N/A</td>';
+      } else if (txnRowType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING && txn.balance_at_date != null) {
+        const formattedBal = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: txn.iso_currency_code || 'USD'
+        }).format(txn.balance_at_date);
+        const negClass = txn.balance_at_date < 0 ? ' ledger-negative' : '';
+        ledgerBalanceHtml = `<td class="ledger-cell${negClass}" title="Account balance at ${txn.date}">${formattedBal}</td>`;
       } else {
         const runningBalance = isFutureBlockRow
             ? scheduledLedgerLookup[txn.transaction_id]
@@ -776,7 +784,7 @@ function renderTransactionTable() {
     }
 
     // ── Data attributes for context menu ──
-    const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-is-hidden="${!!txn.is_hidden}"`;
+    const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(txn.date || '')}"`;
 
     // ── Inline-edit eligibility (date, description, amount) ──
     const isInlineEditable = EDITABLE_TYPES.has(txnRowType);
@@ -862,7 +870,8 @@ function renderTransactionTable() {
     }
 
     // Amount is always pinned toward the right edge
-    html += `<td class="${amountCellClass}${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="amount"' : ''}>${amount}</td>`;
+    const extraAmountClass = rendered.amountCssExtra ? ` ${rendered.amountCssExtra}` : '';
+    html += `<td class="${amountCellClass}${extraAmountClass}${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="amount"' : ''}>${amount}</td>`;
     if (showLedgerColumn) {
       html += ledgerBalanceHtml;
     }

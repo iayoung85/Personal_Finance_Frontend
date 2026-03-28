@@ -117,6 +117,9 @@ function _renderOpeningBalanceRow(ctx) {
 function _renderInvestmentTrendingRow(ctx) {
   const lockedCategory = `<div class="category-cell"><span class="category-locked">${escapeHtml(ctx.currentFullCategory || 'System: Investment Performance')}</span></div>`;
 
+  // Green/red amount class based on whether the month was a gain or loss
+  const amountClass = ctx.txn.amount > 0 ? 'trending-gain' : ctx.txn.amount < 0 ? 'trending-loss' : '';
+
   return {
     typeBadge: '<span class="source-badge investment-trending" title="System investment performance estimate">📈</span> ',
     categoryCell: lockedCategory,
@@ -128,6 +131,7 @@ function _renderInvestmentTrendingRow(ctx) {
       title: 'Monthly investment performance (system generated)',
     },
     displayName: _txnDescription(ctx.txn),
+    amountCssExtra: amountClass,
   };
 }
 
