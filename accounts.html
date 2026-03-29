@@ -211,6 +211,38 @@
     </div>
   </div>
 
+  <!-- ═══ Transition to Depository Modal ═══ -->
+  <div id="transition-to-depository-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Transition from Investment</h2>
+        <button class="modal-close" onclick="closeTransitionToDepositoryModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="transition-dep-description" style="margin-bottom: 12px; color: var(--text-secondary); font-size: 13px;"></p>
+        <div class="form-stack">
+          <div class="form-field">
+            <label for="transition-dep-balance">Opening Balance</label>
+            <input type="number" id="transition-dep-balance" step="0.01" placeholder="0.00">
+          </div>
+          <div class="form-field">
+            <label for="transition-dep-date">Opening Balance Date</label>
+            <input type="text" id="transition-dep-date" class="date-input" placeholder="YYYY-MM-DD">
+          </div>
+          <div class="form-field">
+            <label for="transition-dep-subcategory">Subcategory</label>
+            <select id="transition-dep-subcategory"></select>
+          </div>
+        </div>
+        <div id="transition-dep-error" class="form-error hidden"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeTransitionToDepositoryModal()">Cancel</button>
+        <button class="btn-warn" onclick="submitTransitionToDepository()">Transition</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══ Backup / Restore Modal ═══ -->
   <div id="backup-restore-modal" class="modal-overlay hidden">
     <div class="modal" style="max-width: 520px;">

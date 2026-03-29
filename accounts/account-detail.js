@@ -341,7 +341,115 @@ function promptChangeCategory(accountId, currentCategory, currentSubcategory) {
     }
   }
 
-  _doChangeCategory(accountId, newCategory, newSubcategory);
+  // Detect investment transitions — these require dedicated endpoints
+  const isTransitionToInvestment = currentCategory !== 'investment' && newCategory === 'investment';
+  const isTransitionFromInvestment = currentCategory === 'investment' && newCategory !== 'investment';
+
+  if (isTransitionToInvestment) {
+    _promptTransitionToInvestment(accountId, newSubcategory);
+  } else if (isTransitionFromInvestment) {
+    _promptTransitionToDepository(accountId, newCategory, newSubcategory);
+  } else {
+    _doChangeCategory(accountId, newCategory, newSubcategory);
+  }
+}
+
+/**
+ * Prompt the user with a warning before transitioning to investment type.
+ * Uses the dedicated transition-to-investment endpoint.
+ */
+function _promptTransitionToInvestment(accountId, subcategory) {
+  openConfirmModal(
+    'Transition to Investment Account',
+    'This will convert the account to an investment ledger. ' +
+    'The opening balance and manual opening balance anchors will be removed, ' +
+    'all balance history and snapshots will be purged, and historical trending rows ' +
+    'will be backfilled. Existing manual transactions are preserved. ' +
+    'This is a structural change — are you sure?',
+    async () => {
+      try {
+        showToast('Transitioning to investment…', 'info');
+        await apiTransitionToInvestment(accountId, subcategory || 'brokerage');
+        showToast('Account transitioned to investment', 'success');
+        await reloadAndReselect();
+      } catch (transitionError) {
+        showToast(`Failed to transition: ${transitionError.message}`, 'error');
+      }
+    },
+    { buttonLabel: 'Transition', buttonClass: 'btn-warn' }
+  );
+}
+
+/**
+ * Prompt the user with a warning + opening balance form before transitioning
+ * from investment to a non-investment type (depository, credit, etc.).
+ * Uses the dedicated transition-to-depository endpoint.
+ */
+function _promptTransitionToDepository(accountId, targetCategory, subcategory) {
+  // For transition-to-depository, we need opening balance info.
+  // Show the transition modal which has the form fields.
+  const modal = document.getElementById('transition-to-depository-modal');
+  const descEl = document.getElementById('transition-dep-description');
+  const categoryLabel = targetCategory.charAt(0).toUpperCase() + targetCategory.slice(1);
+
+  descEl.textContent =
+    `This will convert the investment account to a ${categoryLabel} ledger. ` +
+    'Non-zero trending transactions will be preserved as manual Adjustment transactions. ' +
+    'Zero-amount trending rows will be deleted. An opening balance anchor will be created ' +
+    'at the date and amount you specify below, and the running-balance ledger and snapshots ' +
+    'will be rebuilt. Please provide the opening balance for the new ledger.';
+
+  // Pre-populate subcategory select for the target category
+  const subSelect = document.getElementById('transition-dep-subcategory');
+  populateSubcategorySelect(subSelect, targetCategory, subcategory || '');
+
+  // Clear previous values
+  document.getElementById('transition-dep-balance').value = '';
+  document.getElementById('transition-dep-date').value = '';
+  document.getElementById('transition-dep-error').classList.add('hidden');
+
+  // Store context for submit handler
+  modal.dataset.accountId = accountId;
+  modal.dataset.targetCategory = targetCategory;
+
+  modal.classList.remove('hidden');
+}
+
+function closeTransitionToDepositoryModal() {
+  document.getElementById('transition-to-depository-modal').classList.add('hidden');
+}
+
+async function submitTransitionToDepository() {
+  const modal = document.getElementById('transition-to-depository-modal');
+  const accountId = modal.dataset.accountId;
+  const errorEl = document.getElementById('transition-dep-error');
+
+  const balanceInput = document.getElementById('transition-dep-balance').value.trim();
+  const dateInput = document.getElementById('transition-dep-date').value.trim();
+  const subcategory = document.getElementById('transition-dep-subcategory').value || null;
+
+  if (!balanceInput || isNaN(parseFloat(balanceInput))) {
+    errorEl.textContent = 'Please enter a valid opening balance amount.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+  if (!dateInput || !/^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+    errorEl.textContent = 'Please enter a valid date in YYYY-MM-DD format.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  errorEl.classList.add('hidden');
+  closeTransitionToDepositoryModal();
+
+  try {
+    showToast('Transitioning from investment…', 'info');
+    await apiTransitionToDepository(accountId, parseFloat(balanceInput), dateInput, subcategory || 'savings');
+    showToast('Account transitioned successfully', 'success');
+    await reloadAndReselect();
+  } catch (transitionError) {
+    showToast(`Failed to transition: ${transitionError.message}`, 'error');
+  }
 }
 
 async function _doChangeCategory(accountId, category, subcategory) {

@@ -166,6 +166,31 @@ of creating regular manual transactions.
 - The category mapping payload already supports `route_to_investment_trending`
   as a boolean field alongside the `action`
 
+
+about the detection keyword pattern:
+Here's exactly how it works. Detection requires all three conditions on a single Quicken CSV row:
+
+Gate 1 — Category column must be "Adjustment" (case-insensitive)
+This is the hard filter. If the category is anything else — "Groceries", "Income", blank — the row is never considered.
+
+Gate 2 — Payee OR Memo must contain a gain/loss keyword
+The regex scans the combined payee + memo text for any of these word-boundary matches:
+
+Keyword pattern	Matches
+investment gains / investment gain	"Investment Gains", "investment gain"
+investment losses / investment loss	"Investment Losses", "investment loss"
+gains / gain	"Gain", "gains", "Unrealized Gains"
+losses / loss	"Loss", "losses", "Unrealized Loss"
+All case-insensitive, word-boundary delimited (\b), so "regain" or "glossy" won't false-positive.
+
+Gate 3 — Neither Payee nor Memo contains "contribution"
+If the word contribution appears anywhere in the payee or memo, the row is excluded even if it passes gates 1 and 2. This prevents 401(k) contributions categorized as "Adjustment" from being misrouted.
+
+What does NOT participate
+Description — Quicken CSV uses Payee as the description column, so payee is the description field. There's no separate "Description" column in Quicken format.
+Amount — not checked at all.
+Account name — not checked. The row gets routed to whichever account the user maps it to; if that account happens to not be an investment account, the trending engine's recalculate_trending_for_manual_change() will return None and skip it silently.
+
 ---
 
 ## Summary of New/Changed API

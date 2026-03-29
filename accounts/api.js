@@ -285,6 +285,55 @@ async function apiMoveAccountToBank(accountId, targetBankId) {
 }
 
 /**
+ * Transition an investment account to a depository ledger structure.
+ * Converts trending rows, creates OB anchor, rebuilds balance history.
+ */
+async function apiTransitionToDepository(accountId, openingBalanceAmount, openingBalanceDate, subcategory = 'savings') {
+  const body = {
+    opening_balance_amount: openingBalanceAmount,
+    opening_balance_date: openingBalanceDate,
+  };
+  if (subcategory) body.account_subcategory = subcategory;
+
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/accounts/${accountId}/transition-to-depository`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to transition account to depository');
+  }
+  return data;
+}
+
+/**
+ * Transition a non-investment account to an investment ledger structure.
+ * Snapshots balances, removes OB/MOB, purges balance history, backfills trending rows.
+ */
+async function apiTransitionToInvestment(accountId, subcategory = 'brokerage') {
+  const body = {};
+  if (subcategory) body.account_subcategory = subcategory;
+
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/accounts/${accountId}/transition-to-investment`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to transition account to investment');
+  }
+  return data;
+}
+
+/**
  * Unlink a single linked account from Plaid sync, reset its data, and archive it.
  * The parent bank stays linked — only this account is disconnected.
  */
