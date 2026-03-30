@@ -1084,6 +1084,10 @@ const IndexConnectionsList = (() => {
    * already restore the modal, fetch the matching data from the backend and
    * show the modal. Fires once per loadBanks cycle — the first matching_pending
    * bank wins (multiple pending banks at once is not a realistic scenario).
+   *
+   * When the backend says matching is no longer needed (e.g. accounts were
+   * already promoted or candidates are missing), auto-skip to clear the
+   * matching_pending flag so the bank doesn't stay stuck in limbo.
    */
   async function _checkForPendingAccountMatching(banks) {
     const overlay = document.getElementById('account-matching-overlay');
@@ -1094,7 +1098,22 @@ const IndexConnectionsList = (() => {
 
     try {
       const matchingData = await IndexApi.fetchPendingAccountMatching(pendingBank.bank_id);
-      if (!matchingData?.needed) return;
+      if (!matchingData?.needed) {
+        // Backend found no actionable matches but matching_pending is
+        // still true — auto-skip to clear the flag and finalize the
+        // relink so the bank doesn't stay stuck in relink_pending.
+        try {
+          await IndexApi.skipAccountMatching(pendingBank.bank_id);
+          console.info(
+            `Auto-skipped account matching for bank ${pendingBank.bank_id} ` +
+            `(no actionable candidates found)`
+          );
+          loadBanks();
+        } catch (skipError) {
+          console.warn('Auto-skip account matching failed', skipError);
+        }
+        return;
+      }
 
       const bankDisplayName = pendingBank.custom_name || pendingBank.bank_name || 'Bank';
 
