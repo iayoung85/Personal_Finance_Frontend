@@ -398,6 +398,7 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
     const totalChanges = (syncData.added_count || 0) + (syncData.modified_count || 0) + (syncData.removed_count || 0);
     const trendingChanged = syncData.trending_changed === true;
     const shouldFetchFromDB = !cacheValid || totalChanges > 0 || trendingChanged || forceNetwork;
+    const affectedAccountIds = syncData.affected_account_ids || [];
     
     if (shouldFetchFromDB) {
       // No cache OR sync returned changes OR force requested → fetch from DB
@@ -406,7 +407,16 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
         : 'Sync complete, loading transactions...';
       showStatus(successMsg, 'info');
       
-      await fetchAllTransactions(true);
+      // When we have a valid cache and only a few accounts changed,
+      // refresh just those accounts instead of re-downloading everything.
+      var useAccountScoped = cacheValid && !forceNetwork && affectedAccountIds.length > 0 && affectedAccountIds.length <= 3;
+      if (useAccountScoped) {
+        for (var syncAcctIdx = 0; syncAcctIdx < affectedAccountIds.length; syncAcctIdx++) {
+          await refreshAccountTransactions(affectedAccountIds[syncAcctIdx]);
+        }
+      } else {
+        await fetchAllTransactions(true);
+      }
 
       // Orphan detection may have created new orphans or proposals during
       // post-sync processing — refresh the banner so it reflects the
@@ -526,30 +536,37 @@ function _formatDateForApi(dateObject) {
   return dateObject.toISOString().slice(0, 10);
 }
 
-async function _fetchTransactionsFromServer(sinceDate) {
+async function _fetchTransactionsFromServer(sinceDate, accountId) {
   /**
    * Low-level fetch helper. Sends ETag header, handles 304.
    * Returns the transactions array on success, or null on 304 (no changes).
    * Cancels any in-flight previous request via AbortController.
+   *
+   * When accountId is provided, fetches only that account's transactions
+   * (no ETag, no abort of in-flight requests — targeted refresh).
    */
-  // Cancel any previous in-flight request to avoid stale race conditions
-  if (_fetchAbortController) {
-    _fetchAbortController.abort();
+  var isAccountScoped = !!accountId;
+
+  // Account-scoped fetches use a dedicated abort controller so they
+  // don't cancel in-flight full/windowed requests (or vice versa).
+  if (!isAccountScoped) {
+    if (_fetchAbortController) {
+      _fetchAbortController.abort();
+    }
+    _fetchAbortController = new AbortController();
   }
-  _fetchAbortController = new AbortController();
+  var controller = isAccountScoped ? new AbortController() : _fetchAbortController;
 
   let url = `${BACKEND_URL}/api/transactions`;
-  if (sinceDate) {
-    url += `?since_date=${sinceDate}`;
-  }
+  var params = [];
+  if (sinceDate) params.push('since_date=' + sinceDate);
+  if (accountId) params.push('account_id=' + encodeURIComponent(accountId));
+  if (params.length) url += '?' + params.join('&');
 
   const headers = {};
-  // ETag is stored in IndexedDB meta store — read it synchronously
-  // from the last fetched value stashed on the function itself.
+  // ETag only for full, non-windowed, non-account-scoped requests
   const storedEtag = _fetchTransactionsFromServer._cachedEtag || null;
-  if (storedEtag && !sinceDate) {
-    // Only send ETag for full (non-windowed) requests so the 304
-    // comparison is apples-to-apples with the cached full dataset.
+  if (storedEtag && !sinceDate && !isAccountScoped) {
     headers['If-None-Match'] = storedEtag;
   }
 
@@ -557,7 +574,7 @@ async function _fetchTransactionsFromServer(sinceDate) {
     method: 'GET',
     mode: 'cors',
     headers,
-    signal: _fetchAbortController.signal,
+    signal: controller.signal,
   });
 
   if (response.status === 304) {
@@ -571,7 +588,7 @@ async function _fetchTransactionsFromServer(sinceDate) {
 
   // Persist the ETag for future 304 short-circuits (full requests only).
   const newEtag = response.headers.get('ETag');
-  if (newEtag && !sinceDate) {
+  if (newEtag && !sinceDate && !isAccountScoped) {
     _fetchTransactionsFromServer._cachedEtag = newEtag;
     if (window.txnDB) {
       window.txnDB.setMeta('etag', newEtag).catch(function() {});
@@ -614,6 +631,87 @@ function _cacheTransactions(transactionsToCache) {
     console.warn('IndexedDB replace-all failed:', err);
   });
   window.txnDB.setMeta('cached_at', now).catch(function() {});
+}
+
+// ── Account-scoped cache refresh ────────────────────────
+// Fetch only one account's transactions from the backend and merge them
+// into the existing in-memory array + IndexedDB. One targeted network
+// call instead of the two-phase full download (recent + full history).
+
+/**
+ * Re-sorts the in-memory transactions array to match backend ordering:
+ * date descending, then anchor priority descending, then transaction_id
+ * descending. Keeps the ledger column consistent after a partial merge.
+ */
+function _sortTransactionsInPlace() {
+  var _anchorPri = function(source) {
+    if (source === 'manual_opening_balance') return 0;
+    if (source === 'opening_balance') return 1;
+    return 2;
+  };
+  transactions.sort(function(txnA, txnB) {
+    var dateA = txnA.date || '';
+    var dateB = txnB.date || '';
+    if (dateA !== dateB) return dateB.localeCompare(dateA);
+    var priA = _anchorPri(txnA.source);
+    var priB = _anchorPri(txnB.source);
+    if (priA !== priB) return priB - priA;
+    return (txnB.transaction_id || '').localeCompare(txnA.transaction_id || '');
+  });
+}
+
+/**
+ * Refresh a single account's transactions from the backend and merge
+ * them into the in-memory array + IndexedDB cache. Replaces the old
+ * nuclear approach of invalidate + fetchAllTransactions(true) which
+ * triggered two full round-trips for ALL accounts.
+ *
+ * Falls back to a full fetchAllTransactions(true) when accountId is
+ * falsy (e.g. multi-account operations like Approve All Matches).
+ */
+async function refreshAccountTransactions(accountId) {
+  if (!accountId) {
+    await fetchAllTransactions(true);
+    return;
+  }
+
+  try {
+    var freshTxns = await _fetchTransactionsFromServer(null, accountId);
+    if (freshTxns === null) {
+      return;
+    }
+
+    // Merge: remove old rows for this account, add the fresh ones
+    transactions = transactions.filter(function(txn) {
+      return txn.account_id !== accountId;
+    });
+    for (var txnIndex = 0; txnIndex < freshTxns.length; txnIndex++) {
+      transactions.push(freshTxns[txnIndex]);
+    }
+    _sortTransactionsInPlace();
+
+    // Update IndexedDB: replace only this account's rows
+    if (window.txnDB) {
+      window.txnDB.replaceForAccount(accountId, freshTxns).catch(function(err) {
+        console.warn('IndexedDB replace-for-account failed:', err);
+      });
+      window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
+    }
+
+    // The combined cache no longer matches the last full-fetch ETag,
+    // so clear it — next full fetch will get a fresh one.
+    _fetchTransactionsFromServer._cachedEtag = null;
+    if (window.txnDB) {
+      window.txnDB.setMeta('etag', null).catch(function() {});
+    }
+
+    autoExtendEndDateForScheduled();
+    renderTransactionTable();
+    renderDynamicPeriodButtons();
+  } catch (refreshError) {
+    console.error('Account refresh failed, falling back to full fetch:', refreshError);
+    await fetchAllTransactions(true);
+  }
 }
 
 // ── Granular cache helpers ──────────────────────────────

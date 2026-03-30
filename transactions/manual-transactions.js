@@ -371,13 +371,14 @@ async function _updateManualTransaction(transactionId, accountId) {
     showStatus('Transaction updated successfully', 'success');
 
     // Patch the edited transaction immediately for instant feedback,
-    // then refetch all transactions so backend-recalculated trending
+    // then refetch the account so backend-recalculated trending
     // amounts (investment performance) are also picked up.
+    var updatedAccountId = selectedAccountId;
     if (data.transaction && data.transaction.transaction_id) {
       _replaceCachedTransaction(transactionId, data.transaction);
+      updatedAccountId = data.transaction.account_id || selectedAccountId;
     }
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    await refreshAccountTransactions(updatedAccountId);
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
     }
@@ -594,8 +595,7 @@ async function _submitPendingManualTransaction() {
     }
 
     // Refresh from server for consistency
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    await refreshAccountTransactions(pending.accountId || selectedAccountId);
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
     }
@@ -782,11 +782,10 @@ async function saveManualTransaction() {
       }
     }
     
-    // Refetch all transactions so backend-recalculated trending amounts
-    // and bank_account names are picked up.
+    // Refetch the account's transactions so backend-recalculated trending
+    // amounts and bank_account names are picked up.
     try {
-      _invalidateTransactionCache();
-      await fetchAllTransactions(true);
+      await refreshAccountTransactions(accountId || selectedAccountId);
       if (selectedAccountMode === 'single' && selectedAccountId) {
         await fetchBalanceHistory(selectedAccountId);
         renderTransactionTable();
@@ -820,12 +819,14 @@ async function deleteManualTransaction(manualTransactionId) {
     }
 
     showStatus('Manual transaction deleted successfully', 'success');
+    var deletedAccountId = selectedAccountId;
+    var deletedTxn = transactions.find(function(findTxn) { return findTxn.transaction_id === manualTransactionId; });
+    if (deletedTxn) { deletedAccountId = deletedTxn.account_id || selectedAccountId; }
     _removeCachedTransaction(manualTransactionId);
 
     // Backend may have recalculated trending transaction amounts —
-    // invalidate cache and refetch so those updates are visible.
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    // refresh this account so those updates are visible.
+    await refreshAccountTransactions(deletedAccountId);
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
     }
@@ -1181,8 +1182,7 @@ async function unmatchScheduledTransaction(transactionId) {
     }
 
     showStatus('Match undone — transaction reverted to missing', 'success');
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    await refreshAccountTransactions(selectedAccountId);
 
   } catch (networkError) {
     showStatus(`Failed to unmatch: ${networkError.message}`, 'error');
@@ -1211,8 +1211,7 @@ async function resolveMissingTransaction(transactionId) {
     }
 
     showStatus('Missing transaction resolved', 'success');
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    await refreshAccountTransactions(selectedAccountId);
 
   } catch (networkError) {
     showStatus(`Failed to resolve: ${networkError.message}`, 'error');
@@ -1245,8 +1244,7 @@ async function skipBillOccurrence(billId, occurrenceDate) {
     }
 
     showStatus('Bill occurrence skipped', 'success');
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    await refreshAccountTransactions(selectedAccountId);
 
   } catch (networkError) {
     showStatus(`Failed to skip occurrence: ${networkError.message}`, 'error');

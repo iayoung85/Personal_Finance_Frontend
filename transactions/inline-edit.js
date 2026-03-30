@@ -325,13 +325,14 @@ async function _saveRowInlineEdits() {
     _dismissActiveEditor({ clearRowSession: true });
 
     // Patch the edited transaction immediately for instant feedback,
-    // then refetch all transactions so backend-recalculated trending
+    // then refetch the affected account so backend-recalculated trending
     // amounts (investment performance) are also picked up.
+    var editedAccountId = null;
     if (data.transaction && data.transaction.transaction_id) {
       _replaceCachedTransaction(editSession.txn_id, data.transaction);
+      editedAccountId = data.transaction.account_id;
     }
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    await refreshAccountTransactions(editedAccountId || selectedAccountId);
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
     }
@@ -581,10 +582,7 @@ function _dismissActiveEditor({ clearRowSession = true } = {}) {
 
 
 async function _refreshAfterInlineEdit() {
-  // Mark cache stale (don't nuke 100k rows — replaceAll handles it atomically)
-  _invalidateTransactionCache();
-
-  await fetchAllTransactions(true);
+  await refreshAccountTransactions(selectedAccountId);
 
   if (selectedAccountMode === 'single' && selectedAccountId) {
     await fetchBalanceHistory(selectedAccountId);

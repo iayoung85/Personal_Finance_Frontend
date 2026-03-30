@@ -137,6 +137,21 @@ self.onmessage = async function(e) {
         break;
       }
 
+      case 'replace-for-account': {
+        // Atomic delete-by-account + bulk-insert for one account's rows.
+        // All other accounts' data stays untouched in the store.
+        const accountId = e.data.accountId;
+        const txns = e.data.data;
+        await db.transaction('rw', db.transactions, async () => {
+          await db.transactions.where('account_id').equals(accountId).delete();
+          if (Array.isArray(txns) && txns.length > 0) {
+            await db.transactions.bulkPut(txns);
+          }
+        });
+        result = { count: txns ? txns.length : 0 };
+        break;
+      }
+
       case 'get-meta': {
         const row = await db.meta.get(e.data.key);
         result = { value: row ? row.value : undefined };

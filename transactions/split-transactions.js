@@ -458,8 +458,8 @@ async function handleSplitSubmit() {
     closeSplitModal();
     showStatus(isEditingSplit ? 'Split updated successfully' : 'Split created successfully', 'success');
     
-    // Refresh transactions
-    await fetchAllTransactions(true);
+    // Refresh transactions for the affected account
+    await refreshAccountTransactions(currentSplitTransaction ? currentSplitTransaction.account_id : null);
     
   } catch (error) {
     showStatus(`Error: ${error.message}`, 'error');
@@ -485,9 +485,11 @@ async function deleteSplitHelper(splitTransactionId) {
 // Delete split immediately (no confirmation)
 async function handleDeleteSplit(splitTransactionId) {
   try {
+    var splitTxn = transactions.find(function(findTxn) { return findTxn.transaction_id === splitTransactionId; });
+    var splitAccountId = splitTxn ? splitTxn.account_id : null;
     await deleteSplitHelper(splitTransactionId);
     showStatus('Split deleted successfully', 'success');
-    await fetchAllTransactions(true);
+    await refreshAccountTransactions(splitAccountId);
   } catch (error) {
     showStatus(`Error: ${error.message}`, 'error');
   }

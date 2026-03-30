@@ -158,6 +158,13 @@ var txnDB = (function() {
     return _send('replace-all', { data: txns || [] });
   }
 
+  /** Atomically clear one account's rows and replace with new data.
+   *  All other accounts' cached transactions stay untouched. */
+  function replaceForAccount(accountId, txns) {
+    if (!worker || !accountId) return Promise.resolve({ count: 0 });
+    return _send('replace-for-account', { accountId: accountId, data: txns || [] });
+  }
+
   _init();
 
   /** Returns true if the worker failed to start or errored at runtime. */
@@ -180,5 +187,6 @@ var txnDB = (function() {
     putOne: putOne,
     deleteOne: deleteOne,
     replaceAll: replaceAll,
+    replaceForAccount: replaceForAccount,
   };
 })();

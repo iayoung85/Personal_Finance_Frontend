@@ -294,7 +294,7 @@ function _renderMatchedRow(ctx) {
     'Type to search categories…', buttons
   );
 
-  const approveOnclick = `event.stopPropagation(); approveMatch('${escapeHtml(ctx.txnId)}').then(() => { showStatus('Match approved', 'success'); _invalidateTransactionCache(); fetchAllTransactions(true); }).catch(err => showStatus(err.message, 'error'));`;
+  const approveOnclick = `event.stopPropagation(); approveMatch('${escapeHtml(ctx.txnId)}').then(() => { showStatus('Match approved', 'success'); refreshAccountTransactions('${escapeHtml(ctx.accountId)}'); }).catch(err => showStatus(err.message, 'error'));`;
 
   // Bill badge when this matched row originated from a bill template
   let billBadge = '';
@@ -327,7 +327,7 @@ function _renderMatchedPairRow(ctx) {
     'Type to search categories…', buttons
   );
 
-  const approveOnclick = `event.stopPropagation(); approveMatch('${unmatchId}').then(() => { showStatus('Match approved', 'success'); _invalidateTransactionCache(); fetchAllTransactions(true); }).catch(err => showStatus(err.message, 'error'));`;
+  const approveOnclick = `event.stopPropagation(); approveMatch('${unmatchId}').then(() => { showStatus('Match approved', 'success'); refreshAccountTransactions('${escapeHtml(ctx.accountId)}'); }).catch(err => showStatus(err.message, 'error'));`;
 
   // Bill badge when the matched counterpart originated from a bill template
   let billBadge = '';

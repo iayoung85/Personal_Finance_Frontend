@@ -549,8 +549,7 @@ async function _handleContextDeleteMissing(txnData) {
   try {
     await resolveReconciliationBatch({ delete_missing: [txnData.txnId] });
     showStatus('Transaction deleted', 'success');
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    await refreshAccountTransactions(txnData.accountId);
     await checkAndRenderReconciliationBanner();
   } catch (deleteError) {
     showStatus(`Failed to delete transaction: ${deleteError.message}`, 'error');
@@ -568,8 +567,7 @@ async function _handleContextApproveMatch(txnData) {
   try {
     await approveMatch(approveId);
     showStatus('Match approved — manual transaction removed', 'success');
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    await refreshAccountTransactions(txnData.accountId);
   } catch (approveError) {
     showStatus(`Failed to approve match: ${approveError.message}`, 'error');
   }
@@ -627,8 +625,7 @@ async function _handleContextMarkPaid(txnData) {
     }
 
     showStatus('Marked as paid — occurrence materialized', 'success');
-    _invalidateTransactionCache();
-    await fetchAllTransactions(true);
+    await refreshAccountTransactions(txnData.accountId);
   } catch (networkError) {
     showStatus(`Failed to mark as paid: ${networkError.message}`, 'error');
   }
