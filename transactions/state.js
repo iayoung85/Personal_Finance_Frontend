@@ -55,3 +55,9 @@ let balanceHistoryLoading = false;
 
 // Reconciliation banner state — populated by checkAndRenderReconciliationBanner()
 let reconciliationStatus = null;
+
+// Debounce timer for sidebar account selection. When users arrow-key
+// through accounts rapidly, only the last account they settle on
+// triggers the balance-history fetch and table re-render.
+let _sidebarSelectDebounceTimer = null;
+const SIDEBAR_SELECT_DEBOUNCE_MS = 250;

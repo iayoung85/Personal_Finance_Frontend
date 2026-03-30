@@ -26,7 +26,7 @@ $(document).ready(async function() {
   const savedAccountId = localStorage.getItem('pf_selected_account');
   const savedAccountExists = savedAccountId && accounts.some(a => a.account_id === savedAccountId);
   if (savedAccountExists) {
-    await selectAccount(savedAccountId);
+    await selectAccount(savedAccountId, true);
   } else {
     localStorage.removeItem('pf_selected_account');
     selectAllAccounts();

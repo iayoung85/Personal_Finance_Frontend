@@ -69,14 +69,28 @@ function toggleSidebar() {
   sidebar.classList.toggle('open');
 }
 
-async function selectAccount(accountId) {
+async function selectAccount(accountId, skipDebounce = false) {
   selectedAccountMode = 'single';
   selectedAccountId = accountId;
   localStorage.setItem('pf_selected_account', accountId);
   renderAccountsSidebar();
-  // Fetch running balance data for the ledger column before rendering table
-  await fetchBalanceHistory(accountId);
-  renderTransactionTable();
+
+  if (skipDebounce) {
+    await fetchBalanceHistory(accountId);
+    renderTransactionTable();
+    return;
+  }
+
+  // Debounce the expensive work (balance-history fetch + table render)
+  // so rapid arrow-key navigation skips intermediate accounts.
+  if (_sidebarSelectDebounceTimer) clearTimeout(_sidebarSelectDebounceTimer);
+  _sidebarSelectDebounceTimer = setTimeout(async () => {
+    _sidebarSelectDebounceTimer = null;
+    // Guard: if user navigated away from this account before timer fired, bail
+    if (selectedAccountId !== accountId) return;
+    await fetchBalanceHistory(accountId);
+    renderTransactionTable();
+  }, SIDEBAR_SELECT_DEBOUNCE_MS);
 }
 
 function selectAllAccountsMode() {
