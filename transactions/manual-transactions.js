@@ -370,23 +370,18 @@ async function _updateManualTransaction(transactionId, accountId) {
     closeModal();
     showStatus('Transaction updated successfully', 'success');
 
-    // If the server returned the full updated transaction, patch the cache
-    // directly instead of clearing and re-downloading 100k+ rows.
+    // Patch the edited transaction immediately for instant feedback,
+    // then refetch all transactions so backend-recalculated trending
+    // amounts (investment performance) are also picked up.
     if (data.transaction && data.transaction.transaction_id) {
       _replaceCachedTransaction(transactionId, data.transaction);
-      if (selectedAccountMode === 'single' && selectedAccountId) {
-        await fetchBalanceHistory(selectedAccountId);
-      }
-      renderTransactionTable();
-    } else {
-      // Fallback: full refetch if server didn't return the object
-      _invalidateTransactionCache();
-      await fetchAllTransactions(true);
-      if (selectedAccountMode === 'single' && selectedAccountId) {
-        await fetchBalanceHistory(selectedAccountId);
-        renderTransactionTable();
-      }
     }
+    _invalidateTransactionCache();
+    await fetchAllTransactions(true);
+    if (selectedAccountMode === 'single' && selectedAccountId) {
+      await fetchBalanceHistory(selectedAccountId);
+    }
+    renderTransactionTable();
 
     // Refresh sidebar balances — backend may have recalculated current_balance
     await loadAccounts();
@@ -787,11 +782,11 @@ async function saveManualTransaction() {
       }
     }
     
-    // Fetch all transactions in background to ensure consistency and get bank_account names
+    // Refetch all transactions so backend-recalculated trending amounts
+    // and bank_account names are picked up.
     try {
+      _invalidateTransactionCache();
       await fetchAllTransactions(true);
-      // fetchAllTransactions renders with stale balanceHistoryLookup — re-fetch
-      // history so the new transaction's running balance appears immediately.
       if (selectedAccountMode === 'single' && selectedAccountId) {
         await fetchBalanceHistory(selectedAccountId);
         renderTransactionTable();
@@ -826,6 +821,11 @@ async function deleteManualTransaction(manualTransactionId) {
 
     showStatus('Manual transaction deleted successfully', 'success');
     _removeCachedTransaction(manualTransactionId);
+
+    // Backend may have recalculated trending transaction amounts —
+    // invalidate cache and refetch so those updates are visible.
+    _invalidateTransactionCache();
+    await fetchAllTransactions(true);
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
     }

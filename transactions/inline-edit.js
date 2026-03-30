@@ -324,18 +324,18 @@ async function _saveRowInlineEdits() {
     showStatus('Transaction updated', 'success');
     _dismissActiveEditor({ clearRowSession: true });
 
-    // If the server returned the full updated transaction, patch the cache
-    // directly — avoids clearing and re-downloading 100k+ rows.
+    // Patch the edited transaction immediately for instant feedback,
+    // then refetch all transactions so backend-recalculated trending
+    // amounts (investment performance) are also picked up.
     if (data.transaction && data.transaction.transaction_id) {
       _replaceCachedTransaction(editSession.txn_id, data.transaction);
-      if (selectedAccountMode === 'single' && selectedAccountId) {
-        await fetchBalanceHistory(selectedAccountId);
-      }
-      renderTransactionTable();
-    } else {
-      // Fallback: full refetch if server didn't return the object
-      await _refreshAfterInlineEdit();
     }
+    _invalidateTransactionCache();
+    await fetchAllTransactions(true);
+    if (selectedAccountMode === 'single' && selectedAccountId) {
+      await fetchBalanceHistory(selectedAccountId);
+    }
+    renderTransactionTable();
 
     // Refresh sidebar balances — backend may have recalculated current_balance
     await loadAccounts();

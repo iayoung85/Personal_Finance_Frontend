@@ -396,7 +396,8 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
     
     // Determine if we need to fetch from DB based on actual backend response fields
     const totalChanges = (syncData.added_count || 0) + (syncData.modified_count || 0) + (syncData.removed_count || 0);
-    const shouldFetchFromDB = !cacheValid || totalChanges > 0 || forceNetwork;
+    const trendingChanged = syncData.trending_changed === true;
+    const shouldFetchFromDB = !cacheValid || totalChanges > 0 || trendingChanged || forceNetwork;
     
     if (shouldFetchFromDB) {
       // No cache OR sync returned changes OR force requested → fetch from DB

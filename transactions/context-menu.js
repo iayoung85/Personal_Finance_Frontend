@@ -931,22 +931,38 @@ function _handleContextEditInvestmentBalance(txnData) {
         _removeCachedTransaction(txnData.txnId);
         showStatus(`Trending row removed (${data.rows_deleted} row${data.rows_deleted !== 1 ? 's' : ''} deleted)`, 'success');
       } else {
-        // Update the edited transaction in cache
+        // Update the edited transaction in cache.
+        // Backend returns amount/balance_at_date as strings — coerce to
+        // numbers so downstream arithmetic (runningProjected += txn.amount)
+        // doesn't silently switch to string concatenation.
         if (data.updated_transaction) {
-          _patchCachedTransactions([txnData.txnId], data.updated_transaction);
+          const coerced = { ...data.updated_transaction };
+          if (coerced.amount != null) coerced.amount = parseFloat(coerced.amount);
+          if (coerced.balance_at_date != null) coerced.balance_at_date = parseFloat(coerced.balance_at_date);
+          _patchCachedTransactions([txnData.txnId], coerced);
         }
         // Update next month's transaction if recalculated
         if (data.next_month_transaction) {
-          const nextId = data.next_month_transaction.transaction_id;
-          _patchCachedTransactions([nextId], data.next_month_transaction);
+          const nextCoerced = { ...data.next_month_transaction };
+          if (nextCoerced.amount != null) nextCoerced.amount = parseFloat(nextCoerced.amount);
+          if (nextCoerced.balance_at_date != null) nextCoerced.balance_at_date = parseFloat(nextCoerced.balance_at_date);
+          const nextId = nextCoerced.transaction_id;
+          _patchCachedTransactions([nextId], nextCoerced);
         }
         showStatus('Account balance updated', 'success');
       }
+
+      // Invalidate transaction cache so next page load fetches fresh
+      // data instead of serving stale ETag-based 304 responses.
+      _invalidateTransactionCache();
 
       if (selectedAccountMode === 'single' && selectedAccountId) {
         await fetchBalanceHistory(selectedAccountId);
       }
       renderTransactionTable();
+
+      // Refresh sidebar balances — backend may have recalculated current_balance
+      await loadAccounts();
     } catch (networkError) {
       showStatus(`Failed to update balance: ${networkError.message}`, 'error');
     }

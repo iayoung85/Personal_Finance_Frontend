@@ -675,15 +675,22 @@ function _openAddTrendingModal(accountId) {
         newTxn.status = 'cleared';
         newTxn.user_category = 'System: Investment Performance';
         newTxn.date = newTxn.transaction_date;
+        // Coerce string amounts from backend to numbers
+        if (newTxn.amount != null) newTxn.amount = parseFloat(newTxn.amount);
+        if (newTxn.balance_at_date != null) newTxn.balance_at_date = parseFloat(newTxn.balance_at_date);
         transactions.unshift(newTxn);
       }
 
       if (data.next_month_transaction) {
-        const nextId = data.next_month_transaction.transaction_id;
-        _patchCachedTransactions([nextId], data.next_month_transaction);
+        const nextCoerced = { ...data.next_month_transaction };
+        if (nextCoerced.amount != null) nextCoerced.amount = parseFloat(nextCoerced.amount);
+        if (nextCoerced.balance_at_date != null) nextCoerced.balance_at_date = parseFloat(nextCoerced.balance_at_date);
+        const nextId = nextCoerced.transaction_id;
+        _patchCachedTransactions([nextId], nextCoerced);
       }
 
       _cacheTransactions(transactions);
+      _invalidateTransactionCache();
 
       _expandDateFiltersForTransaction(
         data.created_transaction?.transaction_date
