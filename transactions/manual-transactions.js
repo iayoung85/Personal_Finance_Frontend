@@ -370,15 +370,24 @@ async function _updateManualTransaction(transactionId, accountId) {
     closeModal();
     showStatus('Transaction updated successfully', 'success');
 
-    // Patch the edited transaction immediately for instant feedback,
-    // then refetch the account so backend-recalculated trending
-    // amounts (investment performance) are also picked up.
+    // Patch the edited transaction in-memory + IndexedDB immediately.
     var updatedAccountId = selectedAccountId;
     if (data.transaction && data.transaction.transaction_id) {
       _replaceCachedTransaction(transactionId, data.transaction);
       updatedAccountId = data.transaction.account_id || selectedAccountId;
     }
-    await refreshAccountTransactions(updatedAccountId);
+
+    // Patch any affected trending rows (investment accounts) returned by
+    // the backend instead of doing a full account refetch.
+    if (data.affected_trending_transactions && data.affected_trending_transactions.length > 0) {
+      for (var ati = 0; ati < data.affected_trending_transactions.length; ati++) {
+        var trendingTxn = data.affected_trending_transactions[ati];
+        _replaceCachedTransaction(trendingTxn.transaction_id, trendingTxn);
+      }
+    }
+    _sortTransactionsInPlace();
+    _cacheTransactions(transactions);
+
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
     }
@@ -563,6 +572,16 @@ async function _submitPendingManualTransaction() {
       }
       showStatus(`Transaction updated with category: ${pending.category}`, 'success');
 
+      // Patch the updated transaction + any affected trending rows locally
+      if (data.transaction && data.transaction.transaction_id) {
+        _replaceCachedTransaction(pending.transactionId, data.transaction);
+      }
+      if (data.affected_trending_transactions && data.affected_trending_transactions.length > 0) {
+        for (var ati = 0; ati < data.affected_trending_transactions.length; ati++) {
+          _replaceCachedTransaction(data.affected_trending_transactions[ati].transaction_id, data.affected_trending_transactions[ati]);
+        }
+      }
+
     } else {
       // Create mode — POST with account_id
       payload.account_id = pending.accountId;
@@ -591,15 +610,27 @@ async function _submitPendingManualTransaction() {
       newTxn.source = 'manual';
       transactions.unshift(newTxn);
 
+      // Patch any affected trending rows (investment accounts)
+      if (data.affected_trending_transactions && data.affected_trending_transactions.length > 0) {
+        for (var ati2 = 0; ati2 < data.affected_trending_transactions.length; ati2++) {
+          _replaceCachedTransaction(data.affected_trending_transactions[ati2].transaction_id, data.affected_trending_transactions[ati2]);
+        }
+      }
+
       _expandDateFiltersForTransaction(newTxn.date);
     }
 
-    // Refresh from server for consistency
-    await refreshAccountTransactions(pending.accountId || selectedAccountId);
+    // Sort and persist — trending rows may have shifted positions
+    _sortTransactionsInPlace();
+    _cacheTransactions(transactions);
+
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
     }
     renderTransactionTable();
+
+    // Refresh sidebar balances — backend may have recalculated current_balance
+    await loadAccounts();
 
   } catch (networkError) {
     showStatus(`Failed to submit transaction: ${networkError.message}`, 'error');
@@ -755,8 +786,17 @@ async function saveManualTransaction() {
 
     // Add to in-memory transactions array
     transactions.unshift(newTxn);
-    
-    // Update cache immediately
+
+    // Patch any affected trending rows (investment accounts) returned by
+    // the backend instead of doing a full account refetch.
+    if (data.affected_trending_transactions && data.affected_trending_transactions.length > 0) {
+      for (var ati = 0; ati < data.affected_trending_transactions.length; ati++) {
+        _replaceCachedTransaction(data.affected_trending_transactions[ati].transaction_id, data.affected_trending_transactions[ati]);
+      }
+    }
+
+    // Sort and persist — new txn + trending rows may need reordering
+    _sortTransactionsInPlace();
     _cacheTransactions(transactions);
     
     // Why: expand date filters so the newly created transaction (including
@@ -782,10 +822,10 @@ async function saveManualTransaction() {
       }
     }
     
-    // Refetch the account's transactions so backend-recalculated trending
-    // amounts and bank_account names are picked up.
+    // Lightweight follow-ups: balance history for ledger column + sidebar balances.
+    // The heavy refreshAccountTransactions call is no longer needed — the backend
+    // response included the new txn + any affected trending rows.
     try {
-      await refreshAccountTransactions(accountId || selectedAccountId);
       if (selectedAccountMode === 'single' && selectedAccountId) {
         await fetchBalanceHistory(selectedAccountId);
         renderTransactionTable();
@@ -812,21 +852,27 @@ async function deleteManualTransaction(manualTransactionId) {
       { method: 'DELETE' }
     );
 
+    const data = response.ok ? await response.json() : null;
     if (!response.ok) {
-      const data = await response.json();
-      showStatus(data.error || 'Failed to delete transaction', 'error');
+      const errData = data || await response.json();
+      showStatus(errData.error || 'Failed to delete transaction', 'error');
       return;
     }
 
     showStatus('Manual transaction deleted successfully', 'success');
-    var deletedAccountId = selectedAccountId;
     var deletedTxn = transactions.find(function(findTxn) { return findTxn.transaction_id === manualTransactionId; });
-    if (deletedTxn) { deletedAccountId = deletedTxn.account_id || selectedAccountId; }
     _removeCachedTransaction(manualTransactionId);
 
-    // Backend may have recalculated trending transaction amounts —
-    // refresh this account so those updates are visible.
-    await refreshAccountTransactions(deletedAccountId);
+    // Patch any affected trending rows (investment accounts) returned by
+    // the backend instead of doing a full account refetch.
+    if (data && data.affected_trending_transactions && data.affected_trending_transactions.length > 0) {
+      for (var ati = 0; ati < data.affected_trending_transactions.length; ati++) {
+        _replaceCachedTransaction(data.affected_trending_transactions[ati].transaction_id, data.affected_trending_transactions[ati]);
+      }
+    }
+    _sortTransactionsInPlace();
+    _cacheTransactions(transactions);
+
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
     }

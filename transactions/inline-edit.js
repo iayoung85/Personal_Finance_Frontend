@@ -324,22 +324,31 @@ async function _saveRowInlineEdits() {
     showStatus('Transaction updated', 'success');
     _dismissActiveEditor({ clearRowSession: true });
 
-    // Patch the edited transaction immediately for instant feedback,
-    // then refetch the affected account so backend-recalculated trending
-    // amounts (investment performance) are also picked up.
+    // Patch the edited transaction immediately for instant feedback.
     var editedAccountId = null;
     if (data.transaction && data.transaction.transaction_id) {
       _replaceCachedTransaction(editSession.txn_id, data.transaction);
       editedAccountId = data.transaction.account_id;
     }
-    await refreshAccountTransactions(editedAccountId || selectedAccountId);
-    if (selectedAccountMode === 'single' && selectedAccountId) {
-      await fetchBalanceHistory(selectedAccountId);
-    }
-    renderTransactionTable();
 
-    // Refresh sidebar balances — backend may have recalculated current_balance
-    await loadAccounts();
+    // Description-only edits don't affect trending, balances, or other rows —
+    // the _replaceCachedTransaction above is sufficient. Skip the expensive
+    // account refetch + balance history round-trips.
+    const changedOnlyDescription = payloadKeys.length === 1 && payloadKeys[0] === 'description';
+    if (changedOnlyDescription) {
+      renderTransactionTable();
+    } else {
+      // Date or amount changes may trigger backend-side trending recalculation
+      // (investment performance) and balance shifts — full refresh required.
+      await refreshAccountTransactions(editedAccountId || selectedAccountId);
+      if (selectedAccountMode === 'single' && selectedAccountId) {
+        await fetchBalanceHistory(selectedAccountId);
+      }
+      renderTransactionTable();
+
+      // Refresh sidebar balances — backend may have recalculated current_balance
+      await loadAccounts();
+    }
   } catch (saveError) {
     showStatus(`Inline update failed: ${saveError.message}`, 'error');
   }
