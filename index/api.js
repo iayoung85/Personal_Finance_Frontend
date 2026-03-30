@@ -346,6 +346,47 @@ const IndexApi = (() => {
 
   // ── Expose for other modules ────────────────────────────
 
+  async function transitionToInvestment(accountId, subcategory = 'brokerage') {
+    const body = {};
+    if (subcategory) body.account_subcategory = subcategory;
+
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/accounts/${encodeURIComponent(accountId)}/transition-to-investment`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to transition account to investment');
+    }
+    return data;
+  }
+
+  async function transitionToDepository(accountId, openingBalanceAmount, openingBalanceDate, subcategory = 'savings') {
+    const body = {
+      opening_balance_amount: openingBalanceAmount,
+      opening_balance_date: openingBalanceDate,
+    };
+    if (subcategory) body.account_subcategory = subcategory;
+
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/accounts/${encodeURIComponent(accountId)}/transition-to-depository`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to transition account to depository');
+    }
+    return data;
+  }
+
   return {
     authenticatedFetch,
     login,
@@ -366,5 +407,7 @@ const IndexApi = (() => {
     fetchPendingAccountMatching,
     retryRelink,
     retryInitialSync,
+    transitionToInvestment,
+    transitionToDepository,
   };
 })();

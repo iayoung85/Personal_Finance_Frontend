@@ -373,7 +373,9 @@ function renderAccountsSidebar() {
     `;
   }).join('');
 
-  html += `
+  // Render summary box into separate non-scrolling container
+  const summaryContainer = document.getElementById('accounts-summary');
+  summaryContainer.innerHTML = `
     <div class="sidebar-super-group-box">
       <div class="sidebar-super-group-title">
         <span>Net Worth:</span>
