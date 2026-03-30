@@ -112,6 +112,18 @@ function getStatusDotClass(connectionStatus, itemHealth) {
 }
 
 /**
+ * Copy a technical ID value to clipboard and show brief feedback.
+ */
+function copyTechId(el) {
+  const text = el.textContent.trim();
+  if (!text || text === '—') return;
+  navigator.clipboard.writeText(text).then(() => {
+    el.classList.add('copied');
+    setTimeout(() => el.classList.remove('copied'), 1200);
+  });
+}
+
+/**
  * Show a floating status toast message.
  */
 function showToast(message, type = 'info') {

@@ -494,6 +494,63 @@ body {
   margin: 0 0 10px;
 }
 
+/* ── Technical Identifiers ────────────────────────────────── */
+.technical-ids-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.technical-ids-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.tech-id-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tech-id-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tech-id-value {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  word-break: break-all;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  transition: background 0.15s, border-color 0.15s;
+  position: relative;
+}
+
+.tech-id-value:hover {
+  background: var(--bg-selected);
+  border-color: var(--accent-primary);
+}
+
+.tech-id-value.copied::after {
+  content: 'Copied!';
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: inherit;
+  font-size: 10px;
+  color: var(--color-positive);
+  font-weight: 600;
+}
+
 .contact-info-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

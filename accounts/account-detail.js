@@ -6,16 +6,21 @@
 
 /**
  * Render the Account Detail View in the main content area.
- * Fetches fresh detail from backend, then builds the DOM.
+ * Fetches detail (from cache or backend), then builds the DOM.
+ * Uses render versioning to discard stale responses during rapid navigation.
  */
 async function renderAccountDetail(accountId) {
   const mainContent = document.getElementById('main-content');
+  const renderVersion = ++_detailRenderVersion;
+
   mainContent.innerHTML = '<div style="padding: 40px; text-align: center; color: #888;">Loading account details…</div>';
 
   try {
     const account = await apiFetchAccountDetail(accountId);
+    if (_detailRenderVersion !== renderVersion) return;
     mainContent.innerHTML = _buildAccountDetailHtml(account);
   } catch (fetchError) {
+    if (_detailRenderVersion !== renderVersion) return;
     mainContent.innerHTML = `<div style="padding: 20px; color: #c62828;">Error loading account: ${fetchError.message}</div>`;
   }
 }
@@ -93,6 +98,32 @@ function _buildAccountDetailHtml(account) {
         <div class="metadata-item">
           <span class="metadata-label">Transactions</span>
           <span class="metadata-value">${account.transaction_count !== undefined ? account.transaction_count.toLocaleString() : '—'}</span>
+        </div>
+      </div>
+
+      <!-- Technical Identifiers -->
+      <div class="technical-ids-section">
+        <h4 class="section-subheading">Technical Identifiers</h4>
+        <div class="technical-ids-grid">
+          <div class="tech-id-item">
+            <span class="tech-id-label">App Account ID</span>
+            <span class="tech-id-value" title="Click to copy" onclick="copyTechId(this)">${_escapeHtml(account.account_id || '—')}</span>
+          </div>
+          ${account.plaid_account_id ? `
+          <div class="tech-id-item">
+            <span class="tech-id-label">Plaid Account ID</span>
+            <span class="tech-id-value" title="Click to copy" onclick="copyTechId(this)">${_escapeHtml(account.plaid_account_id)}</span>
+          </div>` : ''}
+          ${account.last_balance_update ? `
+          <div class="tech-id-item">
+            <span class="tech-id-label">Last Balance Update</span>
+            <span class="tech-id-value" title="Click to copy" onclick="copyTechId(this)">${new Date(account.last_balance_update).toLocaleString()}</span>
+          </div>` : ''}
+          ${account.earliest_plaid_transaction_date ? `
+          <div class="tech-id-item">
+            <span class="tech-id-label">Earliest Plaid Txn</span>
+            <span class="tech-id-value" title="Click to copy" onclick="copyTechId(this)">${_escapeHtml(account.earliest_plaid_transaction_date)}</span>
+          </div>` : ''}
         </div>
       </div>
 

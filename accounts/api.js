@@ -89,6 +89,26 @@ function setupActivityListeners() {
 
 // ── Data Loading ─────────────────────────────────────────────
 
+// ── Detail Cache Helpers ─────────────────────────────────────
+
+function _getCachedDetail(cacheKey) {
+  const entry = DETAIL_CACHE.get(cacheKey);
+  if (!entry) return null;
+  if (Date.now() - entry.fetchedAt > DETAIL_CACHE_TTL) {
+    DETAIL_CACHE.delete(cacheKey);
+    return null;
+  }
+  return entry.data;
+}
+
+function _setCachedDetail(cacheKey, data) {
+  DETAIL_CACHE.set(cacheKey, { data, fetchedAt: Date.now() });
+}
+
+function clearDetailCache() {
+  DETAIL_CACHE.clear();
+}
+
 /**
  * Fetch all banks (with nested accounts) from the backend.
  * Populates banksCache and accountsCache.
@@ -149,15 +169,22 @@ async function apiSearchInstitutions(query) {
 
 /**
  * Get a single account's full detail.
+ * Returns cached data if available and fresh, otherwise fetches from backend.
  */
 async function apiFetchAccountDetail(accountId) {
+  const cacheKey = `account:${accountId}`;
+  const cached = _getCachedDetail(cacheKey);
+  if (cached) return cached;
+
   const url = `${BACKEND_URL}/api/accounts/${accountId}`;
   const response = await authenticatedFetch(url);
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || 'Failed to fetch account');
   }
-  return await response.json();
+  const data = await response.json();
+  _setCachedDetail(cacheKey, data);
+  return data;
 }
 
 // ── Account Mutations ────────────────────────────────────────
@@ -354,15 +381,22 @@ async function apiUnlinkAndArchiveAccount(accountId) {
 /**
  * Fetch a single bank's full detail (institution metadata, Plaid item info,
  * preserved metadata, account summary counts).
+ * Returns cached data if available and fresh, otherwise fetches from backend.
  */
 async function apiFetchBankDetail(bankId) {
+  const cacheKey = `bank:${bankId}`;
+  const cached = _getCachedDetail(cacheKey);
+  if (cached) return cached;
+
   const url = `${BACKEND_URL}/api/accounts/banks/${bankId}`;
   const response = await authenticatedFetch(url);
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || 'Failed to fetch bank detail');
   }
-  return await response.json();
+  const data = await response.json();
+  _setCachedDetail(cacheKey, data);
+  return data;
 }
 
 /**

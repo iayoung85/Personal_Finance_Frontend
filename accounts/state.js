@@ -27,3 +27,22 @@ let pendingConfirmAction = null;
 
 // Pending reset account (used by reset modal)
 let pendingResetAccountId = null;
+
+// ── Detail Cache ─────────────────────────────────────────────
+// Caches individual account/bank detail responses so navigating
+// back to a previously viewed item is instant instead of hitting
+// the server again. Cleared on any mutation via reloadAndReselect().
+const DETAIL_CACHE = new Map();
+const DETAIL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Render-version counter: incremented each time a detail view is
+// requested. When a fetch returns, if the counter has moved past
+// the version that initiated the fetch the result is discarded —
+// this prevents a slow response from overwriting a newer selection.
+let _detailRenderVersion = 0;
+
+// Debounce timer for detail-panel fetches. When users arrow-key
+// through items rapidly, only the last item they settle on triggers
+// a network call — intermediate items are skipped entirely.
+let _detailDebounceTimer = null;
+const DETAIL_DEBOUNCE_MS = 250;

@@ -271,7 +271,7 @@ function selectBank(bankId) {
   _activeColumn = 'banks';
   renderSidebar();
   _highlightActiveColumn();
-  renderBankDetail(bankId);
+  _debouncedDetailRender(() => renderBankDetail(bankId));
 }
 
 function selectAccount(accountId) {
@@ -287,7 +287,21 @@ function selectAccount(accountId) {
   _activeColumn = 'accounts';
   renderSidebar();
   _highlightActiveColumn();
-  renderAccountDetail(accountId);
+  _debouncedDetailRender(() => renderAccountDetail(accountId));
+}
+
+/**
+ * Delays the detail-panel fetch so rapid arrow-key navigation only
+ * fires a network request for the item the user actually stops on.
+ * Sidebar highlighting is still instant — only the expensive fetch
+ * is deferred.
+ */
+function _debouncedDetailRender(renderFn) {
+  if (_detailDebounceTimer) clearTimeout(_detailDebounceTimer);
+  _detailDebounceTimer = setTimeout(() => {
+    _detailDebounceTimer = null;
+    renderFn();
+  }, DETAIL_DEBOUNCE_MS);
 }
 
 // ── Sidebar Toggle Helpers ───────────────────────────────────

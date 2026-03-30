@@ -6,10 +6,12 @@
 
 /**
  * Render the Bank Detail View in the main content area.
- * Fetches full detail from the backend for institution metadata and Plaid item info.
+ * Uses cache for instant layout, then enriches with full detail from backend.
+ * Render versioning discards stale responses during rapid navigation.
  */
 async function renderBankDetail(bankId) {
   const mainContent = document.getElementById('main-content');
+  const renderVersion = ++_detailRenderVersion;
 
   // Use cache for instant layout, then enrich with full detail from backend
   const cachedBank = banksCache.find(bankItem => bankItem.bank_id === bankId);
@@ -25,6 +27,7 @@ async function renderBankDetail(bankId) {
   // Fetch full detail in background to enrich with institution metadata
   try {
     const fullDetail = await apiFetchBankDetail(bankId);
+    if (_detailRenderVersion !== renderVersion) return;
     // Merge the enriched fields into the cached bank for this render
     const enrichedBank = { ...cachedBank, ...fullDetail };
     mainContent.innerHTML = _buildBankDetailHtml(enrichedBank);
@@ -93,6 +96,32 @@ function _buildBankDetailHtml(bank) {
         <div class="metadata-item">
           <span class="metadata-label">Created</span>
           <span class="metadata-value">${bank.created_at ? formatDate(bank.created_at) : '—'}</span>
+        </div>
+      </div>
+
+      <!-- Technical Identifiers -->
+      <div class="technical-ids-section">
+        <h4 class="section-subheading">Technical Identifiers</h4>
+        <div class="technical-ids-grid">
+          <div class="tech-id-item">
+            <span class="tech-id-label">App Bank ID</span>
+            <span class="tech-id-value" title="Click to copy" onclick="copyTechId(this)">${_escapeHtml(bank.bank_id || '—')}</span>
+          </div>
+          ${bank.plaid_item_id ? `
+          <div class="tech-id-item">
+            <span class="tech-id-label">Plaid Item ID</span>
+            <span class="tech-id-value" title="Click to copy" onclick="copyTechId(this)">${_escapeHtml(bank.plaid_item_id)}</span>
+          </div>` : ''}
+          ${bank.institution_id ? `
+          <div class="tech-id-item">
+            <span class="tech-id-label">Institution ID</span>
+            <span class="tech-id-value" title="Click to copy" onclick="copyTechId(this)">${_escapeHtml(bank.institution_id)}</span>
+          </div>` : ''}
+          ${bank.institution_metadata && bank.institution_metadata.routing_numbers && bank.institution_metadata.routing_numbers.length > 0 ? `
+          <div class="tech-id-item">
+            <span class="tech-id-label">Routing Number${bank.institution_metadata.routing_numbers.length > 1 ? 's' : ''}</span>
+            <span class="tech-id-value" title="Click to copy" onclick="copyTechId(this)">${bank.institution_metadata.routing_numbers.join(', ')}</span>
+          </div>` : ''}
         </div>
       </div>
 

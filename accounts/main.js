@@ -60,6 +60,7 @@ $(document).ready(async function () {
  * the currently selected detail view (if any).
  */
 async function reloadAndReselect() {
+  clearDetailCache();
   try {
     const banks = await apiFetchBanks(true);
     banksCache = banks;
