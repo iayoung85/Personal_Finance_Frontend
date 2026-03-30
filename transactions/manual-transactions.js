@@ -388,6 +388,9 @@ async function _updateManualTransaction(transactionId, accountId) {
       }
     }
 
+    // Refresh sidebar balances — backend may have recalculated current_balance
+    await loadAccounts();
+
   } catch (error) {
     _showManualTxnError(`Failed to update: ${error.message}`);
   }
@@ -793,6 +796,8 @@ async function saveManualTransaction() {
         await fetchBalanceHistory(selectedAccountId);
         renderTransactionTable();
       }
+      // Refresh sidebar balances — backend may have recalculated current_balance
+      await loadAccounts();
     } catch (e) {
       // If fetch fails, user still sees the transaction locally
       console.warn('Background fetch failed but transaction is locally cached:', e);
@@ -825,6 +830,9 @@ async function deleteManualTransaction(manualTransactionId) {
       await fetchBalanceHistory(selectedAccountId);
     }
     renderTransactionTable();
+
+    // Refresh sidebar balances — backend may have recalculated current_balance
+    await loadAccounts();
 
   } catch (error) {
     showStatus(`Failed to delete transaction: ${error.message}`, 'error');

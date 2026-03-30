@@ -336,6 +336,9 @@ async function _saveRowInlineEdits() {
       // Fallback: full refetch if server didn't return the object
       await _refreshAfterInlineEdit();
     }
+
+    // Refresh sidebar balances — backend may have recalculated current_balance
+    await loadAccounts();
   } catch (saveError) {
     showStatus(`Inline update failed: ${saveError.message}`, 'error');
   }

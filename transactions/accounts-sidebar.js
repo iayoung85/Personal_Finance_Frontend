@@ -695,6 +695,9 @@ function _openAddTrendingModal(accountId) {
         await fetchBalanceHistory(selectedAccountId);
       }
       renderTransactionTable();
+
+      // Refresh sidebar balances — backend may have recalculated current_balance
+      await loadAccounts();
     } catch (networkError) {
       showStatus(`Failed to create trending: ${networkError.message}`, 'error');
     }
