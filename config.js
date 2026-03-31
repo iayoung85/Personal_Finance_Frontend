@@ -54,38 +54,40 @@ function detectBackendUrl() {
   }
 
   const hostname = window.location.hostname;
-  // Try local ports if on localhost
+  // Try local ports if on localhost — race both in parallel, first healthy wins
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     const ports = [5501, 8000];
-    let checked = 0;
+    const HEALTH_TIMEOUT_MS = 2000;
+
     return new Promise((resolve) => {
-      function tryNext() {
-        if (checked >= ports.length) {
-          // Fallback to production if none work (silent)
-          resolve('https://lenient-present-terrapin.ngrok-free.app');
-          return;
-        }
-        const url = `http://${hostname}:${ports[checked]}`;
-        
-        // Add timeout to prevent hanging (3 seconds)
+      let resolved = false;
+      let failures = 0;
+
+      ports.forEach((port) => {
+        const url = `http://${hostname}:${port}`;
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
-        
-        fetch(`${url}/api/auth/health`, { signal: controller.signal, cache: 'no-cache' }).then(r => {
-          clearTimeout(timeoutId);
-          if (r.ok) {
-            resolve(url);
-          } else {
-            checked++;
-            tryNext();
-          }
-        }).catch((e) => {
-          clearTimeout(timeoutId);
-          checked++;
-          tryNext();
-        });
-      }
-      tryNext();
+        const timeoutId = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
+
+        fetch(`${url}/api/auth/health`, { signal: controller.signal, cache: 'no-cache' })
+          .then((r) => {
+            clearTimeout(timeoutId);
+            if (r.ok && !resolved) {
+              resolved = true;
+              resolve(url);
+            } else {
+              throw new Error('not ok');
+            }
+          })
+          .catch(() => {
+            clearTimeout(timeoutId);
+            failures++;
+            if (failures === ports.length && !resolved) {
+              // No local backend found — fall back to production
+              resolved = true;
+              resolve('https://lenient-present-terrapin.ngrok-free.app');
+            }
+          });
+      });
     });
   } else {
     // Production — backend is proxied through the permanent ngrok tunnel
