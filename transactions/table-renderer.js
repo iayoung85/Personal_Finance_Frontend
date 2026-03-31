@@ -86,6 +86,13 @@ function _splitMatchesCategoryFilter(splitTxn) {
   return true;
 }
 
+function _isUnmatchedPlaidLedgerRow(txn) {
+  const txnType = getTransactionType(txn);
+  return (txnType === TXN_TYPE.PLAID_CLEARED || txnType === TXN_TYPE.PLAID_PENDING)
+    && !txn.match_info
+    && !txn.matched_transaction_id;
+}
+
 
 function renderTransactionTable() {
   const container = document.getElementById('table-container');
@@ -105,6 +112,7 @@ function renderTransactionTable() {
   const showPendingEnabled = document.getElementById('show-pending-toggle').checked;
   const hideTransfers = document.getElementById('hide-transfers').checked;
   const showHiddenEnabled = document.getElementById('show-hidden-toggle').checked;
+  const showUnmatchedOnlyEnabled = document.getElementById('show-unmatched-toggle')?.checked;
   
   // Get selected optional fields
   const optionalFields = [];
@@ -146,6 +154,12 @@ function renderTransactionTable() {
     // Filter by overrides only if requested
     const showOverridesOnly = document.getElementById('show-overrides-only').checked;
     if (showOverridesOnly && !txn.is_override) {
+      return false;
+    }
+
+    // Narrow the ledger to only unmatched plaid rows when reconciliation
+    // review mode is active. This is intentionally table-only.
+    if (showUnmatchedOnlyEnabled && !_isUnmatchedPlaidLedgerRow(txn)) {
       return false;
     }
     

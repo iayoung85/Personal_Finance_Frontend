@@ -191,6 +191,12 @@ $(document).ready(async function() {
     renderTransactionTable();
   });
 
+  // Re-render when show-unmatched toggle changes
+  $(document).on('change', '#show-unmatched-toggle', function() {
+    setShowUnmatchedOnlyEnabled(this.checked);
+    renderTransactionTable();
+  });
+
   // Re-render when show-overrides-only toggle changes
   $(document).on('change', '#show-overrides-only', function() {
     renderTransactionTable();

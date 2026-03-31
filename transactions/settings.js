@@ -4,6 +4,23 @@
 // (optional fields, timezone, toggles) to/from backend.
 // ============================================================
 
+const SHOW_UNMATCHED_ONLY_STORAGE_KEY = 'pf_show_unmatched_only';
+
+function isShowUnmatchedOnlyEnabled() {
+  return localStorage.getItem(SHOW_UNMATCHED_ONLY_STORAGE_KEY) === 'true';
+}
+
+function setShowUnmatchedOnlyEnabled(enabled) {
+  localStorage.setItem(SHOW_UNMATCHED_ONLY_STORAGE_KEY, String(!!enabled));
+}
+
+function applyLocalViewerSettings() {
+  const showUnmatchedToggle = document.getElementById('show-unmatched-toggle');
+  if (showUnmatchedToggle) {
+    showUnmatchedToggle.checked = isShowUnmatchedOnlyEnabled();
+  }
+}
+
 async function saveSettings() {
   try {
     showStatus('Saving settings...', 'info');
@@ -15,6 +32,7 @@ async function saveSettings() {
     const timezone = document.getElementById('timezone').value;
     const hideTransfers = document.getElementById('hide-transfers').checked;
     const showOverridesOnly = document.getElementById('show-overrides-only').checked;
+    setShowUnmatchedOnlyEnabled(document.getElementById('show-unmatched-toggle')?.checked);
     
     const settings = {
       optional_fields: optionalFields,
@@ -68,36 +86,39 @@ async function loadSettings() {
     
   } catch (error) {
     console.error('Error loading settings:', error);
+    applySettings(null);
   }
 }
 
 function applySettings(settings) {
-  if (!settings) return;
+  const resolvedSettings = settings || {};
 
-  if (settings.timezone) {
-    document.getElementById('timezone').value = settings.timezone;
+  if (resolvedSettings.timezone) {
+    document.getElementById('timezone').value = resolvedSettings.timezone;
   }
   
-  if (settings.optional_fields && Array.isArray(settings.optional_fields)) {
+  if (resolvedSettings.optional_fields && Array.isArray(resolvedSettings.optional_fields)) {
     $('.field-checkbox').prop('checked', false);
-    settings.optional_fields.forEach(field => {
+    resolvedSettings.optional_fields.forEach(field => {
       $(`.field-checkbox[value="${field}"]`).prop('checked', true);
     });
   }
   
   // Apply hide_transfers setting (default to true if not set)
-  const hideTransfers = settings.hide_transfers !== undefined ? settings.hide_transfers : true;
+  const hideTransfers = resolvedSettings.hide_transfers !== undefined ? resolvedSettings.hide_transfers : true;
   document.getElementById('hide-transfers').checked = hideTransfers;
 
   // Apply show_overrides_only setting (default to false if not set)
-  const showOverridesOnly = settings.show_overrides_only !== undefined ? settings.show_overrides_only : false;
+  const showOverridesOnly = resolvedSettings.show_overrides_only !== undefined ? resolvedSettings.show_overrides_only : false;
   document.getElementById('show-overrides-only').checked = showOverridesOnly;
 
   // Apply show_pending setting (default to false if not set)
-  const showPending = settings.show_pending !== undefined ? settings.show_pending : false;
+  const showPending = resolvedSettings.show_pending !== undefined ? resolvedSettings.show_pending : false;
   document.getElementById('show-pending-toggle').checked = showPending;
 
   // Apply bills_future_days setting (default to 90 if not set)
-  const billsFutureDays = settings.bills_future_days !== undefined ? settings.bills_future_days : 90;
+  const billsFutureDays = resolvedSettings.bills_future_days !== undefined ? resolvedSettings.bills_future_days : 90;
   document.getElementById('bills-future-days').value = String(billsFutureDays);
+
+  applyLocalViewerSettings();
 }
