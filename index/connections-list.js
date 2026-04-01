@@ -378,6 +378,14 @@ const IndexConnectionsList = (() => {
    * @param {string|null} institutionId - Pre-selected institution (from picker).
    */
   function startRelink(bankId, bankName, institutionId = null) {
+    if (institutionId) {
+      // Coming from the institution picker — the user just chose which real
+      // bank this custom bank maps to.  Always ask what Plaid product they
+      // want because the existing manual accounts don't necessarily reflect
+      // the intended connection type.
+      _showLinkModeModal(bankId, bankName, institutionId);
+      return;
+    }
     const resolvedMode = _resolveRelinkMode(bankId);
     if (resolvedMode === 'ask') {
       _showLinkModeModal(bankId, bankName, institutionId);
@@ -1188,6 +1196,7 @@ const IndexConnectionsList = (() => {
     try {
       const response = await fetch(
         `${window.BACKEND_URL || 'http://localhost:8000'}/api/accounts/reference/popular-institutions`,
+        { headers: { 'ngrok-skip-browser-warning': 'true' } },
       );
       const data = await response.json();
       _renderInstitutionResults(data.institutions || []);
@@ -1204,6 +1213,7 @@ const IndexConnectionsList = (() => {
       try {
         const response = await fetch(
           `${window.BACKEND_URL || 'http://localhost:8000'}/api/accounts/reference/popular-institutions`,
+          { headers: { 'ngrok-skip-browser-warning': 'true' } },
         );
         const data = await response.json();
         _renderInstitutionResults(data.institutions || []);
@@ -1218,6 +1228,7 @@ const IndexConnectionsList = (() => {
     try {
       const response = await fetch(
         `${window.BACKEND_URL || 'http://localhost:8000'}/api/accounts/reference/search-institutions?q=${encodeURIComponent(query)}`,
+        { headers: { 'ngrok-skip-browser-warning': 'true' } },
       );
       const data = await response.json();
       const institutions = data.institutions || [];
