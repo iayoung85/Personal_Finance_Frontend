@@ -60,29 +60,10 @@ function _handleContextMenu(event) {
    || row.classList.contains('pending-separator-row')
    || row.classList.contains('zone-separator')) return;
 
-  // Read transaction metadata from data attributes
-  const txnId = row.dataset.txnId;
-  if (!txnId) return; // safety — rows without data-txn-id are non-actionable
+  const txnData = _buildContextTxnData(row);
+  if (!txnData) return;
 
   event.preventDefault();
-
-  const txnData = {
-    txnId,
-    source: row.dataset.source || '',
-    status: row.dataset.status || '',
-    pending: row.dataset.pending === 'true',
-    isBill: row.dataset.isBill === 'true',
-    billId: row.dataset.billId || '',
-    accountId: row.dataset.accountId || '',
-    amount: parseFloat(row.dataset.amount) || 0,
-    isSplit: row.dataset.isSplit === 'true',
-    name: row.dataset.txnDescription || '',
-    userCategory: row.dataset.userCategory || '',
-    merchantName: row.dataset.merchantName || '',
-    matchManualTxnId: row.dataset.matchManualTxnId || '',
-    isHidden: row.dataset.isHidden === 'true',
-    txnDate: row.dataset.txnDate || '',
-  };
 
   const menuItems = _buildMenuItems(txnData);
   if (menuItems.length === 0) return; // no actions available for this type
@@ -90,11 +71,104 @@ function _handleContextMenu(event) {
   _showContextMenu(event.clientX, event.clientY, menuItems, txnData);
 }
 
+function _buildContextTxnData(row) {
+  const txnId = row.dataset.txnId || '';
+  if (!txnId) return null;
+
+  const parentTxnId = row.dataset.parentTxnId || txnId;
+  const splitIndexRaw = row.dataset.splitIndex;
+  const splitIndex = splitIndexRaw !== undefined && splitIndexRaw !== ''
+    ? parseInt(splitIndexRaw, 10)
+    : null;
+
+  const parentTxn = transactions.find(txn => txn.transaction_id === parentTxnId)
+    || transactions.find(txn => txn.transaction_id === txnId)
+    || null;
+
+  let localTransaction = parentTxn;
+  let relatedData = null;
+  let relatedTitle = '';
+
+  if (Number.isInteger(splitIndex)) {
+    const splitTxn = parentTxn?.splits?.[splitIndex];
+    if (!splitTxn) return null;
+    localTransaction = splitTxn;
+    relatedData = parentTxn;
+    relatedTitle = 'Parent Transaction';
+  }
+
+  const fallbackTxn = localTransaction || parentTxn || {};
+
+  return {
+    txnId,
+    source: row.dataset.source || fallbackTxn.source || '',
+    status: row.dataset.status || fallbackTxn.status || '',
+    pending: row.dataset.pending
+      ? row.dataset.pending === 'true'
+      : !!(fallbackTxn.pending || parentTxn?.pending),
+    isBill: row.dataset.isBill
+      ? row.dataset.isBill === 'true'
+      : !!(fallbackTxn.is_bill || parentTxn?.is_bill),
+    billId: row.dataset.billId || fallbackTxn.bill_id || parentTxn?.bill_id || '',
+    accountId: row.dataset.accountId
+      || fallbackTxn.account_id
+      || parentTxn?.account_id
+      || fallbackTxn.plaid_account_id
+      || parentTxn?.plaid_account_id
+      || '',
+    amount: row.dataset.amount !== undefined && row.dataset.amount !== ''
+      ? (parseFloat(row.dataset.amount) || 0)
+      : (fallbackTxn.amount || 0),
+    isSplit: row.dataset.isSplit === 'true' || !!parentTxn?.is_split,
+    isSplitChild: Number.isInteger(splitIndex),
+    splitIndex,
+    name: row.dataset.txnDescription
+      || fallbackTxn.description
+      || fallbackTxn.name
+      || parentTxn?.description
+      || parentTxn?.name
+      || '',
+    userCategory: row.dataset.userCategory || fallbackTxn.user_category || parentTxn?.user_category || '',
+    merchantName: row.dataset.merchantName || fallbackTxn.merchant_name || parentTxn?.merchant_name || '',
+    matchManualTxnId: row.dataset.matchManualTxnId || parentTxn?.match_info?.matched_txn_id || '',
+    isHidden: row.dataset.isHidden
+      ? row.dataset.isHidden === 'true'
+      : !!(fallbackTxn.is_hidden || parentTxn?.is_hidden),
+    txnDate: row.dataset.txnDate || fallbackTxn.date || parentTxn?.date || '',
+    localTransaction,
+    parentTransaction: parentTxn,
+    relatedData,
+    relatedTitle,
+  };
+}
+
+function _appendInspectMenuItem(items, txnData) {
+  if (!txnData?.localTransaction && !txnData?.relatedData) {
+    return items;
+  }
+
+  if (items.length > 0) {
+    items[items.length - 1].separator = true;
+  }
+
+  items.push({
+    label: '🔍 Inspect Data',
+    action: 'inspect-data',
+    separator: false,
+  });
+
+  return items;
+}
+
 // ─── Build menu items based on transaction type ───────────────
 // Visibility matrix from the implementation plan in transactions.md
 
 function _buildMenuItems(txnData) {
   const { isBill, isSplit } = txnData;
+
+  if (isSplit) {
+    return _appendInspectMenuItem([], txnData);
+  }
 
   // Classify once via the centralized type classifier
   const txnType = getTransactionType(txnData);
@@ -115,8 +189,8 @@ function _buildMenuItems(txnData) {
 
   const isInvestmentTrending = txnType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING;
 
-  // Opening balance, reconciliation, and split children have no context menu
-  if (isOpeningBalance || isReconciliation || isSplit) return [];
+  // Opening balance and reconciliation rows remain non-actionable.
+  if (isOpeningBalance || isReconciliation) return [];
 
   const items = [];
 
@@ -125,7 +199,7 @@ function _buildMenuItems(txnData) {
     const account = accounts.find(a => a.account_id === txnData.accountId);
     const isLinked = account && account.connection_status === 'linked';
     const txnMonth = (txnData.txnDate || '').slice(0, 7);
-    const currentMonth = new Date().toISOString().slice(0, 7);
+    const currentMonth = toISODateStr(new Date()).slice(0, 7);
     const isCurrentMonth = txnMonth === currentMonth;
     const isLocked = isLinked && isCurrentMonth;
 
@@ -140,7 +214,7 @@ function _buildMenuItems(txnData) {
       action: 'add-trending',
       separator: false,
     });
-    return items;
+    return _appendInspectMenuItem(items, txnData);
   }
 
   // Orphaned transactions get the same edit capability as manual, plus
@@ -167,7 +241,7 @@ function _buildMenuItems(txnData) {
       separator: true,
       destructive: true,
     });
-    return items;
+    return _appendInspectMenuItem(items, txnData);
   }
 
   // Missing transactions get similar quick-fix options
@@ -183,7 +257,7 @@ function _buildMenuItems(txnData) {
       separator: false,
       destructive: true,
     });
-    return items;
+    return _appendInspectMenuItem(items, txnData);
   }
 
   // Matched transactions get approve actions, bill, and transfer
@@ -208,7 +282,7 @@ function _buildMenuItems(txnData) {
       action: 'make-transfer',
       separator: false,
     });
-    return items;
+    return _appendInspectMenuItem(items, txnData);
   }
 
   // ── Virtual BILL_FUTURE gets its own menu: mark paid, modify, skip ──
@@ -233,7 +307,7 @@ function _buildMenuItems(txnData) {
       separator: false,
       destructive: true,
     });
-    return items;
+    return _appendInspectMenuItem(items, txnData);
   }
 
   // "Modify" — manual transactions, MANUAL_FUTURE, and PLAID_CONVERTED
@@ -299,18 +373,7 @@ function _buildMenuItems(txnData) {
     });
   }
 
-  // "Inspect Data" — any plaid-sourced row (cleared, pending, converted).
-  // Shows Plaid's raw blob side-by-side with the app's working data.
-  if (isPlaid || isPlaidConverted) {
-    if (items.length > 0) {
-      items[items.length - 1].separator = true;
-    }
-    items.push({
-      label: '🔍 Inspect Data',
-      action: 'inspect-data',
-      separator: false,
-    });
-  }
+  _appendInspectMenuItem(items, txnData);
 
   // Remove trailing separator if delete wasn't added
   if (items.length > 0 && !items[items.length - 1].destructive && items[items.length - 1].action !== 'inspect-data') {
@@ -730,7 +793,7 @@ async function _handleContextUnhide(txnData) {
  */
 function _handleContextInspectData(txnData) {
   if (typeof openInspectDataModal === 'function') {
-    openInspectDataModal(txnData.txnId);
+    openInspectDataModal(txnData);
   } else {
     showStatus('Inspect data modal not available', 'error');
   }

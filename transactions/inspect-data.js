@@ -6,11 +6,11 @@
 // ============================================================
 
 /**
- * Open the inspect data modal for a given transaction.
- * Fetches raw + app data from the backend, then renders
- * a two-column comparison view.
+ * Open the inspect data modal for a ledger row.
+ * Plaid-backed rows fetch the immutable raw blob; all other rows render
+ * from the transaction data already loaded into the client.
  */
-async function openInspectDataModal(transactionId) {
+async function openInspectDataModal(inspectRequest) {
   const overlay = document.getElementById('inspect-data-modal');
   if (!overlay) return;
 
@@ -18,22 +18,50 @@ async function openInspectDataModal(transactionId) {
   bodyEl.innerHTML = '<p class="inspect-loading">Loading transaction data…</p>';
   overlay.classList.remove('hidden');
 
-  try {
-    const response = await authenticatedFetch(
-      `${BACKEND_URL}/api/transactions/raw/${encodeURIComponent(transactionId)}`
-    );
+  const inspectContext = _normalizeInspectRequest(inspectRequest);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      bodyEl.innerHTML = `<p class="inspect-error">Failed to load: ${errorData.error || response.statusText}</p>`;
-      return;
-    }
+  let sourceTitle = inspectContext.sourceTitle;
+  let sourceData = inspectContext.sourceData;
+  let sourceEmptyMessage = inspectContext.sourceEmptyMessage;
+  let sourceErrorMessage = '';
+  let appData = _buildInspectWorkingData(inspectContext.localTransaction, inspectContext);
 
-    const { plaid_raw: plaidRaw, app_data: appData } = await response.json();
-    _renderInspectPanels(bodyEl, plaidRaw, appData);
-  } catch (networkError) {
-    bodyEl.innerHTML = `<p class="inspect-error">Network error: ${networkError.message}</p>`;
+  if (!appData && !inspectContext.shouldFetchPlaidRaw && !sourceData) {
+    bodyEl.innerHTML = '<p class="inspect-error">Transaction data is not available in the current ledger view.</p>';
+    return;
   }
+
+  if (inspectContext.shouldFetchPlaidRaw && inspectContext.transactionId) {
+    try {
+      const response = await authenticatedFetch(
+        `${BACKEND_URL}/api/transactions/raw/${encodeURIComponent(inspectContext.transactionId)}`
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        sourceErrorMessage = errorData.error || response.statusText || 'Failed to load Plaid raw data';
+      } else {
+        const { plaid_raw: plaidRaw, app_data: fetchedAppData } = await response.json();
+        sourceTitle = 'Plaid Raw Data';
+        sourceData = plaidRaw;
+        sourceEmptyMessage = 'No raw Plaid blob stored for this transaction. This transaction was synced before the raw-blob column was added, or no Plaid source payload is available.';
+        if (fetchedAppData) {
+          appData = _buildInspectWorkingData(fetchedAppData, inspectContext);
+        }
+      }
+    } catch (networkError) {
+      sourceErrorMessage = `Network error: ${networkError.message}`;
+    }
+  }
+
+  _renderInspectPanels(bodyEl, {
+    sourceTitle,
+    sourceData,
+    sourceEmptyMessage,
+    sourceErrorMessage,
+    workingTitle: inspectContext.workingTitle,
+    workingData: appData,
+  });
 }
 
 function closeInspectDataModal() {
@@ -43,29 +71,130 @@ function closeInspectDataModal() {
 
 // ─── Rendering helpers ────────────────────────────────────────
 
-function _renderInspectPanels(containerEl, plaidRaw, appData) {
+function _renderInspectPanels(containerEl, options) {
+  const {
+    sourceTitle,
+    sourceData,
+    sourceEmptyMessage,
+    sourceErrorMessage,
+    workingTitle,
+    workingData,
+  } = options;
+
   let html = '<div class="inspect-panels">';
 
-  // Left panel: Plaid raw blob
+  // Left panel: source data (Plaid raw, parent transaction, or empty state)
   html += '<div class="inspect-panel">';
-  html += '<h3 class="inspect-panel-title">Plaid Raw Data</h3>';
-  if (plaidRaw) {
-    html += _renderObjectAsTree(plaidRaw);
+  html += `<h3 class="inspect-panel-title">${_escapeHtml(sourceTitle)}</h3>`;
+  if (sourceData) {
+    html += _renderObjectAsTree(sourceData);
+  } else if (sourceErrorMessage) {
+    html += `<p class="inspect-error">${_escapeHtml(sourceErrorMessage)}</p>`;
   } else {
-    html += '<p class="inspect-empty">No raw Plaid blob stored for this transaction. '
-          + 'This transaction was synced before the raw-blob column was added, '
-          + 'or it is not a Plaid-sourced transaction.</p>';
+    html += `<p class="inspect-empty">${_escapeHtml(sourceEmptyMessage)}</p>`;
   }
   html += '</div>';
 
   // Right panel: App working data
   html += '<div class="inspect-panel">';
-  html += '<h3 class="inspect-panel-title">App Working Data</h3>';
-  html += _renderObjectAsTree(appData);
+  html += `<h3 class="inspect-panel-title">${_escapeHtml(workingTitle)}</h3>`;
+  if (workingData) {
+    html += _renderObjectAsTree(workingData);
+  } else {
+    html += '<p class="inspect-empty">No ledger data is available for this transaction.</p>';
+  }
   html += '</div>';
 
   html += '</div>';
   containerEl.innerHTML = html;
+}
+
+function _normalizeInspectRequest(inspectRequest) {
+  if (typeof inspectRequest === 'string') {
+    const localTransaction = transactions.find(txn => txn.transaction_id === inspectRequest) || null;
+    return {
+      transactionId: inspectRequest,
+      localTransaction,
+      parentTransaction: null,
+      sourceTitle: 'Plaid Raw Data',
+      sourceData: null,
+      sourceEmptyMessage: 'No immutable source data is available for this transaction.',
+      workingTitle: 'Ledger Transaction Data',
+      shouldFetchPlaidRaw: localTransaction ? _isPlaidInspectable(localTransaction) : true,
+      inspectKind: 'transaction',
+      isSplitRow: false,
+    };
+  }
+
+  const request = inspectRequest || {};
+  const localTransaction = request.localTransaction
+    || transactions.find(txn => txn.transaction_id === request.txnId || txn.transaction_id === request.transactionId)
+    || null;
+  const parentTransaction = request.parentTransaction || null;
+  const isSplitRow = !!request.isSplit;
+  const isSplitChild = !!request.isSplitChild;
+  const shouldFetchPlaidRaw = !isSplitRow && _isPlaidInspectable(parentTransaction || localTransaction);
+
+  let sourceTitle = 'Source Data';
+  let sourceData = request.relatedData || null;
+  let sourceEmptyMessage = 'No immutable source blob is available for this transaction type. Showing the ledger data we currently have in memory.';
+
+  if (shouldFetchPlaidRaw) {
+    sourceTitle = 'Plaid Raw Data';
+    sourceData = null;
+    sourceEmptyMessage = 'No raw Plaid blob stored for this transaction.';
+  } else if (request.relatedData) {
+    sourceTitle = request.relatedTitle || 'Related Data';
+    sourceEmptyMessage = 'No related transaction data is available.';
+  }
+
+  return {
+    transactionId: request.txnId || request.transactionId || localTransaction?.transaction_id || '',
+    localTransaction,
+    parentTransaction,
+    sourceTitle,
+    sourceData,
+    sourceEmptyMessage,
+    workingTitle: isSplitChild ? 'Split Entry Data' : 'Ledger Transaction Data',
+    shouldFetchPlaidRaw,
+    inspectKind: isSplitChild ? 'split-child' : 'transaction',
+    isSplitRow,
+  };
+}
+
+function _buildInspectWorkingData(localTransaction, inspectContext) {
+  if (!localTransaction) return null;
+
+  let rowType = null;
+  try {
+    if (inspectContext.isSplitRow) {
+      rowType = TXN_TYPE.SPLIT_CHILD;
+    } else {
+      rowType = getTransactionType(localTransaction);
+    }
+  } catch (error) {
+    rowType = null;
+  }
+
+  return {
+    ...localTransaction,
+    _inspect_meta: {
+      inspect_kind: inspectContext.inspectKind,
+      row_type: rowType,
+      is_split_row: !!inspectContext.isSplitRow,
+      is_transfer: !!(localTransaction.transfer_pair_id || isTransferCategory(localTransaction.user_category)),
+      parent_transaction_id: inspectContext.parentTransaction?.transaction_id || null,
+      data_source: inspectContext.shouldFetchPlaidRaw ? 'frontend cache + optional plaid raw fetch' : 'frontend cache',
+    },
+  };
+}
+
+function _isPlaidInspectable(txn) {
+  if (!txn) return false;
+  const txnType = getTransactionType(txn);
+  return txnType === TXN_TYPE.PLAID_CLEARED
+    || txnType === TXN_TYPE.PLAID_PENDING
+    || txnType === TXN_TYPE.PLAID_CONVERTED;
 }
 
 /**
