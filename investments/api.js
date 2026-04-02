@@ -38,6 +38,10 @@ async function _refreshAccessToken() {
       const data = await response.json();
       authToken = data.access_token;
       localStorage.setItem('authToken', authToken);
+      if (data.refresh_token) {
+        refreshToken = data.refresh_token;
+        localStorage.setItem('refreshToken', refreshToken);
+      }
       return true;
     }
   } catch (error) {

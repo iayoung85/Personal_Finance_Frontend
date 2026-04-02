@@ -30,6 +30,10 @@ async function refreshAccessToken() {
       const data = await response.json();
       token = data.access_token;
       localStorage.setItem('authToken', token);
+      if (data.refresh_token) {
+        refreshToken = data.refresh_token;
+        localStorage.setItem('refreshToken', refreshToken);
+      }
       resetIdleTimeout();
       return true;
     }

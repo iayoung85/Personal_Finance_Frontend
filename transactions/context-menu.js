@@ -247,6 +247,11 @@ function _buildMenuItems(txnData) {
   // Missing transactions get similar quick-fix options
   if (isMissing) {
     items.push({
+      label: '✏️ Modify',
+      action: 'modify',
+      separator: false,
+    });
+    items.push({
       label: '🔗 Match to Transaction',
       action: 'match-to-adjacent',
       separator: false,
