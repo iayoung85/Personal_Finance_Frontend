@@ -474,10 +474,7 @@ function attachCategoryDropdownListeners() {
         }
       } else {
         // Enter (with dropdown closed) = Apply Override
-        const overrideBtn = $(input).closest('.category-cell').find('.category-override');
-        if (overrideBtn.length) {
-          overrideBtn.click();
-        }
+        _applyCategoryFromInput(input);
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -514,7 +511,34 @@ function attachCategoryDropdownListeners() {
     }, 200);
   });
 
-  // ===== Override button click handler =====
+  // ===== Apply category from input (Enter key or legacy override button) =====
+  function _applyCategoryFromInput(inputEl) {
+    const input = $(inputEl);
+    const txnId = input.data('txn-id');
+    const accountId = input.data('account-id');
+    const fullValue = (input.val() || '').trim();
+
+    const resolved = _resolveAutocompleteCategory(fullValue);
+    if (resolved.error) {
+      showStatus(resolved.error, 'warning');
+      return;
+    }
+
+    if (resolved.isTransfer && resolved.account) {
+      _applyTransferAssignment(txnId, accountId, resolved.account);
+      return;
+    }
+
+    const committedValue = (input.data('committedCategoryValue') || '').trim();
+    if (resolved.value === committedValue) {
+      return;
+    }
+
+    const parsed = parseCategoryString(resolved.value);
+    applyOverride(txnId, accountId, parsed.primary, parsed.detailed);
+  }
+
+  // ===== Override button click handler (kept for backward compat) =====
   $(document).on('click', '.category-override', function() {
     const txnId = $(this).data('txn-id');
     const accountId = $(this).data('account-id');

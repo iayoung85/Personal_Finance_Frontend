@@ -363,21 +363,21 @@ function renderTransactionTable() {
   html += '<th class="th-description">Description</th>';
   
   html += '<th class="th-category">Category</th>';
-  if (optionalFields.includes('source')) html += '<th>Type</th>';
+  if (optionalFields.includes('source')) html += '<th class="th-type">Type</th>';
   
   // Optional column headers
-  if (optionalFields.includes('payment_channel')) html += '<th>Channel</th>';
-  if (optionalFields.includes('authorized_datetime')) html += '<th>Authorized</th>';
-  if (optionalFields.includes('personal_finance_category')) html += '<th>Plaid Category</th>';
+  if (optionalFields.includes('payment_channel')) html += '<th class="th-channel">Channel</th>';
+  if (optionalFields.includes('authorized_datetime')) html += '<th class="th-authorized">Authorized</th>';
+  if (optionalFields.includes('personal_finance_category')) html += '<th class="th-plaid-category">Plaid Category</th>';
   
   // Amount is always pinned toward the right edge of the table,
   // regardless of single-account vs all-accounts view.
-  html += '<th>Amount</th>';
+  html += '<th class="th-amount">Amount</th>';
   if (showLedgerColumn) {
-    html += '<th>Balance Ledger</th>';
+    html += '<th class="th-ledger">Balance Ledger</th>';
   }
   
-  html += '<th style="width: 40px;"></th>'; // Delete button column
+  html += '<th style="width: 24px;"></th>'; // Action button column
 
   html += '</tr></thead>';
   
@@ -637,7 +637,7 @@ function renderTransactionTable() {
             const displayDetailed = formatCategoryDisplay(trimmed);
             plaidCategoryDisplay = `${displayPrimary}${displayDetailed ? ': ' + displayDetailed : ''}`;
           }
-          html += `<td>${escapeHtml(plaidCategoryDisplay)}</td>`;
+          html += `<td class="plaid-category-cell" title="${escapeHtml(plaidCategoryDisplay)}">${escapeHtml(plaidCategoryDisplay)}</td>`;
         }
         
         // Add split action badges on first row only
@@ -863,8 +863,9 @@ function renderTransactionTable() {
         });
       } else if (txn.authorized_date) {
         authDisplay = txn.authorized_date;
+        authTooltip = txn.authorized_date;
       }
-      html += `<td${authTooltip ? ` title="${escapeHtml(authTooltip)}"` : ''}>${authDisplay}</td>`;
+      html += `<td class="auth-date-cell"${authTooltip ? ` title="${escapeHtml(authTooltip)}"` : ''}>${authDisplay}</td>`;
     }
     if (optionalFields.includes('personal_finance_category')) {
       let plaidCategoryDisplay = '';
@@ -877,7 +878,7 @@ function renderTransactionTable() {
         const displayDetailed = formatCategoryDisplay(trimmed);
         plaidCategoryDisplay = `${displayPrimary}${displayDetailed ? ': ' + displayDetailed : ''}`;
       }
-      html += `<td>${escapeHtml(plaidCategoryDisplay)}</td>`;
+      html += `<td class="plaid-category-cell" title="${escapeHtml(plaidCategoryDisplay)}">${escapeHtml(plaidCategoryDisplay)}</td>`;
     }
 
     // Amount is always pinned toward the right edge

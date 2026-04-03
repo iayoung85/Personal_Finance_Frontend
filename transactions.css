@@ -635,6 +635,26 @@ th.th-category {
 th.th-description {
   min-width: 200px;
 }
+th.th-amount {
+  width: 60px;
+  text-align: right;
+}
+th.th-ledger {
+  width: 70px;
+  text-align: right;
+}
+th.th-type {
+  width: 60px;
+}
+th.th-channel {
+  width: 50px;
+}
+th.th-authorized {
+  width: 80px;
+}
+th.th-plaid-category {
+  width: 140px;
+}
 td {
   padding: 3px 8px;
   border-bottom: 1px solid var(--border-subtle);
@@ -717,14 +737,7 @@ td {
   vertical-align: middle;
 }
 td.description-column {
-  min-width: 200px;
-  max-width: 450px;
   overflow: hidden;
-  width: 40%;
-}
-/* Ensure category column remains readable: reserve minimum width */
-td.category-column {
-  min-width: 290px;
 }
 /* The inner category cell should allow its controls to layout correctly */
 td.category-column .category-cell {
@@ -1202,6 +1215,8 @@ tr:hover {
 
 .transaction-scroll-pane table {
   margin-top: 0;
+  table-layout: fixed;
+  width: 100%;
 }
 
 /* Sticky header inside scroll pane */
@@ -2757,12 +2772,12 @@ tr:hover {
 
 .category-buttons {
   display: inline-flex;
-  gap: 2px;
+  flex-direction: column;
+  gap: 1px;
   flex-shrink: 0;
-  align-items: center;
+  align-items: stretch;
 }
 
-.category-override,
 .category-rule,
 .category-split {
   font-size: 9px;
@@ -2776,14 +2791,12 @@ tr:hover {
   transition: all 0.15s;
 }
 
-.category-override:hover,
 .category-rule:hover,
 .category-split:hover {
   background: var(--bg-hover);
   border-color: var(--border-strong);
 }
 
-.category-override:active,
 .category-rule:active,
 .category-split:active {
   background: var(--bg-hover);
@@ -3752,8 +3765,6 @@ tr:hover {
   font-weight: 500;
   white-space: nowrap;
   color: var(--color-success);
-  width: 110px;
-  max-width: 120px;
 }
 
 .ledger-amount-cell {
@@ -3761,8 +3772,6 @@ tr:hover {
   font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
   font-size: 12px;
   white-space: nowrap;
-  width: 100px;
-  max-width: 120px;
 }
 
 .ledger-negative {
@@ -4642,13 +4651,12 @@ td.inline-staged {
    Transfer date-range cells opt out via their own class. */
 td.date-column {
   white-space: nowrap;
-  min-width: 90px;
-  width: 90px;
+  width: 85px;
+  overflow: hidden;
 }
 th.th-date {
   white-space: nowrap;
-  min-width: 90px;
-  width: 90px;
+  width: 85px;
 }
 
 /* Description input stretches to fill */
@@ -4700,6 +4708,21 @@ th.th-date {
   color: var(--text-muted, #999);
   font-style: italic;
   font-size: 0.92em;
+}
+
+.auth-date-cell {
+  cursor: default;
+  white-space: nowrap;
+}
+
+.plaid-category-cell {
+  min-width: 75px;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.92em;
+  cursor: default;
 }
 
 

@@ -43,7 +43,7 @@ function _buildCategoryAutocomplete(txnId, accountId, categoryValue, placeholder
     <div class="category-cell">
       <div class="category-autocomplete-wrap" data-txn-id="${txnId}">
         <input type="text" class="category-autocomplete" data-txn-id="${txnId}" data-account-id="${accountId}"
-               value="${escapeHtml(categoryValue)}" placeholder="${escapeHtml(placeholder)}"
+               value="${escapeHtml(categoryValue)}" placeholder="${escapeHtml(placeholder)}" title="${escapeHtml(categoryValue)}"
                autocomplete="off" spellcheck="false">
         <div class="category-ac-list" data-txn-id="${txnId}"></div>
       </div>
@@ -52,14 +52,6 @@ function _buildCategoryAutocomplete(txnId, accountId, categoryValue, placeholder
       </div>
     </div>
   `;
-}
-
-
-/**
- * Convenience: the ✓ "apply category" button used by most renderers.
- */
-function _confirmButton(txnId, accountId) {
-  return `<button class="category-override" data-txn-id="${txnId}" data-account-id="${accountId}" title="Apply category change">✓</button>`;
 }
 
 
@@ -141,10 +133,7 @@ function _renderScheduledRow(ctx) {
 
   const badge = '<span class="source-badge scheduled" title="Scheduled future transaction">📅</span> ';
 
-  let buttons = '';
-  if (!scheduledIsTransfer) {
-    buttons += _confirmButton(ctx.txnId, ctx.accountId);
-  }
+  const buttons = '';
 
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
@@ -177,9 +166,6 @@ function _renderVirtualBillRow(ctx) {
   const badge = `<span class="source-badge scheduled bill-virtual" data-tooltip="${hoverTitle}">📅</span> `;
 
   let buttons = '';
-  if (!scheduledIsTransfer) {
-    buttons += _confirmButton(ctx.txnId, ctx.accountId);
-  }
   buttons += `<button class="bill-edit-btn" data-bill-id="${escapeHtml(ctx.txn.bill_id || '')}" title="Edit this bill template">📋 Edit Bill</button>`;
 
   const categoryCell = _buildCategoryAutocomplete(
@@ -219,10 +205,7 @@ function _renderMaterializedBillRow(ctx) {
 
   const badge = `<span class="source-badge scheduled bill-materialized" data-tooltip="${hoverTitle}">📝</span> `;
 
-  let buttons = '';
-  if (!scheduledIsTransfer) {
-    buttons += _confirmButton(ctx.txnId, ctx.accountId);
-  }
+  const buttons = '';
 
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
@@ -247,7 +230,7 @@ function _renderMaterializedBillRow(ctx) {
 
 
 function _renderMissingRow(ctx) {
-  const buttons = _confirmButton(ctx.txnId, ctx.accountId);
+  const buttons = '';
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
     'Type to search categories…', buttons
@@ -287,8 +270,7 @@ function _renderMissingRow(ctx) {
 
 
 function _renderMatchedRow(ctx) {
-  const buttons = _confirmButton(ctx.txnId, ctx.accountId)
-    + `<button class="unmatch-btn" data-txn-id="${escapeHtml(ctx.txnId)}" onclick="unmatchScheduledTransaction('${escapeHtml(ctx.txnId)}')" title="Undo match — revert to missing + unhide plaid transaction">Unmatch</button>`;
+  const buttons = `<button class="unmatch-btn" data-txn-id="${escapeHtml(ctx.txnId)}" onclick="unmatchScheduledTransaction('${escapeHtml(ctx.txnId)}')" title="Undo match — revert to missing + unhide plaid transaction">Unmatch</button>`;
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
     'Type to search categories…', buttons
@@ -320,8 +302,7 @@ function _renderMatchedRow(ctx) {
 function _renderMatchedPairRow(ctx) {
   const matchInfo = ctx.txn.match_info;
   const unmatchId = escapeHtml(matchInfo.matched_txn_id);
-  const buttons = _confirmButton(ctx.txnId, ctx.accountId)
-    + `<button class="unmatch-btn" data-txn-id="${unmatchId}" onclick="unmatchScheduledTransaction('${unmatchId}')" title="Undo match — revert manual to missing + detach from plaid">Unmatch</button>`;
+  const buttons = `<button class="unmatch-btn" data-txn-id="${unmatchId}" onclick="unmatchScheduledTransaction('${unmatchId}')" title="Undo match — revert manual to missing + detach from plaid">Unmatch</button>`;
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
     'Type to search categories…', buttons
@@ -351,7 +332,7 @@ function _renderMatchedPairRow(ctx) {
 
 
 function _renderOrphanedRow(ctx) {
-  const buttons = _confirmButton(ctx.txnId, ctx.accountId);
+  const buttons = '';
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
     'Type to search categories…', buttons
@@ -385,7 +366,6 @@ function _renderPlaidConvertedRow(ctx) {
     : '';
 
   const buttons = clearOverrideBtn
-    + _confirmButton(ctx.txnId, ctx.accountId)
     + `<button class="category-rule" data-txn-id="${ctx.txnId}" data-account-id="${ctx.accountId}">Rule</button>`
     + `<button class="category-split" data-txn-id="${ctx.txnId}" onclick="window.splitModalTxnId='${escapeHtml(ctx.txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(ctx.txnId)}')); return false;" title="Split this transaction">Split</button>`;
 
@@ -412,8 +392,7 @@ function _renderPlaidConvertedRow(ctx) {
 
 
 function _renderTransferRow(ctx) {
-  const buttons = _confirmButton(ctx.txnId, ctx.accountId)
-    + `<button class="transfer-unlink-btn" data-txn-id="${escapeHtml(ctx.txnId)}" onclick="unlinkTransfer('${escapeHtml(ctx.txnId)}')" title="Break this transfer pair">Unlink</button>`;
+  const buttons = `<button class="transfer-unlink-btn" data-txn-id="${escapeHtml(ctx.txnId)}" onclick="unlinkTransfer('${escapeHtml(ctx.txnId)}')" title="Break this transfer pair">Unlink</button>`;
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
     'Type [ to reassign transfer…', buttons
@@ -436,7 +415,6 @@ function _renderManualClearedRow(ctx) {
     : '';
 
   const buttons = clearOverrideBtn
-    + _confirmButton(ctx.txnId, ctx.accountId)
     + `<button class="category-rule" data-txn-id="${ctx.txnId}" data-account-id="${ctx.accountId}">Rule</button>`
     + `<button class="category-split" data-txn-id="${ctx.txnId}" onclick="window.splitModalTxnId='${escapeHtml(ctx.txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(ctx.txnId)}')); return false;" title="Split this transaction">Split</button>`;
 
@@ -473,7 +451,6 @@ function _renderDefaultRow(ctx) {
     : '';
 
   const buttons = clearOverrideBtn
-    + _confirmButton(ctx.txnId, ctx.accountId)
     + `<button class="category-rule" data-txn-id="${ctx.txnId}" data-account-id="${ctx.accountId}">Rule</button>`
     + `<button class="category-split" data-txn-id="${ctx.txnId}" onclick="window.splitModalTxnId='${escapeHtml(ctx.txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(ctx.txnId)}')); return false;" title="Split this transaction">Split</button>`;
 
