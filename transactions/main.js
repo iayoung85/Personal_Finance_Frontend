@@ -106,65 +106,62 @@ $(document).ready(async function() {
     renderTransactionTable();
   });
 
-  // Save memo via button click — stage for batch submission
-  $(document).on('click', '.memo-save', function() {
-    const button = $(this);
-    const txnId = button.data('txn-id');
-    const input = button.closest('td').find('.memo-input');
-    const memoValue = input.val();
-
-    if (txnId && typeof stageBatchEdit === 'function') {
-      stageBatchEdit(String(txnId), { user_memo: memoValue });
-      showStatus('Memo staged', 'success');
-      setTimeout(() => clearStatus(), 1500);
-    } else {
-      // Fallback to immediate save if batch manager is unavailable
-      saveTransactionMemo(txnId, memoValue, button);
+  // ── Inline memo editing (click-to-edit in the description column) ──
+  // Clicking the memo text span opens an inline input; blur auto-saves.
+  // Most memo-open clicks now route through inline-edit.js (any non-merchant
+  // click in the description cell), but this handler catches direct clicks
+  // on the memo span itself for rows without data-field="description".
+  $(document).on('click', '.txn-memo-text', function(e) {
+    if (!e.target.closest('td[data-field="description"]')) {
+      _openInlineMemoEditor(this);
     }
   });
 
-  // Tab handler for memo input — stage memo via batch manager and advance
-  $(document).on('keydown', '.memo-input', function(e) {
+  // Tab handler for inline memo input — stage memo and advance to same row's category
+  $(document).on('keydown', '.inline-memo-input', function(e) {
     if (e.key === 'Tab') {
       e.preventDefault();
       const memoInputEl = $(this);
-      const memoValue = memoInputEl.val();
-      const currentRow = memoInputEl.closest('tr');
-      const memoTxnId = currentRow.data('txn-id');
+      _commitInlineMemo(memoInputEl);
 
-      // Stage the memo change for bulk submission
-      if (memoTxnId && typeof stageBatchEdit === 'function') {
-        stageBatchEdit(String(memoTxnId), { user_memo: memoValue });
-      }
-
-      // Advance to next row's category input
-      const nextRow = currentRow.next('tr');
-      if (nextRow.length) {
-        const nextCategoryInput = nextRow.find('.category-autocomplete');
-        if (nextCategoryInput.length) {
-          nextCategoryInput.focus();
+      if (e.shiftKey) {
+        // Shift+Tab from memo → previous row's category
+        const currentRow = memoInputEl.closest('tr');
+        const prevRow = currentRow.prev('tr');
+        if (prevRow.length) {
+          const prevCategoryInput = prevRow.find('.category-autocomplete');
+          if (prevCategoryInput.length) {
+            prevCategoryInput.focus();
+          }
+        }
+      } else {
+        // Tab from memo → same row's category input
+        const currentRow = memoInputEl.closest('tr');
+        const categoryInput = currentRow.find('.category-autocomplete');
+        if (categoryInput.length) {
+          categoryInput.focus();
         }
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const enterMemoInput = $(this);
-      const enterMemoValue = enterMemoInput.val();
-      const enterRow = enterMemoInput.closest('tr');
-      const enterTxnId = enterRow.data('txn-id');
-
-      // Stage the memo change for bulk submission
-      if (enterTxnId && typeof stageBatchEdit === 'function') {
-        stageBatchEdit(String(enterTxnId), { user_memo: enterMemoValue });
-        showStatus('Memo staged', 'success');
-        setTimeout(() => clearStatus(), 1500);
-      } else {
-        // Fallback: click the save button directly
-        const button = enterMemoInput.closest('td').find('.memo-save');
-        if (button.length) {
-          button.click();
-        }
-      }
+      _commitInlineMemo(enterMemoInput);
+      enterMemoInput[0].blur();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      _closeInlineMemoEditor($(this), true);
     }
+  });
+
+  // Auto-save memo on blur
+  $(document).on('blur', '.inline-memo-input', function() {
+    const memoInputEl = $(this);
+    // Small delay to allow Tab handler to fire first
+    setTimeout(() => {
+      if (document.activeElement !== memoInputEl[0]) {
+        _commitInlineMemo(memoInputEl);
+      }
+    }, 80);
   });
 
   // Navigate to bills.html when "Edit Bill" button is clicked on scheduled transactions
@@ -240,7 +237,6 @@ $(document).ready(async function() {
     
     // Don't trigger if user is typing in an input or textarea (unless it's a modal form field)
     const isInModalInput = activeElement && (
-      activeElement.id === 'manual-txn-name' ||
       activeElement.id === 'manual-txn-amount' ||
       activeElement.id === 'manual-txn-date' ||
       activeElement.id === 'manual-txn-merchant' ||

@@ -210,15 +210,21 @@ function _updateCategoryDom(transactionId, categoryString) {
 }
 
 /**
- * Update the memo input value in the DOM without a full table re-render.
+ * Update the memo display in the DOM without a full table re-render.
  */
 function _updateMemoDom(transactionId, memoValue) {
   const row = document.querySelector(`tr[data-txn-id="${transactionId}"]`);
   if (!row) return;
 
-  const memoInput = row.querySelector('.memo-input');
-  if (memoInput) {
-    memoInput.value = memoValue;
+  const memoSpan = row.querySelector('.txn-memo-text');
+  if (memoSpan) {
+    if (memoValue) {
+      memoSpan.textContent = memoValue;
+      memoSpan.title = memoValue;
+    } else {
+      memoSpan.innerHTML = '<em class="memo-placeholder">add memo…</em>';
+      memoSpan.title = '';
+    }
   }
 }
 

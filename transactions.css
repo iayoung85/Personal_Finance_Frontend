@@ -632,8 +632,8 @@ th {
 th.th-category {
   padding-left: 10px;
 }
-th.th-merchant {
-  min-width: 150px;
+th.th-description {
+  min-width: 200px;
 }
 td {
   padding: 3px 8px;
@@ -641,25 +641,90 @@ td {
   font-size: 13px;
   vertical-align: middle;
 }
-/* Truncate long merchant/description text and show full text on hover (native tooltip) */
+
+/* ── Two-line description cell (Option B) ── */
+.desc-two-line {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  line-height: 1.25;
+  cursor: pointer;
+}
+.desc-top-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  cursor: default;
+}
+.desc-top-line .txn-description-text {
+  font-weight: 500;
+  cursor: pointer;
+}
+.desc-top-line .txn-description-placeholder {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-style: italic;
+  cursor: pointer;
+}
+.desc-memo-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 16px;
+  cursor: pointer;
+}
+.txn-memo-text {
+  font-size: 11px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.txn-memo-text:hover {
+  color: var(--text-secondary);
+}
+.memo-placeholder {
+  font-style: italic;
+  color: var(--text-muted);
+}
+.inline-memo-input {
+  width: 100%;
+  font-size: 11px;
+  padding: 1px 4px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 3px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  outline: none;
+  box-sizing: border-box;
+}
+.inline-memo-input:focus {
+  box-shadow: 0 0 0 1px var(--accent-primary);
+}
+
+/* Legacy description text style kept for non-two-line contexts (splits etc.) */
 .transaction-scroll-pane td .txn-description-text {
   display: inline-block;
-  max-width: 100%; /* adjust to taste */
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
 }
 td.description-column {
-  min-width: 150px;
-  max-width: 250px;
-  white-space: nowrap;
+  min-width: 200px;
+  max-width: 450px;
   overflow: hidden;
-  text-overflow: ellipsis;
+  width: 40%;
 }
 /* Ensure category column remains readable: reserve minimum width */
 td.category-column {
-  min-width: 260px; /* prevents merchant name from completely collapsing category */
+  min-width: 290px;
 }
 /* The inner category cell should allow its controls to layout correctly */
 td.category-column .category-cell {
@@ -2493,48 +2558,7 @@ tr:hover {
   box-shadow: 0 0 0 2px var(--accent-focus);
 }
 
-/* ── Memo inline input & save button ── */
-.memo-input {
-  font-size: 10.5px;
-  padding: 1px 5px;
-  border: 1px solid var(--border-primary);
-  border-radius: 2px;
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  width: 100%;
-  min-width: 100px;
-  box-sizing: border-box;
-  transition: border-color 0.15s;
-  line-height: 1.3;
-}
-
-.memo-input:focus {
-  outline: none;
-  border-color: var(--accent-link);
-  box-shadow: 0 0 0 2px var(--accent-focus);
-}
-
-.memo-input::placeholder {
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-.memo-save {
-  padding: 2px 6px;
-  font-size: 10px;
-  background: var(--bg-surface-elevated);
-  color: var(--text-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 2px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.memo-save:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent-link);
-}
+/* Old .memo-input / .memo-save styles removed — memo is now inline in the Description column */
 
 /* Autocomplete wrapper — flex-grows to fill available space in the row */
 .category-autocomplete-wrap {
@@ -3728,6 +3752,8 @@ tr:hover {
   font-weight: 500;
   white-space: nowrap;
   color: var(--color-success);
+  width: 110px;
+  max-width: 120px;
 }
 
 .ledger-amount-cell {
@@ -3735,6 +3761,8 @@ tr:hover {
   font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
   font-size: 12px;
   white-space: nowrap;
+  width: 100px;
+  max-width: 120px;
 }
 
 .ledger-negative {
@@ -4610,13 +4638,17 @@ td.inline-staged {
   max-width: 160px;
 }
 
-/* Date cell specific: keep the Date column on one line and give it
-   a stable minimum width so dates don't wrap into two rows. Targets
-   the inline-editable date cells used by the table renderer. */
-td.inline-editable[data-field="date"] {
+/* Date cell: keep dates on one line with a fixed width.
+   Transfer date-range cells opt out via their own class. */
+td.date-column {
   white-space: nowrap;
-  min-width: 80px;
-  width: 80px;
+  min-width: 90px;
+  width: 90px;
+}
+th.th-date {
+  white-space: nowrap;
+  min-width: 90px;
+  width: 90px;
 }
 
 /* Description input stretches to fill */

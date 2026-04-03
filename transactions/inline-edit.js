@@ -32,6 +32,18 @@ function _handleInlineClick(event) {
   if (['input', 'select', 'textarea', 'button'].includes(interactiveTag)) return;
   if (event.target.closest('button') || event.target.closest('input')) return;
 
+  // In the two-line description cell, only open the merchant name editor when
+  // the user clicks directly on the merchant text itself. Clicks anywhere else
+  // in the cell (memo line, surrounding whitespace) open the memo editor instead.
+  if (targetCell.dataset.field === 'description' && targetCell.querySelector('.desc-two-line')) {
+    const clickedMerchantText = event.target.closest('.txn-description-text') || event.target.closest('.txn-description-placeholder');
+    if (!clickedMerchantText) {
+      const memoSpan = targetCell.querySelector('.txn-memo-text');
+      if (memoSpan) _openInlineMemoEditor(memoSpan);
+      return;
+    }
+  }
+
   const row = targetCell.closest('tr');
   if (!row) return;
 

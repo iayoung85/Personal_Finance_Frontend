@@ -356,21 +356,19 @@ function renderTransactionTable() {
   if (showLogoColumn) {
     html += '<th class="th-logo" style="width: 36px;"></th>';
   }
-  html += '<th>Date</th>';
+  html += '<th class="th-date">Date</th>';
   if (showBankAccountColumn) {
     html += '<th>Bank/Account</th>';
   }
-  html += '<th class="th-merchant">Merchant</th>';
+  html += '<th class="th-description">Description</th>';
   
-  if (optionalFields.includes('source')) html += '<th>Type</th>';
   html += '<th class="th-category">Category</th>';
+  if (optionalFields.includes('source')) html += '<th>Type</th>';
   
   // Optional column headers
   if (optionalFields.includes('payment_channel')) html += '<th>Channel</th>';
-  if (optionalFields.includes('original_description')) html += '<th>Pre-Override</th>';
   if (optionalFields.includes('authorized_datetime')) html += '<th>Authorized</th>';
   if (optionalFields.includes('personal_finance_category')) html += '<th>Plaid Category</th>';
-  if (optionalFields.includes('user_memo')) html += '<th>Memo</th>';
   
   // Amount is always pinned toward the right edge of the table,
   // regardless of single-account vs all-accounts view.
@@ -386,13 +384,11 @@ function renderTransactionTable() {
   // Calculate column count for separator row
   let colCount = showBankAccountColumn ? 5 : 4; // Date, (Bank), Description, Amount, Delete
   if (showLogoColumn) colCount++;
-  if (optionalFields.includes('source')) colCount++;
   colCount++; // Category
+  if (optionalFields.includes('source')) colCount++;
   if (optionalFields.includes('payment_channel')) colCount++;
-  if (optionalFields.includes('original_description')) colCount++;
   if (optionalFields.includes('authorized_datetime')) colCount++;
   if (optionalFields.includes('personal_finance_category')) colCount++;
-  if (optionalFields.includes('user_memo')) colCount++;
   if (showLedgerColumn) colCount++; // Balance Ledger
   
   // Open first tbody based on which block comes first
@@ -533,7 +529,6 @@ function renderTransactionTable() {
         }
         if (optionalFields.includes('authorized_datetime')) html += '<td></td>';
         if (optionalFields.includes('personal_finance_category')) html += '<td></td>';
-        if (optionalFields.includes('user_memo')) html += `<td>${escapeHtml(txn.user_memo || '')}</td>`;
 
         html += `<td class="${parentAmountCellClass}">${formattedAmount}</td>`;
         if (showLedgerColumn) {
@@ -643,9 +638,6 @@ function renderTransactionTable() {
             plaidCategoryDisplay = `${displayPrimary}${displayDetailed ? ': ' + displayDetailed : ''}`;
           }
           html += `<td>${escapeHtml(plaidCategoryDisplay)}</td>`;
-        }
-        if (optionalFields.includes('user_memo')) {
-          html += `<td>${escapeHtml(split.user_memo || '')}</td>`;
         }
         
         // Add split action badges on first row only
@@ -808,6 +800,19 @@ function renderTransactionTable() {
     // Prefer user_description_override for plaid rows (if the user set one)
     const effectiveDisplayName = txn.user_description_override || rendered.displayName;
 
+    // ── Two-line description cell: merchant/payee on top, memo underneath ──
+    const isManualSource = (txn.source === 'manual');
+    let topLineText = effectiveDisplayName;
+    let topLineClass = 'txn-description-text';
+    if (isManualSource && !txn.merchant_name) {
+      topLineText = '[merchant empty]';
+      topLineClass = 'txn-description-text txn-description-placeholder';
+    }
+
+    const memoText = txn.user_memo || '';
+    const memoPlaceholder = 'add memo…';
+    const memoLineHtml = `<span class="txn-memo-text" data-txn-id="${escapeHtml(txnId)}" title="${escapeHtml(memoText)}">${memoText ? escapeHtml(memoText) : `<em class="memo-placeholder">${memoPlaceholder}</em>`}</span>`;
+
     // ── Assemble the row ──
     const isHiddenRow = !!txn.is_hidden;
     const hiddenClass = isHiddenRow ? ' txn-hidden' : '';
@@ -823,32 +828,35 @@ function renderTransactionTable() {
     if (showLogoColumn) {
       html += `<td class="logo-cell">${hiddenCheckboxHtml}${_renderLogoCell(txn)}</td>`;
     }
-    html += `<td${isInlineEditable ? ' data-field="date" class="inline-editable"' : ''}>${!showLogoColumn ? hiddenCheckboxHtml : ''}${dateStr}</td>`;
+    html += `<td class="date-column${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="date"' : ''}>${!showLogoColumn ? hiddenCheckboxHtml : ''}${dateStr}</td>`;
     if (showBankAccountColumn) {
       html += `<td>${txn.bank_account}</td>`;
     }
-    html += `<td class="description-column"${isDescEditable ? ' data-field="description"' : ''}>${fullBadge}${pendingBadge}<span class="txn-description-text" title="${escapeHtml(effectiveDisplayName)}">${escapeHtml(effectiveDisplayName)}</span></td>`;
+    html += `<td class="description-column"${isDescEditable ? ' data-field="description"' : ''}>
+      <div class="desc-two-line">
+        <div class="desc-top-line">${fullBadge}${pendingBadge}<span class="${topLineClass}" title="${escapeHtml(effectiveDisplayName)}">${escapeHtml(topLineText)}</span></div>
+        <div class="desc-memo-line">${memoLineHtml}</div>
+      </div>
+    </td>`;
 
-    // Type badge column (optional field)
+    // Category cell
+    html += `<td class="category-column">${rendered.categoryCell}</td>`;
+
+    // Type badge column (optional field) — placed after category
     if (optionalFields.includes('source')) {
       const sb = rendered.sourceBadge;
       html += `<td><span class="source-badge ${sb.cssClass}" data-tooltip="${sb.title}">${sb.label}</span></td>`;
     }
 
-    // Category cell
-    html += `<td class="category-column">${rendered.categoryCell}</td>`;
-
     // Optional field cells (type-agnostic)
     if (optionalFields.includes('payment_channel')) html += `<td>${txn.payment_channel || ''}</td>`;
-    if (optionalFields.includes('original_description')) {
-      const preOverrideText = txn.user_description_override ? escapeHtml(txn.description || txn.name || '') : 'no override';
-      html += `<td class="pre-override-cell">${preOverrideText}</td>`;
-    }
     if (optionalFields.includes('authorized_datetime')) {
       let authDisplay = '';
+      let authTooltip = '';
       if (txn.authorized_datetime) {
         const dt = new Date(txn.authorized_datetime);
-        authDisplay = dt.toLocaleString('en-US', {
+        authDisplay = txn.authorized_date || dt.toISOString().slice(0, 10);
+        authTooltip = dt.toLocaleString('en-US', {
           year: 'numeric', month: '2-digit', day: '2-digit',
           hour: '2-digit', minute: '2-digit', second: '2-digit',
           timeZoneName: 'short'
@@ -856,7 +864,7 @@ function renderTransactionTable() {
       } else if (txn.authorized_date) {
         authDisplay = txn.authorized_date;
       }
-      html += `<td>${authDisplay}</td>`;
+      html += `<td${authTooltip ? ` title="${escapeHtml(authTooltip)}"` : ''}>${authDisplay}</td>`;
     }
     if (optionalFields.includes('personal_finance_category')) {
       let plaidCategoryDisplay = '';
@@ -870,17 +878,6 @@ function renderTransactionTable() {
         plaidCategoryDisplay = `${displayPrimary}${displayDetailed ? ': ' + displayDetailed : ''}`;
       }
       html += `<td>${escapeHtml(plaidCategoryDisplay)}</td>`;
-    }
-    if (optionalFields.includes('user_memo')) {
-      const safeMemoValue = escapeHtml(txn.user_memo || '');
-      html += `
-        <td>
-          <div style="display: flex; gap: 3px; align-items: center;">
-            <input class="memo-input" type="text" maxlength="256" value="${safeMemoValue}" placeholder="Add memo…">
-            <button class="memo-save" data-txn-id="${txnId}">Save</button>
-          </div>
-        </td>
-      `;
     }
 
     // Amount is always pinned toward the right edge
@@ -928,7 +925,7 @@ function _updateHiddenTransactionCount() {
     : 'No hidden transactions';
 }
 
-async function saveTransactionMemo(transactionId, userMemo, buttonEl) {
+async function saveTransactionMemo(transactionId, userMemo) {
   if (!transactionId) {
     showStatus('Unable to save memo: missing transaction id', 'error');
     return;
@@ -936,19 +933,8 @@ async function saveTransactionMemo(transactionId, userMemo, buttonEl) {
 
   const trimmedMemo = (userMemo || '').toString().slice(0, 256);
 
-  if (buttonEl) {
-    buttonEl.prop('disabled', true).text('Saving...');
-  }
-
   try {
-    // Determine if this is a manual or Plaid transaction
     const txn = transactions.find(t => t.transaction_id === transactionId);
-    const memoTxnType = txn ? getTransactionType(txn) : null;
-    const isManual = memoTxnType && (
-      memoTxnType === TXN_TYPE.MANUAL_CLEARED
-      || memoTxnType === TXN_TYPE.SYSTEM_OPENING_BALANCE
-      || memoTxnType === TXN_TYPE.SYSTEM_MANUAL_OPENING_BALANCE
-    );
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/add-memo`, {
       method: 'POST',
@@ -966,17 +952,92 @@ async function saveTransactionMemo(transactionId, userMemo, buttonEl) {
 
     if (txn) {
       txn.user_memo = trimmedMemo;
-      
-      // Update cache with the modified transaction
       _cacheTransactions(transactions);
     }
 
-    showStatus('Memo saved successfully', 'success');
+    showStatus('Memo saved', 'success');
   } catch (error) {
     showStatus(`Failed to save memo: ${error.message}`, 'error');
-  } finally {
-    if (buttonEl) {
-      buttonEl.prop('disabled', false).text('Save');
-    }
+  }
+}
+
+
+/**
+ * Convert a .txn-memo-text span into an editable input. If an inline
+ * memo editor is already open on a different row, commit that one first.
+ */
+function _openInlineMemoEditor(memoSpan) {
+  const span = memoSpan instanceof HTMLElement ? memoSpan : memoSpan[0];
+  if (!span || span.classList.contains('inline-memo-active')) return;
+
+  // Close any existing inline memo editor elsewhere
+  const existingEditor = document.querySelector('.inline-memo-input');
+  if (existingEditor) {
+    _commitInlineMemo($(existingEditor));
+  }
+
+  const txnId = span.dataset.txnId;
+  if (!txnId) return;
+
+  const txn = transactions.find(t => t.transaction_id === txnId);
+  const currentMemo = txn ? (txn.user_memo || '') : '';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'inline-memo-input';
+  input.maxLength = 256;
+  input.value = currentMemo;
+  input.placeholder = 'add memo…';
+  input.dataset.txnId = txnId;
+  input.dataset.originalMemo = currentMemo;
+
+  span.classList.add('inline-memo-active');
+  span.textContent = '';
+  span.appendChild(input);
+  input.focus();
+  input.select();
+}
+
+
+/**
+ * Stage the memo edit via batch manager, then restore the span display.
+ */
+function _commitInlineMemo(inputEl) {
+  const input = inputEl instanceof HTMLElement ? inputEl : inputEl[0];
+  if (!input || !input.classList.contains('inline-memo-input')) return;
+
+  const txnId = input.dataset.txnId;
+  const newMemo = (input.value || '').trim();
+  const originalMemo = input.dataset.originalMemo || '';
+
+  if (txnId && newMemo !== originalMemo && typeof stageBatchEdit === 'function') {
+    stageBatchEdit(String(txnId), { user_memo: newMemo });
+  }
+
+  _closeInlineMemoEditor($(input), false);
+}
+
+
+/**
+ * Restore the memo span from the inline input.
+ * @param {boolean} revert - If true, discard changes and show original value.
+ */
+function _closeInlineMemoEditor(inputEl, revert) {
+  const input = inputEl instanceof HTMLElement ? inputEl : inputEl[0];
+  if (!input) return;
+
+  const span = input.closest('.txn-memo-text');
+  if (!span) return;
+
+  const txnId = span.dataset.txnId;
+  const memoValue = revert ? (input.dataset.originalMemo || '') : (input.value || '').trim();
+
+  span.classList.remove('inline-memo-active');
+  if (memoValue) {
+    span.textContent = memoValue;
+    span.title = memoValue;
+  } else {
+    span.innerHTML = '<em class="memo-placeholder">add memo…</em>';
+    span.title = '';
   }
 }

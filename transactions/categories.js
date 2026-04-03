@@ -445,9 +445,13 @@ function attachCategoryDropdownListeners() {
               input.value = resolvedValue;
             }
 
-            const memoInput = $(input).closest('tr').find('.memo-input');
-            if (memoInput.length) {
-              memoInput.focus();
+            // Tab from category → next row's memo (inline click-to-edit)
+            const nextRow = $(input).closest('tr').next('tr');
+            if (nextRow.length) {
+              const nextMemoSpan = nextRow.find('.txn-memo-text');
+              if (nextMemoSpan.length) {
+                _openInlineMemoEditor(nextMemoSpan[0]);
+              }
             }
           }
           // If error, allow default Tab behavior (move to next focusable element)

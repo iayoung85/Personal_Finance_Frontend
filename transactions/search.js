@@ -406,7 +406,7 @@ function initSearchBar() {
       const activeElement = document.activeElement;
       const isEditingInline = activeElement && (
         activeElement.classList.contains('inline-edit-input')
-        || activeElement.classList.contains('memo-input')
+        || activeElement.classList.contains('inline-memo-input')
         || activeElement.classList.contains('category-input')
       );
       const isModalOpen = document.querySelector('.modal:not(.hidden)');

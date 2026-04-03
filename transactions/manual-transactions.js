@@ -51,9 +51,9 @@ function openAddManualTransactionModal() {
     <div style="display: grid; gap: 14px;">
       <div id="manual-txn-error-banner" style="display:none; padding: 8px 12px; background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); border-radius: 4px; color: var(--color-danger); font-size: 13px;"></div>
       <div>
-        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Description *</label>
-        <input id="manual-txn-name" type="text" placeholder="e.g., Coffee at local shop" class="modal-input" maxlength="128">
-        <small style="color: var(--text-muted); margin-top: 2px; display: block;">Brief description of transaction</small>
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Merchant Name (Optional)</label>
+        <input id="manual-txn-merchant" type="text" placeholder="e.g., Starbucks" class="modal-input" maxlength="128">
+        <small style="color: var(--text-muted); margin-top: 2px; display: block;">Payee or merchant for this transaction</small>
       </div>
       
       <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px;">
@@ -79,11 +79,6 @@ function openAddManualTransactionModal() {
         <select id="manual-txn-account" class="modal-input">
           ${accountOptions}
         </select>
-      </div>
-
-      <div>
-        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Merchant (Optional)</label>
-        <input id="manual-txn-merchant" type="text" placeholder="e.g., Starbucks" class="modal-input" maxlength="128">
       </div>
 
       <div>
@@ -113,10 +108,10 @@ function openAddManualTransactionModal() {
   });
 
   setTimeout(() => {
-    const descriptionInput = document.getElementById('manual-txn-name');
-    if (!descriptionInput) return;
-    descriptionInput.focus();
-    descriptionInput.select();
+    const merchantInput = document.getElementById('manual-txn-merchant');
+    if (!merchantInput) return;
+    merchantInput.focus();
+    merchantInput.select();
   }, 0);
 
   // Auto-format wiring for the date text input inside the modal
@@ -152,7 +147,7 @@ function openAddManualTransactionModal() {
   
   // Add Enter key listener for Create button
   setTimeout(() => {
-    const inputs = document.querySelectorAll('#manual-txn-name, #manual-txn-amount, #manual-txn-date, #manual-txn-merchant, #manual-txn-category, #manual-txn-memo');
+    const inputs = document.querySelectorAll('#manual-txn-merchant, #manual-txn-amount, #manual-txn-date, #manual-txn-category, #manual-txn-memo');
     inputs.forEach(input => {
       input.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
@@ -191,7 +186,6 @@ function openEditManualTransactionModal(transactionId) {
   const absAmount = Math.abs(txn.amount || 0).toFixed(2);
   const txnType = (txn.amount || 0) >= 0 ? 'credit' : 'debit';
   const txnDate = txn.date || '';
-  const txnName = txn.raw_description || txn.description || txn.name || '';
   const txnMerchant = txn.merchant_name || '';
   const txnCategory = txn.user_category || '';
   const txnMemo = txn.user_memo || '';
@@ -200,8 +194,8 @@ function openEditManualTransactionModal(transactionId) {
     <div style="display: grid; gap: 14px;">
       <div id="manual-txn-error-banner" style="display:none; padding: 8px 12px; background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); border-radius: 4px; color: var(--color-danger); font-size: 13px;"></div>
       <div>
-        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Description *</label>
-        <input id="manual-txn-name" type="text" value="${escapeHtml(txnName)}" class="modal-input" maxlength="128">
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Merchant Name (Optional)</label>
+        <input id="manual-txn-merchant" type="text" value="${escapeHtml(txnMerchant)}" class="modal-input" maxlength="128">
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px;">
@@ -229,11 +223,6 @@ function openEditManualTransactionModal(transactionId) {
       </div>
 
       <div>
-        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Merchant (Optional)</label>
-        <input id="manual-txn-merchant" type="text" value="${escapeHtml(txnMerchant)}" class="modal-input" maxlength="128">
-      </div>
-
-      <div>
         <label style="display: block; font-weight: 500; margin-bottom: 6px;">Category (Optional)</label>
         <div style="position: relative;">
           <input id="manual-txn-category" type="text" value="${escapeHtml(txnCategory)}" placeholder="Type to search, or [ for transfers" autocomplete="off" class="modal-input">
@@ -258,10 +247,10 @@ function openEditManualTransactionModal(transactionId) {
   });
 
   setTimeout(() => {
-    const descriptionInput = document.getElementById('manual-txn-name');
-    if (!descriptionInput) return;
-    descriptionInput.focus();
-    descriptionInput.select();
+    const merchantInput = document.getElementById('manual-txn-merchant');
+    if (!merchantInput) return;
+    merchantInput.focus();
+    merchantInput.select();
   }, 0);
 
   // Auto-format wiring for the date text input inside the modal
@@ -284,7 +273,7 @@ function openEditManualTransactionModal(transactionId) {
 
   // Enter key listener saves changes
   setTimeout(() => {
-    const inputs = document.querySelectorAll('#manual-txn-name, #manual-txn-amount, #manual-txn-date, #manual-txn-merchant, #manual-txn-category, #manual-txn-memo');
+    const inputs = document.querySelectorAll('#manual-txn-merchant, #manual-txn-amount, #manual-txn-date, #manual-txn-category, #manual-txn-memo');
     inputs.forEach(input => {
       input.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
@@ -300,7 +289,6 @@ function openEditManualTransactionModal(transactionId) {
  * Send PUT request to update manual transaction, refresh UI on success.
  */
 async function _updateManualTransaction(transactionId, accountId) {
-  const name = document.getElementById('manual-txn-name').value.trim();
   const rawAmountStr = document.getElementById('manual-txn-amount').value.replace(/^[+\-−]/, '').trim();
   const amount = parseFloat(rawAmountStr);
   const txnType = document.getElementById('manual-txn-type').value;
@@ -310,10 +298,6 @@ async function _updateManualTransaction(transactionId, accountId) {
   const memo = document.getElementById('manual-txn-memo').value.trim();
 
   // Validate required fields
-  if (!name) {
-    _showManualTxnError('Description is required');
-    return;
-  }
   if (!amount || amount <= 0 || isNaN(amount)) {
     _showManualTxnError('Amount must be a positive number');
     return;
@@ -342,7 +326,6 @@ async function _updateManualTransaction(transactionId, accountId) {
 
   try {
     const payload = {
-      description: name,
       amount,
       type: txnType,
       date,
@@ -488,12 +471,11 @@ function _showManualTxnCategoryError(badCategory, context = {}) {
       mode: context.mode || 'create',
       transactionId: context.transactionId || null,
       categoryResolved: false,
-      description: document.getElementById('manual-txn-name').value.trim(),
+      merchant: document.getElementById('manual-txn-merchant').value.trim(),
       amount: document.getElementById('manual-txn-amount').value.replace(/^[+\-−]/, '').trim(),
       type: document.getElementById('manual-txn-type').value,
       date: document.getElementById('manual-txn-date').value,
       accountId: context.accountId || document.getElementById('manual-txn-account')?.value || null,
-      merchant: document.getElementById('manual-txn-merchant').value.trim(),
       category: badCategory,
       memo: document.getElementById('manual-txn-memo').value.trim(),
     };
@@ -537,7 +519,6 @@ async function _submitPendingManualTransaction() {
   sessionStorage.removeItem('pf_return_url');
 
   const payload = {
-    description: pending.description,
     amount: parseFloat(pending.amount),
     type: pending.type,
     date: pending.date,
@@ -690,22 +671,17 @@ function _stripDecorationOnFocus(amountInput, typeSelect) {
  * Save a new manual transaction via API
  */
 async function saveManualTransaction() {
-  const name = document.getElementById('manual-txn-name').value.trim();
+  const merchant = document.getElementById('manual-txn-merchant').value.trim();
   // Strip any leading +/− decoration before parsing the absolute amount
   const rawAmountStr = document.getElementById('manual-txn-amount').value.replace(/^[+\-−]/, '').trim();
   const amount = parseFloat(rawAmountStr);
   const txnType = document.getElementById('manual-txn-type').value;
   const date = document.getElementById('manual-txn-date').value;
   const accountId = document.getElementById('manual-txn-account').value;
-  const merchant = document.getElementById('manual-txn-merchant').value.trim();
   const category = document.getElementById('manual-txn-category').value;
   const memo = document.getElementById('manual-txn-memo').value.trim();
 
   // Validate required fields — show errors inline on the modal
-  if (!name) {
-    _showManualTxnError('Description is required');
-    return;
-  }
   if (!amount || amount <= 0 || isNaN(amount)) {
     _showManualTxnError('Amount must be a positive number (sign is set by Type)');
     return;
@@ -741,7 +717,6 @@ async function saveManualTransaction() {
 
   try {
     const payload = {
-      description: name,
       amount,
       type: txnType,
       date,
