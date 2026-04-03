@@ -1251,12 +1251,12 @@ async function saveBill() {
   // Build payload — sign amount based on credit/debit
   const signedAmount = formData.isCredit ? formData.amount : -(formData.amount);
 
-  // Detect transfer category pattern: [<AccountName>]
+  // Detect transfer category pattern: [AccountName]
   let transferAccountId = null;
-  if (formData.user_category && formData.user_category.startsWith('[<') && formData.user_category.endsWith('>]')) {
-    const transferName = formData.user_category.slice(2, -2);
+  if (formData.user_category && formData.user_category.startsWith('[') && formData.user_category.endsWith(']') && formData.user_category.length > 2) {
+    const transferName = formData.user_category.slice(1, -1);
     const matchedAccount = allAccounts.find(acct =>
-      acct.display_name.toLowerCase().includes(transferName.toLowerCase())
+      acct.display_name.toLowerCase() === transferName.toLowerCase()
     );
     if (matchedAccount) transferAccountId = matchedAccount.account_id;
   }
