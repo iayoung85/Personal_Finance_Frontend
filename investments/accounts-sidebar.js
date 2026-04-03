@@ -18,24 +18,9 @@ async function loadInvestmentAccounts() {
       acc => (acc.account_category || '').toLowerCase() === 'investment'
     );
 
-    // Fetch item-level product info for each distinct plaid_item_id
-    const itemIds = [...new Set(invAccounts.map(acc => acc.plaid_item_id).filter(Boolean))];
-    const itemInfoResults = await Promise.all(
-      itemIds.map(itemId => fetchItemInfo(itemId).catch(() => ({
-        item_id: itemId, billed_products: [], available_products: []
-      })))
-    );
-
-    const itemInfoMap = {};
-    itemInfoResults.forEach(info => {
-      const key = info.item_id || info.plaid_item_id;
-      if (key) itemInfoMap[key] = info;
-    });
-
     investmentAccounts = invAccounts.map(acc => {
-      const info = itemInfoMap[acc.plaid_item_id] || { billed_products: [], available_products: [] };
-      let billed = _normalizeProductList(info.billed_products);
-      let available = _normalizeProductList(info.available_products);
+      let billed = _normalizeProductList(acc.billed_products);
+      let available = _normalizeProductList(acc.available_products);
 
       let status = 'inactive';
       if (billed.includes('investments')) status = 'active';

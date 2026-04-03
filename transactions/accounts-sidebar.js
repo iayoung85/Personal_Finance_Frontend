@@ -102,32 +102,6 @@ function selectAllAccountsMode() {
   renderTransactionTable();
 }
 
-async function fetchItemInfo(itemId) {
-  // Fetch item info from connections endpoint
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/item_info`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ item_id: itemId })
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to fetch item info');
-    }
-    return await response.json();
-  } catch (error) {
-    console.debug('fetchItemInfo error:', error);
-    // Return default structure if endpoint doesn't exist
-    return {
-      item_id: itemId,
-      billed_products: ['transactions'], // Assume transactions is billed by default
-      available_products: []
-    };
-  }
-}
-
 async function loadAccounts() {
   try {
     showStatus('Loading accounts...', 'info');
@@ -171,50 +145,6 @@ async function loadAccounts() {
 
     accounts = mappedAccounts;
     console.debug('loadAccounts: mapped', accounts.length, 'accounts');
-
-    // 3) For Plaid-linked accounts, fetch item-level product info for activation status
-    // Why connection_status not origin: origin is immutable birth record.
-    // Only actively linked accounts have a live plaid_item_id to query.
-    const plaidItemIds = [...new Set(
-      accounts
-        .filter(a => a.connection_status === 'linked')
-        .map(a => a.plaid_item_id)
-        .filter(Boolean)
-    )];
-
-    if (plaidItemIds.length > 0) {
-      const itemInfoResults = await Promise.all(
-        plaidItemIds.map(async (itemId) => {
-          try {
-            return await fetchItemInfo(itemId);
-          } catch (err) {
-            console.debug('fetchItemInfo failed for', itemId, err && err.message);
-            return { item_id: itemId, billed_products: [], available_products: [] };
-          }
-        })
-      );
-
-      const itemInfoMap = {};
-      itemInfoResults.forEach(it => {
-        if (it && (it.item_id || it.plaid_item_id)) {
-          itemInfoMap[it.item_id || it.plaid_item_id] = it;
-        }
-      });
-
-      // Attach product info to accounts
-      accounts = accounts.map(acc => {
-        const info = itemInfoMap[acc.plaid_item_id] || { billed_products: [], available_products: [] };
-        let billed = info.billed_products || [];
-        if (typeof billed === 'string') {
-          try { billed = JSON.parse(billed); } catch (e) { billed = []; }
-        }
-        return {
-          ...acc,
-          billed_products: billed,
-          available_products: info.available_products || []
-        };
-      });
-    }
 
     renderAccountsSidebar();
 
