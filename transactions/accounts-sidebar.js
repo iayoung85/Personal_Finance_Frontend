@@ -132,6 +132,7 @@ async function loadAccounts() {
       custom_name: a.custom_name || null,
       origin: a.origin || 'manual',
       connection_status: a.connection_status || 'manual',
+      plaid_type: a.plaid_type || null,
       mask: a.mask || null,
       last_updated: a.last_balance_update || a.last_updated || null,
       is_archived: a.is_archived || false,

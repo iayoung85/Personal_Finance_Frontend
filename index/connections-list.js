@@ -693,6 +693,7 @@ const IndexConnectionsList = (() => {
 
     const existingCandidates = pendingMatching.existing_candidates || [];
     const plaidCandidates = pendingMatching.plaid_candidates || [];
+    const transactionsBilled = pendingMatching.transactions_billed || false;
 
     // Build rows — one per existing orphaned account
     const rowsHtml = existingCandidates.map((existingAccount, rowIndex) => {
@@ -773,14 +774,21 @@ const IndexConnectionsList = (() => {
         });
       });
 
-      const hasAnyMatch = selectedValues.size > 0;
-      confirmBtn.disabled = !hasAnyMatch;
+      _syncConfirmButton();
     };
 
     /**
      * When a dropdown changes, check for an investment <-> non-investment mismatch
      * between the existing account and the selected Plaid account. Show/hide the
      * transition checkbox and warning accordingly.
+     *
+     * Two modes:
+     *   Forced (investment→non-investment AND transactions billed):
+     *     Backend will auto-convert the investment ledger during confirm.
+     *     User must check a required acknowledgment checkbox to proceed.
+     *     No OB fields — backend auto-derives the opening balance.
+     *   Optional (all other mismatches):
+     *     User may choose to transition via the optional checkbox.
      */
     const _updateTransitionZone = (selectElement) => {
       const rowIndex = parseInt(selectElement.dataset.row, 10);
@@ -790,8 +798,10 @@ const IndexConnectionsList = (() => {
       const plaidIndexStr = selectElement.value;
       if (plaidIndexStr === '') {
         zone.style.display = 'none';
+        zone.classList.remove('forced');
         const cb = zone.querySelector('.matching-transition-checkbox');
-        if (cb) cb.checked = false;
+        if (cb) { cb.checked = false; cb.required = false; }
+        _syncConfirmButton();
         return;
       }
 
@@ -804,14 +814,14 @@ const IndexConnectionsList = (() => {
       const plaidIsInvestment = plaid.plaid_type === 'investment';
 
       if (existingIsInvestment === plaidIsInvestment) {
-        // No investment mismatch — hide zone, uncheck
         zone.style.display = 'none';
+        zone.classList.remove('forced');
         const cb = zone.querySelector('.matching-transition-checkbox');
-        if (cb) cb.checked = false;
+        if (cb) { cb.checked = false; cb.required = false; }
+        _syncConfirmButton();
         return;
       }
 
-      // Investment mismatch detected — show the transition zone
       zone.style.display = 'block';
 
       const textSpan = zone.querySelector('.matching-transition-text');
@@ -819,32 +829,76 @@ const IndexConnectionsList = (() => {
       const obFields = zone.querySelector('.matching-transition-ob-fields');
       const cb = zone.querySelector('.matching-transition-checkbox');
 
-      if (existingIsInvestment && !plaidIsInvestment) {
-        // Existing=investment, Plaid=non-investment → offer transition to depository
+      const isForcedTransition = existingIsInvestment && !plaidIsInvestment && transactionsBilled;
+
+      if (isForcedTransition) {
+        // Backend forces this transition during confirm — user must acknowledge
+        zone.classList.add('forced');
+        const plaidSub = plaid.plaid_subtype || plaid.plaid_type || 'depository';
+        textSpan.textContent = `Required: investment → ${plaidSub} conversion`;
+        warningDiv.textContent =
+          'This Plaid account receives transaction data that is incompatible with investment tracking. ' +
+          'Matching will automatically convert the investment ledger to standard balance tracking. ' +
+          'If you do not want this, leave this account unmatched — a new account will be created instead.';
+
+        // No OB fields — backend auto-derives opening balance
+        obFields.style.display = 'none';
+        cb.checked = false;
+        cb.required = true;
+        cb.onchange = () => { _syncConfirmButton(); };
+      } else if (existingIsInvestment && !plaidIsInvestment) {
+        // Investment → non-investment without transactions billed — optional
+        zone.classList.remove('forced');
         const plaidSub = plaid.plaid_subtype || plaid.plaid_type || 'depository';
         textSpan.textContent = `Convert ledger: investment → ${plaidSub}`;
         warningDiv.textContent = 'Converts investment ledger to standard balance tracking. This changes how transactions are stored.';
 
-        // Pre-fill OB fields
         const obAmountInput = obFields.querySelector('.matching-ob-amount');
         const obDateInput = obFields.querySelector('.matching-ob-date');
         if (obAmountInput) obAmountInput.value = parseFloat(existing.current_balance || 0);
         if (obDateInput) obDateInput.value = new Date().toISOString().slice(0, 10);
 
-        // Show OB fields only when checked
-        cb.onchange = () => { obFields.style.display = cb.checked ? 'flex' : 'none'; };
+        cb.required = false;
+        cb.onchange = () => { obFields.style.display = cb.checked ? 'flex' : 'none'; _syncConfirmButton(); };
         obFields.style.display = cb.checked ? 'flex' : 'none';
       } else {
-        // Existing=non-investment, Plaid=investment → offer transition to investment
+        // Non-investment → investment — optional
+        zone.classList.remove('forced');
         const plaidSub = plaid.plaid_subtype || 'brokerage';
         textSpan.textContent = `Convert ledger: ${existing.account_category} → investment (${plaidSub})`;
         warningDiv.textContent = 'Removes opening balance anchors and balance history. Investment accounts track market value instead.';
 
         obFields.style.display = 'none';
-        cb.onchange = null;
+        cb.required = false;
+        cb.onchange = () => { _syncConfirmButton(); };
       }
 
       cb.checked = false;
+      _syncConfirmButton();
+    };
+
+    /**
+     * Enable the confirm button only when at least one match is selected AND
+     * every visible forced-transition checkbox is checked.
+     */
+    const _syncConfirmButton = () => {
+      const selectedValues = new Set(
+        Array.from(selects).map(s => s.value).filter(v => v !== ''),
+      );
+      const hasAnyMatch = selectedValues.size > 0;
+
+      // Check that every forced-transition zone with a selected match has its checkbox checked
+      let allForcedAcknowledged = true;
+      body.querySelectorAll('.matching-transition-zone.forced').forEach(zone => {
+        const zoneRow = parseInt(zone.dataset.row, 10);
+        const rowSelect = body.querySelector(`select[data-row="${zoneRow}"]`);
+        if (rowSelect && rowSelect.value !== '') {
+          const cb = zone.querySelector('.matching-transition-checkbox');
+          if (cb && !cb.checked) allForcedAcknowledged = false;
+        }
+      });
+
+      confirmBtn.disabled = !hasAnyMatch || !allForcedAcknowledged;
     };
 
     selects.forEach(selectElement => {
@@ -855,7 +909,7 @@ const IndexConnectionsList = (() => {
     });
 
     // Wire up buttons
-    confirmBtn.onclick = () => _handleConfirmMatches(bankId, bankName, existingCandidates, plaidCandidates);
+    confirmBtn.onclick = () => _handleConfirmMatches(bankId, bankName, existingCandidates, plaidCandidates, transactionsBilled);
     skipBtn.onclick = () => _skipAccountMatching(bankId, bankName);
 
     overlay.style.display = 'flex';
@@ -864,8 +918,13 @@ const IndexConnectionsList = (() => {
   /**
    * Collect the user's match selections, run any checked account-type transitions
    * synchronously first, then POST to confirm-account-matching.
+   *
+   * Forced transitions (investment→non-investment with transactions billed)
+   * are handled server-side by confirm_account_matching — no frontend
+   * transition API call needed. Only optional transitions that the user
+   * explicitly checked are run as separate API calls before confirming.
    */
-  async function _handleConfirmMatches(bankId, bankName, existingCandidates, plaidCandidates) {
+  async function _handleConfirmMatches(bankId, bankName, existingCandidates, plaidCandidates, transactionsBilled) {
     const body = document.getElementById('matching-modal-body');
     const confirmBtn = document.getElementById('matching-confirm-btn');
     if (!body) return;
@@ -904,31 +963,34 @@ const IndexConnectionsList = (() => {
       if (cb?.checked) {
         const existingIsInvestment = existing.account_category === 'investment';
         const plaidIsInvestment = plaid.plaid_type === 'investment';
+        const isForced = existingIsInvestment && !plaidIsInvestment && transactionsBilled;
 
-        if (existingIsInvestment && !plaidIsInvestment) {
-          // Transition existing investment → depository
-          const obAmountInput = zone.querySelector('.matching-ob-amount');
-          const obDateInput = zone.querySelector('.matching-ob-date');
-          const obAmount = parseFloat(obAmountInput?.value) || 0;
-          const obDate = obDateInput?.value || new Date().toISOString().slice(0, 10);
-          const subcategory = plaid.plaid_subtype || 'savings';
+        // Forced transitions are handled server-side during confirm —
+        // only queue optional (user-initiated) transitions here.
+        if (!isForced) {
+          if (existingIsInvestment && !plaidIsInvestment) {
+            const obAmountInput = zone.querySelector('.matching-ob-amount');
+            const obDateInput = zone.querySelector('.matching-ob-date');
+            const obAmount = parseFloat(obAmountInput?.value) || 0;
+            const obDate = obDateInput?.value || new Date().toISOString().slice(0, 10);
+            const subcategory = plaid.plaid_subtype || 'savings';
 
-          transitions.push({
-            type: 'to-depository',
-            accountId: existing.account_id,
-            openingBalanceAmount: obAmount,
-            openingBalanceDate: obDate,
-            subcategory,
-          });
-        } else if (!existingIsInvestment && plaidIsInvestment) {
-          // Transition existing non-investment → investment
-          const subcategory = plaid.plaid_subtype || 'brokerage';
+            transitions.push({
+              type: 'to-depository',
+              accountId: existing.account_id,
+              openingBalanceAmount: obAmount,
+              openingBalanceDate: obDate,
+              subcategory,
+            });
+          } else if (!existingIsInvestment && plaidIsInvestment) {
+            const subcategory = plaid.plaid_subtype || 'brokerage';
 
-          transitions.push({
-            type: 'to-investment',
-            accountId: existing.account_id,
-            subcategory,
-          });
+            transitions.push({
+              type: 'to-investment',
+              accountId: existing.account_id,
+              subcategory,
+            });
+          }
         }
       }
     });

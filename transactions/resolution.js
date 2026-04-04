@@ -113,7 +113,7 @@ async function relocateOrphanToAccount(orphanTransactionId, targetAccountId) {
  * Manually match a specific manual/missing txn with a plaid txn.
  * Used by the "Match to adjacent transaction" quick-fix flow.
  */
-async function manualReconciliationMatch(manualTransactionId, plaidTransactionId) {
+async function manualReconciliationMatch(manualTransactionId, targetTransactionId) {
   const response = await authenticatedFetch(
     `${BACKEND_URL}/api/transactions/resolution/match`,
     {
@@ -121,7 +121,7 @@ async function manualReconciliationMatch(manualTransactionId, plaidTransactionId
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         manual_transaction_id: manualTransactionId,
-        plaid_transaction_id: plaidTransactionId,
+        target_transaction_id: targetTransactionId,
       }),
     }
   );
@@ -718,9 +718,14 @@ function openInlineMatchPicker(missingTxnId) {
     return;
   }
 
-  // Gather plaid transactions in the same account that are cleared and unmatched
+  // Gather cleared transactions in the same account that are unmatched
+  const MATCHABLE_TARGET_TYPES = new Set([
+    TXN_TYPE.PLAID_CLEARED,
+    TXN_TYPE.MANUAL_CLEARED,
+    TXN_TYPE.PLAID_CONVERTED,
+  ]);
   const candidates = transactions.filter(txn =>
-    getTransactionType(txn) === TXN_TYPE.PLAID_CLEARED
+    MATCHABLE_TARGET_TYPES.has(getTransactionType(txn))
     && (txn.account_id || txn.plaid_account_id) === (missingTxn.account_id || missingTxn.plaid_account_id)
     && !txn.matched_transaction_id
   );
@@ -738,12 +743,12 @@ function openInlineMatchPicker(missingTxnId) {
   const topCandidates = candidates.slice(0, MAX_CANDIDATES);
 
   if (topCandidates.length === 0) {
-    showStatus('No plaid transactions available to match in this account', 'warning');
+    showStatus('No cleared transactions available to match in this account', 'warning');
     return;
   }
 
   let bodyHtml = `
-    <p>Select a Plaid transaction to match with: <strong>${escapeHtml(missingTxn.description || missingTxn.name || '—')}</strong>
+    <p>Select a transaction to match with: <strong>${escapeHtml(missingTxn.description || missingTxn.name || '—')}</strong>
     (${_formatCurrency(missingTxn.amount)}, ${escapeHtml(missingTxn.date || '')})</p>
     <div class="recon-match-picker-list">
   `;
@@ -766,7 +771,7 @@ function openInlineMatchPicker(missingTxnId) {
   bodyHtml += '</div>';
 
   openModal({
-    title: 'Match to Plaid Transaction',
+    title: 'Match to Transaction',
     body: bodyHtml,
     actions: [
       {
@@ -786,11 +791,11 @@ function openInlineMatchPicker(missingTxnId) {
   }
 }
 
-async function _selectMatchCandidate(missingTxnId, plaidTxnId) {
+async function _selectMatchCandidate(missingTxnId, targetTxnId) {
   if (!confirm('Link these two transactions?')) return;
 
   try {
-    const result = await manualReconciliationMatch(missingTxnId, plaidTxnId);
+    const result = await manualReconciliationMatch(missingTxnId, targetTxnId);
 
     if (result.splits_need_repair) {
       showStatus(

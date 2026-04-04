@@ -246,6 +246,24 @@ function _buildMenuItems(txnData) {
 
   // Missing transactions get similar quick-fix options
   if (isMissing) {
+    // Show "Mark Paid/Received" for BILL_MISSING rows in accounts that
+    // don't accumulate plaid transactions. The only accounts where we
+    // block this action are linked non-investment accounts — those get
+    // regular plaid transaction syncs so the user should match instead.
+    if (txnType === TXN_TYPE.BILL_MISSING) {
+      const acct = accounts.find(findAcct => findAcct.account_id === txnData.accountId);
+      const isLinkedNonInvestment = acct
+        && acct.connection_status === 'linked'
+        && acct.plaid_type !== 'investment';
+      if (!isLinkedNonInvestment) {
+        const markPaidLabel = txnData.amount < 0 ? '✅ Mark Paid' : '✅ Mark Received';
+        items.push({
+          label: markPaidLabel,
+          action: 'mark-paid-missing',
+          separator: false,
+        });
+      }
+    }
     items.push({
       label: '✏️ Modify',
       action: 'modify',
@@ -482,6 +500,9 @@ function _dispatchContextAction(action, txnData) {
     case 'mark-paid':
       _handleContextMarkPaid(txnData);
       break;
+    case 'mark-paid-missing':
+      _handleContextMarkPaidMissing(txnData);
+      break;
     case 'skip-occurrence':
       _handleContextSkipOccurrence(txnData);
       break;
@@ -621,6 +642,37 @@ async function _handleContextDeleteMissing(txnData) {
     await checkAndRenderReconciliationBanner();
   } catch (deleteError) {
     showStatus(`Failed to delete transaction: ${deleteError.message}`, 'error');
+  }
+}
+
+/**
+ * Mark a BILL_MISSING row as paid in an offline or transitioned account.
+ * Transitions BILL_MISSING → MANUAL_CLEARED via the resolve_missing
+ * endpoint with action='keep'.
+ */
+async function _handleContextMarkPaidMissing(txnData) {
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/resolve_missing/${encodeURIComponent(txnData.txnId)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'keep' }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      showStatus(data.error || 'Failed to mark as paid', 'error');
+      return;
+    }
+
+    const paidLabel = txnData.amount < 0 ? 'paid' : 'received';
+    showStatus(`Bill marked as ${paidLabel}`, 'success');
+    await refreshAccountTransactions(txnData.accountId);
+  } catch (networkError) {
+    showStatus(`Failed to mark as paid: ${networkError.message}`, 'error');
   }
 }
 
