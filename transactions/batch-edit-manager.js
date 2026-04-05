@@ -197,7 +197,10 @@ function _applyOptimisticUpdate(transactionId, changes) {
 
   if (changes.user_category) {
     txn.user_category = changes.user_category;
-    txn.is_override = true;
+    // Manual transactions store category directly — no override concept applies.
+    if (txn.source !== 'manual') {
+      txn.is_override = true;
+    }
     _updateCategoryDom(transactionId, changes.user_category);
   }
 

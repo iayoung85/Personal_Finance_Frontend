@@ -250,10 +250,7 @@ function _commitActiveFieldToSession() {
   }
 
   if (field === 'description') {
-    if (!value) {
-      showStatus('Description cannot be empty', 'error');
-      return false;
-    }
+    // Blank description signals "reset to original" — backend handles the fallback.
     _activeRowEditSession.draft.description = value;
     if (_activeInlineEditor) {
       const prefixHtml = _activeInlineEditor.descriptionPrefixHtml || '';
@@ -300,10 +297,8 @@ async function _saveRowInlineEdits() {
   }
 
   const normalized_description = (editSession.draft.description || '').trim();
-  if (!normalized_description) {
-    showStatus('Description cannot be empty', 'error');
-    return;
-  }
+  // Blank description signals "reset to original" — backend will fall back
+  // to original_description. Always send the key so the backend sees the intent.
   if (normalized_description !== editSession.original.description) {
     payload.description = normalized_description;
   }
@@ -649,10 +644,7 @@ function _openSplitDescriptionEditor(cell, splitTxnId, parentTxnId) {
 
 
 async function _saveSplitDescriptionEdit(splitTxnId, parentTxnId, newDescription) {
-  if (!newDescription) {
-    showStatus('Description cannot be empty', 'error');
-    return;
-  }
+  // Blank description signals "reset to parent description" — backend handles the fallback.
 
   try {
     const response = await authenticatedFetch(
@@ -669,13 +661,17 @@ async function _saveSplitDescriptionEdit(splitTxnId, parentTxnId, newDescription
       throw new Error(data.error || 'Failed to update description');
     }
 
-    // Patch the split child in the parent's splits array
+    // Patch the split child in the parent's splits array using the
+    // server-resolved values (which may differ from the input when the
+    // backend resets a blank description to the parent's name).
+    const resolvedDescription = data.description || newDescription;
+    const resolvedMerchant = data.merchant_name || resolvedDescription;
     const parentTxn = transactions.find(findTxn => findTxn.transaction_id === parentTxnId);
     if (parentTxn && parentTxn.splits) {
       const splitChild = parentTxn.splits.find(s => s.transaction_id === splitTxnId);
       if (splitChild) {
-        splitChild.description = newDescription;
-        splitChild.merchant_name = newDescription;
+        splitChild.description = resolvedDescription;
+        splitChild.merchant_name = resolvedMerchant;
       }
     }
 

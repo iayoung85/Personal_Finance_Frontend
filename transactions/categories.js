@@ -534,6 +534,14 @@ function attachCategoryDropdownListeners() {
       return;
     }
 
+    // Manual transactions have no original Plaid category to revert to —
+    // skip the override system and update the transaction directly.
+    const txnObj = transactions.find(t => t.transaction_id === txnId);
+    if (txnObj && txnObj.source === 'manual') {
+      _updateManualTransactionCategory(txnId, resolved.value);
+      return;
+    }
+
     const parsed = parseCategoryString(resolved.value);
     applyOverride(txnId, accountId, parsed.primary, parsed.detailed);
   }
@@ -564,6 +572,13 @@ function attachCategoryDropdownListeners() {
     // without actually changing the category.
     const committedValue = (input.data('committedCategoryValue') || '').trim();
     if (resolved.value === committedValue) {
+      return;
+    }
+
+    // Manual transactions: direct PUT, not override.
+    const txnObjOverride = transactions.find(t => t.transaction_id === txnId);
+    if (txnObjOverride && txnObjOverride.source === 'manual') {
+      _updateManualTransactionCategory(txnId, resolved.value);
       return;
     }
 
@@ -753,6 +768,41 @@ function _resolveAutocompleteCategory(value) {
 }
 
 // ───── Override & Rule Actions ─────
+
+/**
+ * Directly update the category of a manual transaction via PUT.
+ * Unlike applyOverride, this does not create an override entry —
+ * manual transactions own their category directly; there is no
+ * Plaid-assigned original to revert to.
+ */
+async function _updateManualTransactionCategory(txnId, categoryString) {
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(txnId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_category: categoryString }),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      showStatus(data.error || 'Failed to update category', 'error');
+      return;
+    }
+    const txn = transactions.find(t => t.transaction_id === txnId);
+    if (txn) {
+      txn.user_category = data.transaction?.user_category || categoryString;
+      // is_override intentionally NOT set — manual txns don't use overrides
+      _cacheTransactions(transactions);
+    }
+    renderTransactionTable();
+    showStatus(`Category updated: ${categoryString}`, 'success');
+    setTimeout(() => clearStatus(), 2000);
+  } catch (error) {
+    showStatus(`Failed to update category: ${error.message}`, 'error');
+  }
+}
 
 /**
  * Apply an override to a single transaction.
