@@ -591,7 +591,15 @@ function attachCategoryDropdownListeners() {
     }
 
     const parsed = parseCategoryString(resolved.value);
-    const txn = transactions.find(t => t.transaction_id === txnId);
+    let txn = transactions.find(t => t.transaction_id === txnId);
+    if (!txn) {
+      for (const parentTxn of transactions) {
+        if (parentTxn.splits) {
+          const splitChild = parentTxn.splits.find(s => s.transaction_id === txnId);
+          if (splitChild) { txn = splitChild; break; }
+        }
+      }
+    }
     openCategoryRuleModal(txn, parsed.primary, parsed.detailed, txnId, accountId);
   });
 }
@@ -785,7 +793,15 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
     
     // Update local array directly instead of full re-sync —
     // the backend already updated the encrypted_transactions table.
-    const txn = transactions.find(t => t.transaction_id === txnId);
+    let txn = transactions.find(t => t.transaction_id === txnId);
+    if (!txn) {
+      for (const parentTxn of transactions) {
+        if (parentTxn.splits) {
+          const splitChild = parentTxn.splits.find(s => s.transaction_id === txnId);
+          if (splitChild) { txn = splitChild; break; }
+        }
+      }
+    }
     if (txn) {
       txn.user_category = categoryString;
       txn.is_override = true;

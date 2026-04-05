@@ -603,8 +603,7 @@ function _openSplitDescriptionEditor(cell, splitTxnId, parentTxnId) {
   _dismissActiveEditor({ clearRowSession: true });
 
   const originalHtml = cell.innerHTML;
-  const currentName = splitChild.user_description_override
-    || splitChild.description || splitChild.name
+  const currentName = splitChild.description || splitChild.name
     || parentTxn.merchant_name || parentTxn.description || parentTxn.name || '';
 
   const input = document.createElement('input');
@@ -650,15 +649,18 @@ function _openSplitDescriptionEditor(cell, splitTxnId, parentTxnId) {
 
 
 async function _saveSplitDescriptionEdit(splitTxnId, parentTxnId, newDescription) {
-  const isClearing = !newDescription;
+  if (!newDescription) {
+    showStatus('Description cannot be empty', 'error');
+    return;
+  }
 
   try {
     const response = await authenticatedFetch(
-      `${BACKEND_URL}/api/transactions/${encodeURIComponent(splitTxnId)}/description`,
+      `${BACKEND_URL}/api/transactions/split/${encodeURIComponent(splitTxnId)}/description`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: newDescription || '' }),
+        body: JSON.stringify({ description: newDescription }),
       }
     );
 
@@ -672,7 +674,8 @@ async function _saveSplitDescriptionEdit(splitTxnId, parentTxnId, newDescription
     if (parentTxn && parentTxn.splits) {
       const splitChild = parentTxn.splits.find(s => s.transaction_id === splitTxnId);
       if (splitChild) {
-        splitChild.user_description_override = isClearing ? null : newDescription;
+        splitChild.description = newDescription;
+        splitChild.merchant_name = newDescription;
       }
     }
 
@@ -681,7 +684,7 @@ async function _saveSplitDescriptionEdit(splitTxnId, parentTxnId, newDescription
       window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
     }
 
-    showStatus(isClearing ? 'Description override cleared' : 'Description updated', 'success');
+    showStatus('Description updated', 'success');
     _dismissActiveEditor({ clearRowSession: true });
     renderTransactionTable();
   } catch (saveError) {

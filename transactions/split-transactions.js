@@ -116,7 +116,8 @@ async function modifySplitModal(parentTransactionId) {
       addSplitRow(
         split.amount,
         split.user_category || split.personal_finance_category?.detailed || '',
-        split.user_memo || ''
+        split.user_memo || '',
+        split.description || ''
       );
     });
     
@@ -130,7 +131,7 @@ async function modifySplitModal(parentTransactionId) {
 }
 
 // Add a split row to the modal
-function addSplitRow(amount = '', category = '', memo = '') {
+function addSplitRow(amount = '', category = '', memo = '', description = '') {
   const splitRowsContainer = document.getElementById('split-rows');
   const rowIndex = splitRows.length;
   
@@ -143,6 +144,10 @@ function addSplitRow(amount = '', category = '', memo = '') {
       <div class="split-row-label">Amount</div>
       <input type="text" inputmode="decimal" value="${amount}" placeholder="0.00" class="split-amount-input" 
              onchange="updateSplitValidation()" oninput="updateSplitValidation()">
+    </div>
+    <div>
+      <div class="split-row-label">Description (Optional)</div>
+      <input type="text" value="${escapeHtml(description)}" placeholder="Inherits parent" class="split-description-input" maxlength="500">
     </div>
     <div>
       <div class="split-row-label">Category</div>
@@ -407,6 +412,7 @@ async function handleSplitSubmit() {
     const splits = [];
     document.querySelectorAll('.split-row').forEach(row => {
       const amountInput = row.querySelector('.split-amount-input');
+      const descriptionInput = row.querySelector('.split-description-input');
       const categoryInput = row.querySelector('.split-category-autocomplete');
       const memoInput = row.querySelector('.split-memo-input');
       
@@ -415,6 +421,9 @@ async function handleSplitSubmit() {
           amount: _parseSplitAmount(amountInput.value, currentSplitTransaction.amount),
           category: categoryInput.value,
         };
+        if (descriptionInput && descriptionInput.value.trim()) {
+          split.description = descriptionInput.value.trim();
+        }
         if (memoInput && memoInput.value) {
           split.user_memo = memoInput.value;
         }

@@ -213,15 +213,27 @@ function _applyOptimisticUpdate(transactionId, changes) {
  * context menus and exports see the new value.
  */
 function _updateCategoryDom(transactionId, categoryString) {
-  const row = document.querySelector(`tr[data-txn-id="${transactionId}"]`);
-  if (!row) return;
+  // Normal rows: tr[data-txn-id] matches the transaction_id directly.
+  // Split child rows: the <tr> uses the parent's ID. The autocomplete input
+  // inside has data-txn-id set to the child's own transaction_id.
+  let row = document.querySelector(`tr[data-txn-id="${transactionId}"]`);
+  let categoryInput;
 
-  row.setAttribute('data-user-category', categoryString);
+  if (row) {
+    categoryInput = row.querySelector('.category-autocomplete');
+  } else {
+    categoryInput = document.querySelector(`.category-autocomplete[data-txn-id="${transactionId}"]`);
+    if (categoryInput) {
+      row = categoryInput.closest('tr');
+    }
+  }
 
-  const categoryInput = row.querySelector('.category-autocomplete');
+  if (row) {
+    row.setAttribute('data-user-category', categoryString);
+  }
+
   if (categoryInput) {
     categoryInput.value = categoryString;
-    // Update the committed value so blur doesn't revert the text
     $(categoryInput).data('committedCategoryValue', categoryString);
   }
 }

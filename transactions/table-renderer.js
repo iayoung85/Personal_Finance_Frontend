@@ -595,8 +595,7 @@ function renderTransactionTable() {
         const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
 
         // ── Two-line description cell matching normal rows ──
-        const splitRawName = split.description || split.name || txn.merchant_name || txn.description || txn.name || '';
-        const splitDisplayName = split.user_description_override || splitRawName;
+        const splitDisplayName = split.description || split.name || txn.merchant_name || txn.description || txn.name || '';
         let splitTopLineText = splitDisplayName || '[merchant empty]';
         const splitTopLineClass = splitDisplayName ? 'txn-description-text' : 'txn-description-text txn-description-placeholder';
         const splitMemoText = split.user_memo || '';
@@ -622,11 +621,18 @@ function renderTransactionTable() {
           splitCategoryDisplay = split.personal_finance_category.detailed;
         }
         
-        // Category cell with edit-splits button tucked right-aligned (first split only)
+        // Category cell with autocomplete input (same as normal rows) + edit-splits button (first split only)
         const splitEditBtn = isFirstSplit
           ? `<button class="split-badge-btn split-modify-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Modify splits">✎</button>`
           : '';
-        html += `<td class="split-category-cell"><div class="split-category-inner"><span class="split-category-text">${escapeHtml(splitCategoryDisplay)}</span>${splitEditBtn}</div></td>`;
+        const splitCategoryAutocomplete = _buildCategoryAutocomplete(
+          split.transaction_id,
+          txn.account_id || txn.plaid_account_id || '',
+          splitCategoryDisplay,
+          'Type to search categories…',
+          splitEditBtn
+        );
+        html += `<td class="category-column">${splitCategoryAutocomplete}</td>`;
 
         // Type/source column after category (matching normal row order)
         if (optionalFields.includes('source')) {
