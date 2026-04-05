@@ -61,6 +61,14 @@ function _handleInlineClick(event) {
     return;
   }
 
+  if (field === 'description' && txnType === TXN_TYPE.SPLIT_CHILD) {
+    const splitTxnId = row.dataset.splitTxnId;
+    if (splitTxnId) {
+      _openSplitDescriptionEditor(targetCell, splitTxnId, txnId);
+    }
+    return;
+  }
+
   if (!EDITABLE_TYPES.has(txnType)) return;
   if (!_ROW_EDIT_FIELD_ORDER.includes(field)) return;
 
@@ -573,6 +581,103 @@ async function _savePlaidDescriptionEdit(txnId, newDescription) {
     // description edits don't affect other rows or balance history).
     if (window.txnDB && txn) {
       window.txnDB.putOne(txn).catch(function() {});
+      window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
+    }
+
+    showStatus(isClearing ? 'Description override cleared' : 'Description updated', 'success');
+    _dismissActiveEditor({ clearRowSession: true });
+    renderTransactionTable();
+  } catch (saveError) {
+    showStatus(`Description update failed: ${saveError.message}`, 'error');
+  }
+}
+
+
+function _openSplitDescriptionEditor(cell, splitTxnId, parentTxnId) {
+  const parentTxn = transactions.find(findTxn => findTxn.transaction_id === parentTxnId);
+  if (!parentTxn || !parentTxn.splits) return;
+
+  const splitChild = parentTxn.splits.find(s => s.transaction_id === splitTxnId);
+  if (!splitChild) return;
+
+  _dismissActiveEditor({ clearRowSession: true });
+
+  const originalHtml = cell.innerHTML;
+  const currentName = splitChild.user_description_override
+    || splitChild.description || splitChild.name
+    || parentTxn.merchant_name || parentTxn.description || parentTxn.name || '';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'inline-edit-input inline-edit-description';
+  input.value = currentName;
+  input.maxLength = 500;
+
+  cell.textContent = '';
+  cell.appendChild(input);
+  cell.classList.add('inline-editing');
+
+  _activeInlineEditor = {
+    cell,
+    originalHtml,
+    input,
+    field: 'description',
+    row: cell.closest('tr'),
+    txnId: splitTxnId,
+  };
+
+  input.focus();
+  input.select();
+
+  input.addEventListener('keydown', async (keyboardEvent) => {
+    if (keyboardEvent.key === 'Enter') {
+      keyboardEvent.preventDefault();
+      await _saveSplitDescriptionEdit(splitTxnId, parentTxnId, input.value.trim());
+    } else if (keyboardEvent.key === 'Escape') {
+      keyboardEvent.preventDefault();
+      _dismissActiveEditor({ clearRowSession: true });
+    }
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (_activeInlineEditor && _activeInlineEditor.input === input) {
+        _dismissActiveEditor({ clearRowSession: true });
+      }
+    }, 120);
+  });
+}
+
+
+async function _saveSplitDescriptionEdit(splitTxnId, parentTxnId, newDescription) {
+  const isClearing = !newDescription;
+
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/${encodeURIComponent(splitTxnId)}/description`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: newDescription || '' }),
+      }
+    );
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to update description');
+    }
+
+    // Patch the split child in the parent's splits array
+    const parentTxn = transactions.find(findTxn => findTxn.transaction_id === parentTxnId);
+    if (parentTxn && parentTxn.splits) {
+      const splitChild = parentTxn.splits.find(s => s.transaction_id === splitTxnId);
+      if (splitChild) {
+        splitChild.user_description_override = isClearing ? null : newDescription;
+      }
+    }
+
+    if (window.txnDB && parentTxn) {
+      window.txnDB.putOne(parentTxn).catch(function() {});
       window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
     }
 

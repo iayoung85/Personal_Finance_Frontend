@@ -144,13 +144,30 @@ function hasPendingBatchEdits() {
 // ───── Optimistic Updates ──────────────────────────────────
 
 /**
+ * Look up a transaction by ID in the main array, falling back to
+ * split children nested under parent transactions.
+ */
+function _findTransactionOrSplitChild(transactionId) {
+  const txn = transactions.find(findTxn => findTxn.transaction_id === transactionId);
+  if (txn) return txn;
+
+  for (const parentTxn of transactions) {
+    if (parentTxn.splits) {
+      const splitChild = parentTxn.splits.find(splitItem => splitItem.transaction_id === transactionId);
+      if (splitChild) return splitChild;
+    }
+  }
+  return null;
+}
+
+/**
  * Strip out fields whose value is identical to what the transaction already
  * has. Returns a new object containing only genuinely modified fields.
  * Normalises null/undefined to empty string for comparison so "no memo" and
  * "" are treated as the same.
  */
 function _filterUnchangedFields(transactionId, changes) {
-  const txn = transactions.find(findTxn => findTxn.transaction_id === transactionId);
+  const txn = _findTransactionOrSplitChild(transactionId);
   if (!txn) return changes;
 
   const filtered = {};
@@ -175,7 +192,7 @@ function _filterUnchangedFields(transactionId, changes) {
 }
 
 function _applyOptimisticUpdate(transactionId, changes) {
-  const txn = transactions.find(findTxn => findTxn.transaction_id === transactionId);
+  const txn = _findTransactionOrSplitChild(transactionId);
   if (!txn) return;
 
   if (changes.user_category) {
@@ -213,10 +230,17 @@ function _updateCategoryDom(transactionId, categoryString) {
  * Update the memo display in the DOM without a full table re-render.
  */
 function _updateMemoDom(transactionId, memoValue) {
+  // Normal rows have data-txn-id on the <tr> matching the transaction_id.
+  // Split child rows store the child's transaction_id on the memo span itself
+  // (not on the <tr>, which uses the parent's ID).
+  let memoSpan;
   const row = document.querySelector(`tr[data-txn-id="${transactionId}"]`);
-  if (!row) return;
+  if (row) {
+    memoSpan = row.querySelector('.txn-memo-text');
+  } else {
+    memoSpan = document.querySelector(`.txn-memo-text[data-txn-id="${transactionId}"]`);
+  }
 
-  const memoSpan = row.querySelector('.txn-memo-text');
   if (memoSpan) {
     if (memoValue) {
       memoSpan.textContent = memoValue;

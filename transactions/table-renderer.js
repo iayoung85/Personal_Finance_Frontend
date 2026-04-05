@@ -595,18 +595,19 @@ function renderTransactionTable() {
         const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
 
         // ── Two-line description cell matching normal rows ──
-        const splitDisplayName = split.description || split.name || txn.merchant_name || txn.description || txn.name || '';
+        const splitRawName = split.description || split.name || txn.merchant_name || txn.description || txn.name || '';
+        const splitDisplayName = split.user_description_override || splitRawName;
         let splitTopLineText = splitDisplayName || '[merchant empty]';
         const splitTopLineClass = splitDisplayName ? 'txn-description-text' : 'txn-description-text txn-description-placeholder';
         const splitMemoText = split.user_memo || '';
         const splitMemoPlaceholder = 'add memo…';
-        const splitMemoLineHtml = `<span class="txn-memo-text" data-txn-id="${escapeHtml(parentTxnId)}" data-split-index="${idx}" title="${escapeHtml(splitMemoText)}">${splitMemoText ? escapeHtml(splitMemoText) : `<em class="memo-placeholder">${splitMemoPlaceholder}</em>`}</span>`;
+        const splitMemoLineHtml = `<span class="txn-memo-text" data-txn-id="${escapeHtml(split.transaction_id)}" data-split-index="${idx}" title="${escapeHtml(splitMemoText)}">${splitMemoText ? escapeHtml(splitMemoText) : `<em class="memo-placeholder">${splitMemoPlaceholder}</em>`}</span>`;
 
-        html += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-parent-txn-id="${escapeHtml(parentTxnId)}" data-split-index="${idx}" data-source="split" data-status="cleared" data-account-id="${escapeHtml(txn.account_id || txn.plaid_account_id || '')}" data-amount="${displayAmount || 0}" data-is-split="true" data-txn-description="${escapeHtml(split.description || split.name || txn.description || txn.name || '')}" data-user-category="${escapeHtml(split.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(split.date || txn.date || '')}">
+        html += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-parent-txn-id="${escapeHtml(parentTxnId)}" data-split-txn-id="${escapeHtml(split.transaction_id)}" data-split-index="${idx}" data-source="split" data-status="cleared" data-account-id="${escapeHtml(txn.account_id || txn.plaid_account_id || '')}" data-amount="${displayAmount || 0}" data-is-split="true" data-txn-description="${escapeHtml(split.description || split.name || txn.description || txn.name || '')}" data-user-category="${escapeHtml(split.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(split.date || txn.date || '')}">
           ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
           <td>${escapeHtml(dateStr)}</td>
           ${showBankAccountColumn ? `<td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>` : ''}
-          <td class="description-column">
+          <td class="description-column" data-field="description">
             <div class="desc-two-line">
               <div class="desc-top-line"><span class="split-badge" title="Split transaction">✂</span> ${pendingBadge}<span class="${splitTopLineClass}" title="${escapeHtml(splitDisplayName)}">${escapeHtml(splitTopLineText)}</span></div>
               <div class="desc-memo-line">${splitMemoLineHtml}</div>
@@ -1010,8 +1011,24 @@ function _openInlineMemoEditor(memoSpan) {
   const txnId = span.dataset.txnId;
   if (!txnId) return;
 
-  const txn = transactions.find(t => t.transaction_id === txnId);
-  const currentMemo = txn ? (txn.user_memo || '') : '';
+  // For split children, the memo span's data-txn-id is the split child's
+  // own transaction_id. Look up the memo from the parent's splits array.
+  const splitIndex = span.dataset.splitIndex;
+  let currentMemo = '';
+  if (splitIndex !== undefined && splitIndex !== null) {
+    const parentRow = span.closest('tr');
+    const parentTxnId = parentRow ? parentRow.dataset.txnId : null;
+    const parentTxn = parentTxnId
+      ? transactions.find(t => t.transaction_id === parentTxnId)
+      : null;
+    if (parentTxn && parentTxn.splits) {
+      const splitChild = parentTxn.splits.find(s => s.transaction_id === txnId);
+      currentMemo = splitChild ? (splitChild.user_memo || '') : '';
+    }
+  } else {
+    const txn = transactions.find(t => t.transaction_id === txnId);
+    currentMemo = txn ? (txn.user_memo || '') : '';
+  }
 
   const input = document.createElement('input');
   input.type = 'text';
