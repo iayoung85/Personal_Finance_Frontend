@@ -502,24 +502,38 @@ function renderTransactionTable() {
         const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
         const rowClass = `split-mismatch-row${isPendingRow ? ' pending-row' : ''}`;
 
+        // ── Two-line description cell for mismatch row ──
+        const mismatchDisplayName = txn.merchant_name || txn.description || txn.name || '';
+        let mismatchTopText = mismatchDisplayName || '[merchant empty]';
+        const mismatchTopClass = mismatchDisplayName ? 'txn-description-text' : 'txn-description-text txn-description-placeholder';
+        const mismatchMemoText = txn.user_memo || '';
+        const mismatchMemoHtml = `<span class="txn-memo-text" data-txn-id="${escapeHtml(parentTxnId)}" title="${escapeHtml(mismatchMemoText)}">${mismatchMemoText ? escapeHtml(mismatchMemoText) : '<em class="memo-placeholder">add memo…</em>'}</span>`;
+
         html += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-account-id="${escapeHtml(txn.account_id || txn.plaid_account_id || '')}" data-amount="${parentAmount || 0}" data-is-split="true" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(txn.date || '')}">
           ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
           <td>${escapeHtml(dateStr)}</td>
           ${showBankAccountColumn ? `<td>${escapeHtml(txn.bank_account || '')}</td>` : ''}
-          <td>${pendingBadge}${escapeHtml(txn.description || txn.name || '—')}</td>`;
+          <td class="description-column">
+            <div class="desc-two-line">
+              <div class="desc-top-line">${pendingBadge}<span class="${mismatchTopClass}" title="${escapeHtml(mismatchDisplayName)}">${escapeHtml(mismatchTopText)}</span></div>
+              <div class="desc-memo-line">${mismatchMemoHtml}</div>
+            </div>
+          </td>`;
 
+        // Category cell with split-mismatch repair UI (matches header: Description → Category → Type)
+        html += `<td class="split-mismatch-cell">
+          <span class="split-mismatch-badge" title="Split amounts no longer add up to the transaction total. This can happen when a matched transaction has a different amount than the original.">⚠ Split broken</span>
+          <button class="split-badge-btn split-repair-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Repair splits — amounts no longer match parent total">Repair</button>
+          <button class="split-badge-btn split-delete-badge" onclick="handleDeleteSplit('${escapeHtml(parentTxnId)}')" title="Delete all splits and revert to unsplit">🗑</button>
+        </td>`;
+
+        // Type/source column after category (matching normal row order)
         if (optionalFields.includes('source')) {
           const isConverted = txn.source === 'plaid' && txn.status === 'converted';
           const sourceLabel = txn.source === 'manual' ? 'Manual' : isConverted ? 'Prior Download' : 'Downloaded';
           const sourceCssClass = txn.source === 'manual' ? 'manual' : isConverted ? 'plaid-converted' : 'plaid';
           html += `<td><span class="source-badge ${sourceCssClass}">${sourceLabel}</span></td>`;
         }
-
-        html += `<td class="split-mismatch-cell">
-          <span class="split-mismatch-badge" title="Split amounts no longer add up to the transaction total. This can happen when a matched transaction has a different amount than the original.">⚠ Split broken</span>
-          <button class="split-badge-btn split-repair-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Repair splits — amounts no longer match parent total">Repair</button>
-          <button class="split-badge-btn split-delete-badge" onclick="handleDeleteSplit('${escapeHtml(parentTxnId)}')" title="Delete all splits and revert to unsplit">🗑</button>
-        </td>`;
 
         // Fill remaining optional columns
         if (optionalFields.includes('payment_channel')) html += `<td>${escapeHtml(txn.payment_channel || '')}</td>`;
@@ -579,20 +593,25 @@ function renderTransactionTable() {
         const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}${isPendingRow ? ' pending-row' : ''}`;
         
         const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
+
+        // ── Two-line description cell matching normal rows ──
+        const splitDisplayName = split.description || split.name || txn.merchant_name || txn.description || txn.name || '';
+        let splitTopLineText = splitDisplayName || '[merchant empty]';
+        const splitTopLineClass = splitDisplayName ? 'txn-description-text' : 'txn-description-text txn-description-placeholder';
+        const splitMemoText = split.user_memo || '';
+        const splitMemoPlaceholder = 'add memo…';
+        const splitMemoLineHtml = `<span class="txn-memo-text" data-txn-id="${escapeHtml(parentTxnId)}" data-split-index="${idx}" title="${escapeHtml(splitMemoText)}">${splitMemoText ? escapeHtml(splitMemoText) : `<em class="memo-placeholder">${splitMemoPlaceholder}</em>`}</span>`;
+
         html += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-parent-txn-id="${escapeHtml(parentTxnId)}" data-split-index="${idx}" data-source="split" data-status="cleared" data-account-id="${escapeHtml(txn.account_id || txn.plaid_account_id || '')}" data-amount="${displayAmount || 0}" data-is-split="true" data-txn-description="${escapeHtml(split.description || split.name || txn.description || txn.name || '')}" data-user-category="${escapeHtml(split.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(split.date || txn.date || '')}">
           ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
           <td>${escapeHtml(dateStr)}</td>
           ${showBankAccountColumn ? `<td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>` : ''}
-          <td>${pendingBadge}${escapeHtml(split.description || split.name || '—')}</td>`;
-        
-        // Add source column if needed
-        if (optionalFields.includes('source')) {
-          const isConverted = txn.source === 'plaid' && txn.status === 'converted';
-          const sourceLabel = txn.source === 'manual' ? 'Manual' : isConverted ? 'Prior Download' : 'Downloaded';
-          const sourceCssClass = txn.source === 'manual' ? 'manual' : isConverted ? 'plaid-converted' : 'plaid';
-          const sourceBadge = `<span class="source-badge ${sourceCssClass}">${sourceLabel}</span>`;
-          html += `<td>${sourceBadge}</td>`;
-        }
+          <td class="description-column">
+            <div class="desc-two-line">
+              <div class="desc-top-line"><span class="split-badge" title="Split transaction">✂</span> ${pendingBadge}<span class="${splitTopLineClass}" title="${escapeHtml(splitDisplayName)}">${escapeHtml(splitTopLineText)}</span></div>
+              <div class="desc-memo-line">${splitMemoLineHtml}</div>
+            </div>
+          </td>`;
         
         // Parse split category - prioritize user_category over personal_finance_category
         let splitCategoryDisplay = 'Uncategorized';
@@ -602,7 +621,20 @@ function renderTransactionTable() {
           splitCategoryDisplay = split.personal_finance_category.detailed;
         }
         
-        html += `<td class="split-category-cell">${escapeHtml(splitCategoryDisplay)}</td>`;
+        // Category cell with edit-splits button tucked right-aligned (first split only)
+        const splitEditBtn = isFirstSplit
+          ? `<button class="split-badge-btn split-modify-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Modify splits">✎</button>`
+          : '';
+        html += `<td class="split-category-cell"><div class="split-category-inner"><span class="split-category-text">${escapeHtml(splitCategoryDisplay)}</span>${splitEditBtn}</div></td>`;
+
+        // Type/source column after category (matching normal row order)
+        if (optionalFields.includes('source')) {
+          const isConverted = txn.source === 'plaid' && txn.status === 'converted';
+          const sourceLabel = txn.source === 'manual' ? 'Manual' : isConverted ? 'Prior Download' : 'Downloaded';
+          const sourceCssClass = txn.source === 'manual' ? 'manual' : isConverted ? 'plaid-converted' : 'plaid';
+          const sourceBadge = `<span class="source-badge ${sourceCssClass}">${sourceLabel}</span>`;
+          html += `<td>${sourceBadge}</td>`;
+        }
         
         // Add optional field columns
         if (optionalFields.includes('payment_channel')) {
@@ -661,8 +693,6 @@ function renderTransactionTable() {
             }
           }
           html += `<td class="split-actions-cell">
-            <span class="split-badge-inline">Split</span>
-            <button class="split-badge-btn split-modify-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Modify splits">✎</button>
             <button class="split-badge-btn split-delete-badge" onclick="handleDeleteSplit('${escapeHtml(parentTxnId)}')" title="Delete splits">🗑</button>
           </td>`;
         } else {
