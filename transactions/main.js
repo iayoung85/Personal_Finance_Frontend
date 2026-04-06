@@ -70,8 +70,10 @@ $(document).ready(async function() {
     } catch (e) { /* non-fatal */ }
   }
 
-  // Sync transactions with Plaid on page load (after accounts are loaded/selected)
-  await autoSyncAndLoadTransactions();
+  // Load transactions on page load — no Plaid sync here.
+  // Plaid webhooks keep the DB up to date automatically; the user can force
+  // a sync by clicking the "Re-sync" button which calls syncTransactions().
+  await fetchAllTransactions(false);
 
   // Render dynamic period buttons after transactions are loaded
   renderDynamicPeriodButtons();
