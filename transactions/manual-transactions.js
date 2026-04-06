@@ -4,6 +4,20 @@
 // ============================================================
 
 /**
+ * Patch the in-memory + IndexedDB cache with MOB changes returned by the
+ * backend after a manual transaction create/update/delete.  The backend
+ * includes ``affected_mob`` (updated/created MOB row) or ``removed_mob_id``
+ * (MOB that was deleted) so the frontend stays in sync without a full refetch.
+ */
+function _applyCachedMobUpdate(responseData) {
+  if (responseData.affected_mob && responseData.affected_mob.transaction_id) {
+    _replaceCachedTransaction(responseData.affected_mob.transaction_id, responseData.affected_mob);
+  } else if (responseData.removed_mob_id) {
+    _removeCachedTransaction(responseData.removed_mob_id);
+  }
+}
+
+/**
  * Open modal to create a new manual transaction
  */
 function openAddManualTransactionModal() {
@@ -368,6 +382,11 @@ async function _updateManualTransaction(transactionId, accountId) {
         _replaceCachedTransaction(trendingTxn.transaction_id, trendingTxn);
       }
     }
+
+    // Patch the MOB row that the backend may have updated/removed
+    // during balance reconciliation so the cached row isn't stale.
+    _applyCachedMobUpdate(data);
+
     _sortTransactionsInPlace();
     _cacheTransactions(transactions);
 
@@ -770,6 +789,10 @@ async function saveManualTransaction() {
       }
     }
 
+    // Patch the MOB row that the backend may have created/updated/removed
+    // during balance reconciliation so the cached row isn't stale.
+    _applyCachedMobUpdate(data);
+
     // Sort and persist — new txn + trending rows may need reordering
     _sortTransactionsInPlace();
     _cacheTransactions(transactions);
@@ -845,6 +868,13 @@ async function deleteManualTransaction(manualTransactionId) {
         _replaceCachedTransaction(data.affected_trending_transactions[ati].transaction_id, data.affected_trending_transactions[ati]);
       }
     }
+
+    // Patch the MOB row that the backend may have updated/removed
+    // after deleting a pre-OB manual transaction.
+    if (data) {
+      _applyCachedMobUpdate(data);
+    }
+
     _sortTransactionsInPlace();
     _cacheTransactions(transactions);
 

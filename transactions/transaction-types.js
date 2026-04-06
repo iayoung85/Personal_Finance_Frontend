@@ -126,14 +126,23 @@ function isSystemType(txnType) {
 // In linked accounts this is a non-issue (OB date is the day before the
 // earliest plaid transaction), but in converted accounts OB shares its
 // date with other transactions.
-const ANCHOR_SORT_PRIORITIES = { 'manual_opening_balance': 0, 'opening_balance': 1 };
+const ANCHOR_SORT_PRIORITIES = {
+  'manual_opening_balance': 0,
+  'manual': 0.5,
+  'opening_balance': 1,
+  'investment_trending': 3,
+};
 const DEFAULT_SORT_PRIORITY = 2;
+const PLAID_CONVERTED_SORT_PRIORITY = 0.75;
 
 /**
- * Return an integer sort key that orders anchors before regular rows.
- * @param {string} source - Transaction source string (e.g. 'plaid', 'opening_balance').
- * @returns {number} 0 for manual_opening_balance, 1 for opening_balance, 2 for all others.
+ * Return a numeric sort key that orders anchors before regular rows.
+ * Must stay in sync with backend anchor_sort_priority in transaction_types.py.
+ * @param {string} source - Transaction source string.
+ * @param {string} [status] - Transaction status string.
+ * @returns {number} Sort priority (lower = earlier in ascending balance walk).
  */
-function anchorSortPriority(source) {
+function anchorSortPriority(source, status) {
+  if (source === 'plaid' && status === 'converted') return PLAID_CONVERTED_SORT_PRIORITY;
   return ANCHOR_SORT_PRIORITIES[source] ?? DEFAULT_SORT_PRIORITY;
 }

@@ -277,8 +277,8 @@ function renderTransactionTable() {
   const sortNewestFirst = (rowA, rowB) => {
     const dateComparison = _transferSortDate(rowB).localeCompare(_transferSortDate(rowA));
     if (dateComparison !== 0) return dateComparison;
-    const priorityA = anchorSortPriority(rowA.source);
-    const priorityB = anchorSortPriority(rowB.source);
+    const priorityA = anchorSortPriority(rowA.source, rowA.status);
+    const priorityB = anchorSortPriority(rowB.source, rowB.status);
     if (priorityA !== priorityB) return priorityB - priorityA;
     const idA = rowA.transaction_id || '';
     const idB = rowB.transaction_id || '';
@@ -431,6 +431,8 @@ function renderTransactionTable() {
       || (txnRowType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING && txn.date > _todayDateStr);
     const isMissingRow = txnRowType === TXN_TYPE.BILL_MISSING
       || txnRowType === TXN_TYPE.MANUAL_MISSING;
+    const isOpeningBalanceRow = txnRowType === TXN_TYPE.SYSTEM_OPENING_BALANCE
+      || txnRowType === TXN_TYPE.SYSTEM_MANUAL_OPENING_BALANCE;
     const isPendingRow = !!txn.pending;
 
     // --- Block boundary separators ---
@@ -810,6 +812,15 @@ function renderTransactionTable() {
         }).format(txn.balance_at_date);
         const negClass = txn.balance_at_date < 0 ? ' ledger-negative' : '';
         ledgerBalanceHtml = `<td class="ledger-cell${negClass}" title="Account balance at ${txn.date}">${formattedBal}</td>`;
+      } else if (isOpeningBalanceRow && txn.balance_at_date != null) {
+        // OB/MOB rows carry the account balance as it stood at that point in
+        // time — display that directly rather than looking up the walk history.
+        const formattedBal = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: txn.iso_currency_code || 'USD'
+        }).format(txn.balance_at_date);
+        const negClass = txn.balance_at_date < 0 ? ' ledger-negative' : '';
+        ledgerBalanceHtml = `<td class="ledger-cell${negClass}" title="Account balance as of ${txn.date}">${formattedBal}</td>`;
       } else {
         const runningBalance = isFutureBlockRow
             ? scheduledLedgerLookup[txn.transaction_id]
@@ -922,7 +933,9 @@ function renderTransactionTable() {
 
     // Amount is always pinned toward the right edge
     const extraAmountClass = rendered.amountCssExtra ? ` ${rendered.amountCssExtra}` : '';
-    html += `<td class="${amountCellClass}${extraAmountClass}${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="amount"' : ''}>${amount}</td>`;
+    // OB/MOB rows report a balance, not a debit/credit — suppress the amount cell.
+    const amountDisplay = isOpeningBalanceRow ? '—' : amount;
+    html += `<td class="${amountCellClass}${extraAmountClass}${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="amount"' : ''}>${amountDisplay}</td>`;
     if (showLedgerColumn) {
       html += ledgerBalanceHtml;
     }
