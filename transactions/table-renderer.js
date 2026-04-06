@@ -734,10 +734,12 @@ function renderTransactionTable() {
       const displayNames = getCategoryDisplayNames(pfc);
       currentParsed = { primary: displayNames.primary, detailed: displayNames.trimmed };
     }
-    // For transfers, use the raw [AccountName] string directly rather than
-    // feeding it through buildCategoryString which expects Primary: Detailed.
+    // For transfers, prefer the live account name resolved at query time
+    // so renames are reflected immediately without waiting for a DB relabel.
     const currentFullCategory = isTransfer
-      ? (txn.user_category || '')
+      ? (txn.transfer_partner_account_name
+        ? buildTransferCategory(txn.transfer_partner_account_name)
+        : (txn.user_category || ''))
       : buildCategoryString(currentParsed.primary, currentParsed.detailed);
 
     // Assemble the context object that every type renderer reads
