@@ -672,21 +672,34 @@ td {
   cursor: pointer;
 }
 .desc-top-line {
-  white-space: nowrap;
+  display: flex;
+  align-items: baseline;
   overflow: hidden;
-  text-overflow: ellipsis;
   font-size: 12px;
   cursor: default;
+}
+.desc-top-line > * {
+  flex-shrink: 0;
 }
 .desc-top-line .txn-description-text {
   font-weight: 500;
   cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .desc-top-line .txn-description-placeholder {
   font-weight: 400;
   color: var(--text-muted);
   font-style: italic;
   cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .desc-memo-line {
   white-space: nowrap;
