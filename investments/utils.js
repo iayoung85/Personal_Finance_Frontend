@@ -92,11 +92,21 @@ function buildAccountIdToPlaidIdMap() {
 
 /**
  * Get the set of plaid account IDs that correspond to currently selected accounts.
+ * Also includes app account_ids for offline/CSV accounts (which use account_id
+ * as the blob identifier instead of plaid_account_id).
  */
 function getSelectedPlaidAccountIds() {
   const accountIds = getSelectedAccountIds();
   const mapping = buildAccountIdToPlaidIdMap();
-  return accountIds.map(id => mapping[id]).filter(Boolean);
+  const plaidIds = accountIds.map(id => mapping[id]).filter(Boolean);
+
+  // Offline/CSV accounts use app account_id in the blob — include those directly
+  accountIds.forEach(id => {
+    const acc = investmentAccounts.find(a => a.account_id === id);
+    if (acc && !acc.plaid_account_id) plaidIds.push(id);
+  });
+
+  return plaidIds;
 }
 
 /**
@@ -105,7 +115,7 @@ function getSelectedPlaidAccountIds() {
 function getSelectedAccountIds() {
   if (poolAllMode) {
     return investmentAccounts
-      .filter(acc => acc.status === 'active')
+      .filter(acc => _isVisibleInvestmentAccount(acc))
       .map(acc => acc.account_id);
   }
   return Array.from(selectedAccountIds);

@@ -45,6 +45,7 @@
         <div class="action-row">
           <div class="action-row-left">
             <button onclick="syncAllHoldings()">Sync All Holdings</button>
+            <button class="secondary" onclick="openCsvUploadModal()">📁 Upload CSV</button>
             <button class="secondary" onclick="openAllocationSettings()">⚙ Allocations</button>
             <div id="status-message" class="status-message"></div>
           </div>
@@ -91,6 +92,60 @@
         <!-- ETF Exposure Panel -->
         <div id="etf-exposure-panel" style="display:none;"></div>
 
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CSV Upload Modal ═══ -->
+  <div id="csv-upload-modal" class="assign-modal-overlay" style="display:none;">
+    <div class="assign-modal" style="max-width: 560px;">
+      <div class="assign-modal-header">
+        <h2 id="csv-upload-title">Upload Holdings CSV</h2>
+        <button class="assign-modal-close" onclick="closeCsvUploadModal()">✕</button>
+      </div>
+      <div class="assign-modal-body">
+        <!-- Step 1: Select bank and file -->
+        <div id="csv-step-select">
+          <p style="margin-bottom: 12px; color: var(--text-secondary); font-size: 13px;">
+            Select the bank this CSV belongs to, then choose or drag a CSV file exported from your brokerage.
+          </p>
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px;">Bank</label>
+            <select id="csv-bank-select" style="width: 100%; padding: 8px; border: 1px solid var(--border-primary); border-radius: 4px; background: var(--bg-input); color: var(--text-primary); font-size: 13px;">
+              <option value="">— Select a bank —</option>
+            </select>
+          </div>
+          <div class="csv-drop-zone" id="csv-drop-zone">
+            <input type="file" id="csv-file-input" accept=".csv" onchange="onCsvFileSelected()" style="display: none;">
+            <div class="csv-drop-label" id="csv-drop-label">
+              <span style="font-size: 24px;">📄</span>
+              <span>Drop CSV file here or <a href="#" onclick="event.preventDefault(); document.getElementById('csv-file-input').click();">browse</a></span>
+            </div>
+          </div>
+          <div id="csv-select-error" class="csv-error-text" style="display: none;"></div>
+          <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+            <button class="secondary" onclick="closeCsvUploadModal()" style="margin-right: 8px;">Cancel</button>
+            <button id="csv-preview-btn" onclick="submitCsvPreview()" disabled>Preview Import</button>
+          </div>
+        </div>
+
+        <!-- Step 2: Preview results -->
+        <div id="csv-step-preview" style="display: none;">
+          <div id="csv-preview-content"></div>
+          <div id="csv-preview-error" class="csv-error-text" style="display: none;"></div>
+          <div style="display: flex; justify-content: flex-end; margin-top: 12px; gap: 8px;">
+            <button class="secondary" onclick="csvBackToSelect()">Back</button>
+            <button id="csv-import-btn" onclick="submitCsvImport()">Import Holdings</button>
+          </div>
+        </div>
+
+        <!-- Step 3: Done -->
+        <div id="csv-step-done" style="display: none;">
+          <div id="csv-done-content"></div>
+          <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+            <button onclick="closeCsvUploadModal()">Close</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

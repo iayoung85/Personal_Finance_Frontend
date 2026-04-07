@@ -25,11 +25,14 @@ async function loadInvestmentAccounts() {
       let status = 'inactive';
       if (billed.includes('investments')) status = 'active';
       else if (available.includes('investments')) status = 'available';
+      else if (!acc.plaid_item_id) status = 'offline';
 
       return {
         account_id: acc.account_id,
         plaid_account_id: acc.plaid_account_id,
         plaid_item_id: acc.plaid_item_id,
+        bank_id: acc.bank_id,
+        bank_name: acc.bank_name,
         institution_name: acc.institution_name,
         account_name: acc.account_name,
         custom_name: acc.custom_name,
@@ -63,6 +66,14 @@ function _normalizeProductList(products) {
     try { return JSON.parse(products); } catch (_) { return []; }
   }
   return Array.isArray(products) ? products : [];
+}
+
+/**
+ * An investment account is "visible" in the sidebar if it has Plaid
+ * holdings syncing active OR it is an offline (manual/CSV) account.
+ */
+function _isVisibleInvestmentAccount(acc) {
+  return acc.status === 'active' || acc.status === 'offline';
 }
 
 /**
@@ -107,26 +118,26 @@ function renderInvestmentSidebar() {
     </div>
   `;
 
-  // Only show active accounts that are not holdings_hidden
-  const activeAccounts = investmentAccounts.filter(acc => acc.status === 'active' && !acc.holdings_hidden);
+  // Show Plaid-active and offline (manual/CSV) accounts that are not holdings_hidden
+  const visibleAccounts = investmentAccounts.filter(acc => _isVisibleInvestmentAccount(acc) && !acc.holdings_hidden);
 
   // Investment accounts section
   html += '<div class="sidebar-account-group">';
   html += `<div class="sidebar-group-title">
     <span>📈 Investment</span>
-    <span class="sidebar-group-total">${formatCompactCurrency(_sumBalances(activeAccounts))}</span>
+    <span class="sidebar-group-total">${formatCompactCurrency(_sumBalances(visibleAccounts))}</span>
   </div>`;
 
-  // Regroup active accounts by item
-  const activeGroupedByItem = {};
-  activeAccounts.forEach(acc => {
-    const itemId = acc.plaid_item_id || 'no_item';
-    if (!activeGroupedByItem[itemId]) activeGroupedByItem[itemId] = [];
-    activeGroupedByItem[itemId].push(acc);
+  // Group visible accounts by bank
+  const groupedByBank = {};
+  visibleAccounts.forEach(acc => {
+    const groupKey = acc.bank_id || acc.plaid_item_id || 'no_group';
+    if (!groupedByBank[groupKey]) groupedByBank[groupKey] = [];
+    groupedByBank[groupKey].push(acc);
   });
 
-  Object.keys(activeGroupedByItem).forEach(itemId => {
-    const accounts = activeGroupedByItem[itemId];
+  Object.keys(groupedByBank).forEach(groupKey => {
+    const accounts = groupedByBank[groupKey];
 
     accounts.forEach(acc => {
       const displayName = buildAccountDisplayName(acc);
@@ -270,7 +281,7 @@ function togglePoolAll() {
 
 function toggleAccountSelection(accountId) {
   const account = investmentAccounts.find(acc => acc.account_id === accountId);
-  if (!account || account.status !== 'active') return;
+  if (!account || !_isVisibleInvestmentAccount(account)) return;
 
   // Transitioning from pool-all: select only the clicked account
   if (poolAllMode) {
@@ -296,7 +307,7 @@ function toggleAccountSelection(accountId) {
 function _applyPoolAllSelection() {
   selectedAccountIds.clear();
   investmentAccounts
-    .filter(acc => acc.status === 'active' && !acc.holdings_hidden)
+    .filter(acc => _isVisibleInvestmentAccount(acc) && !acc.holdings_hidden)
     .forEach(acc => selectedAccountIds.add(acc.account_id));
 }
 

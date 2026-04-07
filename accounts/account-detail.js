@@ -232,6 +232,16 @@ function _buildAccountActions(account) {
         'Hides this account\'s holdings from the investments page and allocation summary. Useful for brokerage cash accounts or emergency fund accounts at brokerages that skew allocation percentages. Cannot be overridden — holdings are always excluded.'
       );
     }
+
+    // ── Link CSV Data (offline investment accounts only) ──
+    if (account.connection_status !== 'linked') {
+      const hasCsvMapping = account.csv_account_number || account.csv_account_name;
+      const csvLabel = hasCsvMapping ? 'Update CSV Mapping' : 'Link CSV Data';
+      const csvDesc = hasCsvMapping
+        ? `Mapped to CSV account "${account.csv_account_number || '—'}".`
+        : 'Map this account to a CSV export so holdings can be imported from the Investments page.';
+      actions += _csvMappingActionItem(account, csvLabel, csvDesc);
+    }
   }
 
   // ── Move to Bank (manual accounts only) ──
@@ -318,6 +328,95 @@ function _actionItem(title, description, buttonHtml, tooltipId, tooltipText) {
       </div>
     </div>
   `;
+}
+
+/**
+ * Build the CSV mapping action item with an inline expandable form.
+ * The form fields are hidden until the user clicks the expand button.
+ */
+function _csvMappingActionItem(account, title, description) {
+  const accountId = account.account_id;
+  const currentNumber = _escapeAttr(account.csv_account_number || '');
+  const currentName = _escapeAttr(account.csv_account_name || '');
+  const formId = `csv-mapping-form-${accountId}`;
+
+  return `
+    <div class="action-item action-item-expandable">
+      <div class="action-item-left" style="width: 100%;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span class="action-item-title">${title}</span>
+            <span class="action-item-desc" style="display: block;">${description}</span>
+          </div>
+          <div class="action-item-right">
+            <button class="info-btn" onclick="toggleInfoTooltip('info-csv-mapping')" title="More info">ⓘ</button>
+            <button class="btn-action" onclick="toggleCsvMappingForm('${formId}')">
+              ${currentNumber ? 'Edit' : 'Map'}
+            </button>
+          </div>
+        </div>
+        <div id="info-csv-mapping" class="info-tooltip">
+          Copy the account number and name exactly as they appear in your CSV export. These values let the system match CSV rows to this account during import on the Investments page.
+        </div>
+        <div id="${formId}" class="csv-mapping-form hidden">
+          <div class="form-stack" style="margin-top: 10px;">
+            <div class="form-field">
+              <label>CSV Account Number</label>
+              <input type="text" id="${formId}-number" value="${currentNumber}"
+                     placeholder="e.g., Z12345678" maxlength="50" autocomplete="off">
+              <div class="form-hint">The account number as shown in the CSV file.</div>
+            </div>
+            <div class="form-field">
+              <label>CSV Account Name</label>
+              <input type="text" id="${formId}-name" value="${currentName}"
+                     placeholder="e.g., INDIVIDUAL - TOD" maxlength="255" autocomplete="off">
+              <div class="form-hint">The account name/description as shown in the CSV file.</div>
+            </div>
+            <div id="${formId}-error" class="form-error hidden"></div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+              <button class="btn-secondary btn-sm" onclick="toggleCsvMappingForm('${formId}')">Cancel</button>
+              <button class="btn-primary btn-sm" onclick="saveCsvMapping('${accountId}', '${formId}')">Save Mapping</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function toggleCsvMappingForm(formId) {
+  const form = document.getElementById(formId);
+  if (form) form.classList.toggle('hidden');
+}
+
+async function saveCsvMapping(accountId, formId) {
+  const numberInput = document.getElementById(`${formId}-number`);
+  const nameInput = document.getElementById(`${formId}-name`);
+  const errorEl = document.getElementById(`${formId}-error`);
+
+  const csvAccountNumber = (numberInput?.value || '').trim();
+  const csvAccountName = (nameInput?.value || '').trim();
+
+  if (!csvAccountNumber) {
+    errorEl.textContent = 'CSV Account Number is required.';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  errorEl.classList.add('hidden');
+
+  try {
+    showToast('Saving CSV mapping…', 'info');
+    await apiUpdateAccount(accountId, {
+      csv_account_number: csvAccountNumber,
+      csv_account_name: csvAccountName || null
+    });
+    showToast('CSV mapping saved', 'success');
+    await reloadAndReselect();
+  } catch (saveError) {
+    errorEl.textContent = saveError.message;
+    errorEl.classList.remove('hidden');
+  }
 }
 
 // ── Account Action Handlers ──────────────────────────────────

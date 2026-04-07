@@ -734,6 +734,13 @@ details[open] > .collapsible-trigger::before {
   display: block;
 }
 
+/* ── CSV Mapping Inline Form ──────────────────────────────── */
+.csv-mapping-form {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 10px;
+  margin-top: 8px;
+}
+
 /* ── Inline Edit ──────────────────────────────────────────── */
 .inline-edit {
   display: flex;

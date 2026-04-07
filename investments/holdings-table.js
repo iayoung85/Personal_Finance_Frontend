@@ -311,7 +311,9 @@ function _buildGroupedByAccount(selectedAccountIds) {
       });
 
       if (holdings.length > 0) {
-        const enriched = investmentAccounts.find(ia => ia.plaid_account_id === account.account_id);
+        const enriched = investmentAccounts.find(
+          ia => ia.plaid_account_id === account.account_id || ia.account_id === account.account_id
+        );
         const displayName = enriched
           ? (enriched.custom_name || enriched.account_name)
           : (account.name || account.official_name || 'Unknown Account');

@@ -209,3 +209,25 @@ async function fetchAllocationSummary(accountIds) {
   if (!response.ok) throw new Error(data.error || 'Failed to fetch allocation summary');
   return data;
 }
+
+// ── CSV Holdings Upload ──────────────────────────────────────
+
+async function csvPreviewApi(csvText, bankId) {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/csv-preview`, {
+    method: 'POST',
+    body: JSON.stringify({ csv_text: csvText, bank_id: bankId })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'CSV preview failed');
+  return data;
+}
+
+async function csvImportApi(csvText, bankId) {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/csv-import`, {
+    method: 'POST',
+    body: JSON.stringify({ csv_text: csvText, bank_id: bankId })
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'CSV import failed');
+  return data;
+}
