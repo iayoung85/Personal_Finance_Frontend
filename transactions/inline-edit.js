@@ -234,7 +234,10 @@ function _commitActiveFieldToSession() {
   if (_activeInlineEditor.txnId !== _activeRowEditSession.txn_id) return true;
 
   const field = _activeInlineEditor.field;
-  const value = (_activeInlineEditor.input.value || '').trim();
+  const rawValue = (_activeInlineEditor.input.value || '').trim();
+  const value = (field === 'date')
+    ? (getDateInputValue(_activeInlineEditor.input) || '').trim()
+    : rawValue;
 
   if (field === 'date') {
     if (!value) {

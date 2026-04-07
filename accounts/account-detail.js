@@ -470,7 +470,7 @@ async function submitTransitionToDepository() {
   const errorEl = document.getElementById('transition-dep-error');
 
   const balanceInput = document.getElementById('transition-dep-balance').value.trim();
-  const dateInput = document.getElementById('transition-dep-date').value.trim();
+  const dateInput = getDateInputValue('transition-dep-date').trim();
   const subcategory = document.getElementById('transition-dep-subcategory').value || null;
 
   if (!balanceInput || isNaN(parseFloat(balanceInput))) {
@@ -731,7 +731,7 @@ async function submitResetAccount() {
     const balanceInput = document.getElementById('reset-new-balance');
     const dateInput = document.getElementById('reset-new-date');
     openingBalance = parseFloat(balanceInput?.value) || 0;
-    openingBalanceDate = dateInput?.value || todayISO();
+    openingBalanceDate = getDateInputValue(dateInput) || todayISO();
   }
 
   try {

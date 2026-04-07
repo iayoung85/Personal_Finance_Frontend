@@ -376,7 +376,7 @@ async function submitCreateAccount() {
   const category = document.getElementById('new-acct-category').value;
   const subcategory = document.getElementById('new-acct-subcategory').value;
   const openingBalance = parseFloat(document.getElementById('new-acct-balance').value);
-  const balanceDate = document.getElementById('new-acct-balance-date').value;
+  const balanceDate = getDateInputValue('new-acct-balance-date');
   const currency = document.getElementById('new-acct-currency').value.trim().toUpperCase();
   const notes = document.getElementById('new-acct-notes').value.trim();
   const errorEl = document.getElementById('create-account-error');

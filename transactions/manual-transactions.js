@@ -306,7 +306,7 @@ async function _updateManualTransaction(transactionId, accountId) {
   const rawAmountStr = document.getElementById('manual-txn-amount').value.replace(/^[+\-−]/, '').trim();
   const amount = parseFloat(rawAmountStr);
   const txnType = document.getElementById('manual-txn-type').value;
-  const date = document.getElementById('manual-txn-date').value;
+  const date = getDateInputValue('manual-txn-date');
   const merchant = document.getElementById('manual-txn-merchant').value.trim();
   const category = document.getElementById('manual-txn-category').value;
   const memo = document.getElementById('manual-txn-memo').value.trim();
@@ -493,7 +493,7 @@ function _showManualTxnCategoryError(badCategory, context = {}) {
       merchant: document.getElementById('manual-txn-merchant').value.trim(),
       amount: document.getElementById('manual-txn-amount').value.replace(/^[+\-−]/, '').trim(),
       type: document.getElementById('manual-txn-type').value,
-      date: document.getElementById('manual-txn-date').value,
+      date: getDateInputValue('manual-txn-date'),
       accountId: context.accountId || document.getElementById('manual-txn-account')?.value || null,
       category: badCategory,
       memo: document.getElementById('manual-txn-memo').value.trim(),
@@ -695,7 +695,7 @@ async function saveManualTransaction() {
   const rawAmountStr = document.getElementById('manual-txn-amount').value.replace(/^[+\-−]/, '').trim();
   const amount = parseFloat(rawAmountStr);
   const txnType = document.getElementById('manual-txn-type').value;
-  const date = document.getElementById('manual-txn-date').value;
+  const date = getDateInputValue('manual-txn-date');
   const accountId = document.getElementById('manual-txn-account').value;
   const category = document.getElementById('manual-txn-category').value;
   const memo = document.getElementById('manual-txn-memo').value.trim();
@@ -1055,8 +1055,7 @@ function _showManualTransferAccountDropdown(list, rawQuery) {
   const currentAccountId = accountSelect ? accountSelect.value : null;
 
   // Read the date from the modal — used to warn about illegal plaid-range targets
-  const dateInput = document.getElementById('manual-txn-date');
-  const txnDate = dateInput ? dateInput.value : null;
+  const txnDate = getDateInputValue('manual-txn-date') || null;
 
   const matchingAccounts = accounts.filter(acc => {
     if (acc.account_id === currentAccountId) return false;

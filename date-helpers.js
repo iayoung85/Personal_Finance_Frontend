@@ -1,12 +1,12 @@
 // ============================================================
 // date-helpers.js — Shared Date Formatting & Input Helpers
 //
-// Loaded on every page BEFORE page-specific scripts.
+// Loaded on every page AFTER config-helpers.js.
 // Provides a single source of truth for date display format
 // and date input parsing/auto-formatting across the app.
 //
 // Display format is driven by the user's App Configuration
-// preference stored in localStorage under 'appConfig'.
+// preference accessed via getAppConfig() from config-helpers.js.
 //
 // All date inputs across the app should be <input type="text">
 // with the class "date-input". This module auto-formats on
@@ -16,18 +16,13 @@
 // ============================================================
 
 /**
- * Read the user's preferred date display format from localStorage.
+ * Read the user's preferred date display format.
  * Falls back to 'YYYY-MM-DD' when nothing is stored.
  *
  * @returns {string} One of the format keys from APP_CONFIG_DEFAULTS.
  */
 function _getDateFormatPreference() {
-  try {
-    const stored = JSON.parse(localStorage.getItem('appConfig') || '{}');
-    return stored.dateFormat || 'YYYY-MM-DD';
-  } catch {
-    return 'YYYY-MM-DD';
-  }
+  return getAppConfig().dateFormat || 'YYYY-MM-DD';
 }
 
 /**
@@ -37,14 +32,8 @@ function _getDateFormatPreference() {
  * @returns {'YYYYMMDD'|'MMDDYYYY'}
  */
 function _getDateInputFormatPreference() {
-  try {
-    const stored = JSON.parse(localStorage.getItem('appConfig') || '{}');
-    const pref = stored.dateInputFormat || 'MMDDYYYY';
-    // Migrate the old 'SEGMENTED' key to the month-first layout
-    return pref === 'SEGMENTED' ? 'MMDDYYYY' : pref;
-  } catch {
-    return 'MMDDYYYY';
-  }
+  const pref = getAppConfig().dateInputFormat || 'YYYYMMDD';
+  return pref === 'SEGMENTED' ? 'MMDDYYYY' : pref;
 }
 
 /**
@@ -344,7 +333,10 @@ function _wireSegmentedDateInput(inputEl, layout) {
 
   // ── Focus: parse existing ISO value, enter segmented display ──
   inputEl.addEventListener('focus', () => {
-    parts = _parseISOToParts(inputEl.value);
+    // Prefer the stashed ISO value since the visible .value may be
+    // in display format (e.g. "04 / 07 / 2026") after initial wiring.
+    const source = inputEl.dataset.isoValue || inputEl.value;
+    parts = _parseISOToParts(source);
     activeSegment = 0;
     digitBuffer = '';
     _render();
@@ -500,14 +492,16 @@ function _wireSegmentedDateInput(inputEl, layout) {
     }
   });
 
-  // ── Blur: normalize back to YYYY-MM-DD ──
+  // ── Blur: stash canonical ISO value for programmatic reads,
+  //    display the user's preferred format visually ──
   inputEl.addEventListener('blur', () => {
     _commitBuffer();
     parts.day = _clampDay(parts.day, parts.month, parts.year);
     const yearStr  = String(parts.year).padStart(4, '0');
     const monthStr = String(parts.month).padStart(2, '0');
     const dayStr   = String(parts.day).padStart(2, '0');
-    inputEl.value = `${yearStr}-${monthStr}-${dayStr}`;
+    inputEl.dataset.isoValue = `${yearStr}-${monthStr}-${dayStr}`;
+    inputEl.value = buildDisplay(parts.month, parts.day, parts.year);
   });
 
   // Pasted text is parsed and loaded into the segments
@@ -529,6 +523,26 @@ function _wireSegmentedDateInput(inputEl, layout) {
 // ── Auto-format / Segmented Wiring ────────────────────────────
 
 /**
+ * Read the ISO YYYY-MM-DD value from a .date-input element.
+ * Because the visible .value is now in the user's display format,
+ * code that needs the canonical ISO date should call this instead
+ * of reading .value directly.
+ *
+ * Falls back to .value for non-segmented inputs or when the
+ * data attribute hasn't been set yet (first render).
+ *
+ * @param {HTMLInputElement|string} elOrId - Element or its DOM id.
+ * @returns {string} ISO date string (YYYY-MM-DD) or raw value.
+ */
+function getDateInputValue(elOrId) {
+  const el = typeof elOrId === 'string'
+    ? document.getElementById(elOrId)
+    : elOrId;
+  if (!el) return '';
+  return el.dataset.isoValue || el.value;
+}
+
+/**
  * Wires segmented date input behavior onto a single <input>.
  * The layout (month-first or year-first) is chosen from the
  * user's dateInputFormat preference.
@@ -545,6 +559,22 @@ function autoFormatDateInput(inputEl) {
 
   const pref = _getDateInputFormatPreference();
   const layout = _SEGMENTED_LAYOUTS[pref] || _SEGMENTED_LAYOUTS.MMDDYYYY;
+
+  // Format any pre-populated value so the user sees their preferred
+  // layout immediately, not raw ISO. The blur handler normalizes
+  // back to YYYY-MM-DD when the field loses focus.
+  if (inputEl.value) {
+    const initParts = _parseISOToParts(inputEl.value);
+    if (initParts.year && initParts.month && initParts.day) {
+      // Stash the canonical ISO value so focus can always recover it
+      const yearStr  = String(initParts.year).padStart(4, '0');
+      const monthStr = String(initParts.month).padStart(2, '0');
+      const dayStr   = String(initParts.day).padStart(2, '0');
+      inputEl.dataset.isoValue = `${yearStr}-${monthStr}-${dayStr}`;
+      inputEl.value = layout.buildDisplay(initParts.month, initParts.day, initParts.year);
+    }
+  }
+
   _wireSegmentedDateInput(inputEl, layout);
 }
 

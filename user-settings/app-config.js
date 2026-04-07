@@ -3,69 +3,56 @@
 // Renders all global app-level preferences (theme, date
 // format, number display, dashboard defaults, notifications).
 //
-// Storage: localStorage under the key APP_CONFIG_KEY.
-// These settings are intentionally client-side only until a
-// backend preferences API is built. See the implementation
-// plan in docs/page-blueprints/app-config-implementation.md
-// for the full server-sync strategy.
+// Reads/writes via the backend preferences API and keeps
+// localStorage as a local cache so other pages can read
+// synchronously via getAppConfig() from config-helpers.js.
 // ============================================================
 
-const APP_CONFIG_KEY = 'appConfig';
-
 /**
- * Default values for every configurable preference.
- * Adding a new setting means adding a key here first — the
- * rest of the UI is driven off this object's shape.
- */
-const APP_CONFIG_DEFAULTS = {
-  // Appearance
-  theme: 'dark',                  // 'dark' | 'light'  (light not yet built)
-
-  // Date & time
-  dateFormat: 'YYYY-MM-DD',       // 'YYYY-MM-DD' | 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'MMM D, YYYY'
-  dateInputFormat: 'MMDDYYYY',    // 'MMDDYYYY' | 'YYYYMMDD' — segmented entry order
-  firstDayOfWeek: 'sunday',       // 'sunday' | 'monday'
-
-  // Number & currency display
-  currencySymbol: '$',            // '$' | '€' | '£' — cosmetic only, no conversion
-  showCents: true,                // whether to always render two decimal places
-  useCompactNotation: false,      // 143,200 → 143.2K for large numbers
-
-  // Dashboard & transaction defaults
-  defaultDateRange: '30d',        // '7d' | '30d' | '90d' | 'current-month' | 'ytd'
-  defaultAccount: 'all',          // 'all' | specific account_id
-
-  // Notifications (stub — no backend wiring yet)
-  emailWeeklySummary: false,      // weekly digest email
-  emailBillReminders: true,       // reminder N days before a bill is due
-  billReminderDaysBefore: 3,      // how many days before due date to send reminder
-};
-
-/**
- * Reads the persisted config from localStorage and merges with
- * defaults so new keys added to APP_CONFIG_DEFAULTS are always
- * present even for users who saved a config before the key existed.
+ * Fetch the user's preferences from the backend, merge with
+ * defaults, and cache the result in localStorage. Called once
+ * when the App Configuration section is opened.
  *
- * @returns {Object} Merged config object safe to read from directly.
+ * @returns {Promise<Object>} Merged config object.
  */
-function readAppConfig() {
+async function _fetchPreferencesFromServer() {
   try {
-    const stored = JSON.parse(localStorage.getItem(APP_CONFIG_KEY) || '{}');
-    return { ...APP_CONFIG_DEFAULTS, ...stored };
-  } catch {
-    return { ...APP_CONFIG_DEFAULTS };
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/user/preferences`);
+    if (response.ok) {
+      const serverPrefs = await response.json();
+      localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(serverPrefs));
+      return serverPrefs;
+    }
+    console.warn('Failed to fetch preferences from server, using local cache');
+  } catch (error) {
+    console.warn('Preferences API unreachable, using local cache:', error.message);
   }
+  return getAppConfig();
 }
 
 /**
- * Persists a partial config update by merging into the existing
- * stored config. Only the keys in `updates` are changed.
+ * PATCH a partial update to the backend and refresh the local cache.
  *
- * @param {Object} updates - Partial config object with new values.
+ * @param {Object} updates - Partial config with changed keys only.
+ * @returns {Promise<Object|null>} Updated merged config or null on failure.
  */
-function writeAppConfig(updates) {
-  const current = readAppConfig();
-  localStorage.setItem(APP_CONFIG_KEY, JSON.stringify({ ...current, ...updates }));
+async function _patchPreferencesToServer(updates) {
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/user/preferences`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (response.ok) {
+      const merged = await response.json();
+      localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(merged));
+      return merged;
+    }
+    console.error('Preferences PATCH failed:', response.status);
+  } catch (error) {
+    console.error('Preferences PATCH error:', error.message);
+  }
+  return null;
 }
 
 // ── Section Renderers ─────────────────────────────────────────
@@ -304,12 +291,12 @@ function _renderNotificationsCard(config) {
 
 /**
  * Entry point called by loadSectionContent() in nav.js.
- * Reads the persisted config, renders all setting cards, and
- * injects the result into #app-config-content.
+ * Fetches preferences from the backend to ensure the panel
+ * reflects the server's view, then renders all setting cards.
  */
-function loadAppConfigSettings() {
+async function loadAppConfigSettings() {
   const container = $('#app-config-content');
-  const config = readAppConfig();
+  const config = await _fetchPreferencesFromServer();
 
   const html = `
     ${_renderAppearanceCard(config)}
@@ -325,16 +312,21 @@ function loadAppConfigSettings() {
 
 /**
  * Generic change handler wired directly to every input via
- * inline onchange. Persists the updated key and shows a brief
- * confirmation message.
+ * inline onchange. PATCHes the update to the server and
+ * refreshes the local cache. Shows a brief confirmation.
  *
  * @param {string} key   - APP_CONFIG_DEFAULTS key to update.
  * @param {*}      value - New value for that key.
  */
-function handleAppConfigChange(key, value) {
-  writeAppConfig({ [key]: value });
-
+async function handleAppConfigChange(key, value) {
   const messageEl = $('#app-config-message');
-  messageEl.html('<div class="message success">Preference saved.</div>');
+
+  const result = await _patchPreferencesToServer({ [key]: value });
+
+  if (result) {
+    messageEl.html('<div class="message success">Preference saved.</div>');
+  } else {
+    messageEl.html('<div class="message error">Failed to save — try again.</div>');
+  }
   setTimeout(() => messageEl.html(''), 2000);
 }
