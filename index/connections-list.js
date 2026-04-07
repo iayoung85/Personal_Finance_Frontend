@@ -20,6 +20,7 @@ const IndexConnectionsList = (() => {
     try {
       const banks = await IndexApi.fetchDashboardBanks();
       IndexState.setBanksCache(banks);
+      _renderConnectionAlerts(banks);
 
       // Restore unfinished account matching — try localStorage draft first,
       // then fall back to re-deriving from backend if any bank has matching_pending.
@@ -667,16 +668,25 @@ const IndexConnectionsList = (() => {
   // ── Account Matching Modal (pass 4 UI) ────────────────
 
   /**
-   * Show the account matching modal after a relink where automatic matching
-   * couldn't resolve all accounts (pass 4 flagged pending_account_matching).
+   * Show the account matching modal after a refresh or relink where the
+   * account set changed (new accounts, orphaned accounts, or ID rotations).
    *
-   * Renders one row per existing (orphaned) account with a dropdown to pick
-   * the matching Plaid account — or "No match" to leave it as-is.
+   * Layout:
+   *   Left column: Plaid accounts detected during refresh
+   *   Right column: dropdown of existing app accounts + "Create new account"
+   *   Bottom: summary report of final account state after submission
    *
-   * @param {string} bankId - The bank being relinked.
+   * Direct matches (plaid_account_id unchanged) are locked — no override.
+   * Auto-matched accounts are pre-selected but editable.
+   * Genuinely new accounts default to "+ Create new account".
+   *
+   * Handles both the new update-mode shape (plaid_rows, existing_accounts)
+   * and the old relink shape (existing_candidates, plaid_candidates) by
+   * normalizing the relink shape into the update-mode format.
+   *
+   * @param {string} bankId - The bank being refreshed/relinked.
    * @param {string} bankName - Display name for messages.
-   * @param {Object} pendingMatching - Backend's pending_account_matching payload:
-   *   { existing_candidates: [...], plaid_candidates: [...] }
+   * @param {Object} pendingMatching - Backend's pending_account_matching payload.
    */
   function _showAccountMatchingModal(bankId, bankName, pendingMatching) {
     const overlay = document.getElementById('account-matching-overlay');
@@ -687,356 +697,361 @@ const IndexConnectionsList = (() => {
 
     if (!overlay || !body) return;
 
+    // ── Normalize old relink shape → new update-mode shape ──────────
+    if (!pendingMatching.plaid_rows && pendingMatching.existing_candidates) {
+      pendingMatching.plaid_rows = (pendingMatching.plaid_candidates || []).map(plaidCandidate => ({
+        plaid_account_id: plaidCandidate.plaid_account_id || plaidCandidate.account_id,
+        app_account_id: plaidCandidate.account_id,
+        plaid_name: plaidCandidate.plaid_name || plaidCandidate.account_name,
+        plaid_mask: plaidCandidate.plaid_mask,
+        plaid_type: plaidCandidate.plaid_type,
+        plaid_subtype: plaidCandidate.plaid_subtype,
+        current_balance: plaidCandidate.current_balance,
+        match_status: 'new',
+        match_method: null,
+        suggested_existing_id: null,
+      }));
+      pendingMatching.existing_accounts = pendingMatching.existing_candidates.map(existingItem => ({
+        ...existingItem,
+        mask: existingItem.mask || null,
+      }));
+      pendingMatching.orphaned_account_ids = pendingMatching.existing_candidates.map(
+        existingItem => existingItem.account_id,
+      );
+      pendingMatching.suggested_matches = {};
+    }
+
     _persistPendingAccountMatchingDraft(bankId, bankName, pendingMatching);
 
     title.textContent = `Match Accounts — ${bankName}`;
 
-    const existingCandidates = pendingMatching.existing_candidates || [];
-    const plaidCandidates = pendingMatching.plaid_candidates || [];
+    const plaidRows = pendingMatching.plaid_rows || [];
+    const existingAccounts = pendingMatching.existing_accounts || [];
+    const orphanedAccountIds = new Set(pendingMatching.orphaned_account_ids || []);
+    const suggestedMatches = pendingMatching.suggested_matches || {};
     const transactionsBilled = pendingMatching.transactions_billed || false;
 
-    // Build rows — one per existing orphaned account
-    const rowsHtml = existingCandidates.map((existingAccount, rowIndex) => {
-      const displayName = existingAccount.custom_name || existingAccount.account_name || 'Unknown';
-      const categoryLabel = [existingAccount.account_category, existingAccount.account_subcategory]
-        .filter(Boolean)
-        .join(' / ');
-      const balanceFormatted = _formatCurrency(existingAccount.current_balance);
+    // Build rows — one per Plaid account
+    const rowsHtml = plaidRows.map((plaidRow, rowIndex) => {
+      const isDirect = plaidRow.match_status === 'direct';
+      const isAutoMatched = plaidRow.match_status === 'auto_matched';
+      const displayName = plaidRow.plaid_name || 'Unknown';
+      const maskLabel = plaidRow.plaid_mask ? ` (••${plaidRow.plaid_mask})` : '';
+      const typeLabel = [plaidRow.plaid_type, plaidRow.plaid_subtype].filter(Boolean).join('/');
+      const balanceFormatted = _formatCurrency(plaidRow.current_balance);
 
-      // Build dropdown options from Plaid candidates
-      const plaidOptions = plaidCandidates.map((plaidAccount, plaidIndex) => {
-        const plaidLabel = plaidAccount.plaid_name || plaidAccount.account_name || 'Unknown';
-        const plaidMask = plaidAccount.plaid_mask ? ` (••${plaidAccount.plaid_mask})` : '';
-        const plaidType = [plaidAccount.plaid_type, plaidAccount.plaid_subtype]
-          .filter(Boolean)
-          .join('/');
-        const plaidBalance = _formatCurrency(plaidAccount.current_balance);
-        return `<option value="${plaidIndex}">${plaidLabel}${plaidMask} — ${plaidType} — ${plaidBalance}</option>`;
-      }).join('');
+      // Status badge
+      let statusBadge = '';
+      if (isDirect) {
+        statusBadge = '<span class="status-badge status-linked">✓ linked</span>';
+      } else if (isAutoMatched) {
+        statusBadge = `<span class="status-badge status-converted">auto-matched (${plaidRow.match_method || 'mask'})</span>`;
+      } else {
+        statusBadge = '<span class="status-badge status-manual">new</span>';
+      }
 
-      const statusLabel = existingAccount.connection_status || existingAccount.origin || 'manual';
+      // Dropdown options — split into same-bank and cross-bank groups
+      const sameBankOptions = [];
+      const crossBankOptions = [];
+      existingAccounts.forEach(existingAccount => {
+        const existingLabel = existingAccount.custom_name || existingAccount.account_name || 'Unknown';
+        const existingMask = existingAccount.mask ? ` (••${existingAccount.mask})` : '';
+        const existingCategory = [existingAccount.account_category, existingAccount.account_subcategory]
+          .filter(Boolean).join('/');
+        const existingBalance = _formatCurrency(existingAccount.current_balance);
+        const isOrphan = orphanedAccountIds.has(existingAccount.account_id);
+        const orphanTag = isOrphan ? ' [orphaned]' : '';
+
+        if (existingAccount.is_cross_bank) {
+          const bankLabel = existingAccount.bank_name || 'Other Bank';
+          crossBankOptions.push(
+            `<option value="${existingAccount.account_id}" data-cross-bank="true">⚠️ ${existingLabel}${existingMask} — ${existingCategory} — ${existingBalance} [from: ${bankLabel}]</option>`,
+          );
+        } else {
+          sameBankOptions.push(
+            `<option value="${existingAccount.account_id}">${existingLabel}${existingMask} — ${existingCategory} — ${existingBalance}${orphanTag}</option>`,
+          );
+        }
+      });
+
+      let existingOptionsHtml = sameBankOptions.join('');
+      if (crossBankOptions.length) {
+        existingOptionsHtml += `<optgroup label="⚠️ Cross-bank matches (different connection)">${crossBankOptions.join('')}</optgroup>`;
+      }
+
+      // For direct matches: locked display, no dropdown
+      if (isDirect) {
+        return `
+          <div class="matching-pair-row matching-row-locked" data-row-index="${rowIndex}">
+            <div class="matching-plaid-card">
+              <div class="card-name">${displayName}${maskLabel}</div>
+              <div class="card-meta">${typeLabel} · ${statusBadge}</div>
+              <div class="card-balance">Balance: ${balanceFormatted}</div>
+            </div>
+            <div class="matching-arrow">→</div>
+            <div class="matching-existing-display">
+              <span class="locked-match-label">✓ Remains linked (no change)</span>
+              <input type="hidden" data-row="${rowIndex}" data-direct="true" value="__direct__" />
+            </div>
+          </div>`;
+      }
+
+      // Pre-select the suggested match or "Create new"
+      const suggestedId = plaidRow.suggested_existing_id || suggestedMatches[plaidRow.plaid_account_id] || '';
 
       return `
         <div class="matching-pair-row" data-row-index="${rowIndex}">
-          <div class="matching-existing-card">
-            <div class="card-name">${displayName}</div>
-            <div class="card-meta">${categoryLabel} · <span class="status-badge status-${statusLabel}">${statusLabel}</span></div>
+          <div class="matching-plaid-card">
+            <div class="card-name">${displayName}${maskLabel}</div>
+            <div class="card-meta">${typeLabel} · ${statusBadge}</div>
             <div class="card-balance">Balance: ${balanceFormatted}</div>
           </div>
           <div class="matching-arrow">→</div>
-          <div class="matching-plaid-select">
+          <div class="matching-existing-select">
             <select data-row="${rowIndex}">
-              <option value="">— No match —</option>
-              ${plaidOptions}
+              <option value="__create_new__">+ Create new account</option>
+              ${existingOptionsHtml}
             </select>
-            <div class="plaid-option-detail">Select the Plaid account this corresponds to</div>
-          </div>
-          <div class="matching-transition-zone" data-row="${rowIndex}" style="display: none;">
-            <label class="matching-transition-label">
-              <input type="checkbox" class="matching-transition-checkbox" data-row="${rowIndex}" />
-              <span class="matching-transition-text"></span>
-              <span class="matching-transition-warning"></span>
-            </label>
-            <div class="matching-transition-ob-fields" style="display: none;">
-              <label class="ob-field-label">
-                Opening Balance
-                <input type="number" class="matching-ob-amount" step="0.01" />
-              </label>
-              <label class="ob-field-label">
-                Balance Date
-                <input type="date" class="matching-ob-date" />
-              </label>
+            <div class="match-option-detail">Choose an existing account or create new</div>
+            <div class="cross-bank-warning" style="display:none;">
+              ⚠️ This account belongs to a different bank connection. Merging cross-bank is rarely correct — only proceed if you are sure these represent the same account.
             </div>
           </div>
         </div>`;
     }).join('');
 
-    body.innerHTML = rowsHtml;
+    // Summary section — updated dynamically as the user changes selections
+    body.innerHTML = rowsHtml + `
+      <div class="matching-summary-section">
+        <h3 class="matching-summary-title">Account Summary — Final State After Submission</h3>
+        <div id="matching-summary-body"></div>
+      </div>`;
 
-    // Enable confirm button when at least one match is selected,
-    // and keep dropdowns in sync so a Plaid account can only be chosen once.
-    const selects = body.querySelectorAll('select');
+    // Pre-select suggested matches in dropdowns
+    const selects = body.querySelectorAll('select[data-row]');
+    selects.forEach(selectElement => {
+      const rowIndex = parseInt(selectElement.dataset.row, 10);
+      const plaidRow = plaidRows[rowIndex];
+      if (!plaidRow) return;
 
+      const suggestedId = plaidRow.suggested_existing_id || suggestedMatches[plaidRow.plaid_account_id] || '';
+      if (suggestedId) {
+        const optionExists = Array.from(selectElement.options).some(
+          opt => opt.value === suggestedId,
+        );
+        if (optionExists) selectElement.value = suggestedId;
+      }
+    });
+
+    // ── Sync dropdowns + summary ────────────────────────────────────
     const _syncDropdowns = () => {
-      // Collect every non-empty value that is currently selected
       const selectedValues = new Set(
-        Array.from(selects)
-          .map(s => s.value)
-          .filter(v => v !== '')
+        Array.from(selects).map(selectElement => selectElement.value)
+          .filter(val => val !== '' && val !== '__create_new__'),
       );
 
       selects.forEach(selectElement => {
         const ownValue = selectElement.value;
         Array.from(selectElement.options).forEach(opt => {
-          if (opt.value === '') return; // always keep "No match"
-          // Disable if another row already claimed this Plaid account
+          if (opt.value === '' || opt.value === '__create_new__') return;
           opt.disabled = selectedValues.has(opt.value) && opt.value !== ownValue;
         });
-      });
 
-      _syncConfirmButton();
-    };
-
-    /**
-     * When a dropdown changes, check for an investment <-> non-investment mismatch
-     * between the existing account and the selected Plaid account. Show/hide the
-     * transition checkbox and warning accordingly.
-     *
-     * Two modes:
-     *   Forced (investment→non-investment AND transactions billed):
-     *     Backend will auto-convert the investment ledger during confirm.
-     *     User must check a required acknowledgment checkbox to proceed.
-     *     No OB fields — backend auto-derives the opening balance.
-     *   Optional (all other mismatches):
-     *     User may choose to transition via the optional checkbox.
-     */
-    const _updateTransitionZone = (selectElement) => {
-      const rowIndex = parseInt(selectElement.dataset.row, 10);
-      const zone = body.querySelector(`.matching-transition-zone[data-row="${rowIndex}"]`);
-      if (!zone) return;
-
-      const plaidIndexStr = selectElement.value;
-      if (plaidIndexStr === '') {
-        zone.style.display = 'none';
-        zone.classList.remove('forced');
-        const cb = zone.querySelector('.matching-transition-checkbox');
-        if (cb) { cb.checked = false; cb.required = false; }
-        _syncConfirmButton();
-        return;
-      }
-
-      const plaidIndex = parseInt(plaidIndexStr, 10);
-      const existing = existingCandidates[rowIndex];
-      const plaid = plaidCandidates[plaidIndex];
-      if (!existing || !plaid) { zone.style.display = 'none'; return; }
-
-      const existingIsInvestment = existing.account_category === 'investment';
-      const plaidIsInvestment = plaid.plaid_type === 'investment';
-
-      if (existingIsInvestment === plaidIsInvestment) {
-        zone.style.display = 'none';
-        zone.classList.remove('forced');
-        const cb = zone.querySelector('.matching-transition-checkbox');
-        if (cb) { cb.checked = false; cb.required = false; }
-        _syncConfirmButton();
-        return;
-      }
-
-      zone.style.display = 'block';
-
-      const textSpan = zone.querySelector('.matching-transition-text');
-      const warningDiv = zone.querySelector('.matching-transition-warning');
-      const obFields = zone.querySelector('.matching-transition-ob-fields');
-      const cb = zone.querySelector('.matching-transition-checkbox');
-
-      const isForcedTransition = existingIsInvestment && !plaidIsInvestment && transactionsBilled;
-
-      if (isForcedTransition) {
-        // Backend forces this transition during confirm — user must acknowledge
-        zone.classList.add('forced');
-        const plaidSub = plaid.plaid_subtype || plaid.plaid_type || 'depository';
-        textSpan.textContent = `Required: investment → ${plaidSub} conversion`;
-        warningDiv.textContent =
-          'This Plaid account receives transaction data that is incompatible with investment tracking. ' +
-          'Matching will automatically convert the investment ledger to standard balance tracking. ' +
-          'If you do not want this, leave this account unmatched — a new account will be created instead.';
-
-        // No OB fields — backend auto-derives opening balance
-        obFields.style.display = 'none';
-        cb.checked = false;
-        cb.required = true;
-        cb.onchange = () => { _syncConfirmButton(); };
-      } else if (existingIsInvestment && !plaidIsInvestment) {
-        // Investment → non-investment without transactions billed — optional
-        zone.classList.remove('forced');
-        const plaidSub = plaid.plaid_subtype || plaid.plaid_type || 'depository';
-        textSpan.textContent = `Convert ledger: investment → ${plaidSub}`;
-        warningDiv.textContent = 'Converts investment ledger to standard balance tracking. This changes how transactions are stored.';
-
-        const obAmountInput = obFields.querySelector('.matching-ob-amount');
-        const obDateInput = obFields.querySelector('.matching-ob-date');
-        if (obAmountInput) obAmountInput.value = parseFloat(existing.current_balance || 0);
-        if (obDateInput) obDateInput.value = new Date().toISOString().slice(0, 10);
-
-        cb.required = false;
-        cb.onchange = () => { obFields.style.display = cb.checked ? 'flex' : 'none'; _syncConfirmButton(); };
-        obFields.style.display = cb.checked ? 'flex' : 'none';
-      } else {
-        // Non-investment → investment — optional
-        zone.classList.remove('forced');
-        const plaidSub = plaid.plaid_subtype || 'brokerage';
-        textSpan.textContent = `Convert ledger: ${existing.account_category} → investment (${plaidSub})`;
-        warningDiv.textContent = 'Removes opening balance anchors and balance history. Investment accounts track market value instead.';
-
-        obFields.style.display = 'none';
-        cb.required = false;
-        cb.onchange = () => { _syncConfirmButton(); };
-      }
-
-      cb.checked = false;
-      _syncConfirmButton();
-    };
-
-    /**
-     * Enable the confirm button only when at least one match is selected AND
-     * every visible forced-transition checkbox is checked.
-     */
-    const _syncConfirmButton = () => {
-      const selectedValues = new Set(
-        Array.from(selects).map(s => s.value).filter(v => v !== ''),
-      );
-      const hasAnyMatch = selectedValues.size > 0;
-
-      // Check that every forced-transition zone with a selected match has its checkbox checked
-      let allForcedAcknowledged = true;
-      body.querySelectorAll('.matching-transition-zone.forced').forEach(zone => {
-        const zoneRow = parseInt(zone.dataset.row, 10);
-        const rowSelect = body.querySelector(`select[data-row="${zoneRow}"]`);
-        if (rowSelect && rowSelect.value !== '') {
-          const cb = zone.querySelector('.matching-transition-checkbox');
-          if (cb && !cb.checked) allForcedAcknowledged = false;
+        // Show/hide cross-bank warning based on selected option
+        const selectedOption = selectElement.options[selectElement.selectedIndex];
+        const isCrossBank = selectedOption && selectedOption.dataset.crossBank === 'true';
+        const warningDiv = selectElement.parentElement.querySelector('.cross-bank-warning');
+        if (warningDiv) {
+          warningDiv.style.display = isCrossBank ? 'block' : 'none';
         }
       });
 
-      confirmBtn.disabled = !hasAnyMatch || !allForcedAcknowledged;
+      _updateSummary();
+      _syncConfirmButton();
+    };
+
+    const _updateSummary = () => {
+      const summaryBody = document.getElementById('matching-summary-body');
+      if (!summaryBody) return;
+
+      const summaryRows = [];
+      const matchedExistingIds = new Set();
+
+      // Rows from Plaid
+      plaidRows.forEach((plaidRow, rowIndex) => {
+        const plaidName = plaidRow.plaid_name || 'Unknown';
+        const plaidMask = plaidRow.plaid_mask ? ` (••${plaidRow.plaid_mask})` : '';
+
+        if (plaidRow.match_status === 'direct') {
+          summaryRows.push({
+            name: plaidName + plaidMask,
+            action: 'Remains linked',
+            actionClass: 'summary-direct',
+            pair: '',
+          });
+          return;
+        }
+
+        const selectElement = body.querySelector(`select[data-row="${rowIndex}"]`);
+        const selectedVal = selectElement ? selectElement.value : '__create_new__';
+
+        if (selectedVal === '__create_new__') {
+          summaryRows.push({
+            name: plaidName + plaidMask,
+            action: 'New account',
+            actionClass: 'summary-new',
+            pair: '',
+          });
+        } else {
+          const existingMatch = existingAccounts.find(
+            account => account.account_id === selectedVal,
+          );
+          const existingDisplayName = existingMatch
+            ? (existingMatch.custom_name || existingMatch.account_name || 'Unknown')
+            : selectedVal;
+          const isCrossBankMatch = existingMatch && existingMatch.is_cross_bank;
+          matchedExistingIds.add(selectedVal);
+
+          let actionLabel = plaidRow.match_status === 'auto_matched' ? 'Auto-matched' : 'Matched by user';
+          let actionClass = 'summary-matched';
+          if (isCrossBankMatch) {
+            actionLabel += ' ⚠️ cross-bank';
+            actionClass = 'summary-cross-bank';
+          }
+          summaryRows.push({
+            name: existingDisplayName,
+            action: actionLabel,
+            actionClass,
+            pair: `← ${plaidName}${plaidMask}`,
+          });
+        }
+      });
+
+      // Orphaned accounts not matched by the user
+      existingAccounts.forEach(existingAccount => {
+        if (matchedExistingIds.has(existingAccount.account_id)) return;
+        if (!orphanedAccountIds.has(existingAccount.account_id)) return;
+        const existingName = existingAccount.custom_name || existingAccount.account_name || 'Unknown';
+        summaryRows.push({
+          name: existingName,
+          action: '→ Manual (converted)',
+          actionClass: 'summary-orphaned',
+          pair: '',
+        });
+      });
+
+      summaryBody.innerHTML = summaryRows.length
+        ? `<table class="matching-summary-table">
+            <thead><tr><th>Account</th><th>Action</th><th>Pair</th></tr></thead>
+            <tbody>${summaryRows.map(row =>
+              `<tr>
+                <td>${row.name}</td>
+                <td><span class="${row.actionClass}">${row.action}</span></td>
+                <td>${row.pair}</td>
+              </tr>`,
+            ).join('')}</tbody>
+          </table>`
+        : '<p class="matching-summary-empty">No changes to display.</p>';
+    };
+
+    const _syncConfirmButton = () => {
+      // Any non-direct row with a selection (including Create new) enables confirm
+      const hasAnySelection = Array.from(selects).length > 0;
+      confirmBtn.disabled = !hasAnySelection;
     };
 
     selects.forEach(selectElement => {
-      selectElement.addEventListener('change', () => {
-        _syncDropdowns();
-        _updateTransitionZone(selectElement);
-      });
+      selectElement.addEventListener('change', _syncDropdowns);
     });
 
+    // Initial sync
+    _syncDropdowns();
+
     // Wire up buttons
-    confirmBtn.onclick = () => _handleConfirmMatches(bankId, bankName, existingCandidates, plaidCandidates, transactionsBilled);
-    skipBtn.onclick = () => _skipAccountMatching(bankId, bankName);
+    confirmBtn.onclick = () => _handleConfirmMatches(
+      bankId, bankName, plaidRows, existingAccounts, orphanedAccountIds, transactionsBilled,
+    );
+    skipBtn.onclick = () => _skipAccountMatching(bankId, bankName, orphanedAccountIds);
 
     overlay.style.display = 'flex';
   }
 
   /**
-   * Collect the user's match selections, run any checked account-type transitions
-   * synchronously first, then POST to confirm-account-matching.
+   * Collect the user's match selections from the new swapped-column layout
+   * and POST to confirm-account-matching.
    *
-   * Forced transitions (investment→non-investment with transactions billed)
-   * are handled server-side by confirm_account_matching — no frontend
-   * transition API call needed. Only optional transitions that the user
-   * explicitly checked are run as separate API calls before confirming.
+   * Each non-direct Plaid row with an existing account selected produces a
+   * match pair.  Rows left on "Create new account" are no-ops (account
+   * already created by backend upsert).
+   *
+   * Unmatched orphaned account IDs are sent so the backend can downgrade
+   * them to converted status.
    */
-  async function _handleConfirmMatches(bankId, bankName, existingCandidates, plaidCandidates, transactionsBilled) {
+  async function _handleConfirmMatches(bankId, bankName, plaidRows, existingAccounts, orphanedAccountIds, transactionsBilled) {
     const body = document.getElementById('matching-modal-body');
     const confirmBtn = document.getElementById('matching-confirm-btn');
     if (!body) return;
 
-    const selects = body.querySelectorAll('select');
+    const selects = body.querySelectorAll('select[data-row]');
     const matches = [];
-    const transitions = [];
-    const usedPlaidIndices = new Set();
+    const matchedExistingIds = new Set();
 
-    selects.forEach((selectElement, rowIndex) => {
-      const plaidIndex = selectElement.value;
-      if (plaidIndex === '') return; // "No match" selected
+    selects.forEach(selectElement => {
+      const rowIndex = parseInt(selectElement.dataset.row, 10);
+      const selectedVal = selectElement.value;
 
-      const plaidIndexNum = parseInt(plaidIndex, 10);
-      if (usedPlaidIndices.has(plaidIndexNum)) {
-        IndexUtils.showMessage(
-          'dashboard-message',
-          'Each Plaid account can only be matched to one existing account. Please fix duplicates.',
-          'error',
-        );
-        return;
-      }
-      usedPlaidIndices.add(plaidIndexNum);
+      if (selectedVal === '__create_new__' || selectedVal === '') return;
 
-      const existing = existingCandidates[rowIndex];
-      const plaid = plaidCandidates[plaidIndexNum];
+      const plaidRow = plaidRows[rowIndex];
+      if (!plaidRow) return;
 
+      matchedExistingIds.add(selectedVal);
       matches.push({
-        existing_account_id: existing.account_id,
-        plaid_account_id: plaid.account_id,
+        existing_account_id: selectedVal,
+        plaid_account_id: plaidRow.app_account_id,
       });
-
-      // Check if the transition checkbox is checked for this row
-      const zone = body.querySelector(`.matching-transition-zone[data-row="${rowIndex}"]`);
-      const cb = zone?.querySelector('.matching-transition-checkbox');
-      if (cb?.checked) {
-        const existingIsInvestment = existing.account_category === 'investment';
-        const plaidIsInvestment = plaid.plaid_type === 'investment';
-        const isForced = existingIsInvestment && !plaidIsInvestment && transactionsBilled;
-
-        // Forced transitions are handled server-side during confirm —
-        // only queue optional (user-initiated) transitions here.
-        if (!isForced) {
-          if (existingIsInvestment && !plaidIsInvestment) {
-            const obAmountInput = zone.querySelector('.matching-ob-amount');
-            const obDateInput = zone.querySelector('.matching-ob-date');
-            const obAmount = parseFloat(obAmountInput?.value) || 0;
-            const obDate = obDateInput?.value || new Date().toISOString().slice(0, 10);
-            const subcategory = plaid.plaid_subtype || 'savings';
-
-            transitions.push({
-              type: 'to-depository',
-              accountId: existing.account_id,
-              openingBalanceAmount: obAmount,
-              openingBalanceDate: obDate,
-              subcategory,
-            });
-          } else if (!existingIsInvestment && plaidIsInvestment) {
-            const subcategory = plaid.plaid_subtype || 'brokerage';
-
-            transitions.push({
-              type: 'to-investment',
-              accountId: existing.account_id,
-              subcategory,
-            });
-          }
-        }
-      }
     });
 
-    if (!matches.length) {
-      _skipAccountMatching(bankId, bankName);
+    // Orphans not matched by the user — to be downgraded to converted
+    const unmatchedOrphans = Array.from(orphanedAccountIds).filter(
+      orphanId => !matchedExistingIds.has(orphanId),
+    );
+
+    if (!matches.length && !unmatchedOrphans.length) {
+      _skipAccountMatching(bankId, bankName, orphanedAccountIds);
       return;
     }
 
     // Disable button while processing
     confirmBtn.disabled = true;
-    confirmBtn.textContent = transitions.length ? 'Transitioning…' : 'Processing…';
+    confirmBtn.textContent = 'Processing…';
 
     try {
-      // Run account-type transitions synchronously BEFORE confirming matches
-      for (const transition of transitions) {
-        if (transition.type === 'to-depository') {
-          await IndexApi.transitionToDepository(
-            transition.accountId,
-            transition.openingBalanceAmount,
-            transition.openingBalanceDate,
-            transition.subcategory,
-          );
-        } else if (transition.type === 'to-investment') {
-          await IndexApi.transitionToInvestment(
-            transition.accountId,
-            transition.subcategory,
-          );
+      if (matches.length) {
+        const confirmResult = await IndexApi.confirmAccountMatching(bankId, matches, unmatchedOrphans);
+        _clearPendingAccountMatchingDraft();
+        _closeAccountMatchingModal();
+
+        const mergedCount = confirmResult.matches_processed || 0;
+        const txnsMoved = confirmResult.transactions_moved || 0;
+        const orphansConverted = confirmResult.orphans_converted || 0;
+
+        let statusMessage = `✓ ${bankName} updated! ${mergedCount} account(s) merged, ${txnsMoved} transactions migrated.`;
+        if (orphansConverted > 0) {
+          statusMessage += ` ${orphansConverted} account(s) converted to manual.`;
         }
+        IndexUtils.showMessage('dashboard-message', statusMessage, 'success');
+      } else {
+        // No matches but there are orphans to downgrade
+        await IndexApi.skipAccountMatching(bankId, unmatchedOrphans);
+        _clearPendingAccountMatchingDraft();
+        _closeAccountMatchingModal();
+        IndexUtils.showMessage(
+          'dashboard-message',
+          `✓ ${bankName} updated! ${unmatchedOrphans.length} account(s) converted to manual.`,
+          'success',
+        );
       }
-
-      confirmBtn.textContent = 'Confirming…';
-
-      const confirmResult = await IndexApi.confirmAccountMatching(bankId, matches);
-      _clearPendingAccountMatchingDraft();
-      _closeAccountMatchingModal();
-
-      const transitionNote = transitions.length
-        ? ` ${transitions.length} account(s) transitioned.`
-        : '';
-      IndexUtils.showMessage(
-        'dashboard-message',
-        `✓ ${bankName} updated! ${confirmResult.matches_processed || 0} account(s) merged, ` +
-        `${confirmResult.transactions_moved || 0} transactions migrated.${transitionNote}`,
-        'success',
-      );
       loadBanks();
     } catch (confirmError) {
       confirmBtn.disabled = false;
@@ -1047,22 +1062,31 @@ const IndexConnectionsList = (() => {
 
   /**
    * Skip account matching — tell the backend to finalize without merges.
+   * Orphaned accounts are downgraded to converted status.
    */
-  async function _skipAccountMatching(bankId, bankName) {
+  async function _skipAccountMatching(bankId, bankName, orphanedAccountIds) {
     const skipBtn = document.getElementById('matching-skip-btn');
     if (skipBtn) {
       skipBtn.disabled = true;
       skipBtn.textContent = 'Skipping…';
     }
 
+    const orphanIds = orphanedAccountIds instanceof Set
+      ? Array.from(orphanedAccountIds)
+      : (orphanedAccountIds || []);
+
     try {
-      await IndexApi.skipAccountMatching(bankId);
+      await IndexApi.skipAccountMatching(bankId, orphanIds);
       _clearPendingAccountMatchingDraft();
       _closeAccountMatchingModal();
+
+      const orphanNote = orphanIds.length
+        ? ` ${orphanIds.length} account(s) converted to manual.`
+        : '';
       IndexUtils.showMessage(
         'dashboard-message',
-        `✓ ${bankName} updated successfully! (Account matching skipped — ` +
-        `you can manually merge accounts later from the Accounts page.)`,
+        `✓ ${bankName} updated successfully! (Account matching skipped —` +
+        ` you can manually merge accounts later from the Accounts page.)${orphanNote}`,
         'success',
       );
       loadBanks();
@@ -1192,6 +1216,53 @@ const IndexConnectionsList = (() => {
     } catch (fetchError) {
       console.warn('Could not restore pending account matching from backend', fetchError);
     }
+  }
+
+  /**
+   * Render dismissible warning banners into #webhook-alerts-container for any
+   * linked banks that are in a broken Plaid state (permission_revoked, error,
+   * or needs_update). Clears the container when no broken banks exist.
+   */
+  function _renderConnectionAlerts(banks) {
+    const container = document.getElementById('webhook-alerts-container');
+    if (!container) return;
+
+    const brokenBanks = (banks || []).filter(bank =>
+      bank.connection_status === 'linked' &&
+      ['error', 'needs_update', 'permission_revoked'].includes(bank.plaid_item_status)
+    );
+
+    if (!brokenBanks.length) {
+      container.innerHTML = '';
+      return;
+    }
+
+    const alertsHtml = brokenBanks.map(bank => {
+      const name = _escapeHtml(bank.custom_name || bank.bank_name || 'A bank');
+      const isRevoked = bank.plaid_item_status === 'permission_revoked';
+      const title = isRevoked
+        ? `${name} — Permission Revoked`
+        : `${name} — Connection Issue`;
+      const detail = isRevoked
+        ? `You revoked this app's access at ${name}. Transactions and balances may be out of date until you reconnect.`
+        : `${name}'s Plaid connection has an error and may not be syncing.`;
+
+      return `
+        <div class="conn-alert conn-alert-warning" role="alert">
+          <span class="conn-alert-icon">⚠️</span>
+          <div class="conn-alert-body">
+            <strong class="conn-alert-title">${title}</strong>
+            <span class="conn-alert-detail">${detail} Use the <strong>Fix Connection</strong> button on the bank card below.</span>
+          </div>
+          <button class="conn-alert-dismiss" aria-label="Dismiss">&times;</button>
+        </div>`;
+    }).join('');
+
+    container.innerHTML = alertsHtml;
+
+    container.querySelectorAll('.conn-alert-dismiss').forEach(btn => {
+      btn.addEventListener('click', () => btn.closest('.conn-alert').remove());
+    });
   }
 
   /**

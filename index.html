@@ -205,9 +205,9 @@
     <div class="matching-modal">
       <h2 id="matching-modal-title">Match Your Accounts</h2>
       <p class="matching-modal-description">
-        We found accounts that couldn't be automatically matched. Please pair
-        each of your existing accounts with the corresponding Plaid account,
-        or leave unmatched if there's no correspondence.
+        Review how your Plaid accounts map to existing accounts in the app.
+        Locked rows are already linked. For other rows, choose an existing
+        account to merge into, or keep "Create new account" to add it fresh.
       </p>
       <div id="matching-modal-body"></div>
       <div class="matching-modal-actions">
@@ -408,6 +408,131 @@
       font-size: 13px;
       background: var(--bg-input);
       color: var(--text-primary);
+    }
+
+    /* ── New update-mode matching modal styles ────────────────── */
+    .matching-plaid-card {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-primary);
+      border-radius: 6px;
+      padding: 12px;
+      flex: 1;
+    }
+    .matching-plaid-card .card-name {
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text-primary);
+    }
+    .matching-plaid-card .card-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .matching-plaid-card .card-balance {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 6px;
+    }
+    .matching-existing-select {
+      flex: 1;
+    }
+    .matching-existing-select select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-primary);
+      font-size: 14px;
+      background: var(--bg-input);
+      color: var(--text-primary);
+    }
+    .matching-existing-select .match-option-detail {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .cross-bank-warning {
+      margin-top: 6px;
+      padding: 8px 10px;
+      background: rgba(200, 140, 40, 0.12);
+      border: 1px solid rgba(200, 140, 40, 0.4);
+      border-radius: 6px;
+      font-size: 12px;
+      color: #d4a854;
+      line-height: 1.4;
+    }
+    .matching-existing-display {
+      flex: 1;
+      display: flex;
+      align-items: center;
+    }
+    .locked-match-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--accent-success, #6db3f8);
+      padding: 10px;
+    }
+    .matching-row-locked {
+      opacity: 0.7;
+      border-color: var(--border-subtle);
+      background: var(--bg-surface);
+    }
+
+    /* Summary section */
+    .matching-summary-section {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 2px solid var(--border-subtle);
+    }
+    .matching-summary-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-heading);
+      margin-bottom: 12px;
+    }
+    .matching-summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .matching-summary-table th {
+      text-align: left;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border-primary);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .matching-summary-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+    }
+    .summary-direct {
+      color: var(--accent-success, #6db3f8);
+      font-weight: 500;
+    }
+    .summary-matched {
+      color: #8bc18b;
+      font-weight: 500;
+    }
+    .summary-new {
+      color: #d4a854;
+      font-weight: 500;
+    }
+    .summary-orphaned {
+      color: #c08080;
+      font-weight: 500;
+    }
+    .summary-cross-bank {
+      color: #d4a854;
+      font-weight: 500;
+    }
+    .matching-summary-empty {
+      color: var(--text-muted);
+      font-size: 13px;
+      font-style: italic;
     }
 
     /* Institution Picker Modal */

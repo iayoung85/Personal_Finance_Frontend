@@ -234,19 +234,21 @@ const IndexApi = (() => {
   }
 
   /**
-   * Confirm user-driven account matching after a relink.
+   * Confirm user-driven account matching after a relink or update-mode refresh.
    * @param {string} bankId - The bank_id whose accounts are being matched.
    * @param {Array<{existing_account_id: string, plaid_account_id: string}>} matches
    *   Each element pairs an orphaned existing account with a Plaid account.
+   * @param {Array<string>} [orphanedAccountIds] - Orphaned account IDs to
+   *   downgrade to converted status (not matched by the user).
    * @returns {Promise<Object>} Reconciliation stats from the backend.
    */
-  async function confirmAccountMatching(bankId, matches) {
+  async function confirmAccountMatching(bankId, matches, orphanedAccountIds = []) {
     const response = await authenticatedFetch(
       `${BACKEND_URL}/api/accounts/banks/${encodeURIComponent(bankId)}/confirm-account-matching`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matches }),
+        body: JSON.stringify({ matches, orphaned_account_ids: orphanedAccountIds }),
       },
     );
     const data = await response.json();
@@ -256,12 +258,19 @@ const IndexApi = (() => {
     return data;
   }
 
-  async function skipAccountMatching(bankId) {
+  /**
+   * Skip account matching — keep accounts separate, downgrade orphans.
+   * @param {string} bankId
+   * @param {Array<string>} [orphanedAccountIds] - Orphaned account IDs to
+   *   downgrade to converted status.
+   */
+  async function skipAccountMatching(bankId, orphanedAccountIds = []) {
     const response = await authenticatedFetch(
       `${BACKEND_URL}/api/accounts/banks/${encodeURIComponent(bankId)}/skip-account-matching`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orphaned_account_ids: orphanedAccountIds }),
       },
     );
     const data = await response.json();
