@@ -24,7 +24,7 @@ const APP_CONFIG_DEFAULTS = {
   currencySymbol: '$',
   showCents: true,
   useCompactNotation: false,
-  defaultDateRange: '30d',
+  defaultDateRange: 'last_12_months',
   defaultAccount: 'all',
   emailWeeklySummary: false,
   emailBillReminders: true,

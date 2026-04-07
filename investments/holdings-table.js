@@ -311,9 +311,14 @@ function _buildGroupedByAccount(selectedAccountIds) {
       });
 
       if (holdings.length > 0) {
+        const enriched = investmentAccounts.find(ia => ia.plaid_account_id === account.account_id);
+        const displayName = enriched
+          ? (enriched.custom_name || enriched.account_name)
+          : (account.name || account.official_name || 'Unknown Account');
+
         accountGroups.push({
           institution: institution,
-          account_name: account.name || account.official_name || 'Unknown Account',
+          account_name: displayName,
           holdings: holdings
         });
       }

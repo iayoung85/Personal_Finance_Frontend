@@ -222,11 +222,11 @@ function _renderNumberDisplayCard(config) {
  */
 function _renderViewDefaultsCard(config) {
   const rangeOptions = [
-    { value: '7d',            label: 'Last 7 days' },
-    { value: '30d',           label: 'Last 30 days' },
-    { value: '90d',           label: 'Last 90 days' },
-    { value: 'current-month', label: 'Current month' },
-    { value: 'ytd',           label: 'Year to date' },
+    { value: 'last_12_months', label: 'Last 12 Months' },
+    { value: 'mtd',            label: 'Month to Date' },
+    { value: 'ytd',            label: 'Year to Date' },
+    { value: 'last_month',     label: 'Last Month' },
+    { value: 'last_year',      label: 'Last Year' },
   ];
 
   const rangeOptions_html = rangeOptions.map(opt => `

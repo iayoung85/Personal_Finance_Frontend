@@ -1093,14 +1093,6 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
   // Format amount for display
   const fmtAmount = txnAmount !== '' ? new Intl.NumberFormat('en-US', { style: 'currency', currency: txnCurrency }).format(txnAmount) : '—';
 
-  // Pre-build category dropdown options using the same helpers used in table rows.
-  const primaryOptions   = buildPrimaryDropdownOptions(selectedPrimary);
-  const detailedOptions  = buildDetailedDropdownOptions(selectedPrimary, selectedDetailed);
-  // Disable the detailed select when the selected primary has no detailed categories
-  // (buildDetailedDropdownOptions renders a placeholder option in that case).
-  const noDetailedAvailable = selectedPrimary === 'Uncategorized' ||
-                               extractDetailedCategories(availableCategories, selectedPrimary).length === 0;
-
   // Build rule configuration form — all colors use CSS variables so they
   // automatically match the VS Code dark theme defined in theme.css.
   const formHtml = `
@@ -1185,9 +1177,9 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
           <span class="rule-modal-category-title">Assign category</span>
           <span class="rule-modal-category-sub">Changing this will also update this transaction</span>
         </div>
-        <div style="display: grid; gap: 8px; margin-top: 8px;">
-          <select id="rule-modal-primary" class="modal-input">${primaryOptions}</select>
-          <select id="rule-modal-detailed" class="modal-input"${noDetailedAvailable ? ' disabled' : ''}>${detailedOptions}</select>
+        <div style="position: relative; margin-top: 8px;">
+          <input id="rule-modal-category" type="text" value="${escapeHtml(originalCategory)}" placeholder="Type to search categories" autocomplete="off" class="modal-input">
+          <div id="rule-modal-category-list" class="category-ac-list" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 99999;"></div>
         </div>
       </div>
 
@@ -1203,17 +1195,8 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
     ]
   });
 
-  // Wire primary dropdown → refresh detailed options
-  const primarySelect  = document.getElementById('rule-modal-primary');
-  const detailedSelect = document.getElementById('rule-modal-detailed');
-  if (primarySelect && detailedSelect) {
-    primarySelect.addEventListener('change', () => {
-      const newPrimary = primarySelect.value;
-      detailedSelect.innerHTML = buildDetailedDropdownOptions(newPrimary, '');
-      const hasOptions = extractDetailedCategories(availableCategories, newPrimary).length > 0;
-      detailedSelect.disabled = !hasOptions;
-    });
-  }
+  // Wire category autocomplete
+  setTimeout(() => _wireRuleModalCategoryAutocomplete(), 50);
 
   // Store txn data on the modal for match-type switching
   window._ruleModalTxn = { description: txnDescription, merchant: txnMerchant, amount: txnAmount };
@@ -1286,12 +1269,15 @@ async function submitCategoryRule(txnId, accountId, originalCategory) {
   const caseSensitive = document.getElementById('rule-modal-case-sensitive').checked;
   const isActive = document.getElementById('rule-modal-active').checked;
 
-  // Read the (possibly edited) category from the dropdowns
-  const selectedPrimary  = document.getElementById('rule-modal-primary')?.value || '';
-  const selectedDetailed = document.getElementById('rule-modal-detailed')?.value || '';
-  const resolvedTarget   = resolveTargetCategory(selectedPrimary, selectedDetailed);
+  // Read the (possibly edited) category from the text input
+  const categoryInputValue = (document.getElementById('rule-modal-category')?.value || '').trim();
+  const resolvedTarget = _resolveAutocompleteCategory(categoryInputValue);
   if (resolvedTarget.error) {
     showStatus(resolvedTarget.error, 'warning');
+    return;
+  }
+  if (resolvedTarget.isTransfer) {
+    showStatus('Transfer assignments cannot be saved as rules.', 'warning');
     return;
   }
   const targetCategory = resolvedTarget.value;
@@ -1400,6 +1386,137 @@ async function submitCategoryRule(txnId, accountId, originalCategory) {
   } catch (error) {
     showStatus(`Failed to create rule: ${error.message}`, 'error');
   }
+}
+
+/**
+ * Wire category autocomplete onto the rule modal's text input.
+ * Uses the same pattern as _wireUpManualCategoryAutocomplete.
+ */
+function _wireRuleModalCategoryAutocomplete() {
+  const input = document.getElementById('rule-modal-category');
+  const list  = document.getElementById('rule-modal-category-list');
+  if (!input || !list) return;
+
+  input.addEventListener('input', () => {
+    _showRuleModalCategoryDropdown(input, list);
+  });
+
+  input.addEventListener('focus', () => {
+    input.select();
+    if (input.value.trim()) {
+      _showRuleModalCategoryDropdown(input, list);
+    }
+  });
+
+  input.addEventListener('keydown', (event) => {
+    const items = list.querySelectorAll('.category-ac-item');
+    const activeItem = list.querySelector('.category-ac-item.active');
+    const activeIndex = Array.from(items).indexOf(activeItem);
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      const nextIndex = Math.min(activeIndex + 1, items.length - 1);
+      items.forEach(item => item.classList.remove('active'));
+      if (items[nextIndex]) {
+        items[nextIndex].classList.add('active');
+        items[nextIndex].scrollIntoView({ block: 'nearest' });
+      }
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      const prevIndex = Math.max(activeIndex - 1, 0);
+      items.forEach(item => item.classList.remove('active'));
+      if (items[prevIndex]) {
+        items[prevIndex].classList.add('active');
+        items[prevIndex].scrollIntoView({ block: 'nearest' });
+      }
+    } else if (event.key === 'Tab') {
+      const target = activeItem || items[0];
+      if (target) {
+        event.preventDefault();
+        input.value = target.dataset.value;
+        list.innerHTML = '';
+        list.style.display = 'none';
+      }
+    } else if (event.key === 'Enter') {
+      const target = activeItem || items[0];
+      if (target) {
+        event.preventDefault();
+        input.value = target.dataset.value;
+        list.innerHTML = '';
+        list.style.display = 'none';
+      }
+    } else if (event.key === 'Escape') {
+      list.innerHTML = '';
+      list.style.display = 'none';
+    }
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      list.innerHTML = '';
+      list.style.display = 'none';
+    }, 200);
+  });
+
+  list.addEventListener('mousedown', (event) => {
+    const item = event.target.closest('.category-ac-item');
+    if (item) {
+      event.preventDefault();
+      input.value = item.dataset.value;
+      list.innerHTML = '';
+      list.style.display = 'none';
+    }
+  });
+}
+
+/**
+ * Show filtered category suggestions in the rule modal's category input.
+ * Rules cannot assign transfer categories, so "[" mode is intentionally omitted.
+ */
+function _showRuleModalCategoryDropdown(input, list) {
+  const query = (input.value || '').trim();
+  const queryLower = query.toLowerCase();
+
+  if (!query) {
+    list.innerHTML = '';
+    list.style.display = 'none';
+    return;
+  }
+
+  let matches;
+  if (queryLower.includes(':')) {
+    const [qPrimary, qDetailed] = queryLower.split(':').map(s => s.trim());
+    matches = (availableCategories || []).filter(cat => {
+      const parts = cat.toLowerCase().split(':').map(s => s.trim());
+      const primaryMatch = !qPrimary || (parts[0] || '').includes(qPrimary);
+      const detailedMatch = !qDetailed || (parts[1] || '').includes(qDetailed);
+      return primaryMatch && detailedMatch;
+    });
+  } else {
+    matches = (availableCategories || []).filter(cat =>
+      cat.toLowerCase().includes(queryLower)
+    );
+  }
+
+  const maxVisible = 10;
+  const shown = matches.slice(0, maxVisible);
+
+  if (shown.length === 0) {
+    list.innerHTML = '<div class="category-ac-empty">No matching categories</div>';
+    list.style.display = 'block';
+    return;
+  }
+
+  const html = shown.map((cat, i) => {
+    const highlighted = _highlightMatch(cat, query);
+    return `<div class="category-ac-item${i === 0 ? ' active' : ''}" data-value="${escapeHtml(cat)}">${highlighted}</div>`;
+  }).join('');
+
+  const overflow = matches.length > maxVisible
+    ? `<div class="category-ac-more">${matches.length - maxVisible} more\u2026</div>` : '';
+
+  list.innerHTML = html + overflow;
+  list.style.display = 'block';
 }
 
 // ───── Categorize Modal (legacy simple modal) ─────

@@ -122,6 +122,29 @@ function _applyMonth(year, month) {
   document.getElementById('end-date').value = _formatDateLocal(end);
 }
 
+/**
+ * Map a defaultDateRange config value (from user preferences) to the
+ * matching apply function, filter-name key, and toggle button id.
+ * Config values that don't correspond to a visible toggle button
+ * leave buttonId null — the range is applied without highlighting.
+ */
+function _mapConfigRangeToFilter(configValue) {
+  switch (configValue) {
+    case 'last_12_months':
+      return { apply: _applyLast12Months,  filterName: 'last_12_months', buttonId: 'btn-date-last-12-months' };
+    case 'mtd':
+      return { apply: _applyMonthToDate,   filterName: 'mtd',            buttonId: 'btn-date-mtd' };
+    case 'ytd':
+      return { apply: _applyYearToDate,    filterName: 'ytd',            buttonId: 'btn-date-ytd' };
+    case 'last_month':
+      return { apply: _applyLastMonth,     filterName: 'last_month',     buttonId: 'btn-date-last-month' };
+    case 'last_year':
+      return { apply: _applyLastYear,      filterName: 'last_year',      buttonId: 'btn-date-last-year' };
+    default:
+      return { apply: _applyLast12Months,  filterName: 'last_12_months', buttonId: 'btn-date-last-12-months' };
+  }
+}
+
 // ===== Visual toggle helpers =====
 
 function _clearAllDateToggleStyles() {
@@ -301,9 +324,12 @@ function setDefaultDates() {
 
   const savedFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
   if (!savedFilter) {
-    // No saved preference — apply last 12 months as default and persist it
-    localStorage.setItem(DATE_FILTER_ACTIVE_KEY, 'last_12_months');
-    _setActiveToggle('btn-date-last-12-months');
+    // No saved page-level preference — use the user's defaultDateRange config
+    const configRange = getAppConfig().defaultDateRange;
+    const mapped = _mapConfigRangeToFilter(configRange);
+    mapped.apply();
+    if (mapped.buttonId) _setActiveToggle(mapped.buttonId);
+    localStorage.setItem(DATE_FILTER_ACTIVE_KEY, mapped.filterName);
     return;
   }
 
