@@ -328,7 +328,21 @@ async function promptRenameAccount(accountId, currentCustomName) {
 
   try {
     showToast('Updating account name…', 'info');
-    await apiUpdateAccount(accountId, { custom_name: newName.trim() || null });
+    const result = await apiUpdateAccount(accountId, { custom_name: newName.trim() || null });
+
+    // Backend relabels transfer-partner categories in-place and returns the
+    // list so we can patch the local IndexedDB cache without a full refresh.
+    if (result.relabeled_transactions && result.relabeled_transactions.length > 0) {
+      const relabeled = result.relabeled_transactions;
+      const txnIds = relabeled.map(function(entry) { return entry.transaction_id; });
+      const newCategory = relabeled[0].user_category;
+      if (window.txnDB) {
+        window.txnDB.patchBatch(txnIds, { user_category: newCategory }).catch(function(patchError) {
+          console.warn('Failed to patch relabeled transfers in IndexedDB:', patchError);
+        });
+      }
+    }
+
     showToast('Account renamed successfully', 'success');
     await reloadAndReselect();
   } catch (renameError) {
