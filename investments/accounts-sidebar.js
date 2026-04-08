@@ -150,6 +150,9 @@ function renderInvestmentSidebar() {
       const balanceColorClass = acc.current_balance < 0 ? 'sidebar-account-balance-negative' : 'sidebar-account-balance';
       const isSelected = selectedAccountIds.has(acc.account_id);
       const selectedClass = isSelected ? 'selected' : '';
+      const syncDot = acc.status === 'active'
+        ? '<span class="sync-dot sync-dot-linked" title="Syncing holdings from Plaid"></span>'
+        : '<span class="sync-dot sync-dot-manual" title="CSV / manual holdings"></span>';
       html += `
         <div class="sidebar-account-item ${selectedClass}"
              tabindex="0"
@@ -157,7 +160,7 @@ function renderInvestmentSidebar() {
              onclick="toggleAccountSelection('${acc.account_id}', event)"
              oncontextmenu="event.preventDefault(); _showInvAccountContextMenu(event, '${acc.account_id}')">
           <div class="sidebar-account-label">
-            <span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span>
+            ${syncDot}<span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span>
             <span class="sidebar-account-mask">${displayNameSuffix}</span>
           </div>
           <div class="sidebar-account-right">
