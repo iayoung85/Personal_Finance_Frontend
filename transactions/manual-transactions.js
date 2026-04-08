@@ -1260,13 +1260,21 @@ async function resolveMissingTransaction(transactionId) {
       { method: 'DELETE' }
     );
 
+    const data = response.ok ? await response.json() : null;
     if (!response.ok) {
-      const data = await response.json();
-      showStatus(data.error || 'Failed to resolve missing transaction', 'error');
+      const errData = data || await response.json();
+      showStatus(errData.error || 'Failed to resolve missing transaction', 'error');
       return;
     }
 
     showStatus('Missing transaction resolved', 'success');
+
+    // Patch the transfer partner's cached data so the unlinked state
+    // renders immediately without waiting for a full account refetch.
+    if (data && data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
+      _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
+    }
+
     await refreshAccountTransactions(selectedAccountId);
 
   } catch (networkError) {
