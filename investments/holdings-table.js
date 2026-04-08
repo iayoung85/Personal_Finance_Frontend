@@ -16,7 +16,8 @@ function renderHoldingsTable() {
     return;
   }
 
-  if (poolAllMode) {
+  // Pool mode when checkbox is on AND 2+ accounts selected
+  if (poolHoldings && selectedIds.length >= 2) {
     _renderPoolModeTable(container, selectedIds);
   } else {
     _renderAccountModeTable(container, selectedIds);

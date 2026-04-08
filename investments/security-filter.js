@@ -48,6 +48,11 @@ function renderFilterStrip() {
     <button class="btn-clear-filters" onclick="clearAllFilters()" style="display:${_hasActiveFilters() ? 'inline-block' : 'none'};">
       Clear Filters
     </button>
+    <label class="inv-filter-label inv-pool-toggle">
+      <input type="checkbox" id="pool-holdings-cb" ${poolHoldings ? 'checked' : ''}
+             onchange="onPoolHoldingsToggle(this.checked)">
+      Pool Holdings
+    </label>
     <div class="inv-filter-actions">
       <button class="btn-chart-toggle" onclick="toggleChartPanel()">
         📊 Chart
@@ -81,6 +86,13 @@ function clearAllFilters() {
   filterIndustry = '';
   renderFilterStrip();
   renderHoldingsTable();
+}
+
+function onPoolHoldingsToggle(checked) {
+  poolHoldings = checked;
+  renderHoldingsTable();
+  renderInvestmentChart();
+  if (typeof _saveViewerPrefs === 'function') _saveViewerPrefs();
 }
 
 // ── Internal helpers ─────────────────────────────────────────

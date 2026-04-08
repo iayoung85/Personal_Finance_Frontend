@@ -52,9 +52,9 @@ async function loadInvestmentAccounts() {
     _buildAccountStatus();
     renderInvestmentSidebar();
 
-    // Default: pool all accounts selected
-    if (poolAllMode) {
-      _applyPoolAllSelection();
+    // Default: start with all accounts selected
+    if (selectedAccountIds.size === 0) {
+      _selectAllAccounts();
     }
   } catch (error) {
     container.innerHTML = `<div class="error">Error loading accounts: ${error.message}</div>`;
@@ -110,11 +110,13 @@ function renderInvestmentSidebar() {
 
   let html = '';
 
-  // Pool All Accounts toggle
-  const poolClass = poolAllMode ? 'selected' : '';
+  // All Accounts button — selects every visible account
+  const allVisible = investmentAccounts.filter(acc => _isVisibleInvestmentAccount(acc) && !acc.holdings_hidden);
+  const allSelected = allVisible.length > 0 && allVisible.every(acc => selectedAccountIds.has(acc.account_id));
+  const allClass = allSelected ? 'selected' : '';
   html += `
-    <div class="sidebar-all-accounts ${poolClass}" tabindex="0" onclick="togglePoolAll()">
-      <span>⊕ Pool All Accounts</span>
+    <div class="sidebar-all-accounts ${allClass}" tabindex="0" onclick="selectAllAccounts()">
+      <span>All Accounts</span>
     </div>
   `;
 
@@ -146,13 +148,13 @@ function renderInvestmentSidebar() {
       const displayNameSuffix = maskMatch ? maskMatch[2] : '';
       const balanceStr = formatCompactCurrency(acc.current_balance);
       const balanceColorClass = acc.current_balance < 0 ? 'sidebar-account-balance-negative' : 'sidebar-account-balance';
-      const isSelected = !poolAllMode && selectedAccountIds.has(acc.account_id);
+      const isSelected = selectedAccountIds.has(acc.account_id);
       const selectedClass = isSelected ? 'selected' : '';
       html += `
         <div class="sidebar-account-item ${selectedClass}"
              tabindex="0"
              data-account-id="${acc.account_id}"
-             onclick="toggleAccountSelection('${acc.account_id}')"
+             onclick="toggleAccountSelection('${acc.account_id}', event)"
              oncontextmenu="event.preventDefault(); _showInvAccountContextMenu(event, '${acc.account_id}')">
           <div class="sidebar-account-label">
             <span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span>
@@ -270,33 +272,37 @@ async function _ctxInvHideHoldings(accountId) {
 
 // --- Selection handlers ---
 
-function togglePoolAll() {
-  poolAllMode = true;
-  selectedAccountIds.clear();
+function selectAllAccounts() {
+  _selectAllAccounts();
   renderInvestmentSidebar();
-  _applyPoolAllSelection();
   onAccountSelectionChanged();
   if (typeof _saveViewerPrefs === 'function') _saveViewerPrefs();
 }
 
-function toggleAccountSelection(accountId) {
+function toggleAccountSelection(accountId, event) {
   const account = investmentAccounts.find(acc => acc.account_id === accountId);
   if (!account || !_isVisibleInvestmentAccount(account)) return;
 
-  // Transitioning from pool-all: select only the clicked account
-  if (poolAllMode) {
-    poolAllMode = false;
+  const isShift = event && event.shiftKey;
+
+  if (isShift) {
+    // Additive toggle: add or remove this account from selection
+    if (selectedAccountIds.has(accountId)) {
+      selectedAccountIds.delete(accountId);
+      // If nothing left, revert to all
+      if (selectedAccountIds.size === 0) {
+        _selectAllAccounts();
+      }
+    } else {
+      selectedAccountIds.add(accountId);
+    }
+  } else if (selectedAccountIds.size !== 1 || !selectedAccountIds.has(accountId)) {
+    // Plain click: select only this account
     selectedAccountIds.clear();
     selectedAccountIds.add(accountId);
-  } else if (selectedAccountIds.has(accountId)) {
-    selectedAccountIds.delete(accountId);
-    // If nothing selected, revert to pool mode
-    if (selectedAccountIds.size === 0) {
-      poolAllMode = true;
-      _applyPoolAllSelection();
-    }
   } else {
-    selectedAccountIds.add(accountId);
+    // Clicking the already-solo selected account — revert to all
+    _selectAllAccounts();
   }
 
   renderInvestmentSidebar();
@@ -304,7 +310,7 @@ function toggleAccountSelection(accountId) {
   if (typeof _saveViewerPrefs === 'function') _saveViewerPrefs();
 }
 
-function _applyPoolAllSelection() {
+function _selectAllAccounts() {
   selectedAccountIds.clear();
   investmentAccounts
     .filter(acc => _isVisibleInvestmentAccount(acc) && !acc.holdings_hidden)

@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     const settingsData = await loadViewerSettings();
     const prefs = _parseViewerPrefs(settingsData.optional_fields);
     if (prefs.chartViewMode) chartViewMode = prefs.chartViewMode;
-    if (prefs.poolAllMode === false) poolAllMode = false;
+    if (prefs.poolHoldings === true) poolHoldings = true;
   } catch (_settingsError) {
     // Settings may not exist yet — defaults are fine
   }
@@ -159,7 +159,7 @@ function _parseViewerPrefs(optionalFields) {
 function _saveViewerPrefs() {
   const prefs = {
     chartViewMode: chartViewMode,
-    poolAllMode: poolAllMode,
+    poolHoldings: poolHoldings,
   };
   saveViewerSettings(prefs, []).catch(error =>
     console.warn('Failed to save viewer settings:', error)

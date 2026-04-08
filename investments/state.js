@@ -11,8 +11,8 @@ let investmentAccounts = []; // Investment accounts (enriched with product statu
 let accountStatus = [];    // Item-level status for sync-all logic
 
 // Account selection state
-let poolAllMode = true;           // When true, all holdings grouped by ticker
-let selectedAccountIds = new Set(); // Individual account selections (used when poolAllMode is false)
+let poolHoldings = false;           // When true and 2+ accounts selected, holdings grouped by ticker
+let selectedAccountIds = new Set(); // Which accounts are currently selected (always authoritative)
 
 // Auth state
 let authToken = localStorage.getItem('authToken');

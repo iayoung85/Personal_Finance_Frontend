@@ -110,14 +110,9 @@ function getSelectedPlaidAccountIds() {
 }
 
 /**
- * Returns array of selected internal account_ids based on current mode.
+ * Returns array of selected internal account_ids.
  */
 function getSelectedAccountIds() {
-  if (poolAllMode) {
-    return investmentAccounts
-      .filter(acc => _isVisibleInvestmentAccount(acc))
-      .map(acc => acc.account_id);
-  }
   return Array.from(selectedAccountIds);
 }
 

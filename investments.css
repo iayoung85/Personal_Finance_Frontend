@@ -188,6 +188,20 @@
   font-weight: 500;
 }
 
+.inv-pool-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.inv-pool-toggle input[type="checkbox"] {
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
 .inv-filter-actions {
   display: flex;
   gap: 6px;
