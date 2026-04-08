@@ -104,8 +104,8 @@ function applySettings(settings) {
     });
   }
   
-  // Apply hide_transfers setting (default to true if not set)
-  const hideTransfers = resolvedSettings.hide_transfers !== undefined ? resolvedSettings.hide_transfers : true;
+  // Apply hide_transfers setting (default to false if not set)
+  const hideTransfers = resolvedSettings.hide_transfers !== undefined ? resolvedSettings.hide_transfers : false;
   document.getElementById('hide-transfers').checked = hideTransfers;
 
   // Apply show_overrides_only setting (default to false if not set)

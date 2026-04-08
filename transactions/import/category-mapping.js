@@ -205,21 +205,6 @@ function _renderCategoryRow(category, groupKey) {
   html += `<td>${_renderCategoryMappingDropdown(csvName, currentMapping, category)}</td>`;
   html += '</tr>';
 
-  // Investment adjustment toggle row: let user opt out of trending routing
-  if (category.is_investment_adjustment) {
-    const routeEnabled = currentMapping ? (currentMapping.route_to_investment_trending !== false) : true;
-    const toggleId = `inv-route-${_escapeAttr(csvName)}`;
-    html += `<tr class="import-inv-toggle-row">`;
-    html += `<td></td>`;
-    html += `<td colspan="3" style="padding-top: 2px; padding-bottom: 6px;">`;
-    html += `<label class="import-inv-toggle-label" for="${toggleId}">`;
-    html += `<input type="checkbox" id="${toggleId}" ${routeEnabled ? 'checked' : ''}
-               onchange="_onInvestmentRouteToggle('${_escapeAttr(csvName)}', this.checked)">`;
-    html += ` Route to investment trending`;
-    html += `</label>`;
-    html += `</td></tr>`;
-  }
-
   // If create_new, show inline input
   if (currentMapping && currentMapping.action === 'create_new') {
     html += `<tr><td></td><td colspan="3" style="padding-top: 0;">
@@ -296,14 +281,7 @@ function _onCategoryMappingChange(csvName, selectedValue) {
     delete importCategoryMappings[csvName];
   }
 
-  // Check if this is an investment adjustment category being mapped
-  const analysisCategory = importAnalysis.categories.find(cat => cat.csv_name === csvName);
-  if (analysisCategory && analysisCategory.is_investment_adjustment && selectedValue && selectedValue !== '__ignore__' && selectedValue !== '__create_new__') {
-    // Preserve user's toggle choice if they've already set one, otherwise default to true
-    if (importCategoryMappings[csvName].route_to_investment_trending === undefined) {
-      importCategoryMappings[csvName].route_to_investment_trending = true;
-    }
-  }
+
 
   const body = document.getElementById('import-wizard-body');
   renderCategoryMappingStep(body);
@@ -506,9 +484,7 @@ function _getSortedAvailableCategories() {
 // ── Investment Routing Toggle ─────────────────────────────────
 
 function _onInvestmentRouteToggle(csvName, isChecked) {
-  if (importCategoryMappings[csvName]) {
-    importCategoryMappings[csvName].route_to_investment_trending = isChecked;
-  }
+  // Kept as a no-op so any stale cached HTML doesn't throw.
   _saveImportProgress();
 }
 

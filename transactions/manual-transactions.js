@@ -383,6 +383,12 @@ async function _updateManualTransaction(transactionId, accountId) {
       }
     }
 
+    // Patch the transfer partner so the counterpart account's cached row
+    // reflects the propagated amount/date change without a full refetch.
+    if (data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
+      _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
+    }
+
     // Patch the MOB row that the backend may have updated/removed
     // during balance reconciliation so the cached row isn't stale.
     _applyCachedMobUpdate(data);

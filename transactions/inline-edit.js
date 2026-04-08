@@ -349,6 +349,12 @@ async function _saveRowInlineEdits() {
       editedAccountId = data.transaction.account_id;
     }
 
+    // Patch the transfer partner so the counterpart account's cached row
+    // reflects the propagated amount/date change without a full refetch.
+    if (data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
+      _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
+    }
+
     // Description-only edits don't affect trending, balances, or other rows —
     // the _replaceCachedTransaction above is sufficient. Skip the expensive
     // account refetch + balance history round-trips.
