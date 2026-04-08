@@ -51,102 +51,101 @@ function _renderSectorChart(canvas, emptyState, selectedIds) {
   _renderPieChart(canvas, breakdown.labels, breakdown.values, 'Portfolio by Sector');
 }
 
-// ─── Allocation Drift: Grouped horizontal bar chart ──────────
+// ─── Allocation Drift: summary table (replaces chart) ────────
 
 async function _renderAllocationDriftChart(canvas, emptyState) {
+  const driftContainer = document.getElementById('allocation-drift-table');
+
   try {
     const selectedPlaidIds = getSelectedPlaidAccountIds();
     const summaryData = await fetchAllocationSummary(selectedPlaidIds);
     const summary = summaryData.summary || [];
 
     if (summary.length === 0) {
-      _showChartEmpty(canvas, emptyState, 'No allocation categories defined');
+      _showDriftEmpty(canvas, emptyState, driftContainer, 'No allocation categories defined');
       return;
     }
 
-    _hideChartEmpty(canvas, emptyState);
+    // Hide canvas, show drift table
     _destroyExistingChart();
+    canvas.style.display = 'none';
+    if (emptyState) emptyState.style.display = 'none';
+    driftContainer.style.display = 'block';
 
-    const labels = summary.map(row => row.category_name);
-    const targetData = summary.map(row => row.target_pct);
-    const actualData = summary.map(row => row.actual_pct);
+    const totalActualValue = summary.reduce((sum, row) => sum + (row.actual_value || 0), 0);
 
-    investmentChart = new Chart(canvas, {
-      type: 'bar',
-      data: {
-        labels: labels,
-        datasets: [
-          {
-            label: 'Target %',
-            data: targetData,
-            backgroundColor: 'rgba(91, 155, 213, 0.35)',
-            borderColor: 'rgba(91, 155, 213, 0.7)',
-            borderWidth: 1,
-          },
-          {
-            label: 'Actual %',
-            data: actualData,
-            backgroundColor: actualData.map((actual, index) => {
-              const delta = Math.abs(actual - targetData[index]);
-              if (delta <= 3) return 'rgba(52, 211, 153, 0.7)';
-              if (delta <= 8) return 'rgba(251, 191, 36, 0.7)';
-              return 'rgba(248, 113, 113, 0.7)';
-            }),
-            borderColor: actualData.map((actual, index) => {
-              const delta = Math.abs(actual - targetData[index]);
-              if (delta <= 3) return '#34D399';
-              if (delta <= 8) return '#FBBF24';
-              return '#F87171';
-            }),
-            borderWidth: 1,
-          },
-        ],
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'top',
-            labels: { color: getComputedStyle(document.body).getPropertyValue('--text-primary').trim() || '#fff' },
-          },
-          tooltip: {
-            callbacks: {
-              afterLabel: function(context) {
-                if (context.datasetIndex === 1) {
-                  const catIndex = context.dataIndex;
-                  const delta = summary[catIndex].delta_pct;
-                  const sign = delta >= 0 ? '+' : '';
-                  return `Drift: ${sign}${delta.toFixed(1)}%`;
-                }
-                return '';
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            beginAtZero: true,
-            max: 100,
-            ticks: {
-              callback: function(value) { return value + '%'; },
-              color: getComputedStyle(document.body).getPropertyValue('--text-secondary').trim() || '#aaa',
-            },
-            grid: { color: 'rgba(255,255,255,0.05)' },
-          },
-          y: {
-            ticks: {
-              color: getComputedStyle(document.body).getPropertyValue('--text-primary').trim() || '#fff',
-            },
-            grid: { display: false },
-          },
-        },
-      },
+    let html = `<table class="drift-table">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Target %</th>
+          <th>Actual %</th>
+          <th>Drift</th>
+          <th>Actual Value</th>
+          <th>Target Value</th>
+          <th>Action Needed</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+    summary.forEach(row => {
+      const delta = row.delta_pct || (row.actual_pct - row.target_pct);
+      const absDelta = Math.abs(delta);
+      const driftSign = delta >= 0 ? '+' : '';
+
+      let badgeClass = 'drift-ok';
+      if (absDelta > 8) badgeClass = 'drift-danger';
+      else if (absDelta > 3) badgeClass = 'drift-warn';
+
+      const targetValue = totalActualValue * (row.target_pct / 100);
+      const actionDelta = (row.actual_value || 0) - targetValue;
+      const actionLabel = absDelta <= 1 ? '—' :
+        actionDelta > 0
+          ? `Reduce ${formatCurrency(Math.abs(actionDelta))}`
+          : `Add ${formatCurrency(Math.abs(actionDelta))}`;
+
+      html += `
+        <tr>
+          <td>${row.category_name}</td>
+          <td>${row.target_pct.toFixed(1)}%</td>
+          <td>${row.actual_pct.toFixed(1)}%</td>
+          <td><span class="drift-badge ${badgeClass}">${driftSign}${delta.toFixed(1)}%</span></td>
+          <td>${formatCurrency(row.actual_value || 0)}</td>
+          <td>${formatCurrency(targetValue)}</td>
+          <td class="${actionDelta > 0 ? 'drift-action-reduce' : 'drift-action-add'}">${actionLabel}</td>
+        </tr>`;
     });
+
+    // Totals row
+    const totalTarget = summary.reduce((sum, row) => sum + row.target_pct, 0);
+    const totalActual = summary.reduce((sum, row) => sum + row.actual_pct, 0);
+
+    html += `
+        <tr class="drift-totals-row">
+          <td><strong>Total</strong></td>
+          <td><strong>${totalTarget.toFixed(1)}%</strong></td>
+          <td><strong>${totalActual.toFixed(1)}%</strong></td>
+          <td></td>
+          <td><strong>${formatCurrency(totalActualValue)}</strong></td>
+          <td></td>
+          <td></td>
+        </tr>
+      </tbody></table>`;
+
+    driftContainer.innerHTML = html;
   } catch (error) {
-    console.error('Allocation drift chart error:', error);
-    _showChartEmpty(canvas, emptyState, 'Failed to load allocation data');
+    console.error('Allocation drift table error:', error);
+    _showDriftEmpty(canvas, emptyState, driftContainer, 'Failed to load allocation data');
+  }
+}
+
+function _showDriftEmpty(canvas, emptyState, driftContainer, message) {
+  _destroyExistingChart();
+  canvas.style.display = 'none';
+  if (driftContainer) driftContainer.style.display = 'none';
+  if (emptyState) {
+    emptyState.style.display = 'block';
+    emptyState.textContent = message;
   }
 }
 
@@ -253,6 +252,8 @@ function _showChartEmpty(canvas, emptyState, message) {
 function _hideChartEmpty(canvas, emptyState) {
   canvas.style.display = 'block';
   if (emptyState) emptyState.style.display = 'none';
+  const driftContainer = document.getElementById('allocation-drift-table');
+  if (driftContainer) driftContainer.style.display = 'none';
 }
 
 // ─── Allocation settings modal ───────────────────────────────
