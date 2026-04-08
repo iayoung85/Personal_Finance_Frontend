@@ -410,6 +410,24 @@ function renderAccountsSidebar() {
 
 // ─── Sidebar account item renderer ───────────────────────────
 
+/**
+ * Green dot = actively syncing from Plaid (transactions or holdings).
+ * Blue dot = manual, converted, or linked but not syncing relevant data.
+ */
+function _getSyncDotHtml(acc) {
+  if (acc.connection_status === 'linked') {
+    const billed = acc.billed_products || [];
+    const isInvestment = (acc.account_category || '').toLowerCase() === 'investment';
+    const hasSyncProduct = isInvestment
+      ? billed.includes('investments')
+      : billed.includes('transactions');
+    if (hasSyncProduct) {
+      return '<span class="sync-dot sync-dot-linked" title="Syncing from Plaid"></span>';
+    }
+  }
+  return '<span class="sync-dot sync-dot-manual" title="Manual"></span>';
+}
+
 function _renderSidebarAccountItem(acc, formatSidebarCurrency) {
   const displayName = _buildAccountDisplayName(acc);
   const maskMatch = displayName.match(/^(.*?)(\s*\(\d{3,6}\))$/);
@@ -421,6 +439,7 @@ function _renderSidebarAccountItem(acc, formatSidebarCurrency) {
 
   const isSelected = selectedAccountMode === 'single' && selectedAccountId === acc.account_id;
   const selectedClass = isSelected ? 'selected' : '';
+  const syncDot = _getSyncDotHtml(acc);
 
   return `
     <div class="sidebar-account-item ${selectedClass}" tabindex="0"
@@ -428,7 +447,7 @@ function _renderSidebarAccountItem(acc, formatSidebarCurrency) {
          onclick="selectAccount('${acc.account_id}')"
          oncontextmenu="event.preventDefault(); _showAccountContextMenu(event, '${acc.account_id}', false)">
       <div class="sidebar-account-label">
-        <span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span><span class="sidebar-account-mask">${displayNameSuffix}</span>
+        ${syncDot}<span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span><span class="sidebar-account-mask">${displayNameSuffix}</span>
       </div>
       <div class="${balanceColorClass}">${balanceStr}</div>
     </div>

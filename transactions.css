@@ -231,6 +231,23 @@ h1 {
   gap: 8px;
 }
 
+/* Sync status dot badges next to account names */
+.sync-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.sync-dot-linked {
+  background: #34D399;
+}
+
+.sync-dot-manual {
+  background: #5B9BD5;
+}
+
 .sidebar-account-name-text {
   overflow: hidden;
   text-overflow: ellipsis;
