@@ -56,7 +56,14 @@ const IndexConnectionsList = (() => {
         return;
       }
 
-      listElement.innerHTML = _renderBankList(banks);
+      const visibleBanks = banks.filter(bank => !_isEmptyManualBank(bank));
+
+      if (!visibleBanks.length) {
+        listElement.innerHTML = '<p class="banks-empty-state">No visible banks. All banks have only hidden or archived accounts.</p>';
+        return;
+      }
+
+      listElement.innerHTML = _renderBankList(visibleBanks);
     } catch (loadError) {
       listElement.innerHTML = `<p class="banks-error">Error loading connected banks: ${loadError.message}</p>`;
     }
@@ -77,6 +84,20 @@ const IndexConnectionsList = (() => {
   }
 
   // ── Rendering helpers ──────────────────────────────────
+
+  /**
+   * Manual or converted banks where every account is hidden or archived
+   * are not useful on the dashboard — manage them from accounts.html.
+   */
+  function _isEmptyManualBank(bank) {
+    const isManualOrConverted = bank.connection_status === 'manual' || bank.connection_status === 'converted';
+    if (!isManualOrConverted) return false;
+
+    const accounts = bank.accounts || [];
+    if (accounts.length === 0) return true;
+
+    return accounts.every(acc => acc.is_hidden || acc.is_archived);
+  }
 
   function _renderBankList(banks) {
     const bankCards = banks.map(bank => _renderBankCard(bank)).join('');
