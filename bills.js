@@ -244,6 +244,179 @@ async function apiToggleBill(billId) {
   return response.json();
 }
 
+// ── Dashboard ───────────────────────────────────────────────
+
+const MONTHLY_MULTIPLIERS = {
+  daily: 30.44,
+  weekly: 4.33,
+  twice_monthly: 1,
+  monthly: 1,
+  twice_yearly: null,
+  yearly: null,
+  once: null
+};
+
+function _isRegularFrequency(frequency) {
+  return MONTHLY_MULTIPLIERS[frequency] !== null && MONTHLY_MULTIPLIERS[frequency] !== undefined;
+}
+
+function _toMonthlyAmount(amount, frequency, interval) {
+  const multiplier = MONTHLY_MULTIPLIERS[frequency];
+  if (multiplier == null) return 0;
+  const effectiveInterval = interval || 1;
+  return (amount * multiplier) / effectiveInterval;
+}
+
+function _formatShortDate(isoDate) {
+  const parts = isoDate.split('-');
+  const dateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${dayNames[dateObj.getDay()]} ${monthNames[dateObj.getMonth()]} ${dateObj.getDate()}`;
+}
+
+function renderDashboard() {
+  const container = document.getElementById('bills-dashboard');
+  if (!container) return;
+
+  const activeBills = allBills.filter(bill => bill.is_active);
+
+  if (activeBills.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+
+  _renderMonthlySummary(activeBills);
+  _renderTwoWeekOutlook(activeBills);
+}
+
+function _renderMonthlySummary(activeBills) {
+  let monthlyIncome = 0;
+  let monthlyExpenses = 0;
+  let monthlyTransfers = 0;
+
+  activeBills.forEach(bill => {
+    if (!_isRegularFrequency(bill.frequency)) return;
+
+    const monthlyAmount = _toMonthlyAmount(Math.abs(bill.amount), bill.frequency, bill.interval);
+    const isTransfer = !!bill.transfer_account_id;
+
+    if (isTransfer) {
+      monthlyTransfers += monthlyAmount;
+    } else if (bill.amount < 0) {
+      monthlyExpenses += monthlyAmount;
+    } else {
+      monthlyIncome += monthlyAmount;
+    }
+  });
+
+  const net = monthlyIncome - monthlyExpenses;
+
+  document.getElementById('dash-monthly-income').textContent = formatCurrency(monthlyIncome);
+  document.getElementById('dash-monthly-expenses').textContent = formatCurrency(monthlyExpenses);
+  document.getElementById('dash-monthly-transfers').textContent = formatCurrency(monthlyTransfers);
+
+  const netElement = document.getElementById('dash-monthly-net');
+  netElement.textContent = (net >= 0 ? '+' : '−') + formatCurrency(Math.abs(net));
+  netElement.className = 'monthly-value ' + (net >= 0 ? 'positive' : 'negative');
+}
+
+function _renderTwoWeekOutlook(activeBills) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const twoWeeksOut = new Date(today);
+  twoWeeksOut.setDate(twoWeeksOut.getDate() + 14);
+
+  const todayIso = today.toISOString().slice(0, 10);
+  const cutoffIso = twoWeeksOut.toISOString().slice(0, 10);
+
+  const rangeElement = document.getElementById('dash-outlook-range');
+  rangeElement.textContent = `${_formatShortDate(todayIso)} – ${_formatShortDate(cutoffIso)}`;
+
+  const upcomingItems = [];
+
+  activeBills.forEach(bill => {
+    const occurrences = bill.upcoming_occurrences || [];
+    occurrences.forEach(occ => {
+      if (occ.date >= todayIso && occ.date <= cutoffIso) {
+        const isTransfer = !!bill.transfer_account_id;
+        const isIncome = bill.amount >= 0 && !isTransfer;
+        const isVariableNonIncome = bill.amount_variable && !isIncome;
+
+        upcomingItems.push({
+          date: occ.date,
+          description: bill.description,
+          amount: bill.amount,
+          isTransfer: isTransfer,
+          isIncome: isIncome,
+          amountVariable: bill.amount_variable,
+          isVariableNonIncome: isVariableNonIncome,
+          billId: bill.bill_id
+        });
+      }
+    });
+  });
+
+  upcomingItems.sort((itemA, itemB) => {
+    if (itemA.isVariableNonIncome !== itemB.isVariableNonIncome) {
+      return itemA.isVariableNonIncome ? -1 : 1;
+    }
+    if (itemA.isIncome !== itemB.isIncome) {
+      return itemA.isIncome ? 1 : -1;
+    }
+    return itemA.date.localeCompare(itemB.date);
+  });
+
+  const listElement = document.getElementById('dash-outlook-list');
+  const emptyElement = document.getElementById('dash-outlook-empty');
+  const footerElement = document.getElementById('dash-outlook-footer');
+
+  if (upcomingItems.length === 0) {
+    listElement.style.display = 'none';
+    emptyElement.style.display = 'block';
+    footerElement.innerHTML = '';
+    return;
+  }
+
+  listElement.style.display = 'flex';
+  emptyElement.style.display = 'none';
+
+  listElement.innerHTML = upcomingItems.map(item => {
+    const urgentClass = item.isVariableNonIncome ? ' urgent' : '';
+    const isOut = item.amount < 0;
+    const amountColor = item.isTransfer ? 'color:var(--color-info)'
+      : isOut ? 'color:var(--color-negative)'
+      : 'color:var(--color-positive)';
+    const amountPrefix = isOut ? '−' : '+';
+    const variableTag = item.amountVariable
+      ? '<span class="outlook-variable-tag">variable</span>'
+      : '';
+
+    return `<div class="outlook-item${urgentClass}">
+      <span class="outlook-date">${_formatShortDate(item.date)}</span>
+      <span class="outlook-desc">${escapeHtml(item.description)}</span>
+      ${variableTag}
+      <span class="outlook-amount" style="${amountColor}">${amountPrefix}${formatCurrency(item.amount)}</span>
+    </div>`;
+  }).join('');
+
+  const totalExpenses = upcomingItems
+    .filter(item => !item.isIncome && !item.isTransfer)
+    .reduce((sum, item) => sum + Math.abs(item.amount), 0);
+  const totalIncome = upcomingItems
+    .filter(item => item.isIncome)
+    .reduce((sum, item) => sum + Math.abs(item.amount), 0);
+  const variableCount = upcomingItems.filter(item => item.isVariableNonIncome).length;
+
+  let footerHtml = `<span>Expenses: <strong style="color:var(--color-negative)">−${formatCurrency(totalExpenses)}</strong></span>`;
+  footerHtml += `<span>Income: <strong style="color:var(--color-positive)">+${formatCurrency(totalIncome)}</strong></span>`;
+  if (variableCount > 0) {
+    footerHtml += `<span style="color:var(--accent-orange)">${variableCount} variable bill${variableCount > 1 ? 's' : ''} — amounts may change</span>`;
+  }
+  footerElement.innerHTML = footerHtml;
+}
+
 // ── Render Bills Table ──────────────────────────────────────
 
 function _getFilteredBills() {
@@ -505,6 +678,7 @@ async function deleteBill(billId) {
 
 async function reloadBills() {
   allBills = await fetchBills();
+  renderDashboard();
   renderBillsTable();
 }
 
@@ -1671,6 +1845,7 @@ $(document).ready(function () {
       allCategories = categoriesResult;
       _populateAccountFilter();
       _wireUpBillFilters();
+      renderDashboard();
       renderBillsTable();
 
       // If navigated here from transactions with ?edit=<bill_id>, auto-open the edit modal
