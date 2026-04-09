@@ -31,6 +31,41 @@
       <span id="bill-count" style="color: #888; font-size: 13px;"></span>
     </div>
 
+    <!-- Filter Bar -->
+    <div class="bills-filter-strip">
+      <div class="bills-filter-row">
+        <div class="bills-search-wrap">
+          <span class="bills-search-icon">🔍</span>
+          <input type="text" id="bills-search-input" placeholder="Search bills by description or memo..." autocomplete="off">
+          <button id="bills-search-clear" class="bills-search-clear-btn" style="display:none;" onclick="clearBillsSearch()">✕</button>
+        </div>
+        <select id="bills-filter-account" title="Filter by account">
+          <option value="">All Accounts</option>
+        </select>
+        <select id="bills-filter-frequency" title="Filter by frequency">
+          <option value="">All Frequencies</option>
+          <option value="once">One-time</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+          <option value="twice_monthly">2×/Month</option>
+          <option value="yearly">Yearly</option>
+          <option value="twice_yearly">2×/Year</option>
+        </select>
+        <select id="bills-filter-status" title="Filter by status">
+          <option value="">All Statuses</option>
+          <option value="active" selected>Active Only</option>
+          <option value="paused">Paused Only</option>
+        </select>
+        <select id="bills-filter-direction" title="Filter by direction">
+          <option value="">All Directions</option>
+          <option value="expense">Expenses</option>
+          <option value="income">Income</option>
+          <option value="transfer">Transfers</option>
+        </select>
+      </div>
+    </div>
+
     <!-- Bills Table -->
     <div id="bills-table-container">
       <div class="loading" id="bills-loading">Loading bills...</div>
@@ -41,13 +76,13 @@
       <table id="bills-table" style="display: none;">
         <thead>
           <tr>
-            <th>Next Payment</th>
-            <th>Direction</th>
-            <th>Description</th>
-            <th>Amount</th>
-            <th>Frequency</th>
-            <th>Account</th>
-            <th>Category</th>
+            <th class="sortable" data-sort="next_payment">Next Payment<span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort="direction">Direction<span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort="description">Description<span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort="amount">Amount<span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort="frequency">Frequency<span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort="account">Account<span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort="category">Category<span class="sort-indicator"></span></th>
             <th>Dest. Account</th>
             <th>Actions</th>
           </tr>

@@ -21,6 +21,10 @@ let allAccounts = [];
 let allCategories = [];
 let editingBillId = null; // null = creating, string = editing
 
+// ── Sort State (persisted to localStorage) ──────────────────
+let currentSortColumn = localStorage.getItem('bills_sort_column') || 'next_payment';
+let currentSortAscending = localStorage.getItem('bills_sort_asc') !== 'false';
+
 /**
  * Invalidate the transactions cache so the next visit
  * to the transactions page forces a fresh fetch from the server.
@@ -242,6 +246,156 @@ async function apiToggleBill(billId) {
 
 // ── Render Bills Table ──────────────────────────────────────
 
+function _getFilteredBills() {
+  const searchTerm = (document.getElementById('bills-search-input')?.value || '').trim().toLowerCase();
+  const accountFilter = document.getElementById('bills-filter-account')?.value || '';
+  const frequencyFilter = document.getElementById('bills-filter-frequency')?.value || '';
+  const statusFilter = document.getElementById('bills-filter-status')?.value || '';
+  const directionFilter = document.getElementById('bills-filter-direction')?.value || '';
+
+  return allBills.filter(bill => {
+    if (searchTerm) {
+      const descMatch = (bill.description || '').toLowerCase().includes(searchTerm);
+      const memoMatch = (bill.memo || '').toLowerCase().includes(searchTerm);
+      if (!descMatch && !memoMatch) return false;
+    }
+    if (accountFilter && bill.account_id !== accountFilter) return false;
+    if (frequencyFilter && bill.frequency !== frequencyFilter) return false;
+    if (statusFilter === 'active' && !bill.is_active) return false;
+    if (statusFilter === 'paused' && bill.is_active) return false;
+    if (directionFilter === 'transfer' && !bill.transfer_account_id) return false;
+    if (directionFilter === 'expense' && (bill.amount >= 0 || bill.transfer_account_id)) return false;
+    if (directionFilter === 'income' && (bill.amount < 0 || bill.transfer_account_id)) return false;
+    return true;
+  });
+}
+
+const FREQUENCY_SORT_ORDER = {
+  daily: 0, weekly: 1, twice_monthly: 2, monthly: 3,
+  twice_yearly: 4, yearly: 5, once: 6
+};
+
+function _sortBills(bills) {
+  const direction = currentSortAscending ? 1 : -1;
+
+  return [...bills].sort((billA, billB) => {
+    let comparison = 0;
+
+    switch (currentSortColumn) {
+      case 'next_payment': {
+        const dateA = billA.upcoming_occurrences?.[0]?.date || '9999-12-31';
+        const dateB = billB.upcoming_occurrences?.[0]?.date || '9999-12-31';
+        comparison = dateA.localeCompare(dateB);
+        break;
+      }
+      case 'direction': {
+        const dirA = billA.amount < 0 ? 0 : 1;
+        const dirB = billB.amount < 0 ? 0 : 1;
+        comparison = dirA - dirB;
+        break;
+      }
+      case 'description':
+        comparison = (billA.description || '').localeCompare(billB.description || '');
+        break;
+      case 'amount':
+        comparison = Math.abs(billA.amount) - Math.abs(billB.amount);
+        break;
+      case 'frequency': {
+        const orderA = FREQUENCY_SORT_ORDER[billA.frequency] ?? 99;
+        const orderB = FREQUENCY_SORT_ORDER[billB.frequency] ?? 99;
+        comparison = orderA - orderB;
+        break;
+      }
+      case 'account':
+        comparison = (billA.account_name || '').localeCompare(billB.account_name || '');
+        break;
+      case 'category':
+        comparison = (billA.user_category || '').localeCompare(billB.user_category || '');
+        break;
+      default: {
+        const dateA = billA.upcoming_occurrences?.[0]?.date || '9999-12-31';
+        const dateB = billB.upcoming_occurrences?.[0]?.date || '9999-12-31';
+        comparison = dateA.localeCompare(dateB);
+      }
+    }
+
+    return comparison * direction;
+  });
+}
+
+function _updateSortIndicators() {
+  const headers = document.querySelectorAll('#bills-table th.sortable');
+  headers.forEach(header => {
+    const indicator = header.querySelector('.sort-indicator');
+    const column = header.dataset.sort;
+    if (column === currentSortColumn) {
+      header.classList.add('sort-active');
+      indicator.textContent = currentSortAscending ? ' ▲' : ' ▼';
+    } else {
+      header.classList.remove('sort-active');
+      indicator.textContent = '';
+    }
+  });
+}
+
+function _onSortHeaderClick(event) {
+  const header = event.currentTarget;
+  const column = header.dataset.sort;
+  if (column === currentSortColumn) {
+    currentSortAscending = !currentSortAscending;
+  } else {
+    currentSortColumn = column;
+    currentSortAscending = true;
+  }
+  localStorage.setItem('bills_sort_column', currentSortColumn);
+  localStorage.setItem('bills_sort_asc', String(currentSortAscending));
+  renderBillsTable();
+}
+
+function _populateAccountFilter() {
+  const select = document.getElementById('bills-filter-account');
+  if (!select) return;
+  const currentValue = select.value;
+  select.innerHTML = '<option value="">All Accounts</option>';
+  const accountIdsWithBills = new Set(allBills.map(bill => bill.account_id));
+  allAccounts
+    .filter(account => accountIdsWithBills.has(account.account_id))
+    .forEach(account => {
+      const option = document.createElement('option');
+      option.value = account.account_id;
+      option.textContent = account.display_name;
+      select.appendChild(option);
+    });
+  select.value = currentValue;
+}
+
+function clearBillsSearch() {
+  const input = document.getElementById('bills-search-input');
+  if (input) input.value = '';
+  document.getElementById('bills-search-clear').style.display = 'none';
+  renderBillsTable();
+}
+
+function _wireUpBillFilters() {
+  const searchInput = document.getElementById('bills-search-input');
+  const clearBtn = document.getElementById('bills-search-clear');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      clearBtn.style.display = searchInput.value ? 'flex' : 'none';
+      renderBillsTable();
+    });
+  }
+
+  ['bills-filter-account', 'bills-filter-frequency', 'bills-filter-status', 'bills-filter-direction'].forEach(filterId => {
+    const element = document.getElementById(filterId);
+    if (element) element.addEventListener('change', () => renderBillsTable());
+  });
+
+  document.querySelectorAll('#bills-table th.sortable').forEach(header => {
+    header.addEventListener('click', _onSortHeaderClick);
+  });
+}
+
 function renderBillsTable() {
   const loading = document.getElementById('bills-loading');
   const emptyState = document.getElementById('bills-empty');
@@ -258,26 +412,39 @@ function renderBillsTable() {
     return;
   }
 
+  const filtered = _getFilteredBills();
+  const sorted = _sortBills(filtered);
+
+  const activeBills = allBills.filter(bill => bill.is_active).length;
+  const totalCount = allBills.length;
+  const shownCount = filtered.length;
+  const filterActive = shownCount < totalCount;
+  countSpan.textContent = filterActive
+    ? `Showing ${shownCount} of ${totalCount} bill${totalCount !== 1 ? 's' : ''} (${activeBills} active)`
+    : `${totalCount} bill${totalCount !== 1 ? 's' : ''} (${activeBills} active)`;
+
+  if (sorted.length === 0) {
+    emptyState.style.display = 'block';
+    emptyState.innerHTML = '<p>No bills match current filters.</p>';
+    table.style.display = 'none';
+    return;
+  }
+
   emptyState.style.display = 'none';
   table.style.display = 'table';
-  const activeBills = allBills.filter(bill => bill.is_active).length;
-  countSpan.textContent = `${allBills.length} bill${allBills.length !== 1 ? 's' : ''} (${activeBills} active)`;
 
-  // Sort by next payment date (nearest first), paused bills at bottom
-  const sorted = [...allBills].sort((billA, billB) => {
-    if (billA.is_active !== billB.is_active) return billA.is_active ? -1 : 1;
-    const dateA = billA.upcoming_occurrences?.[0]?.date || '9999-12-31';
-    const dateB = billB.upcoming_occurrences?.[0]?.date || '9999-12-31';
-    return dateA.localeCompare(dateB);
-  });
+  _updateSortIndicators();
 
   tbody.innerHTML = sorted.map(bill => {
     const nextOcc = bill.upcoming_occurrences?.[0];
     const nextDate = nextOcc ? formatDate(nextOcc.date) : (bill.is_active ? 'No upcoming' : 'Paused');
+    const isTransfer = !!bill.transfer_account_id;
     const isOut = bill.amount < 0;
-    const dirBadge = isOut
-      ? '<span class="dir-badge out">OUT</span>'
-      : '<span class="dir-badge in">IN</span>';
+    const dirBadge = isTransfer
+      ? '<span class="dir-badge transfer">XFER</span>'
+      : isOut
+        ? '<span class="dir-badge out">OUT</span>'
+        : '<span class="dir-badge in">IN</span>';
     const amountClass = isOut ? 'amount-out' : 'amount-in';
     const amountDisplay = (isOut ? '−' : '+') + formatCurrency(bill.amount);
     const freqLabel = FREQUENCY_LABELS[bill.frequency] || bill.frequency;
@@ -1502,6 +1669,8 @@ $(document).ready(function () {
       allAccounts = accountsResult;
       allBills = billsResult;
       allCategories = categoriesResult;
+      _populateAccountFilter();
+      _wireUpBillFilters();
       renderBillsTable();
 
       // If navigated here from transactions with ?edit=<bill_id>, auto-open the edit modal

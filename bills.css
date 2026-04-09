@@ -13,15 +13,134 @@
   margin-bottom: 12px;
   transition: opacity 0.3s;
 }
+
+/* ── Filter Bar ───────────────────────────────────────────── */
+.bills-filter-strip {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+.bills-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bills-search-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 180px;
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 0 4px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.bills-search-wrap:focus-within {
+  border-color: var(--accent-link);
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+.bills-search-icon {
+  font-size: 13px;
+  padding: 0 6px;
+  color: var(--text-muted);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+#bills-search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 6px 4px;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  min-width: 0;
+  font-family: inherit;
+}
+#bills-search-input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.bills-search-clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 11px;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+.bills-search-clear-btn:hover {
+  background: var(--border-primary);
+  color: var(--text-primary);
+}
+.bills-filter-row select {
+  padding: 6px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-size: 13px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+/* ── Sortable Column Headers ──────────────────────────────── */
+#bills-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  padding-right: 18px;
+}
+#bills-table th.sortable:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+#bills-table th .sort-indicator {
+  font-size: 10px;
+  margin-left: 4px;
+  color: var(--text-muted);
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+#bills-table th.sort-active .sort-indicator {
+  color: var(--accent-link);
+}
 .status-bar.success { background: var(--color-success-bg); color: var(--color-success); border: 1px solid var(--color-success-border); }
 .status-bar.error   { background: var(--color-danger-bg);  color: var(--color-danger);  border: 1px solid var(--color-danger-border); }
 .status-bar.info    { background: var(--color-info-bg);    color: var(--color-info);    border: 1px solid var(--color-info-border); }
+
+/* ── Bills Table Container (scrollable) ───────────────────── */
+#bills-table-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 
 /* ── Bills Table ──────────────────────────────────────────── */
 #bills-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+}
+#bills-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 #bills-table th {
   background: var(--table-header-bg);
@@ -52,8 +171,9 @@
   font-size: 11px;
   font-weight: 600;
 }
-.dir-badge.out { background: var(--color-danger-bg); color: var(--color-danger); }
-.dir-badge.in  { background: var(--color-success-bg); color: var(--color-success); }
+.dir-badge.out      { background: var(--color-danger-bg); color: var(--color-danger); }
+.dir-badge.in       { background: var(--color-success-bg); color: var(--color-success); }
+.dir-badge.transfer { background: var(--color-info-bg); color: var(--color-info); }
 
 /* Amount colouring in table */
 .amount-out { color: var(--color-negative); }
