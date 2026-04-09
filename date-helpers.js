@@ -502,6 +502,7 @@ function _wireSegmentedDateInput(inputEl, layout) {
     const dayStr   = String(parts.day).padStart(2, '0');
     inputEl.dataset.isoValue = `${yearStr}-${monthStr}-${dayStr}`;
     inputEl.value = buildDisplay(parts.month, parts.day, parts.year);
+    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
   });
 
   // Pasted text is parsed and loaded into the segments
@@ -576,6 +577,299 @@ function autoFormatDateInput(inputEl) {
   }
 
   _wireSegmentedDateInput(inputEl, layout);
+}
+
+/**
+ * Programmatically set the value of a segmented date input.
+ * Updates both the canonical ISO data attribute and the visual
+ * display so the next focus cycle picks up the new value.
+ *
+ * @param {HTMLInputElement|string} elOrId - Element or its DOM id.
+ * @param {string} isoValue - YYYY-MM-DD string.
+ */
+function setDateInputValue(elOrId, isoValue) {
+  const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+  if (!el) return;
+  el.dataset.isoValue = isoValue;
+  if (el.dataset.dateAutoFormatWired) {
+    const pref = _getDateInputFormatPreference();
+    const layout = _SEGMENTED_LAYOUTS[pref] || _SEGMENTED_LAYOUTS.MMDDYYYY;
+    const parts = _parseISOToParts(isoValue);
+    el.value = layout.buildDisplay(parts.month, parts.day, parts.year);
+  } else {
+    el.value = isoValue;
+  }
+}
+
+// ── Month/Year Segmented Input ────────────────────────────────
+//
+// A two-segment variant for inputs that only need Month + Year.
+// Used where the day-of-month is chosen via a separate dropdown
+// (e.g. bill creation for monthly/twice_monthly frequencies).
+//
+// Same interaction model as the full date segmented input:
+// Left/Right arrows navigate, Up/Down change values,
+// digit keys overwrite then auto-advance.
+// On blur the value normalizes to YYYY-MM for storage.
+// ───────────────────────────────────────────────────────────────
+
+const _MONTH_YEAR_LAYOUTS = {
+  MMDDYYYY: {
+    segmentTypes:  ['month', 'year'],
+    segmentRanges: [
+      { start: 0, end: 2 },    // MM   (indices 0–1)
+      { start: 5, end: 9 },    // YYYY (indices 5–8)
+    ],
+    buildDisplay(month, year) {
+      const monthStr = String(month).padStart(2, '0');
+      const yearStr  = String(year).padStart(4, '0');
+      return `${monthStr} / ${yearStr}`;
+    },
+  },
+  YYYYMMDD: {
+    segmentTypes:  ['year', 'month'],
+    segmentRanges: [
+      { start: 0, end: 4 },    // YYYY (indices 0–3)
+      { start: 7, end: 9 },    // MM   (indices 7–8)
+    ],
+    buildDisplay(month, year) {
+      const monthStr = String(month).padStart(2, '0');
+      const yearStr  = String(year).padStart(4, '0');
+      return `${yearStr} / ${monthStr}`;
+    },
+  },
+};
+
+function _wireSegmentedMonthYearInput(inputEl, layout) {
+  const { segmentTypes, segmentRanges, buildDisplay } = layout;
+
+  let activeSegment = 0;
+  let digitBuffer   = '';
+  let parts = { month: 0, year: 0 };
+
+  function _activeType() {
+    return segmentTypes[activeSegment];
+  }
+
+  function _maxDigitsForSegment() {
+    return _activeType() === 'year' ? 4 : 2;
+  }
+
+  function _highlight() {
+    const range = segmentRanges[activeSegment];
+    requestAnimationFrame(() => {
+      inputEl.setSelectionRange(range.start, range.end);
+    });
+  }
+
+  function _render() {
+    inputEl.value = buildDisplay(parts.month, parts.year);
+    _highlight();
+  }
+
+  function _commitBuffer() {
+    if (!digitBuffer) return;
+    const numericValue = parseInt(digitBuffer, 10) || 0;
+    const type = _activeType();
+    if (type === 'month') {
+      parts.month = Math.max(1, Math.min(12, numericValue));
+    } else {
+      parts.year = Math.max(1900, Math.min(2099, numericValue));
+    }
+    digitBuffer = '';
+  }
+
+  function _moveTo(newSegment) {
+    _commitBuffer();
+    activeSegment = Math.max(0, Math.min(1, newSegment));
+    digitBuffer = '';
+    _render();
+  }
+
+  function _parseMonthYear(value) {
+    const trimmed = (value || '').trim();
+    const fullMatch = trimmed.match(/^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/);
+    if (fullMatch) {
+      return {
+        year:  parseInt(fullMatch[1], 10),
+        month: parseInt(fullMatch[2], 10),
+      };
+    }
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  }
+
+  inputEl.addEventListener('focus', () => {
+    const source = inputEl.dataset.isoValue || inputEl.value;
+    parts = _parseMonthYear(source);
+    activeSegment = 0;
+    digitBuffer = '';
+    _render();
+  });
+
+  inputEl.addEventListener('mouseup', (event) => {
+    event.preventDefault();
+    const cursorPos = inputEl.selectionStart;
+    if (cursorPos <= segmentRanges[0].end + 1) {
+      _moveTo(0);
+    } else {
+      _moveTo(1);
+    }
+  });
+
+  inputEl.addEventListener('keydown', (event) => {
+    const key = event.key;
+
+    if (key === 'Tab') {
+      _commitBuffer();
+      return;
+    }
+
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+         'Backspace', 'Delete'].includes(key)
+        || (key >= '0' && key <= '9')) {
+      event.preventDefault();
+    } else if (key === 'Enter') {
+      _commitBuffer();
+      _render();
+      inputEl.blur();
+      return;
+    } else {
+      event.preventDefault();
+      return;
+    }
+
+    if (key === 'ArrowLeft') {
+      if (activeSegment > 0) _moveTo(activeSegment - 1);
+      return;
+    }
+    if (key === 'ArrowRight') {
+      if (activeSegment < 1) _moveTo(activeSegment + 1);
+      return;
+    }
+
+    if (key === 'ArrowUp' || key === 'ArrowDown') {
+      _commitBuffer();
+      const direction = key === 'ArrowUp' ? 1 : -1;
+      const type = _activeType();
+      if (type === 'month') {
+        parts.month += direction;
+        if (parts.month > 12) { parts.month = 1; parts.year++; }
+        if (parts.month < 1)  { parts.month = 12; parts.year--; }
+      } else {
+        parts.year = Math.max(1900, Math.min(2099, parts.year + direction));
+      }
+      _render();
+      return;
+    }
+
+    if (key === 'Backspace' || key === 'Delete') {
+      digitBuffer = '';
+      const type = _activeType();
+      if (type === 'month') parts.month = 1;
+      else                  parts.year = new Date().getFullYear();
+      _render();
+      return;
+    }
+
+    if (key >= '0' && key <= '9') {
+      digitBuffer += key;
+      const maxDigits = _maxDigitsForSegment();
+      const type = _activeType();
+
+      if (type === 'month') {
+        const tentativeMonth = parseInt(digitBuffer, 10);
+        if (digitBuffer.length === 1 && tentativeMonth >= 2) {
+          parts.month = tentativeMonth;
+          digitBuffer = '';
+          _render();
+          if (activeSegment < 1) _moveTo(activeSegment + 1);
+          return;
+        }
+        if (digitBuffer.length >= maxDigits) {
+          parts.month = Math.max(1, Math.min(12, tentativeMonth));
+          digitBuffer = '';
+          _render();
+          if (activeSegment < 1) _moveTo(activeSegment + 1);
+          return;
+        }
+        parts.month = tentativeMonth || parts.month;
+        _render();
+      } else {
+        const tentativeYear = parseInt(digitBuffer, 10);
+        if (digitBuffer.length >= maxDigits) {
+          parts.year = Math.max(1900, Math.min(2099, tentativeYear));
+          digitBuffer = '';
+          _render();
+          return;
+        }
+        inputEl.value = buildDisplay(parts.month, tentativeYear);
+        _highlight();
+      }
+      return;
+    }
+  });
+
+  inputEl.addEventListener('blur', () => {
+    _commitBuffer();
+    const yearStr  = String(parts.year).padStart(4, '0');
+    const monthStr = String(parts.month).padStart(2, '0');
+    inputEl.dataset.isoValue = `${yearStr}-${monthStr}`;
+    inputEl.value = buildDisplay(parts.month, parts.year);
+    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  inputEl.addEventListener('paste', (event) => {
+    event.preventDefault();
+    const pasted = (event.clipboardData || window.clipboardData).getData('text');
+    const parsed = _parseMonthYear(pasted);
+    if (parsed) {
+      parts = parsed;
+      _render();
+    }
+  });
+}
+
+/**
+ * Wire month/year segmented input behavior onto a single <input>.
+ * Idempotent — safe to call multiple times on the same element.
+ *
+ * @param {HTMLInputElement} inputEl - The text input to watch.
+ */
+function autoFormatMonthYearInput(inputEl) {
+  if (!inputEl || inputEl.dataset.monthYearWired) return;
+  inputEl.dataset.monthYearWired = 'true';
+
+  const pref = _getDateInputFormatPreference();
+  const layout = _MONTH_YEAR_LAYOUTS[pref] || _MONTH_YEAR_LAYOUTS.MMDDYYYY;
+  inputEl.placeholder = pref === 'YYYYMMDD' ? 'YYYY / MM' : 'MM / YYYY';
+
+  if (inputEl.value) {
+    const trimmed = (inputEl.value || '').trim();
+    const match = trimmed.match(/^(\d{4})-(\d{1,2})/);
+    if (match) {
+      const year  = parseInt(match[1], 10);
+      const month = parseInt(match[2], 10);
+      inputEl.dataset.isoValue = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}`;
+      inputEl.value = layout.buildDisplay(month, year);
+    }
+  }
+
+  _wireSegmentedMonthYearInput(inputEl, layout);
+}
+
+/**
+ * Read the canonical YYYY-MM value from a month/year segmented input.
+ *
+ * @param {HTMLInputElement|string} elOrId - Element or its DOM id.
+ * @returns {string} YYYY-MM string or raw value.
+ */
+function getMonthYearInputValue(elOrId) {
+  const el = typeof elOrId === 'string'
+    ? document.getElementById(elOrId)
+    : elOrId;
+  if (!el) return '';
+  return el.dataset.isoValue || el.value;
 }
 
 /**

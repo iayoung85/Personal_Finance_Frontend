@@ -395,7 +395,12 @@ function openBillModal(billId = null) {
 
   // Auto-update preview when fields change
   setTimeout(_wireUpLivePreview, 80);
-  setTimeout(_wireUpBillDateAutoCorrection, 90);
+
+  // Wire segmented input on the end-date field (persists across frequency changes)
+  setTimeout(() => {
+    const endDateInput = document.getElementById('bill-end-date');
+    if (endDateInput) autoFormatDateInput(endDateInput);
+  }, 90);
 }
 
 function closeBillModal() {
@@ -423,6 +428,7 @@ function _resetForm() {
   document.getElementById('bill-category').value = '';
   document.getElementById('bill-memo').value = '';
   document.getElementById('bill-end-date').value = '';
+  document.getElementById('bill-end-date').dataset.isoValue = '';
   document.getElementById('bill-max-occurrences').value = '12';
   onEndTypeChange();
 }
@@ -440,7 +446,7 @@ function _populateFormFromBill(bill) {
   document.getElementById('bill-end-type').value = bill.end_type || 'never';
   onEndTypeChange();
   if (bill.end_type === 'on_date' && bill.end_date) {
-    document.getElementById('bill-end-date').value = bill.end_date;
+    setDateInputValue('bill-end-date', bill.end_date);
   }
   if (bill.end_type === 'after_occurrences' && bill.max_occurrences) {
     document.getElementById('bill-max-occurrences').value = bill.max_occurrences;
@@ -504,8 +510,9 @@ function onFrequencyChange() {
     window._billEditData = null;
   }
 
-  // Frequency options re-render date inputs, so re-bind correction handlers.
-  _wireUpBillDateAutoCorrection();
+  // Wire segmented date inputs on freshly rendered fields
+  container.querySelectorAll('input.date-input').forEach(autoFormatDateInput);
+  container.querySelectorAll('input.month-year-input').forEach(autoFormatMonthYearInput);
 
   updatePreview();
 }
@@ -526,7 +533,7 @@ function _renderOnceOptions(editData, today) {
   return `
     <div class="bill-field">
       <label for="bill-start-date">Payment Date</label>
-      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
+      <input type="text" id="bill-start-date" class="date-input" value="${startDate}" onchange="updatePreview()">
     </div>`;
 }
 
@@ -541,7 +548,7 @@ function _renderDailyOptions(editData, today) {
     </div>
     <div class="bill-field">
       <label for="bill-start-date">Starting</label>
-      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
+      <input type="text" id="bill-start-date" class="date-input" value="${startDate}" onchange="updatePreview()">
     </div>`;
 }
 
@@ -565,7 +572,7 @@ function _renderWeeklyOptions(editData, today) {
     </div>
     <div class="bill-field">
       <label for="bill-start-date">Starting</label>
-      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="onWeeklyStartDateChange(); updatePreview()">
+      <input type="text" id="bill-start-date" class="date-input" value="${startDate}" onchange="onWeeklyStartDateChange(); updatePreview()">
     </div>
     <div class="bill-field">
       <label>Day of Week</label>
@@ -580,13 +587,16 @@ function _renderMonthlyOptions(editData, today) {
   const dayOfWeek = editData?.day_of_week;
 
   let dayOptions = '';
-  for (let dayNum = 1; dayNum <= 31; dayNum++) {
+  for (let dayNum = 1; dayNum <= 30; dayNum++) {
     const selected = dayNum === dayOfMonth ? 'selected' : '';
     dayOptions += `<option value="${dayNum}" ${selected}>${_ordinal(dayNum)}</option>`;
   }
-  // "Last" option: day_of_month = -1
-  const lastSelected = dayOfMonth === -1 ? 'selected' : '';
-  dayOptions += `<option value="-1" ${lastSelected}>Last</option>`;
+  // "Last day" uses value 31; the backend clamps to the actual last day of each month
+  const lastDaySelected = dayOfMonth === 31 ? 'selected' : '';
+  dayOptions += `<option value="31" ${lastDaySelected}>Last day</option>`;
+  // "Last weekday" enables a day-of-week dropdown for "last Friday of month" patterns
+  const lastWeekdaySelected = dayOfMonth === -1 ? 'selected' : '';
+  dayOptions += `<option value="-1" ${lastWeekdaySelected}>Last weekday\u2026</option>`;
 
   // Day-of-week dropdown for "last X of month" pattern
   let dowSelect = '<select id="bill-day-of-week" style="display:none;width:auto;" onchange="updatePreview()">';
@@ -599,7 +609,7 @@ function _renderMonthlyOptions(editData, today) {
   return `
     <div class="bill-field">
       <label for="bill-start-date">Starting Month</label>
-      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
+      <input type="text" id="bill-start-date" class="month-year-input" value="${startDate}" onchange="updatePreview()">
     </div>
     <div class="freq-inline-row">
       <span>On the</span>
@@ -624,10 +634,12 @@ function _renderTwiceMonthlyOptions(editData, today) {
 
   let dayOptions1 = '';
   let dayOptions2 = '';
-  for (let dayNum = 1; dayNum <= 31; dayNum++) {
+  for (let dayNum = 1; dayNum <= 30; dayNum++) {
     dayOptions1 += `<option value="${dayNum}" ${dayNum === dayOfMonth ? 'selected' : ''}>${_ordinal(dayNum)}</option>`;
     dayOptions2 += `<option value="${dayNum}" ${dayNum === secondDayOfMonth ? 'selected' : ''}>${_ordinal(dayNum)}</option>`;
   }
+  dayOptions1 += `<option value="31" ${31 === dayOfMonth ? 'selected' : ''}>Last day</option>`;
+  dayOptions2 += `<option value="31" ${31 === secondDayOfMonth ? 'selected' : ''}>Last day</option>`;
 
   return `
     <div class="freq-inline-row">
@@ -638,7 +650,7 @@ function _renderTwiceMonthlyOptions(editData, today) {
     </div>
     <div class="bill-field">
       <label for="bill-start-date">Starting Month</label>
-      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
+      <input type="text" id="bill-start-date" class="month-year-input" value="${startDate}" onchange="updatePreview()">
     </div>
     <div class="freq-inline-row">
       <span>Every</span>
@@ -653,7 +665,7 @@ function _renderYearlyOptions(editData, today) {
   return `
     <div class="bill-field">
       <label for="bill-start-date">Payment Date</label>
-      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
+      <input type="text" id="bill-start-date" class="date-input" value="${startDate}" onchange="updatePreview()">
     </div>
     <div class="freq-inline-row">
       <span>Every</span>
@@ -669,11 +681,11 @@ function _renderTwiceYearlyOptions(editData, today) {
   return `
     <div class="bill-field">
       <label for="bill-start-date">First Payment Date</label>
-      <input type="text" id="bill-start-date" value="${startDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
+      <input type="text" id="bill-start-date" class="date-input" value="${startDate}" onchange="updatePreview()">
     </div>
     <div class="bill-field">
       <label for="bill-second-date">Second Payment Date</label>
-      <input type="text" id="bill-second-date" value="${secondDate}" placeholder="YYYYMMDD, YYYY-MM-DD, or M/D/YYYY" onchange="updatePreview()">
+      <input type="text" id="bill-second-date" class="date-input" value="${secondDate}" onchange="updatePreview()">
     </div>
     <div class="freq-inline-row">
       <span>Every</span>
@@ -720,15 +732,18 @@ function selectDayOfWeek(dayIndex) {
 
   // Snap start date to nearest occurrence of this day of week
   const startDateInput = document.getElementById('bill-start-date');
-  if (startDateInput && startDateInput.value) {
-    const currentDate = new Date(startDateInput.value + 'T00:00:00');
-    const currentDow = (currentDate.getDay() + 6) % 7; // JS Sun=0 → Mon=0 system
-    let diff = dayIndex - currentDow;
-    // Go to nearest (could be backward or forward)
-    if (diff > 3) diff -= 7;
-    if (diff < -3) diff += 7;
-    currentDate.setDate(currentDate.getDate() + diff);
-    startDateInput.value = _dateToStr(currentDate);
+  if (startDateInput) {
+    const currentValue = getDateInputValue(startDateInput);
+    if (currentValue) {
+      const currentDate = new Date(currentValue + 'T00:00:00');
+      const currentDow = (currentDate.getDay() + 6) % 7; // JS Sun=0 → Mon=0 system
+      let diff = dayIndex - currentDow;
+      // Go to nearest (could be backward or forward)
+      if (diff > 3) diff -= 7;
+      if (diff < -3) diff += 7;
+      currentDate.setDate(currentDate.getDate() + diff);
+      setDateInputValue(startDateInput, _dateToStr(currentDate));
+    }
   }
 
   updatePreview();
@@ -736,8 +751,10 @@ function selectDayOfWeek(dayIndex) {
 
 function onWeeklyStartDateChange() {
   const startDateInput = document.getElementById('bill-start-date');
-  if (!startDateInput || !startDateInput.value) return;
-  const dow = _dowFromDateStr(startDateInput.value);
+  if (!startDateInput) return;
+  const dateValue = getDateInputValue(startDateInput);
+  if (!dateValue) return;
+  const dow = _dowFromDateStr(dateValue);
   // Update active button
   document.querySelectorAll('.dow-btn').forEach(btn => btn.classList.remove('active'));
   const activeBtn = document.querySelector(`.dow-btn[data-dow="${dow}"]`);
@@ -766,138 +783,6 @@ function _dowFromDateStr(dateStr) {
 // Delegates to toISODateStr() from date-helpers.js
 function _dateToStr(date) {
   return toISODateStr(date);
-}
-
-// ── Date Input Auto-Correction (Idiot-Proofing) ─────────────
-
-/**
- * Bind auto-correction listeners to bill modal date inputs.
- * Applies to start/second/end date fields and survives frequency re-renders.
- */
-function _wireUpBillDateAutoCorrection() {
-  const modal = document.getElementById('bill-modal-overlay');
-  if (!modal) return;
-
-  const dateSelectors = ['#bill-start-date', '#bill-second-date', '#bill-end-date'];
-
-  dateSelectors.forEach(selector => {
-    const input = modal.querySelector(selector);
-    if (!input) return;
-    if (input.dataset.autocorrectBound === '1') return;
-
-    input.dataset.autocorrectBound = '1';
-
-    // Create a wrapper div for the input and calendar button
-    if (input.parentElement && !input.parentElement.classList.contains('date-input-wrapper')) {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'date-input-wrapper';
-      wrapper.style.display = 'inline-flex';
-      wrapper.style.alignItems = 'center';
-      wrapper.style.gap = '4px';
-      input.parentElement.insertBefore(wrapper, input);
-      wrapper.appendChild(input);
-
-      // Add calendar icon button
-      const calendarBtn = document.createElement('button');
-      calendarBtn.type = 'button';
-      calendarBtn.className = 'calendar-picker-btn';
-      calendarBtn.innerHTML = '📅';
-      calendarBtn.title = 'Pick a date';
-      calendarBtn.style.background = 'none';
-      calendarBtn.style.border = 'none';
-      calendarBtn.style.cursor = 'pointer';
-      calendarBtn.style.fontSize = '18px';
-      calendarBtn.style.padding = '4px 8px';
-      calendarBtn.onclick = (e) => {
-        e.preventDefault();
-        _openDatePicker(input);
-      };
-      wrapper.appendChild(calendarBtn);
-    }
-
-    // Keep a copy of raw user typing for browsers that clear invalid date values.
-    input.addEventListener('input', () => {
-      input.dataset.rawTypedDate = input.value || '';
-    });
-
-    // Auto-select all text on focus so the user can immediately type a new date
-    input.addEventListener('focus', () => input.select());
-
-    const maybeCorrect = () => _autoCorrectBillDateInput(input);
-    input.addEventListener('blur', maybeCorrect);
-    input.addEventListener('change', maybeCorrect);
-    input.addEventListener('keydown', event => {
-      if (event.key === 'Enter') {
-        maybeCorrect();
-      }
-    });
-  });
-}
-
-/**
- * If a date is invalid (e.g. 2026-02-29), roll it forward to the
- * equivalent valid calendar date using Date constructor normalization.
- */
-function _autoCorrectBillDateInput(inputEl) {
-  if (!inputEl) return;
-
-  const rawValue = (inputEl.value || inputEl.dataset.rawTypedDate || '').trim();
-  if (!rawValue) return;
-
-  const parsedDate = _parseDateWithRollover(rawValue);
-  if (!parsedDate) return;
-
-  const normalized = _dateToStr(parsedDate);
-  if (inputEl.value !== normalized) {
-    inputEl.value = normalized;
-  }
-
-  inputEl.dataset.rawTypedDate = '';
-  updatePreview();
-}
-
-/**
- * Delegates to parseDateInput() from date-helpers.js.
- * Kept as a local alias so callers in this file don't need renaming.
- */
-function _parseDateWithRollover(rawDate) {
-  return parseDateInput(rawDate);
-}
-
-// ── Calendar Date Picker ────────────────────────────────────
-
-/**
- * Open a native date picker for a given input element.
- * Converts the input's value to YYYY-MM-DD, opens the picker, and syncs back.
- */
-function _openDatePicker(inputEl) {
-  if (!inputEl) return;
-
-  // Try to parse the current value into a date
-  const currentValue = inputEl.value.trim();
-  let currentDate = new Date();
-  if (currentValue) {
-    const parsed = _parseDateWithRollover(currentValue);
-    if (parsed) currentDate = parsed;
-  }
-
-  // Create a hidden date input for the native picker
-  const tempInput = document.createElement('input');
-  tempInput.type = 'date';
-  tempInput.value = _dateToStr(currentDate);
-  tempInput.style.display = 'none';
-
-  // When user picks a date, sync it back to the original input
-  tempInput.addEventListener('change', () => {
-    inputEl.value = tempInput.value;
-    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-
-  document.body.appendChild(tempInput);
-  tempInput.click();
-
-  // Clean up after a short delay
-  setTimeout(() => tempInput.remove(), 100);
 }
 
 // ── Live Preview ────────────────────────────────────────────
@@ -972,16 +857,21 @@ function _generateFrequencyDescription(formData) {
     case 'monthly': {
       const dayLabel = formData.day_of_month === -1
         ? `last ${DAY_NAMES[formData.day_of_week ?? 0]}`
-        : _ordinal(formData.day_of_month || 1);
+        : formData.day_of_month === 31
+          ? 'last day'
+          : _ordinal(formData.day_of_month || 1);
       freqDesc = formData.interval === 1
         ? `Monthly on the ${dayLabel}`
         : `Every ${formData.interval} months on the ${dayLabel}`;
       break;
     }
-    case 'twice_monthly':
-      freqDesc = `Twice monthly on the ${_ordinal(formData.day_of_month || 1)} and ${_ordinal(formData.second_day_of_month || 15)}`;
+    case 'twice_monthly': {
+      const dom1Label = formData.day_of_month === 31 ? 'last day' : _ordinal(formData.day_of_month || 1);
+      const dom2Label = formData.second_day_of_month === 31 ? 'last day' : _ordinal(formData.second_day_of_month || 15);
+      freqDesc = `Twice monthly on the ${dom1Label} and ${dom2Label}`;
       if (formData.interval > 1) freqDesc += ` (every ${formData.interval} months)`;
       break;
+    }
     case 'yearly':
       freqDesc = formData.interval === 1
         ? `Yearly on ${formatDate(formData.start_date)}`
@@ -1164,13 +1054,19 @@ function _readFormData() {
   const memo = document.getElementById('bill-memo').value.trim();
 
   const startDateInput = document.getElementById('bill-start-date');
-  const startDate = startDateInput ? startDateInput.value : _todayStr();
+  let startDate;
+  if ((frequency === 'monthly' || frequency === 'twice_monthly') && startDateInput) {
+    const monthYearValue = getMonthYearInputValue(startDateInput);
+    startDate = monthYearValue ? `${monthYearValue}-01` : _todayStr();
+  } else {
+    startDate = startDateInput ? getDateInputValue(startDateInput) : _todayStr();
+  }
 
   const intervalInput = document.getElementById('bill-interval');
   const interval = intervalInput ? parseInt(intervalInput.value, 10) || 1 : 1;
 
   const endType = document.getElementById('bill-end-type').value;
-  const endDate = endType === 'on_date' ? document.getElementById('bill-end-date').value : null;
+  const endDate = endType === 'on_date' ? getDateInputValue('bill-end-date') : null;
   const maxOccurrences = endType === 'after_occurrences'
     ? parseInt(document.getElementById('bill-max-occurrences').value, 10) || null
     : null;
@@ -1199,7 +1095,7 @@ function _readFormData() {
   }
 
   const secondDateInput = document.getElementById('bill-second-date');
-  if (secondDateInput) secondDate = secondDateInput.value;
+  if (secondDateInput) secondDate = getDateInputValue(secondDateInput);
 
   return {
     frequency,
@@ -1245,6 +1141,20 @@ async function saveBill() {
   }
   if (!formData.start_date) {
     _showBillError('Please set a start date.');
+    return;
+  }
+
+  // Validate that dates parse to real calendar dates
+  if (formData.start_date && !parseDateInput(formData.start_date)) {
+    _showBillError('Invalid start date. Please check the date and try again.');
+    return;
+  }
+  if (formData.end_date && !parseDateInput(formData.end_date)) {
+    _showBillError('Invalid end date. Please check the date and try again.');
+    return;
+  }
+  if (formData.second_date && !parseDateInput(formData.second_date)) {
+    _showBillError('Invalid second payment date. Please check the date and try again.');
     return;
   }
 

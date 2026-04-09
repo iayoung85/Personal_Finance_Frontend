@@ -5023,3 +5023,20 @@ th.th-date {
 .modal-edit-balance .modal-footer .secondary:hover {
   background: var(--bg-selected);
 }
+
+/* ── Variable bill pulsing dot ─────────────────────────────── */
+.variable-bill-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e67e22;
+  margin-left: 5px;
+  vertical-align: middle;
+  animation: variable-bill-pulse 2s ease-in-out infinite;
+}
+
+@keyframes variable-bill-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(0.75); }
+}

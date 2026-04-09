@@ -934,7 +934,13 @@ function renderTransactionTable() {
     // Amount is always pinned toward the right edge
     const extraAmountClass = rendered.amountCssExtra ? ` ${rendered.amountCssExtra}` : '';
     // OB/MOB rows report a balance, not a debit/credit — suppress the amount cell.
-    const amountDisplay = isOpeningBalanceRow ? '—' : amount;
+    const isVariableBill = txn.amount_variable
+      && (txnRowType === TXN_TYPE.BILL_FUTURE || txnRowType === TXN_TYPE.BILL_MISSING);
+    const variableDot = isVariableBill
+      ? '<span class="variable-bill-dot" title="Amount varies — check actual amount before due date"></span>'
+      : '';
+    const amountPrefix = isVariableBill ? '~' : '';
+    const amountDisplay = isOpeningBalanceRow ? '—' : `${amountPrefix}${amount}${variableDot}`;
     html += `<td class="${amountCellClass}${extraAmountClass}${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="amount"' : ''}>${amountDisplay}</td>`;
     if (showLedgerColumn) {
       html += ledgerBalanceHtml;
