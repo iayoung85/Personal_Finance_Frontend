@@ -19,10 +19,10 @@ function refreshAuthState() {
 // Re-read auth state on script load
 refreshAuthState();
 
-const TRANSACTION_CACHE_MAX_AGE_MS = 10 * 1000; // 10 seconds — kept ultra-short during development to avoid stale-data confusion
+const TRANSACTION_CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes — mutations patch the cache directly so staleness only matters for external changes (Plaid sync, other device)
 const RECENT_WINDOW_DAYS = 90;
 const BALANCE_HISTORY_CACHE_KEY = 'pf_balance_history_by_account';
-const BALANCE_HISTORY_CACHE_MAX_AGE_MS = 10 * 1000; // 10 seconds — kept ultra-short during development
+const BALANCE_HISTORY_CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes — same rationale as transaction cache
 const NO_ACTIVE_PLAID_SYNC_CACHE_KEY = 'pf_sync_no_active_plaid_items';
 const NO_ACTIVE_PLAID_SYNC_TTL_MS = 5 * 60 * 1000;
 
@@ -451,13 +451,16 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
 }
 
 async function fetchAllTransactions(forceNetwork = false) {
-  // Two-phase loading with ETag caching:
-  // Phase 1: Fetch recent window (last N days) for instant render.
-  // Phase 2: Backfill full history in background.
-  // ETag: On repeat calls, backend returns 304 if nothing changed.
+  // Three-tier cache strategy:
+  //   Tier 1: Fresh Dexie cache (< TTL) → instant, no network.
+  //   Tier 2: Stale Dexie cache + stored ETag → single full request,
+  //           backend returns 304 if unchanged → refresh timestamp, done.
+  //   Tier 3: Cold start (no Dexie data) → two-phase load
+  //           (recent window for fast paint, then full history backfill).
   const cached = await _readCachedTransactions();
   const hasFreshCache = cached && cached.age < TRANSACTION_CACHE_MAX_AGE_MS;
 
+  // --- Tier 1: Fresh local cache — skip network entirely ---
   if (!forceNetwork && hasFreshCache) {
     transactions = cached.data;
     autoExtendEndDateForScheduled();
@@ -468,6 +471,50 @@ async function fetchAllTransactions(forceNetwork = false) {
     return;
   }
 
+  // --- Tier 2: Stale cache + ETag — one round-trip to check freshness ---
+  const hasStaleCache = cached && cached.data && cached.data.length > 0;
+  const storedEtag = _fetchTransactionsFromServer._cachedEtag
+    || (window.txnDB ? await window.txnDB.getMeta('etag').catch(() => null) : null);
+
+  if (!forceNetwork && hasStaleCache && storedEtag) {
+    // Show stale data immediately while we validate with the server
+    transactions = cached.data;
+    autoExtendEndDateForScheduled();
+    renderTransactionTable();
+    renderDynamicPeriodButtons();
+    showStatus('Checking for updated transactions...', 'info');
+
+    try {
+      const freshResponse = await _fetchTransactionsFromServer(null);
+      if (freshResponse === null) {
+        // 304 — nothing changed on the server; refresh the cache timestamp
+        _cacheTransactions(transactions);
+        showStatus(`Transactions are up to date — ${transactions.length} loaded`, 'success');
+        setTimeout(() => clearStatus(), 2000);
+        return;
+      }
+
+      // 200 — server has new data; replace everything
+      transactions = freshResponse;
+      _clearBalanceHistoryCache();
+      _cacheTransactions(transactions);
+      autoExtendEndDateForScheduled();
+      renderTransactionTable();
+      renderDynamicPeriodButtons();
+      showStatus(`Loaded ${transactions.length} total transactions`, 'success');
+      setTimeout(() => clearStatus(), 2000);
+      return;
+    } catch (etagError) {
+      if (etagError.name === 'AbortError') return;
+      // ETag check failed — stale data already visible, log and continue
+      console.warn('ETag validation failed, using stale cache:', etagError);
+      showStatus(`Loaded ${transactions.length} transactions (update check failed)`, 'warning');
+      setTimeout(() => clearStatus(), 3000);
+      return;
+    }
+  }
+
+  // --- Tier 3: Cold start — no usable cache, use two-phase load ---
   _recordFullHistoryCallMetric('transactions_full_history');
 
   // --- Phase 1: Recent window for fast first paint ---
