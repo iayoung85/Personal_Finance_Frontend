@@ -121,6 +121,58 @@
   color: var(--accent-link);
 }
 
+/* ── Auto-pay Badge ───────────────────────────────────────── */
+.auto-pay-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: var(--color-info, #3498db);
+  color: #fff;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* ── Group-by Headers ─────────────────────────────────────── */
+.group-header-row {
+  cursor: pointer;
+  user-select: none;
+}
+.group-header-row td {
+  background: var(--bg-surface-elevated);
+  border-top: 2px solid var(--border-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 8px 10px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.group-header-row:hover td {
+  background: var(--bg-hover);
+}
+.group-chevron {
+  display: inline-block;
+  width: 16px;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+.group-name {
+  color: var(--text-primary);
+}
+.group-meta {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 12px;
+  margin-left: 10px;
+}
+.group-total {
+  float: right;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 /* ── Bills Dashboard ──────────────────────────────────────── */
 .bills-dashboard {
   margin-bottom: 8px;

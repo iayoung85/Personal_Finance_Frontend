@@ -63,6 +63,13 @@
           <option value="income">Income</option>
           <option value="transfer">Transfers</option>
         </select>
+        <select id="bills-group-by" title="Group bills by">
+          <option value="">No Grouping</option>
+          <option value="auto_pay">Auto-pay vs Manual</option>
+          <option value="category">Category</option>
+          <option value="account">Account</option>
+          <option value="frequency">Frequency</option>
+        </select>
       </div>
     </div>
 
@@ -219,6 +226,16 @@
               </label>
               <small style="color: #888; display: block; margin-top: 2px;">
                 Useful for income or bills where the amount changes each cycle
+              </small>
+            </div>
+
+            <div class="bill-field">
+              <label>
+                <input type="checkbox" id="bill-auto-pay" style="margin-right: 6px;">
+                Auto-pay (payment is automated)
+              </label>
+              <small style="color: #888; display: block; margin-top: 2px;">
+                Auto-pay bills are marked as paid automatically — no manual action needed
               </small>
             </div>
 

@@ -559,7 +559,7 @@ function _wireUpBillFilters() {
     });
   }
 
-  ['bills-filter-account', 'bills-filter-frequency', 'bills-filter-status', 'bills-filter-direction'].forEach(filterId => {
+  ['bills-filter-account', 'bills-filter-frequency', 'bills-filter-status', 'bills-filter-direction', 'bills-group-by'].forEach(filterId => {
     const element = document.getElementById(filterId);
     if (element) element.addEventListener('change', () => renderBillsTable());
   });
@@ -568,6 +568,106 @@ function _wireUpBillFilters() {
     header.addEventListener('click', _onSortHeaderClick);
   });
 }
+
+function _renderBillRow(bill) {
+  const nextOcc = bill.upcoming_occurrences?.[0];
+  const nextDate = nextOcc ? formatDate(nextOcc.date) : (bill.is_active ? 'No upcoming' : 'Paused');
+  const isTransfer = !!bill.transfer_account_id;
+  const isOut = bill.amount < 0;
+  const dirBadge = isTransfer
+    ? '<span class="dir-badge transfer">XFER</span>'
+    : isOut
+      ? '<span class="dir-badge out">OUT</span>'
+      : '<span class="dir-badge in">IN</span>';
+  const amountClass = isOut ? 'amount-out' : 'amount-in';
+  const amountDisplay = (isOut ? '−' : '+') + formatCurrency(bill.amount);
+  const freqLabel = FREQUENCY_LABELS[bill.frequency] || bill.frequency;
+  const intervalNote = bill.interval > 1 ? ` (every ${bill.interval})` : '';
+  const variableNote = bill.amount_variable ? ' <span title="Amount varies" style="color:#e67e22;font-weight:600;">~</span>' : '';
+  const autoPayNote = bill.auto_pay ? ' <span title="Auto-pay enabled" class="auto-pay-badge">AUTO</span>' : '';
+  const accountName = escapeHtml(bill.account_name || bill.account_id);
+  const category = escapeHtml(bill.user_category || '');
+  const destAccount = bill.transfer_account_name ? escapeHtml(bill.transfer_account_name) : '';
+  const rowClass = bill.is_active ? '' : 'bill-inactive';
+  const toggleLabel = bill.is_active ? 'Pause' : 'Resume';
+
+  return `<tr class="${rowClass}">
+    <td>${nextDate}</td>
+    <td>${dirBadge}</td>
+    <td>${escapeHtml(bill.description)}${variableNote}${autoPayNote}</td>
+    <td class="${amountClass}">${amountDisplay}</td>
+    <td>${freqLabel}${intervalNote}</td>
+    <td style="font-size:12px;">${accountName}</td>
+    <td style="font-size:12px;">${category}</td>
+    <td style="font-size:12px;">${destAccount}</td>
+    <td style="white-space:nowrap;">
+      <button class="bill-action-btn" onclick="openBillModal('${bill.bill_id}')" title="Edit">✏️</button>
+      <button class="bill-action-btn toggle-active" onclick="toggleBill('${bill.bill_id}')" title="${toggleLabel}">${bill.is_active ? '⏸' : '▶️'}</button>
+      <button class="bill-action-btn delete" onclick="deleteBill('${bill.bill_id}')" title="Delete">🗑️</button>
+    </td>
+  </tr>`;
+}
+
+function _groupBills(bills, groupBy) {
+  const groups = new Map();
+  for (const bill of bills) {
+    let key;
+    switch (groupBy) {
+      case 'auto_pay':
+        key = bill.auto_pay ? 'Auto-pay' : 'Manual Pay';
+        break;
+      case 'category':
+        key = bill.user_category || 'Uncategorized';
+        break;
+      case 'account':
+        key = bill.account_name || bill.account_id || 'Unknown Account';
+        break;
+      case 'frequency':
+        key = FREQUENCY_LABELS[bill.frequency] || bill.frequency;
+        break;
+      default:
+        key = 'All';
+    }
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(bill);
+  }
+
+  // Sort group keys: for auto_pay put Manual Pay first so users focus on it
+  const sortedKeys = [...groups.keys()].sort((keyA, keyB) => {
+    if (groupBy === 'auto_pay') {
+      if (keyA === 'Manual Pay') return -1;
+      if (keyB === 'Manual Pay') return 1;
+    }
+    if (groupBy === 'frequency') {
+      const orderMap = { Daily: 0, Weekly: 1, '2×/Month': 2, Monthly: 3, '2×/Year': 4, Yearly: 5, 'One-time': 6 };
+      return (orderMap[keyA] ?? 99) - (orderMap[keyB] ?? 99);
+    }
+    return keyA.localeCompare(keyB);
+  });
+
+  return sortedKeys.map(groupKey => ({
+    name: groupKey,
+    bills: groups.get(groupKey),
+  }));
+}
+
+function _getCollapsedGroups() {
+  try {
+    return JSON.parse(localStorage.getItem('bills_collapsed_groups') || '{}');
+  } catch (_parseError) {
+    return {};
+  }
+}
+
+function _toggleGroupCollapse(groupKey) {
+  const collapsed = _getCollapsedGroups();
+  collapsed[groupKey] = !collapsed[groupKey];
+  localStorage.setItem('bills_collapsed_groups', JSON.stringify(collapsed));
+  renderBillsTable();
+}
+
+// Expose for inline onclick
+window._toggleGroupCollapse = _toggleGroupCollapse;
 
 function renderBillsTable() {
   const loading = document.getElementById('bills-loading');
@@ -608,43 +708,35 @@ function renderBillsTable() {
 
   _updateSortIndicators();
 
-  tbody.innerHTML = sorted.map(bill => {
-    const nextOcc = bill.upcoming_occurrences?.[0];
-    const nextDate = nextOcc ? formatDate(nextOcc.date) : (bill.is_active ? 'No upcoming' : 'Paused');
-    const isTransfer = !!bill.transfer_account_id;
-    const isOut = bill.amount < 0;
-    const dirBadge = isTransfer
-      ? '<span class="dir-badge transfer">XFER</span>'
-      : isOut
-        ? '<span class="dir-badge out">OUT</span>'
-        : '<span class="dir-badge in">IN</span>';
-    const amountClass = isOut ? 'amount-out' : 'amount-in';
-    const amountDisplay = (isOut ? '−' : '+') + formatCurrency(bill.amount);
-    const freqLabel = FREQUENCY_LABELS[bill.frequency] || bill.frequency;
-    const intervalNote = bill.interval > 1 ? ` (every ${bill.interval})` : '';
-    const variableNote = bill.amount_variable ? ' <span title="Amount varies" style="color:#e67e22;font-weight:600;">~</span>' : '';
-    const accountName = escapeHtml(bill.account_name || bill.account_id);
-    const category = escapeHtml(bill.user_category || '');
-    const destAccount = bill.transfer_account_name ? escapeHtml(bill.transfer_account_name) : '';
-    const rowClass = bill.is_active ? '' : 'bill-inactive';
-    const toggleLabel = bill.is_active ? 'Pause' : 'Resume';
+  const groupBy = document.getElementById('bills-group-by')?.value || '';
 
-    return `<tr class="${rowClass}">
-      <td>${nextDate}</td>
-      <td>${dirBadge}</td>
-      <td>${escapeHtml(bill.description)}${variableNote}</td>
-      <td class="${amountClass}">${amountDisplay}</td>
-      <td>${freqLabel}${intervalNote}</td>
-      <td style="font-size:12px;">${accountName}</td>
-      <td style="font-size:12px;">${category}</td>
-      <td style="font-size:12px;">${destAccount}</td>
-      <td style="white-space:nowrap;">
-        <button class="bill-action-btn" onclick="openBillModal('${bill.bill_id}')" title="Edit">✏️</button>
-        <button class="bill-action-btn toggle-active" onclick="toggleBill('${bill.bill_id}')" title="${toggleLabel}">${bill.is_active ? '⏸' : '▶️'}</button>
-        <button class="bill-action-btn delete" onclick="deleteBill('${bill.bill_id}')" title="Delete">🗑️</button>
-      </td>
-    </tr>`;
-  }).join('');
+  if (!groupBy) {
+    tbody.innerHTML = sorted.map(_renderBillRow).join('');
+  } else {
+    const groups = _groupBills(sorted, groupBy);
+    const collapsed = _getCollapsedGroups();
+    const columnCount = table.querySelector('thead tr')?.children.length || 9;
+
+    tbody.innerHTML = groups.map(group => {
+      const isCollapsed = !!collapsed[group.name];
+      const totalAmount = group.bills.reduce((sum, bill) => sum + bill.amount, 0);
+      const amountClass = totalAmount < 0 ? 'amount-out' : 'amount-in';
+      const amountSign = totalAmount < 0 ? '−' : '+';
+      const chevron = isCollapsed ? '▶' : '▼';
+
+      const headerRow = `<tr class="group-header-row" onclick="_toggleGroupCollapse('${escapeHtml(group.name)}')">
+        <td colspan="${columnCount}">
+          <span class="group-chevron">${chevron}</span>
+          <span class="group-name">${escapeHtml(group.name)}</span>
+          <span class="group-meta">${group.bills.length} bill${group.bills.length !== 1 ? 's' : ''}</span>
+          <span class="group-total ${amountClass}">${amountSign}${formatCurrency(totalAmount)}</span>
+        </td>
+      </tr>`;
+
+      if (isCollapsed) return headerRow;
+      return headerRow + group.bills.map(_renderBillRow).join('');
+    }).join('');
+  }
 }
 
 // ── Bill Actions ────────────────────────────────────────────
@@ -766,6 +858,7 @@ function _resetForm() {
   document.getElementById('bill-amount').value = '';
   document.getElementById('bill-type').value = 'debit';
   document.getElementById('bill-amount-variable').checked = false;
+  document.getElementById('bill-auto-pay').checked = false;
   document.getElementById('bill-category').value = '';
   document.getElementById('bill-memo').value = '';
   document.getElementById('bill-end-date').value = '';
@@ -782,6 +875,7 @@ function _populateFormFromBill(bill) {
   document.getElementById('bill-type').value = isCredit ? 'credit' : 'debit';
   document.getElementById('bill-amount').value = Math.abs(bill.amount).toFixed(2);
   document.getElementById('bill-amount-variable').checked = !!bill.amount_variable;
+  document.getElementById('bill-auto-pay').checked = !!bill.auto_pay;
   document.getElementById('bill-category').value = bill.user_category || '';
   document.getElementById('bill-memo').value = bill.memo || '';
   document.getElementById('bill-end-type').value = bill.end_type || 'never';
@@ -1391,6 +1485,7 @@ function _readFormData() {
   const isCredit = typeSelect === 'credit';
   const amount = parseFloat(rawAmount) || 0;
   const amountVariable = document.getElementById('bill-amount-variable').checked;
+  const autoPay = document.getElementById('bill-auto-pay').checked;
   const category = document.getElementById('bill-category').value.trim();
   const memo = document.getElementById('bill-memo').value.trim();
 
@@ -1445,6 +1540,7 @@ function _readFormData() {
     amount,
     isCredit,
     amount_variable: amountVariable,
+    auto_pay: autoPay,
     user_category: category || null,
     memo: memo || null,
     start_date: startDate,
@@ -1520,6 +1616,7 @@ async function saveBill() {
     user_category: formData.user_category,
     memo: formData.memo,
     amount_variable: formData.amount_variable,
+    auto_pay: formData.auto_pay,
     frequency: formData.frequency,
     interval: formData.interval,
     start_date: formData.start_date,
