@@ -73,7 +73,7 @@ async function refreshAccessToken() {
 }
 
 async function authenticatedFetch(url, options = {}) {
-  const headers = { 'Authorization': `Bearer ${token}`, ...options.headers };
+  const headers = { 'Authorization': `Bearer ${token}`, 'ngrok-skip-browser-warning': 'true', ...options.headers };
   const response = await fetch(url, { ...options, headers });
   if (response.status === 401) {
     const refreshed = await refreshAccessToken();
