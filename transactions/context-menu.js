@@ -305,6 +305,11 @@ function _buildMenuItems(txnData) {
       action: 'make-transfer',
       separator: false,
     });
+    items.push({
+      label: '🔍 Inspect Match',
+      action: 'inspect-match',
+      separator: false,
+    });
     return _appendInspectMenuItem(items, txnData);
   }
 
@@ -514,6 +519,9 @@ function _dispatchContextAction(action, txnData) {
       break;
     case 'inspect-data':
       _handleContextInspectData(txnData);
+      break;
+    case 'inspect-match':
+      _handleContextInspectMatch(txnData);
       break;
     case 'edit-investment-balance':
       _handleContextEditInvestmentBalance(txnData);
@@ -855,6 +863,41 @@ function _handleContextInspectData(txnData) {
   } else {
     showStatus('Inspect data modal not available', 'error');
   }
+}
+
+/**
+ * Inspect Match — side-by-side comparison of the displayed Plaid row
+ * and the hidden matched manual/scheduled counterpart.
+ * Both datasets are already in the frontend transactions array.
+ */
+function _handleContextInspectMatch(txnData) {
+  if (typeof openInspectDataModal !== 'function') {
+    showStatus('Inspect data modal not available', 'error');
+    return;
+  }
+
+  const matchedTxnId = txnData.matchManualTxnId;
+  if (!matchedTxnId) {
+    showStatus('No matched counterpart found for this transaction', 'error');
+    return;
+  }
+
+  const matchedTxn = transactions.find(txn => txn.transaction_id === matchedTxnId);
+  if (!matchedTxn) {
+    showStatus('Matched transaction not found in local data', 'error');
+    return;
+  }
+
+  const sourceLabel = matchedTxn.source === 'scheduled'
+    ? 'Matched Scheduled Transaction'
+    : 'Matched Manual Transaction';
+
+  openInspectDataModal({
+    ...txnData,
+    relatedData: matchedTxn,
+    relatedTitle: sourceLabel,
+    forceLocal: true,
+  });
 }
 
 /**

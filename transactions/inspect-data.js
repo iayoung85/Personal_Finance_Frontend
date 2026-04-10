@@ -133,7 +133,7 @@ function _normalizeInspectRequest(inspectRequest) {
   const parentTransaction = request.parentTransaction || null;
   const isSplitRow = !!request.isSplit;
   const isSplitChild = !!request.isSplitChild;
-  const shouldFetchPlaidRaw = !isSplitRow && _isPlaidInspectable(parentTransaction || localTransaction);
+  const shouldFetchPlaidRaw = !isSplitRow && !request.forceLocal && _isPlaidInspectable(parentTransaction || localTransaction);
 
   let sourceTitle = 'Source Data';
   let sourceData = request.relatedData || null;
