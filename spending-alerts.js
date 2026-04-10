@@ -90,141 +90,18 @@ function resetIdleTimeout() {
 );
 
 // ── Category Autocomplete ────────────────────────────────────
-
-async function _fetchCategories() {
-  const CACHE_KEY = 'pf_cached_categories';
-  const TS_KEY    = 'pf_categories_cached_at';
-  const MAX_AGE_MS = 30 * 60 * 1000;
-
-  const cachedAt = localStorage.getItem(TS_KEY);
-  const cacheAge = cachedAt ? (Date.now() - parseInt(cachedAt)) : Infinity;
-  if (cacheAge < MAX_AGE_MS) {
-    try {
-      const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || '[]');
-      if (cached.length > 0) return cached;
-    } catch (_) { /* fall through */ }
-  }
-
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/available`);
-    if (response && response.ok) {
-      const data = await response.json();
-      const categories = data.available_categories || [];
-      try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify(categories));
-        localStorage.setItem(TS_KEY, String(Date.now()));
-      } catch (_) { /* non-critical */ }
-      return categories;
-    }
-  } catch (e) {
-    console.error('Failed to fetch categories:', e);
-  }
-  return [];
-}
-
-function _highlightMatch(text, query) {
-  if (!query) return escHtml(text);
-  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return escHtml(text).replace(new RegExp(`(${escaped})`, 'gi'), '<strong>$1</strong>');
-}
-
-function _showCategoryDropdown(input, list) {
-  const query = (input.value || '').trim();
-  const queryLower = query.toLowerCase();
-
-  if (!query) {
-    list.innerHTML = '';
-    list.style.display = 'none';
-    return;
-  }
-
-  let matches;
-  if (queryLower.includes(':')) {
-    const [qPrimary, qDetail] = queryLower.split(':').map(s => s.trim());
-    matches = allCategories.filter(cat => {
-      const parts = cat.toLowerCase().split(':').map(s => s.trim());
-      return (!qPrimary || (parts[0] || '').includes(qPrimary)) &&
-             (!qDetail  || (parts[1] || '').includes(qDetail));
-    });
-  } else {
-    matches = allCategories.filter(cat => cat.toLowerCase().includes(queryLower));
-  }
-
-  const maxVisible = 10;
-  const shown = matches.slice(0, maxVisible);
-
-  if (shown.length === 0) {
-    list.innerHTML = '<div class="sa-category-ac-empty">No matching categories</div>';
-    list.style.display = 'block';
-    return;
-  }
-
-  const overflow = matches.length > maxVisible
-    ? `<div class="sa-category-ac-more">${matches.length - maxVisible} more\u2026</div>` : '';
-
-  list.innerHTML = shown.map((cat, i) =>
-    `<div class="sa-category-ac-item${i === 0 ? ' active' : ''}" data-value="${escHtml(cat)}">${_highlightMatch(cat, query)}</div>`
-  ).join('') + overflow;
-  list.style.display = 'block';
-}
+// Fetch/cache handled by shared/categories-autocomplete.js
 
 function _wireCategoryAutocomplete() {
-  const orig = document.getElementById('sa-category');
+  const input = document.getElementById('sa-category');
   const list = document.getElementById('sa-category-ac-list');
-  if (!orig || !list) return;
+  if (!input || !list) return;
 
-  // Clone to drop old listeners (modal reuse)
-  const input = orig.cloneNode(true);
-  orig.parentNode.replaceChild(input, orig);
-
-  input.addEventListener('input', () => _showCategoryDropdown(input, list));
-
-  input.addEventListener('focus', () => {
-    input.select();
-    if (input.value.trim()) _showCategoryDropdown(input, list);
-  });
-
-  input.addEventListener('keydown', e => {
-    const items = list.querySelectorAll('.sa-category-ac-item');
-    const activeItem = list.querySelector('.sa-category-ac-item.active');
-    const activeIdx  = Array.from(items).indexOf(activeItem);
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      const next = Math.min(activeIdx + 1, items.length - 1);
-      items.forEach(it => it.classList.remove('active'));
-      if (items[next]) { items[next].classList.add('active'); items[next].scrollIntoView({ block: 'nearest' }); }
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      const prev = Math.max(activeIdx - 1, 0);
-      items.forEach(it => it.classList.remove('active'));
-      if (items[prev]) { items[prev].classList.add('active'); items[prev].scrollIntoView({ block: 'nearest' }); }
-    } else if (e.key === 'Tab' || e.key === 'Enter') {
-      const target = activeItem || items[0];
-      if (target) {
-        e.preventDefault();
-        input.value = target.dataset.value;
-        list.innerHTML = '';
-        list.style.display = 'none';
-      }
-    } else if (e.key === 'Escape') {
-      list.innerHTML = '';
-      list.style.display = 'none';
-    }
-  });
-
-  input.addEventListener('blur', () => {
-    setTimeout(() => { list.innerHTML = ''; list.style.display = 'none'; }, 200);
-  });
-
-  list.addEventListener('mousedown', e => {
-    const item = e.target.closest('.sa-category-ac-item');
-    if (item) {
-      e.preventDefault();
-      input.value = item.dataset.value;
-      list.innerHTML = '';
-      list.style.display = 'none';
-    }
+  wireUpCategoryAutocomplete(input, list, {
+    categories: allCategories,
+    itemClass:  'sa-category-ac-item',
+    emptyClass: 'sa-category-ac-empty',
+    moreClass:  'sa-category-ac-more',
   });
 }
 
@@ -790,7 +667,7 @@ async function init() {
   const loading = document.getElementById('sa-loading');
   loading.style.display = '';
 
-  const [, categories] = await Promise.all([fetchAlerts(), _fetchCategories()]);
+  const [, categories] = await Promise.all([fetchAlerts(), fetchCategoriesWithCache()]);
   allCategories = categories;
 
   loading.style.display = 'none';

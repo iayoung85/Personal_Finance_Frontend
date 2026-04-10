@@ -32,6 +32,72 @@ let currentSortAscending = localStorage.getItem('bills_sort_asc') !== 'false';
  * that the backend generates, but the frontend cache is unaware.
  * Uses raw IndexedDB API since this page doesn't load the worker.
  */
+/**
+ * Update the transactions Dexie cache after a bill CRUD operation.
+ *
+ * When the backend returns affected_virtual_transactions and purged_virtual_ids,
+ * this function applies a granular patch: removes stale BILL_FUTURE rows
+ * and upserts the new/updated ones. This avoids a full cache invalidation
+ * and lets the transactions page show the changes instantly from cache.
+ *
+ * Falls back to full cache invalidation if no granular data is provided
+ * or if the IndexedDB write fails.
+ *
+ * Uses raw IndexedDB API since this page doesn't load the worker.
+ */
+function _updateTransactionCacheForBill(purgedVirtualIds, affectedVirtualTransactions) {
+  var hasPurge = Array.isArray(purgedVirtualIds) && purgedVirtualIds.length > 0;
+  var hasNew = Array.isArray(affectedVirtualTransactions) && affectedVirtualTransactions.length > 0;
+
+  if (!hasPurge && !hasNew) {
+    // No granular data — fall back to full invalidation
+    _invalidateTransactionCache();
+    return;
+  }
+
+  try {
+    var req = indexedDB.open('PersonalFinanceDB');
+    req.onsuccess = function(e) {
+      var db = e.target.result;
+      if (!db.objectStoreNames.contains('transactions') || !db.objectStoreNames.contains('meta')) {
+        // DB schema doesn't have the expected stores — fall back
+        db.close();
+        _invalidateTransactionCache();
+        return;
+      }
+
+      var txn = db.transaction(['transactions', 'meta'], 'readwrite');
+      var txnStore = txn.objectStore('transactions');
+      var metaStore = txn.objectStore('meta');
+
+      // Delete stale BILL_FUTURE rows
+      if (hasPurge) {
+        for (var purgeIdx = 0; purgeIdx < purgedVirtualIds.length; purgeIdx++) {
+          txnStore.delete(purgedVirtualIds[purgeIdx]);
+        }
+      }
+
+      // Upsert new/updated BILL_FUTURE rows
+      if (hasNew) {
+        for (var addIdx = 0; addIdx < affectedVirtualTransactions.length; addIdx++) {
+          txnStore.put(affectedVirtualTransactions[addIdx]);
+        }
+      }
+
+      // Wipe the ETag so the next full fetch re-validates with the server,
+      // but keep cached_at so Tier 1 cache still serves the patched data.
+      metaStore.put({ key: 'etag', value: null });
+
+      db.close();
+    };
+    req.onerror = function() {
+      _invalidateTransactionCache();
+    };
+  } catch (e) {
+    _invalidateTransactionCache();
+  }
+}
+
 function _invalidateTransactionCache() {
   try {
     var req = indexedDB.open('PersonalFinanceDB');
@@ -163,86 +229,9 @@ const FREQUENCY_LABELS = {
 };
 
 // ── API Calls ───────────────────────────────────────────────
-
-async function fetchBills() {
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/bills/?upcoming=10`);
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Failed to fetch bills');
-  }
-  const data = await response.json();
-  return data.bills || [];
-}
-
-async function fetchAccounts() {
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts/banks?include_archived=false`);
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Failed to fetch accounts');
-  }
-  const data = await response.json();
-  // Flatten banks → accounts with display names
-  const flatAccounts = [];
-  (data.banks || []).forEach(bank => {
-    const bankName = bank.bank_name || bank.custom_name || bank.institution_id || 'Bank';
-    (bank.accounts || []).forEach(account => {
-      flatAccounts.push({
-        account_id: account.account_id,
-        display_name: `${bankName} - ${account.custom_name || account.account_name || 'Account'} (${account.mask || '****'})`,
-        bank_name: bankName
-      });
-    });
-  });
-  return flatAccounts;
-}
-
-async function apiCreateBill(billData) {
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/bills/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(billData)
-  });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Failed to create bill');
-  }
-  return response.json();
-}
-
-async function apiUpdateBill(billId, billData) {
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/bills/${billId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(billData)
-  });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Failed to update bill');
-  }
-  return response.json();
-}
-
-async function apiDeleteBill(billId) {
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/bills/${billId}`, {
-    method: 'DELETE'
-  });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Failed to delete bill');
-  }
-  return response.json();
-}
-
-async function apiToggleBill(billId) {
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/bills/${billId}/toggle`, {
-    method: 'PATCH'
-  });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Failed to toggle bill');
-  }
-  return response.json();
-}
+// Moved to bills/api.js
+// (fetchBills, fetchAccounts, apiCreateBill, apiUpdateBill,
+//  apiDeleteBill, apiToggleBill)
 
 // ── Dashboard ───────────────────────────────────────────────
 
@@ -743,8 +732,8 @@ function renderBillsTable() {
 
 async function toggleBill(billId) {
   try {
-    await apiToggleBill(billId);
-    _invalidateTransactionCache();
+    var result = await apiToggleBill(billId);
+    _updateTransactionCacheForBill(result.purged_virtual_ids, result.affected_virtual_transactions);
     showStatus('Bill updated', 'success');
     await reloadBills();
     setTimeout(clearStatus, 2000);
@@ -758,8 +747,8 @@ async function deleteBill(billId) {
   const label = bill ? bill.description : billId;
   if (!confirm(`Delete bill "${label}"? This cannot be undone.`)) return;
   try {
-    await apiDeleteBill(billId);
-    _invalidateTransactionCache();
+    var result = await apiDeleteBill(billId);
+    _updateTransactionCacheForBill(result.purged_virtual_ids, result.affected_virtual_transactions);
     showStatus('Bill deleted', 'success');
     await reloadBills();
     setTimeout(clearStatus, 2000);
@@ -1714,14 +1703,15 @@ async function saveBill() {
   };
 
   try {
+    var result;
     if (editingBillId) {
-      await apiUpdateBill(editingBillId, payload);
+      result = await apiUpdateBill(editingBillId, payload);
       showStatus('Bill updated successfully', 'success');
     } else {
-      await apiCreateBill(payload);
+      result = await apiCreateBill(payload);
       showStatus('Bill created successfully', 'success');
     }
-    _invalidateTransactionCache();
+    _updateTransactionCacheForBill(result.purged_virtual_ids, result.affected_virtual_transactions);
     closeBillModal();
     await reloadBills();
 
@@ -1782,189 +1772,33 @@ function _stripDecorationOnFocus(amountInput) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════════
 // CATEGORY AUTOCOMPLETE
+// Fetch/cache:  fetchCategoriesWithCache()   — shared/categories-autocomplete.js
+// Wiring:       wireUpCategoryAutocomplete() — shared/categories-autocomplete.js
+// Bills-only:   _showBillTransferAccountDropdown() below  ("[" prefix mode)
 // ══════════════════════════════════════════════════════════════
-
-/**
- * Fetch available categories from the backend (or localStorage cache).
- * Populates the module-level allCategories array for autocomplete.
- */
-async function _fetchCategories() {
-  const CACHE_KEY = 'pf_cached_categories';
-  const TS_KEY = 'pf_categories_cached_at';
-  const MAX_AGE_MS = 30 * 60 * 1000;
-
-  // Try cache first — categories change rarely
-  const cachedAt = localStorage.getItem(TS_KEY);
-  const cacheAge = cachedAt ? (Date.now() - parseInt(cachedAt)) : Infinity;
-  if (cacheAge < MAX_AGE_MS) {
-    try {
-      const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || '[]');
-      if (cached.length > 0) return cached;
-    } catch (_parseError) { /* fall through to network */ }
-  }
-
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/available`);
-    if (response.ok) {
-      const data = await response.json();
-      const categories = data.available_categories || [];
-      // Cache for future use
-      try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify(categories));
-        localStorage.setItem(TS_KEY, String(Date.now()));
-      } catch (_storageError) { /* non-critical */ }
-      return categories;
-    }
-  } catch (fetchError) {
-    console.error('Failed to fetch categories:', fetchError);
-  }
-  return [];
-}
-
-/**
- * Highlight matching substring in category text for autocomplete display.
- */
-function _highlightCategoryMatch(text, query) {
-  if (!query) return escapeHtml(text);
-  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`(${escapedQuery})`, 'gi');
-  return escapeHtml(text).replace(regex, '<strong>$1</strong>');
-}
 
 /**
  * Wire up category autocomplete for the bill modal.
- * Supports regular category search and bracket-notation transfer accounts.
+ * Standard category search delegates to wireUpCategoryAutocomplete() (shared).
+ * The "[" prefix triggers transfer-account mode via the onCustomQuery hook.
  */
 function _wireUpBillCategoryAutocomplete() {
   const input = document.getElementById('bill-category');
   const list = document.getElementById('bill-category-ac-list');
   if (!input || !list) return;
 
-  // Clone to remove any previously-attached listeners (modal reuse)
-  const freshInput = input.cloneNode(true);
-  input.parentNode.replaceChild(freshInput, input);
-
-  freshInput.addEventListener('input', () => {
-    _showBillCategoryDropdown(freshInput, list);
+  wireUpCategoryAutocomplete(input, list, {
+    categories: allCategories,
+    itemClass:  'bill-category-ac-item',
+    emptyClass: 'bill-category-ac-empty',
+    moreClass:  'bill-category-ac-more',
+    onCustomQuery: (query, dropdownList) => {
+      if (!query.startsWith('[')) return false;
+      _showBillTransferAccountDropdown(dropdownList, query);
+      return true;
+    },
   });
-
-  freshInput.addEventListener('focus', () => {
-    freshInput.select();
-    if (freshInput.value.trim()) {
-      _showBillCategoryDropdown(freshInput, list);
-    }
-  });
-
-  freshInput.addEventListener('keydown', (event) => {
-    const items = list.querySelectorAll('.bill-category-ac-item');
-    const activeItem = list.querySelector('.bill-category-ac-item.active');
-    const activeIndex = Array.from(items).indexOf(activeItem);
-
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      const nextIndex = Math.min(activeIndex + 1, items.length - 1);
-      items.forEach(item => item.classList.remove('active'));
-      if (items[nextIndex]) {
-        items[nextIndex].classList.add('active');
-        items[nextIndex].scrollIntoView({ block: 'nearest' });
-      }
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      const prevIndex = Math.max(activeIndex - 1, 0);
-      items.forEach(item => item.classList.remove('active'));
-      if (items[prevIndex]) {
-        items[prevIndex].classList.add('active');
-        items[prevIndex].scrollIntoView({ block: 'nearest' });
-      }
-    } else if (event.key === 'Tab' || event.key === 'Enter') {
-      const target = activeItem || items[0];
-      if (target) {
-        event.preventDefault();
-        freshInput.value = target.dataset.value;
-        list.innerHTML = '';
-        list.style.display = 'none';
-      }
-    } else if (event.key === 'Escape') {
-      list.innerHTML = '';
-      list.style.display = 'none';
-    }
-  });
-
-  freshInput.addEventListener('blur', () => {
-    setTimeout(() => {
-      list.innerHTML = '';
-      list.style.display = 'none';
-    }, 200);
-  });
-
-  list.addEventListener('mousedown', (event) => {
-    const item = event.target.closest('.bill-category-ac-item');
-    if (item) {
-      event.preventDefault();
-      freshInput.value = item.dataset.value;
-      list.innerHTML = '';
-      list.style.display = 'none';
-    }
-  });
-}
-
-/**
- * Show filtered category suggestions (or transfer account list on "[").
- */
-function _showBillCategoryDropdown(input, list) {
-  const query = (input.value || '').trim();
-  const queryLower = query.toLowerCase();
-
-  if (!query) {
-    list.innerHTML = '';
-    list.style.display = 'none';
-    return;
-  }
-
-  // Transfer mode: "[" prefix triggers account list for transfer assignment
-  if (query.startsWith('[')) {
-    _showBillTransferAccountDropdown(list, query);
-    return;
-  }
-
-  // Smart filtering: split on ":" to match primary/detailed independently
-  let matches;
-  if (queryLower.includes(':')) {
-    const [queryPrimary, queryDetailed] = queryLower.split(':').map(segment => segment.trim());
-    matches = (allCategories || []).filter(cat => {
-      const lower = cat.toLowerCase();
-      const parts = lower.split(':').map(segment => segment.trim());
-      const primaryMatch = !queryPrimary || (parts[0] || '').includes(queryPrimary);
-      const detailedMatch = !queryDetailed || (parts[1] || '').includes(queryDetailed);
-      return primaryMatch && detailedMatch;
-    });
-  } else {
-    matches = (allCategories || []).filter(cat =>
-      cat.toLowerCase().includes(queryLower)
-    );
-  }
-
-  const maxVisible = 10;
-  const shown = matches.slice(0, maxVisible);
-
-  if (shown.length === 0) {
-    list.innerHTML = '<div class="bill-category-ac-empty">No matching categories</div>';
-    list.style.display = 'block';
-    return;
-  }
-
-  const html = shown.map((cat, index) => {
-    const highlighted = _highlightCategoryMatch(cat, query);
-    return `<div class="bill-category-ac-item${index === 0 ? ' active' : ''}" data-value="${escapeHtml(cat)}">${highlighted}</div>`;
-  }).join('');
-
-  const overflow = matches.length > maxVisible
-    ? `<div class="bill-category-ac-more">${matches.length - maxVisible} more\u2026</div>` : '';
-
-  list.innerHTML = html + overflow;
-  list.style.display = 'block';
 }
 
 /**
@@ -1993,7 +1827,7 @@ function _showBillTransferAccountDropdown(list, rawQuery) {
   const html = shown.map((acct, index) => {
     const displayName = acct.display_name;
     const transferValue = `[${displayName}]`;
-    const highlighted = accountQuery ? _highlightCategoryMatch(displayName, accountQuery) : escapeHtml(displayName);
+    const highlighted = accountQuery ? highlightCategoryMatch(displayName, accountQuery) : escapeHtml(displayName);
     return `<div class="bill-category-ac-item${index === 0 ? ' active' : ''}" data-value="${escapeHtml(transferValue)}">${highlighted}</div>`;
   }).join('');
 
@@ -2019,7 +1853,7 @@ $(document).ready(function () {
       const [accountsResult, billsResult, categoriesResult] = await Promise.all([
         fetchAccounts(),
         fetchBills(),
-        _fetchCategories()
+        fetchCategoriesWithCache()
       ]);
       allAccounts = accountsResult;
       allBills = billsResult;
