@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Spending Alerts - Personal Finance</title>
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+  <link rel="icon" type="image/png" href="IAY favicon.png">
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="nav-sidebar.css">
+  <link rel="stylesheet" href="transactions.css">
+  <link rel="stylesheet" href="spending-alerts.css">
+</head>
+<body data-nav-mode="persistent" data-nav-page="spending-alerts">
+  <div class="container">
+
+    <h1>Spending Alerts</h1>
+    <p style="color: #666; margin-top: -8px;">Get notified by email when spending in a category exceeds your threshold</p>
+
+    <!-- Status Bar -->
+    <div id="status-bar" class="status-bar hidden"></div>
+
+    <!-- Action Bar -->
+    <div style="display: flex; gap: 12px; margin: 16px 0; align-items: center;">
+      <button id="create-alert-btn" onclick="openAlertModal()" style="padding: 10px 20px; background: #e67e22; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
+        + New Alert
+      </button>
+      <button onclick="triggerManualCheck()" class="btn-action btn-manual-check" title="Manually run the alert evaluation engine against your current spending">⚡ Run Check Now</button>
+      <span id="alert-count" style="color: #888; font-size: 13px;"></span>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="sa-filter-strip">
+      <div class="sa-filter-row">
+        <div class="sa-search-wrap">
+          <span class="sa-search-icon">🔍</span>
+          <input type="text" id="sa-search-input" placeholder="Search by category..." autocomplete="off">
+          <button id="sa-search-clear" class="sa-search-clear-btn" style="display:none;" onclick="clearSearch()">✕</button>
+        </div>
+        <select id="sa-filter-period" title="Filter by period">
+          <option value="">All Periods</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+          <option value="yearly">Yearly</option>
+        </select>
+        <select id="sa-filter-status" title="Filter by status">
+          <option value="">All Statuses</option>
+          <option value="active" selected>Active Only</option>
+          <option value="inactive">Inactive Only</option>
+        </select>
+        <select id="sa-group-by" title="Group alerts by">
+          <option value="">No Grouping</option>
+          <option value="primary_category">Primary Category</option>
+          <option value="period">Period</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Alerts Table -->
+    <div id="sa-table-container">
+      <div class="loading" id="sa-loading">Loading alerts...</div>
+      <div id="sa-empty" class="empty-state" style="display: none;">
+        <p>No spending alerts configured yet.</p>
+        <p style="font-size: 14px;">Click <strong>+ New Alert</strong> to get notified when you overspend in a category.</p>
+      </div>
+      <table id="sa-table" style="display: none;">
+        <thead>
+          <tr>
+            <th class="sortable" data-sort="user_category">Category<span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort="threshold_amount">Threshold<span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort="period">Period<span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort="notification_mode">Mode<span class="sort-indicator"></span></th>
+            <th>Recipients</th>
+            <th class="sortable" data-sort="last_notified_at">Last Triggered<span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort="is_active">Status<span class="sort-indicator"></span></th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="sa-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══ Alert Create/Edit Modal ═══ -->
+  <div id="sa-modal-overlay" class="modal-overlay hidden" onclick="if(event.target===this)closeAlertModal()">
+    <div class="modal sa-modal">
+      <div class="modal-header">
+        <h3 id="sa-modal-title">New Spending Alert</h3>
+        <button class="modal-close" onclick="closeAlertModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <!-- Error banner -->
+        <div id="sa-error-banner" class="sa-error-banner" style="display: none;"></div>
+
+        <div class="sa-form-grid">
+          <!-- Category -->
+          <div class="sa-field sa-field-full">
+            <label for="sa-category">Category *</label>
+            <div style="position: relative;">
+              <input type="text" id="sa-category" placeholder="e.g. Dining, Groceries, Entertainment" autocomplete="off">
+              <div id="sa-category-ac-list" class="sa-category-ac-list"></div>
+            </div>
+            <small style="color: #888;">Must match one of your mapped category names exactly.</small>
+          </div>
+
+          <!-- Threshold + Period row -->
+          <div class="sa-field">
+            <label for="sa-threshold">Threshold Amount *</label>
+            <div class="sa-amount-wrap">
+              <span class="sa-amount-prefix">$</span>
+              <input type="text" id="sa-threshold" inputmode="decimal" placeholder="0.00">
+            </div>
+            <small style="color: #888;">Alert fires when spending exceeds this amount.</small>
+          </div>
+
+          <div class="sa-field">
+            <label for="sa-period">Period *</label>
+            <select id="sa-period" onchange="onPeriodChange()">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly" selected>Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </div>
+
+          <!-- Notification Mode -->
+          <div class="sa-field sa-field-full">
+            <label for="sa-mode">Notification Mode</label>
+            <select id="sa-mode">
+              <option value="once_per_period" selected>Once per period — fire once when threshold is first crossed</option>
+              <option value="every_purchase">Every purchase — fire after every sync that keeps spending over threshold</option>
+            </select>
+          </div>
+
+          <!-- Yearly reset (conditional) -->
+          <div id="sa-yearly-section" class="sa-field sa-field-full sa-yearly-section" style="display: none;">
+            <label>Yearly Reset Date</label>
+            <div class="sa-yearly-row">
+              <div>
+                <label for="sa-yearly-month" style="font-size: 12px; color: var(--text-muted);">Month</label>
+                <select id="sa-yearly-month">
+                  <option value="1">January</option>
+                  <option value="2">February</option>
+                  <option value="3">March</option>
+                  <option value="4">April</option>
+                  <option value="5">May</option>
+                  <option value="6">June</option>
+                  <option value="7">July</option>
+                  <option value="8">August</option>
+                  <option value="9">September</option>
+                  <option value="10">October</option>
+                  <option value="11">November</option>
+                  <option value="12">December</option>
+                </select>
+              </div>
+              <div>
+                <label for="sa-yearly-day" style="font-size: 12px; color: var(--text-muted);">Day</label>
+                <input type="number" id="sa-yearly-day" min="1" max="31" value="1" style="width: 70px;">
+              </div>
+            </div>
+            <small style="color: #888;">The yearly spending period resets on this date each year.</small>
+          </div>
+
+          <!-- Recipients -->
+          <div class="sa-field sa-field-full">
+            <label for="sa-recipients">Recipient Emails *</label>
+            <textarea id="sa-recipients" rows="2" placeholder="me@example.com, partner@example.com" style="resize: vertical; font-family: inherit; font-size: 13px;"></textarea>
+            <small style="color: #888;">Comma-separated list of email addresses. All recipients receive the same alert email.</small>
+          </div>
+
+          <!-- Active toggle -->
+          <div class="sa-field sa-field-full">
+            <label class="sa-toggle-label">
+              <input type="checkbox" id="sa-is-active" checked>
+              <span>Alert is active</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeAlertModal()">Cancel</button>
+        <button id="sa-submit-btn" onclick="saveAlert()">Create Alert</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Delete Confirm Modal ═══ -->
+  <div id="sa-delete-overlay" class="modal-overlay hidden" onclick="if(event.target===this)closeDeleteModal()">
+    <div class="modal" style="max-width: 420px;">
+      <div class="modal-header">
+        <h3>Delete Alert?</h3>
+        <button class="modal-close" onclick="closeDeleteModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <p id="sa-delete-msg" style="margin: 0;"></p>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeDeleteModal()">Cancel</button>
+        <button id="sa-delete-confirm-btn" class="danger" onclick="confirmDelete()">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="config-helpers.js"></script>
+  <script src="date-helpers.js"></script>
+  <script src="nav-sidebar.js"></script>
+  <script src="spending-alerts.js"></script>
+</body>
+</html>

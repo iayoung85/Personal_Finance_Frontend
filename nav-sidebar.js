@@ -23,6 +23,7 @@ const NAV_SIDEBAR_ITEMS = [
   { id: 'investments',  label: 'Investments',  icon: '📈', href: 'investments.html' },
   { id: 'accounts',     label: 'Accounts',     icon: '🏦', href: 'accounts.html' },
   { id: 'bills',        label: 'Bills',        icon: '📋', href: 'bills.html' },
+  { id: 'spending-alerts', label: 'Spending Alerts', icon: '🔔', href: 'spending-alerts.html' },
   {
     id: 'categories',
     label: 'Categories',
@@ -75,8 +76,9 @@ function _detectCurrentPage() {
     'transactions.html':  'transactions',
     'investments.html':   'investments',
     'accounts.html':      'accounts',
-    'bills.html':         'bills',
-    'categories.html':    'categories',
+    'bills.html':              'bills',
+    'spending-alerts.html':   'spending-alerts',
+    'categories.html':        'categories',
     'user-settings.html': 'user-settings',
   };
 
