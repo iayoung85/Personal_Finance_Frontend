@@ -22,6 +22,7 @@ function _formatDateLocal(date) {
 function _allTimeStartDate() {
   if (transactions && transactions.length > 0) {
     const earliest = transactions.reduce((min, txn) => {
+      if (isSystemType(getTransactionType(txn))) return min;
       return (!min || txn.date < min) ? txn.date : min;
     }, null);
     if (earliest) return earliest;
@@ -524,8 +525,10 @@ function _renderDynamicYearButtons() {
   const currentYear = now.getFullYear();
   const twoYearsAgoThreshold = currentYear - 2;
 
-  // Find the earliest transaction year
+  // Find the earliest transaction year — exclude system rows (investment
+  // trending, opening balances, reconciliation) which can predate real data.
   const earliestDateStr = transactions.reduce((min, txn) => {
+    if (isSystemType(getTransactionType(txn))) return min;
     return (!min || txn.date < min) ? txn.date : min;
   }, null);
 

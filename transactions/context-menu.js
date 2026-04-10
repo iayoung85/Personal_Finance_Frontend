@@ -246,11 +246,12 @@ function _buildMenuItems(txnData) {
 
   // Missing transactions get similar quick-fix options
   if (isMissing) {
-    // Show "Mark Paid/Received" for BILL_MISSING rows in accounts that
-    // don't accumulate plaid transactions. The only accounts where we
-    // block this action are linked non-investment accounts — those get
-    // regular plaid transaction syncs so the user should match instead.
-    if (txnType === TXN_TYPE.BILL_MISSING) {
+    // Show "Mark Paid/Received" for BILL_MISSING and MANUAL_MISSING rows
+    // in accounts that don't accumulate plaid transactions. The only
+    // accounts where we block this action are linked non-investment
+    // accounts — those get regular plaid transaction syncs so the user
+    // should match instead.
+    if (txnType === TXN_TYPE.BILL_MISSING || txnType === TXN_TYPE.MANUAL_MISSING) {
       const acct = accounts.find(findAcct => findAcct.account_id === txnData.accountId);
       const isLinkedNonInvestment = acct
         && acct.connection_status === 'linked'
