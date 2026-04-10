@@ -301,10 +301,36 @@ function renderTransactionTable() {
   const pendingLedgerLookup = {};
   const scheduledLedgerLookup = {};
   const showLedgerColumn = selectedAccountMode === 'single' && selectedAccountId;
+  // BILL_MISSING / MANUAL_MISSING rows only show N/A when the account is
+  // Plaid-linked and non-investment: Plaid owns balance tracking there and
+  // missing rows are excluded from the ledger walk. For offline and
+  // investment accounts the backend DOES walk them, so look up normally.
+  let isLinkedNonInvestmentAccount = false;
+  if (showLedgerColumn) {
+    const _ledgerAcct = accounts.find(a => a.account_id === selectedAccountId);
+    isLinkedNonInvestmentAccount = !!_ledgerAcct
+      && _ledgerAcct.connection_status === 'linked'
+      && _ledgerAcct.account_category !== 'investment';
+  }
   
   if (showLedgerColumn) {
     const selectedAccount = accounts.find(account => account.account_id === selectedAccountId);
-    const currentPostedBalance = selectedAccount ? selectedAccount.current_balance : 0;
+
+    // Use the freshest running balance available. After a surgical balance-history
+    // patch (saveManualTransaction, deleteManualTransaction, mark-paid, etc.),
+    // balanceHistoryLookup is updated immediately but selectedAccount.current_balance
+    // is still stale — loadAccounts() hasn't resolved yet. Seeding from the most
+    // recent posted row's lookup value means future projections immediately reflect
+    // the mutation without waiting for an account reload.
+    let currentPostedBalance = parseFloat(selectedAccount ? (selectedAccount.current_balance || 0) : 0);
+    for (const postedTxn of postedTransactions) {
+      // postedTransactions is sorted newest-first; the first match is the most
+      // recent posted row, whose running_balance equals the current posted balance.
+      if (balanceHistoryLookup[postedTxn.transaction_id] !== undefined) {
+        currentPostedBalance = balanceHistoryLookup[postedTxn.transaction_id];
+        break;
+      }
+    }
 
     // Phase 1: pending transactions projected from current posted balance
     let runningProjected = currentPostedBalance;
@@ -803,7 +829,9 @@ function renderTransactionTable() {
     // Investment trending rows show balance_at_date as their ledger value.
     let ledgerBalanceHtml = '';
     if (showLedgerColumn) {
-      if (isMissingRow) {
+      if (isMissingRow && isLinkedNonInvestmentAccount) {
+        // Linked non-investment accounts: Plaid manages balance continuity;
+        // BILL_MISSING / MANUAL_MISSING are excluded from the ledger walk.
         ledgerBalanceHtml = '<td class="ledger-cell ledger-unavailable">N/A</td>';
       } else if (txnRowType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING && txn.balance_at_date != null) {
         const formattedBal = new Intl.NumberFormat('en-US', {

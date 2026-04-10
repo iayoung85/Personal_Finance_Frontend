@@ -740,7 +740,29 @@ async function _handleContextMarkPaidMissing(txnData) {
 
     const paidLabel = txnData.amount < 0 ? 'paid' : 'received';
     showStatus(`Bill marked as ${paidLabel}`, 'success');
-    await refreshAccountTransactions(txnData.accountId);
+
+    // Surgically remove the old BILL_MISSING and add the new MANUAL_CLEARED
+    _removeCachedTransaction(txnData.txnId);
+    if (data.transaction && data.transaction.transaction_id) {
+      _replaceCachedTransaction(data.transaction.transaction_id, data.transaction);
+    }
+    if (data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
+      _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
+    }
+    _applyCachedMobUpdate(data);
+    _sortTransactionsInPlace();
+    _cacheTransactions(transactions);
+
+    if (selectedAccountMode === 'single' && selectedAccountId) {
+      if (data.affected_balance_history) {
+        delete balanceHistoryLookup[txnData.txnId];
+        _patchBalanceHistoryCache(txnData.accountId, data.affected_balance_history);
+      } else {
+        await fetchBalanceHistory(selectedAccountId);
+      }
+    }
+    renderTransactionTable();
+    await loadAccounts();
   } catch (networkError) {
     showStatus(`Failed to mark as paid: ${networkError.message}`, 'error');
   }
@@ -815,7 +837,28 @@ async function _handleContextMarkPaid(txnData) {
     }
 
     showStatus('Marked as paid — occurrence materialized', 'success');
-    await refreshAccountTransactions(txnData.accountId);
+
+    // Remove the virtual BILL_FUTURE row and add the materialized MANUAL_FUTURE
+    _removeCachedTransaction(txnData.txnId);
+    if (data.transaction && data.transaction.transaction_id) {
+      _replaceCachedTransaction(data.transaction.transaction_id, data.transaction);
+    }
+    if (data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
+      _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
+    }
+    _applyCachedMobUpdate(data);
+    _sortTransactionsInPlace();
+    _cacheTransactions(transactions);
+
+    if (selectedAccountMode === 'single' && selectedAccountId) {
+      if (data.affected_balance_history) {
+        _patchBalanceHistoryCache(txnData.accountId, data.affected_balance_history);
+      } else {
+        await fetchBalanceHistory(selectedAccountId);
+      }
+    }
+    renderTransactionTable();
+    await loadAccounts();
   } catch (networkError) {
     showStatus(`Failed to mark as paid: ${networkError.message}`, 'error');
   }
@@ -1181,10 +1224,11 @@ function _handleContextEditInvestmentBalance(txnData) {
       if (selectedAccountMode === 'single' && selectedAccountId) {
         await fetchBalanceHistory(selectedAccountId);
       }
-      renderTransactionTable();
 
-      // Refresh sidebar balances — backend may have recalculated current_balance
+      // Refresh account data before rendering so future-row balance
+      // projections use the updated current_balance.
       await loadAccounts();
+      renderTransactionTable();
     } catch (networkError) {
       showStatus(`Failed to update balance: ${networkError.message}`, 'error');
     }

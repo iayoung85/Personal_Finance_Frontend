@@ -665,10 +665,11 @@ function _openAddTrendingModal(accountId) {
       if (selectedAccountMode === 'single' && selectedAccountId) {
         await fetchBalanceHistory(selectedAccountId);
       }
-      renderTransactionTable();
 
-      // Refresh sidebar balances — backend may have recalculated current_balance
+      // Refresh account data before rendering so future-row balance
+      // projections use the updated current_balance.
       await loadAccounts();
+      renderTransactionTable();
     } catch (networkError) {
       showStatus(`Failed to create trending: ${networkError.message}`, 'error');
     }

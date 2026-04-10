@@ -234,6 +234,84 @@ window.resetDevNetworkMetrics = function() {
   return window.PFDevMetrics.reset();
 };
 
+/**
+ * Console-level helpers for manually verifying surgical balance history patches.
+ *
+ * Usage pattern:
+ *   pfBalancePatchTest.arm()           // before performing an action in the UI
+ *   // ... do the action (create/edit/delete txn, mark-paid, etc.) ...
+ *   pfBalancePatchTest.check()         // PASS = no full-ledger fetch fired
+ *   pfBalancePatchTest.inspectCache()  // dump the localStorage balance cache
+ *   pfBalancePatchTest.clearCache()    // wipe balance history cache to force fresh state
+ */
+window.pfBalancePatchTest = (function() {
+  let _baseline = undefined;
+
+  return {
+    arm() {
+      const metrics = window.PFDevMetrics ? window.PFDevMetrics.getSummary() : null;
+      _baseline = metrics ? metrics.full_history_calls.account_balance_history : 0;
+      const lookupSize = typeof balanceHistoryLookup !== 'undefined'
+        ? Object.keys(balanceHistoryLookup).length : '?';
+      console.log(
+        `[PatchTest] Armed.\n  Baseline full-ledger fetches: ${_baseline}\n  Current lookup entries: ${lookupSize}`
+      );
+    },
+
+    check() {
+      if (_baseline === undefined) {
+        console.warn('[PatchTest] Call arm() first, then perform your action.');
+        return;
+      }
+      const metrics = window.PFDevMetrics ? window.PFDevMetrics.getSummary() : null;
+      const nowCount = metrics ? metrics.full_history_calls.account_balance_history : 0;
+      const delta = nowCount - _baseline;
+      const lookupSize = typeof balanceHistoryLookup !== 'undefined'
+        ? Object.keys(balanceHistoryLookup).length : '?';
+      const result = delta === 0 ? 'PASS ✅' : `FAIL ❌ (${delta} full fetch(es) triggered)`;
+      console.log(
+        `[PatchTest] ${result}\n  Full-ledger fetches: ${_baseline} → ${nowCount}\n  In-memory lookup entries: ${lookupSize}`
+      );
+      _baseline = undefined;
+      return delta === 0;
+    },
+
+    inspectCache(accountId) {
+      const targetId = accountId
+        || (typeof selectedAccountId !== 'undefined' ? selectedAccountId : null);
+      try {
+        const raw = localStorage.getItem('pf_balance_history_by_account');
+        const cache = raw ? JSON.parse(raw) : {};
+        if (targetId && cache[targetId]) {
+          const entry = cache[targetId];
+          const ageMs = Date.now() - Number(entry.cached_at || 0);
+          console.log('[PatchTest] Balance cache for', targetId, {
+            entries: Object.keys(entry.lookup || {}).length,
+            age_seconds: Math.round(ageMs / 1000),
+            signature: entry.signature || '(none)',
+            sample: Object.entries(entry.lookup || {}).slice(0, 10),
+          });
+        } else {
+          console.log('[PatchTest] Full cache (all accounts):', cache);
+        }
+        if (typeof balanceHistoryLookup !== 'undefined') {
+          console.log('[PatchTest] In-memory lookup entries:', Object.keys(balanceHistoryLookup).length);
+        }
+      } catch (err) {
+        console.error('[PatchTest] inspectCache error:', err);
+      }
+    },
+
+    clearCache() {
+      localStorage.removeItem('pf_balance_history_by_account');
+      if (typeof balanceHistoryLookup !== 'undefined') {
+        Object.keys(balanceHistoryLookup).forEach(k => delete balanceHistoryLookup[k]);
+      }
+      console.log('[PatchTest] Balance history cache cleared. Next action will force a full fetch.');
+    },
+  };
+})();
+
 class DevToolsWidget {
   constructor() {
     this.createWidget();
@@ -281,7 +359,7 @@ class DevToolsWidget {
       display: 'flex',
       flexDirection: 'column',
       gap: '8px',
-      maxHeight: '300px',
+      maxHeight: '500px',
       overflowY: 'auto'
     });
 
@@ -290,7 +368,8 @@ class DevToolsWidget {
       { id: '1', name: '1: Wipe DB (Clean State)' },
       { id: '2', name: '2: Plaid Re-link Ready (Manual Txns)' },
       { id: '3', name: '3: Mock Plaid Sync (3 Accounts)' },
-      { id: '4', name: '4: Reconciliation Demo (Re-link Merge)' }
+      { id: '4', name: '4: Reconciliation Demo (Re-link Merge)' },
+      { id: '6', name: '6: Bill Resolution (BILL_MISSING + Ledger)' },
     ];
 
     scenarios.forEach(sc => {
@@ -318,6 +397,9 @@ class DevToolsWidget {
 
     // --- Webhook Simulator ---
     this._buildWebhookSection();
+
+    // --- Balance Patch Tests ---
+    this._buildBalancePatchTestSection();
 
     const metricsButton = document.createElement('button');
     metricsButton.innerText = '📊 Show Top 10 Modules';
@@ -899,6 +981,155 @@ class DevToolsWidget {
     table.appendChild(tbody);
     wrapper.appendChild(table);
     return wrapper;
+  }
+
+  // ─── Balance Patch Test Section ───────────────────────────────────────
+  // Arm before performing a ledger-mutating action (create/edit/delete manual
+  // txn, mark-paid on BILL_MISSING, dismiss BILL_MISSING).  Then "Check Result"
+  // to confirm that no full account-balance-history fetch was triggered —
+  // meaning the surgical _patchBalanceHistoryCache() path fired correctly.
+  _buildBalancePatchTestSection() {
+    const wrapper = document.createElement('div');
+    Object.assign(wrapper.style, {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '4px',
+      borderTop: '1px solid #444',
+      paddingTop: '8px',
+      marginTop: '4px',
+    });
+
+    const label = document.createElement('span');
+    label.textContent = '🧪 Ledger Patch Monitor';
+    Object.assign(label.style, {
+      fontWeight: 'bold',
+      fontSize: '11px',
+      color: '#ccc',
+    });
+    wrapper.appendChild(label);
+
+    const hint = document.createElement('span');
+    hint.textContent = 'Arm → perform action in UI → Check';
+    Object.assign(hint.style, { fontSize: '10px', color: '#888' });
+    wrapper.appendChild(hint);
+
+    // Status display
+    this._patchTestStatus = document.createElement('div');
+    this._patchTestStatus.textContent = '⬜ Not armed';
+    Object.assign(this._patchTestStatus.style, {
+      padding: '4px 6px',
+      backgroundColor: '#111',
+      borderRadius: '3px',
+      fontSize: '11px',
+      color: '#888',
+      minHeight: '18px',
+    });
+    wrapper.appendChild(this._patchTestStatus);
+
+    const btnRow = document.createElement('div');
+    Object.assign(btnRow.style, { display: 'flex', gap: '4px' });
+
+    const armBtn = document.createElement('button');
+    armBtn.textContent = '🎯 Arm';
+    const checkBtn = document.createElement('button');
+    checkBtn.textContent = '✅ Check Result';
+    const inspectBtn = document.createElement('button');
+    inspectBtn.textContent = '🔍 Inspect Cache';
+
+    [armBtn, checkBtn, inspectBtn].forEach(btn => {
+      Object.assign(btn.style, {
+        flex: '1',
+        padding: '6px 4px',
+        backgroundColor: '#3a3a55',
+        color: '#fff',
+        border: 'none',
+        borderRadius: '4px',
+        cursor: 'pointer',
+        fontSize: '10px',
+      });
+      btn.onmouseover = () => btn.style.backgroundColor = '#50508a';
+      btn.onmouseout = () => btn.style.backgroundColor = '#3a3a55';
+    });
+
+    armBtn.onclick = () => this._armPatchTest();
+    checkBtn.onclick = () => this._checkPatchTest();
+    inspectBtn.onclick = () => this._inspectBalanceCache();
+
+    btnRow.appendChild(armBtn);
+    btnRow.appendChild(checkBtn);
+    btnRow.appendChild(inspectBtn);
+    wrapper.appendChild(btnRow);
+
+    this.body.appendChild(wrapper);
+  }
+
+  _armPatchTest() {
+    const metrics = window.PFDevMetrics ? window.PFDevMetrics.getSummary() : null;
+    const baseCount = metrics ? metrics.full_history_calls.account_balance_history : 0;
+    const lookupSize = (typeof balanceHistoryLookup !== 'undefined')
+      ? Object.keys(balanceHistoryLookup).length
+      : '?';
+    this._patchTestBaseline = baseCount;
+    this._patchTestStatus.textContent = `🎯 Armed — full-ledger fetches: ${baseCount} | lookup entries: ${lookupSize}`;
+    Object.assign(this._patchTestStatus.style, { color: '#f5c842' });
+    this.log(`Patch test armed. Baseline full-ledger fetches: ${baseCount}`);
+  }
+
+  _checkPatchTest() {
+    if (this._patchTestBaseline === undefined) {
+      this._patchTestStatus.textContent = '⚠️ Arm first, then perform your action';
+      Object.assign(this._patchTestStatus.style, { color: '#f5a623' });
+      return;
+    }
+    const metrics = window.PFDevMetrics ? window.PFDevMetrics.getSummary() : null;
+    const nowCount = metrics ? metrics.full_history_calls.account_balance_history : 0;
+    const delta = nowCount - this._patchTestBaseline;
+    const lookupSize = (typeof balanceHistoryLookup !== 'undefined')
+      ? Object.keys(balanceHistoryLookup).length
+      : '?';
+
+    if (delta === 0) {
+      this._patchTestStatus.textContent = `✅ PASS — no full-ledger fetch triggered | lookup entries: ${lookupSize}`;
+      Object.assign(this._patchTestStatus.style, { color: '#4caf50' });
+      this.log('Patch test PASS — surgical update fired correctly.');
+    } else {
+      this._patchTestStatus.textContent = `❌ FAIL — ${delta} full-ledger fetch(es) triggered | lookup: ${lookupSize}`;
+      Object.assign(this._patchTestStatus.style, { color: '#f44336' });
+      this.log(`Patch test FAIL: ${delta} full fetch(es) after action (expected 0).`);
+    }
+    this._patchTestBaseline = undefined;
+  }
+
+  _inspectBalanceCache() {
+    const accountId = (typeof selectedAccountId !== 'undefined') ? selectedAccountId : null;
+    try {
+      const raw = localStorage.getItem('pf_balance_history_by_account');
+      const cache = raw ? JSON.parse(raw) : {};
+
+      if (accountId && cache[accountId]) {
+        const entry = cache[accountId];
+        const entryCount = Object.keys(entry.lookup || {}).length;
+        const ageMs = Date.now() - Number(entry.cached_at || 0);
+        const ageSec = Math.round(ageMs / 1000);
+        this._patchTestStatus.textContent = `🔍 acct: ${entryCount} entries, ${ageSec}s old`;
+        console.log('[DevTools] Balance cache for', accountId, {
+          entries: entryCount,
+          age_seconds: ageSec,
+          signature: entry.signature || '(none)',
+          sample: Object.entries(entry.lookup || {}).slice(0, 5),
+        });
+      } else {
+        const accountCount = Object.keys(cache).length;
+        this._patchTestStatus.textContent = `🔍 ${accountCount} account(s) in cache — no active acct`;
+        console.log('[DevTools] Full balance history cache:', cache);
+      }
+
+      const lookupSize = (typeof balanceHistoryLookup !== 'undefined')
+        ? Object.keys(balanceHistoryLookup).length : 0;
+      this.log(`Cache inspected — in-memory lookup: ${lookupSize} entries. See console.`);
+    } catch (err) {
+      this.log(`Inspect failed: ${err.message}`);
+    }
   }
 }
 

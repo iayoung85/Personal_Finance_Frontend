@@ -159,6 +159,29 @@ function _clearBalanceHistoryCache() {
   }
 }
 
+function _patchBalanceHistoryCache(accountId, affectedRows) {
+  // Patch the in-memory lookup so the ledger column reflects the mutation immediately
+  affectedRows.forEach(function(row) {
+    if (row.transaction_id) {
+      balanceHistoryLookup[row.transaction_id] = parseFloat(row.running_balance);
+    }
+  });
+  // Patch the localStorage cache so it survives page reload
+  var cacheByAccountId = _loadBalanceHistoryCache();
+  var cacheEntry = cacheByAccountId[accountId];
+  if (cacheEntry && cacheEntry.lookup) {
+    affectedRows.forEach(function(row) {
+      if (row.transaction_id) {
+        cacheEntry.lookup[row.transaction_id] = parseFloat(row.running_balance);
+      }
+    });
+    // Refresh signature + timestamp so the 5-min TTL doesn't expire immediately
+    cacheEntry.cached_at = Date.now();
+    cacheEntry.signature = _buildBalanceHistorySignature(accountId);
+    _saveBalanceHistoryCache(cacheByAccountId);
+  }
+}
+
 function _buildBalanceHistorySignature(accountId) {
   const matchedAccount = Array.isArray(accounts)
     ? accounts.find(account => account.account_id === accountId)

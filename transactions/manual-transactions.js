@@ -397,12 +397,17 @@ async function _updateManualTransaction(transactionId, accountId) {
     _cacheTransactions(transactions);
 
     if (selectedAccountMode === 'single' && selectedAccountId) {
-      await fetchBalanceHistory(selectedAccountId);
+      if (data.affected_balance_history) {
+        _patchBalanceHistoryCache(updatedAccountId, data.affected_balance_history);
+      } else {
+        await fetchBalanceHistory(updatedAccountId);
+      }
     }
-    renderTransactionTable();
 
-    // Refresh sidebar balances — backend may have recalculated current_balance
+    // Refresh account data before rendering so future-row balance
+    // projections use the updated current_balance.
     await loadAccounts();
+    renderTransactionTable();
 
   } catch (error) {
     _showManualTxnError(`Failed to update: ${error.message}`);
@@ -633,10 +638,11 @@ async function _submitPendingManualTransaction() {
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
     }
-    renderTransactionTable();
 
-    // Refresh sidebar balances — backend may have recalculated current_balance
+    // Refresh account data before rendering so future-row balance
+    // projections use the updated current_balance.
     await loadAccounts();
+    renderTransactionTable();
 
   } catch (networkError) {
     showStatus(`Failed to submit transaction: ${networkError.message}`, 'error');
@@ -831,7 +837,11 @@ async function saveManualTransaction() {
     // response included the new txn + any affected trending rows.
     try {
       if (selectedAccountMode === 'single' && selectedAccountId) {
-        await fetchBalanceHistory(selectedAccountId);
+        if (data.affected_balance_history) {
+          _patchBalanceHistoryCache(accountId, data.affected_balance_history);
+        } else {
+          await fetchBalanceHistory(selectedAccountId);
+        }
         renderTransactionTable();
       }
       // Refresh sidebar balances — backend may have recalculated current_balance
@@ -885,12 +895,26 @@ async function deleteManualTransaction(manualTransactionId) {
     _cacheTransactions(transactions);
 
     if (selectedAccountMode === 'single' && selectedAccountId) {
-      await fetchBalanceHistory(selectedAccountId);
+      var deletedAccountId = (deletedTxn && deletedTxn.account_id) || selectedAccountId;
+      // Remove the deleted row from the in-memory balance lookup
+      delete balanceHistoryLookup[manualTransactionId];
+      // Also remove from localStorage cache
+      var cacheByAcct = _loadBalanceHistoryCache();
+      if (cacheByAcct[deletedAccountId] && cacheByAcct[deletedAccountId].lookup) {
+        delete cacheByAcct[deletedAccountId].lookup[manualTransactionId];
+        _saveBalanceHistoryCache(cacheByAcct);
+      }
+      if (data && data.affected_balance_history) {
+        _patchBalanceHistoryCache(deletedAccountId, data.affected_balance_history);
+      } else {
+        await fetchBalanceHistory(selectedAccountId);
+      }
     }
-    renderTransactionTable();
 
-    // Refresh sidebar balances — backend may have recalculated current_balance
+    // Refresh account data before rendering so future-row balance
+    // projections use the updated current_balance.
     await loadAccounts();
+    renderTransactionTable();
 
   } catch (error) {
     showStatus(`Failed to delete transaction: ${error.message}`, 'error');
@@ -1275,7 +1299,20 @@ async function resolveMissingTransaction(transactionId) {
       _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
     }
 
-    await refreshAccountTransactions(selectedAccountId);
+    _removeCachedTransaction(transactionId);
+    _sortTransactionsInPlace();
+    _cacheTransactions(transactions);
+
+    if (selectedAccountMode === 'single' && selectedAccountId) {
+      if (data && data.affected_balance_history) {
+        delete balanceHistoryLookup[transactionId];
+        _patchBalanceHistoryCache(selectedAccountId, data.affected_balance_history);
+      } else {
+        await fetchBalanceHistory(selectedAccountId);
+      }
+    }
+    renderTransactionTable();
+    await loadAccounts();
 
   } catch (networkError) {
     showStatus(`Failed to resolve: ${networkError.message}`, 'error');

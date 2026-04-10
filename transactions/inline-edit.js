@@ -368,10 +368,11 @@ async function _saveRowInlineEdits() {
       if (selectedAccountMode === 'single' && selectedAccountId) {
         await fetchBalanceHistory(selectedAccountId);
       }
-      renderTransactionTable();
 
-      // Refresh sidebar balances — backend may have recalculated current_balance
+      // Refresh account data before rendering so future-row balance
+      // projections use the updated current_balance.
       await loadAccounts();
+      renderTransactionTable();
     }
   } catch (saveError) {
     showStatus(`Inline update failed: ${saveError.message}`, 'error');
