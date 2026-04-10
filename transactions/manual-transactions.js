@@ -1307,6 +1307,17 @@ async function skipBillOccurrence(billId, occurrenceDate) {
       return;
     }
 
+    const data = await response.json();
+
+    // Surgically remove the skipped virtual BILL_FUTURE rows from cache
+    // so the counterpart in the transfer target account disappears immediately
+    // instead of lingering until the 5-min cache TTL expires.
+    if (data.purged_virtual_ids && data.purged_virtual_ids.length) {
+      for (const virtualId of data.purged_virtual_ids) {
+        _removeCachedTransaction(virtualId);
+      }
+    }
+
     showStatus('Bill occurrence skipped', 'success');
     await refreshAccountTransactions(selectedAccountId);
 
