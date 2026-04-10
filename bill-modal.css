@@ -1,0 +1,224 @@
+/* ═══════════════════════════════════════════════════════════
+   bill-modal.css — Shared bill create/edit modal styles.
+   Loaded by both bills.html and transactions.html.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Bill Modal ───────────────────────────────────────────── */
+.bill-modal {
+  width: min(900px, 94vw) !important;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Top half: two columns */
+.bill-form-top {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+@media (max-width: 700px) {
+  .bill-form-top { grid-template-columns: 1fr; }
+}
+
+.bill-freq-col,
+.bill-details-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bill-freq-col h4,
+.bill-details-col h4 {
+  margin: 0 0 8px 0;
+  color: var(--text-heading);
+  font-size: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 6px;
+}
+
+.bill-field {
+  margin-bottom: 10px;
+}
+.bill-field label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.bill-field input[type="text"],
+.bill-field input[type="number"],
+.bill-field .date-input,
+.bill-field select {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  font-size: 13px;
+  box-sizing: border-box;
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+.bill-field small {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Category Autocomplete Dropdown ───────────────────── */
+.bill-category-ac-list {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-primary);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  box-shadow: var(--shadow-md);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.bill-category-ac-item {
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+.bill-category-ac-item:last-child {
+  border-bottom: none;
+}
+.bill-category-ac-item.active,
+.bill-category-ac-item:hover {
+  background: var(--bg-selected);
+  color: var(--accent-link);
+}
+.bill-category-ac-item strong {
+  color: var(--accent-link);
+  font-weight: 700;
+}
+.bill-category-ac-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.bill-category-ac-more {
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Day-of-week selector (M T W T F S S buttons) */
+.dow-buttons {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+.dow-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-input);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dow-btn:hover { background: var(--bg-hover); }
+.dow-btn.active {
+  background: var(--accent-orange);
+  color: var(--text-inverse);
+  border-color: var(--accent-orange);
+}
+
+/* ── Bill Error Banner ────────────────────────────────────── */
+.bill-error-banner {
+  padding: 8px 12px;
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: 4px;
+  color: var(--color-danger);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+/* ── Preview Section ──────────────────────────────────────── */
+.bill-preview-section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 2px solid var(--border-primary);
+}
+.bill-preview-section h4 {
+  margin: 0 0 8px 0;
+  color: var(--text-heading);
+  font-size: 14px;
+}
+.bill-preview-summary {
+  background: var(--bg-surface-elevated);
+  border-radius: 4px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+.bill-preview-dates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 4px;
+  font-size: 12px;
+}
+.bill-preview-dates .preview-date-item {
+  padding: 4px 8px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  display: flex;
+  justify-content: space-between;
+}
+.bill-preview-dates .preview-date-item .date-label {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.bill-preview-dates .preview-date-item .date-amount {
+  color: var(--text-muted);
+}
+
+/* ── Inline interval row ──────────────────────────────────── */
+.freq-inline-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.freq-inline-row input[type="number"] {
+  width: 60px;
+  padding: 5px 6px;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  font-size: 13px;
+  text-align: center;
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+.freq-inline-row select {
+  padding: 5px 6px;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  font-size: 13px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+}

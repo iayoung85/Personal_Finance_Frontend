@@ -15,6 +15,15 @@ async function fetchBills() {
   return data.bills || [];
 }
 
+async function fetchBill(billId) {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/bills/${encodeURIComponent(billId)}`);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to fetch bill');
+  }
+  return response.json();
+}
+
 async function fetchAccounts() {
   const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts/banks?include_archived=false`);
   if (!response.ok) {

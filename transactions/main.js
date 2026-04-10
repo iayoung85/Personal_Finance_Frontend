@@ -166,13 +166,18 @@ $(document).ready(async function() {
     }, 80);
   });
 
-  // Navigate to bills.html when "Edit Bill" button is clicked on scheduled transactions
-  $(document).on('click', '.bill-edit-btn', function() {
+  // Open inline bill modal when "Edit Bill" button is clicked on scheduled transactions
+  $(document).on('click', '.bill-edit-btn', async function() {
     const billId = $(this).data('bill-id');
     if (billId) {
-      // Tell bills.html to return here after the edit is saved
-      sessionStorage.setItem('pf_return_url', 'transactions.html');
-      window.location.href = `bills.html?edit=${encodeURIComponent(billId)}`;
+      try {
+        showStatus('Loading bill schedule…', 'info');
+        const bill = await fetchBill(billId);
+        clearStatus();
+        _openInlineBillModal(billId, { bill });
+      } catch (fetchError) {
+        showStatus(`Failed to load bill: ${fetchError.message}`, 'error');
+      }
     } else {
       showStatus('Unable to edit bill: missing bill ID', 'error');
     }

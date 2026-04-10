@@ -330,6 +330,11 @@ function _buildMenuItems(txnData) {
       separator: false,
     });
     items.push({
+      label: '📋 Edit Schedule',
+      action: 'edit-schedule',
+      separator: false,
+    });
+    items.push({
       label: '⏭ Skip Occurrence',
       action: 'skip-occurrence',
       separator: false,
@@ -511,6 +516,9 @@ function _dispatchContextAction(action, txnData) {
     case 'skip-occurrence':
       _handleContextSkipOccurrence(txnData);
       break;
+    case 'edit-schedule':
+      _handleContextEditSchedule(txnData);
+      break;
     case 'hide':
       _handleContextHide(txnData);
       break;
@@ -554,10 +562,10 @@ function _handleContextModify(txnData) {
 }
 
 /**
- * RC-3: This is a Bill — navigate to bills.html with prefill data
+ * RC-3: This is a Bill — open inline bill modal with transaction data pre-filled.
+ * Replaces the old page-navigation flow (bills.html?prefill=…).
  */
 function _handleContextThisIsABill(txnData) {
-  // Find the full transaction object to get all fields
   const txn = transactions.find(findTxn => findTxn.transaction_id === txnData.txnId);
 
   const prefillData = {
@@ -570,13 +578,65 @@ function _handleContextThisIsABill(txnData) {
     match_description: txn?.name || txnData.name || '',
   };
 
-  // Base64-encode the prefill data for safe URL transport
-  const encoded = btoa(JSON.stringify(prefillData));
+  _openInlineBillModal(null, { prefill: prefillData });
+}
 
-  // Mark that this bill flow originated from transactions context-menu.
-  // bills.js consumes this and conditionally redirects back after create.
-  sessionStorage.setItem('pf_return_to_transactions_after_bill_create', '1');
-  window.location.href = `bills.html?prefill=${encoded}`;
+/**
+ * Edit Schedule — fetch the bill and open the inline bill modal in edit mode.
+ * Used for BILL_FUTURE rows that have a bill_id.
+ */
+async function _handleContextEditSchedule(txnData) {
+  if (!txnData.billId) {
+    showStatus('No bill schedule found for this transaction', 'error');
+    return;
+  }
+
+  try {
+    showStatus('Loading bill schedule…', 'info');
+    const bill = await fetchBill(txnData.billId);
+    clearStatus();
+    _openInlineBillModal(txnData.billId, { bill });
+  } catch (fetchError) {
+    showStatus(`Failed to load bill: ${fetchError.message}`, 'error');
+  }
+}
+
+/**
+ * Shared helper: build accounts list for the bill modal and open it.
+ * Converts the transactions-page `accounts` array shape to the
+ * {account_id, display_name} format that bills/modal.js expects.
+ */
+function _openInlineBillModal(billId, extraOptions) {
+  const billModalAccounts = accounts
+    .filter(acct => !acct.is_archived)
+    .map(acct => ({
+      account_id: acct.account_id,
+      display_name: acct.bank_name
+        ? `${acct.bank_name} - ${acct.custom_name || acct.account_name || 'Account'} (${acct.mask || '****'})`
+        : `${acct.custom_name || acct.account_name || 'Account'} (${acct.mask || '****'})`,
+    }));
+
+  openBillModal(billId, Object.assign({
+    accounts: billModalAccounts,
+    categories: availableCategories,
+    onSave: (result) => {
+      // Granular Dexie cache update using the virtual transaction data
+      // returned by the bill CRUD endpoints.
+      const purgedIds = result.purged_virtual_ids || [];
+      const newVirtuals = result.affected_virtual_transactions || [];
+
+      purgedIds.forEach(virtualId => _removeCachedTransaction(virtualId));
+      newVirtuals.forEach(virtualTxn => _replaceCachedTransaction(virtualTxn.transaction_id, virtualTxn));
+
+      // Wipe the ETag so the next background refresh gets a full sync,
+      // but keep cached_at so Tier-1 cache still serves the patched data.
+      if (window.txnDB) {
+        window.txnDB.setMeta('etag', null).catch(() => {});
+      }
+
+      renderTransactionTable();
+    },
+  }, extraOptions));
 }
 
 /**
