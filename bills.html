@@ -205,6 +205,14 @@
               <input type="text" id="bill-description" placeholder="e.g., Rent, Netflix, Paycheck" maxlength="500">
             </div>
 
+            <div class="bill-field">
+              <label for="bill-match-description">Bank Statement Description</label>
+              <input type="text" id="bill-match-description" placeholder="e.g., NETFLIX.COM 866-716-0414 CA" maxlength="500">
+              <small style="color: #888; display: block; margin-top: 2px;">
+                How this bill appears on your bank statement. Used instead of Description when matching downloaded transactions.
+              </small>
+            </div>
+
             <div class="bill-field" style="display: grid; grid-template-columns: 1fr auto; gap: 8px;">
               <div>
                 <label for="bill-amount">Default Amount *</label>

@@ -559,6 +559,7 @@ function _handleContextThisIsABill(txnData) {
     account_id: txnData.accountId,
     user_category: txn?.user_category || txnData.userCategory || '',
     merchant_name: txn?.merchant_name || txnData.merchantName || '',
+    match_description: txn?.name || txnData.name || '',
   };
 
   // Base64-encode the prefill data for safe URL transport

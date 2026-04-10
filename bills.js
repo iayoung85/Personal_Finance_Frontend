@@ -861,6 +861,7 @@ function _resetForm() {
   document.getElementById('bill-auto-pay').checked = false;
   document.getElementById('bill-category').value = '';
   document.getElementById('bill-memo').value = '';
+  document.getElementById('bill-match-description').value = '';
   document.getElementById('bill-end-date').value = '';
   document.getElementById('bill-end-date').dataset.isoValue = '';
   document.getElementById('bill-max-occurrences').value = '12';
@@ -878,6 +879,7 @@ function _populateFormFromBill(bill) {
   document.getElementById('bill-auto-pay').checked = !!bill.auto_pay;
   document.getElementById('bill-category').value = bill.user_category || '';
   document.getElementById('bill-memo').value = bill.memo || '';
+  document.getElementById('bill-match-description').value = bill.match_description || '';
   document.getElementById('bill-end-type').value = bill.end_type || 'never';
   onEndTypeChange();
   if (bill.end_type === 'on_date' && bill.end_date) {
@@ -1488,6 +1490,7 @@ function _readFormData() {
   const autoPay = document.getElementById('bill-auto-pay').checked;
   const category = document.getElementById('bill-category').value.trim();
   const memo = document.getElementById('bill-memo').value.trim();
+  const matchDescription = document.getElementById('bill-match-description').value.trim();
 
   const startDateInput = document.getElementById('bill-start-date');
   let startDate;
@@ -1543,6 +1546,7 @@ function _readFormData() {
     auto_pay: autoPay,
     user_category: category || null,
     memo: memo || null,
+    match_description: matchDescription || null,
     start_date: startDate,
     interval,
     day_of_month: dayOfMonth,
@@ -1615,6 +1619,7 @@ async function saveBill() {
     amount: signedAmount,
     user_category: formData.user_category,
     memo: formData.memo,
+    match_description: formData.match_description,
     amount_variable: formData.amount_variable,
     auto_pay: formData.auto_pay,
     frequency: formData.frequency,
@@ -1994,12 +1999,11 @@ $(document).ready(function () {
             if (prefillData.user_category) {
               document.getElementById('bill-category').value = prefillData.user_category;
             }
-            if (prefillData.merchant_name) {
-              // Store merchant in memo since bills don't have a merchant field
-              const memoEl = document.getElementById('bill-memo');
-              if (memoEl && !memoEl.value) {
-                memoEl.value = prefillData.merchant_name;
-              }
+            if (prefillData.match_description) {
+              document.getElementById('bill-match-description').value = prefillData.match_description;
+            } else if (prefillData.merchant_name) {
+              // Fallback for older prefill data without match_description
+              document.getElementById('bill-match-description').value = prefillData.merchant_name;
             }
 
             // The modal opens with an initial preview before prefill values are injected.
