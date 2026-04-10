@@ -775,6 +775,85 @@ async function reloadBills() {
 }
 
 // ══════════════════════════════════════════════════════════════
+// BACKUP / RESTORE
+// ══════════════════════════════════════════════════════════════
+
+function openBillsBackupRestoreModal() {
+  document.getElementById('bills-import-file').value = '';
+  const result = document.getElementById('bills-import-result');
+  result.style.display = 'none';
+  result.innerHTML = '';
+  document.getElementById('bills-backup-restore-modal').classList.remove('hidden');
+}
+
+function closeBillsBackupRestoreModal() {
+  document.getElementById('bills-backup-restore-modal').classList.add('hidden');
+}
+
+async function exportBillsCSV() {
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/bills/backup/export`);
+    if (!response.ok) throw new Error(`Export failed (${response.status})`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const today = new Date().toISOString().slice(0, 10);
+    a.download = `pfc-bills-backup-${today}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showStatus(`Export failed: ${err.message}`, 'error');
+  }
+}
+
+async function importBillsCSV() {
+  const fileInput = document.getElementById('bills-import-file');
+  const resultEl = document.getElementById('bills-import-result');
+  if (!fileInput.files.length) {
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = '<span style="color:#c0392b;">Please select a CSV file first.</span>';
+    return;
+  }
+  const file = fileInput.files[0];
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = 'Importing…';
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/bills/backup/import`, {
+      method: 'POST',
+      body: formData
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      resultEl.innerHTML = `<span style="color:#c0392b;">Import error: ${data.error || response.status}</span>`;
+      return;
+    }
+    let html = `<span style="color:#27ae60;">✓ Import complete.</span> `
+      + `Created: <strong>${data.bills_created}</strong>, `
+      + `Skipped: <strong>${data.bills_skipped}</strong>`;
+    if (data.bills_unbound > 0) {
+      html += `, Unbound (inactive): <strong>${data.bills_unbound}</strong>`;
+      if (data.unbound_bills && data.unbound_bills.length) {
+        html += '<ul style="margin:6px 0 0 0; padding-left:18px; color:#888;">';
+        for (const ub of data.unbound_bills) {
+          const missing = ub.missing_source_account || ub.missing_transfer_account || '(unknown account)';
+          html += `<li>${ub.description} — missing account: ${missing}</li>`;
+        }
+        html += '</ul>';
+      }
+    }
+    resultEl.innerHTML = html;
+    await reloadBills();
+  } catch (err) {
+    resultEl.innerHTML = `<span style="color:#c0392b;">Import failed: ${err.message}</span>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 // MODAL LOGIC — Create / Edit
 // ══════════════════════════════════════════════════════════════
 

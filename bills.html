@@ -28,6 +28,7 @@
       <button id="create-bill-btn" onclick="openBillModal()" style="padding: 10px 20px; background: #e67e22; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 14px;">
         + New Bill
       </button>
+      <button onclick="openBillsBackupRestoreModal()" class="btn-action btn-backup-restore" title="Import or export bills data">📦 Backup / Restore</button>
       <span id="bill-count" style="color: #888; font-size: 13px;"></span>
     </div>
 
@@ -276,6 +277,35 @@
       <div class="modal-actions">
         <button class="secondary" onclick="closeBillModal()">Cancel</button>
         <button id="bill-submit-btn" onclick="saveBill()">Create Bill</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Bills Backup / Restore Modal ═══ -->
+  <div id="bills-backup-restore-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeBillsBackupRestoreModal()">
+    <div class="modal modal-backup-restore">
+      <div class="modal-header">
+        <h2>📦 Backup / Restore</h2>
+        <button class="modal-close" onclick="closeBillsBackupRestoreModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="backup-section">
+          <h3>Export Bills</h3>
+          <p class="backup-hint">Download all your bills as a CSV file for safekeeping or migration.</p>
+          <button onclick="exportBillsCSV()" class="btn-action btn-backup-import">📤 Download CSV</button>
+        </div>
+        <div class="backup-section">
+          <h3>Import Bills</h3>
+          <p class="backup-hint">Restore bills from a previously exported CSV backup. Duplicate bill IDs will be skipped automatically.</p>
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <input type="file" id="bills-import-file" accept=".csv" style="font-size: 13px;">
+            <button onclick="importBillsCSV()" class="btn-action btn-backup-import">📥 Import CSV</button>
+          </div>
+          <div id="bills-import-result" style="margin-top: 10px; font-size: 13px; display: none;"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="secondary" onclick="closeBillsBackupRestoreModal()">Close</button>
       </div>
     </div>
   </div>

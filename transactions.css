@@ -738,6 +738,10 @@ td {
 .txn-memo-text:hover {
   color: var(--text-secondary);
 }
+.txn-memo-text.inline-memo-active {
+  display: block;
+  width: 100%;
+}
 .memo-placeholder {
   font-style: italic;
   color: var(--text-muted);
