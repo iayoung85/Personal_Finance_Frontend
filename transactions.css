@@ -248,6 +248,22 @@ h1 {
   background: #5B9BD5;
 }
 
+/* Orange dot shown next to balance when Plaid-reported balance diverges > $1 */
+.plaid-mismatch-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  background: var(--warning-text, #f2994a);
+}
+
+.sidebar-balance-cell {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
 .sidebar-account-name-text {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1195,6 +1211,24 @@ tr:hover {
   gap: 6px;
   align-items: center;
   flex-shrink: 0;
+}
+
+/* Plaid balance indicator shown in single-account view */
+.plaid-balance-indicator {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  cursor: default;
+}
+.plaid-balance-match {
+  color: var(--success-text, #6fcf97);
+  background: rgba(111, 207, 151, 0.1);
+}
+.plaid-balance-mismatch {
+  color: var(--warning-text, #f2994a);
+  background: rgba(242, 153, 74, 0.15);
 }
 
 .btn-action {

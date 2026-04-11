@@ -61,6 +61,7 @@ function deselectAllAccounts() {
   selectedAccountMode = 'all';
   selectedAccountId = null;
   renderAccountsSidebar();
+  updatePlaidBalanceIndicator();
   // Note: Don't render transaction table here during init - transactions may not be loaded yet
 }
 
@@ -74,6 +75,7 @@ async function selectAccount(accountId, skipDebounce = false) {
   selectedAccountId = accountId;
   localStorage.setItem('pf_selected_account', accountId);
   renderAccountsSidebar();
+  updatePlaidBalanceIndicator();
 
   if (skipDebounce) {
     await fetchBalanceHistory(accountId);
@@ -99,7 +101,42 @@ function selectAllAccountsMode() {
   localStorage.removeItem('pf_selected_account');
   balanceHistoryLookup = {};
   renderAccountsSidebar();
+  updatePlaidBalanceIndicator();
   renderTransactionTable();
+}
+
+function updatePlaidBalanceIndicator() {
+  const indicator = document.getElementById('plaid-balance-indicator');
+  if (!indicator) return;
+
+  if (selectedAccountMode !== 'single' || !selectedAccountId) {
+    indicator.classList.add('hidden');
+    indicator.textContent = '';
+    return;
+  }
+
+  const account = accounts.find(a => a.account_id === selectedAccountId);
+  if (!account || account.plaid_balance == null || account.connection_status !== 'linked') {
+    indicator.classList.add('hidden');
+    indicator.textContent = '';
+    return;
+  }
+
+  const appBalance = account.current_balance || 0;
+  const plaidBalance = account.plaid_balance;
+  const discrepancy = Math.abs(appBalance - plaidBalance);
+  const hasDiscrepancy = discrepancy > 1.00;
+
+  const formattedPlaidBal = plaidBalance.toLocaleString('en-US', {
+    style: 'currency', currency: 'USD',
+  });
+
+  indicator.textContent = `Plaid: ${formattedPlaidBal}`;
+  indicator.title = hasDiscrepancy
+    ? `Plaid reports ${formattedPlaidBal} but app calculates $${appBalance.toFixed(2)} (difference: $${discrepancy.toFixed(2)})`
+    : `Plaid balance matches app balance`;
+  indicator.classList.remove('hidden', 'plaid-balance-match', 'plaid-balance-mismatch');
+  indicator.classList.add(hasDiscrepancy ? 'plaid-balance-mismatch' : 'plaid-balance-match');
 }
 
 async function loadAccounts() {
@@ -141,6 +178,7 @@ async function loadAccounts() {
       available_products: a.available_products || [],
       // Backend-authoritative boundary for manual txn date guard (Problem 5 alignment)
       earliest_plaid_transaction_date: a.earliest_plaid_transaction_date || null,
+      plaid_balance: a.plaid_balance != null ? parseFloat(a.plaid_balance) : null,
     }))
     .filter(a => a.account_id); // Filter out any without account_id
 
@@ -428,6 +466,13 @@ function _getSyncDotHtml(acc) {
   return '<span class="sync-dot sync-dot-manual" title="Manual"></span>';
 }
 
+function _getPlaidMismatchDotHtml(acc) {
+  if (acc.connection_status !== 'linked' || acc.plaid_balance == null) return '';
+  const diff = Math.abs((acc.current_balance || 0) - acc.plaid_balance);
+  if (diff <= 1.00) return '';
+  return `<span class="plaid-mismatch-dot" title="Plaid balance mismatch: $${diff.toFixed(2)} difference"></span>`;
+}
+
 function _renderSidebarAccountItem(acc, formatSidebarCurrency) {
   const displayName = _buildAccountDisplayName(acc);
   const maskMatch = displayName.match(/^(.*?)(\s*\(\d{3,6}\))$/);
@@ -440,6 +485,7 @@ function _renderSidebarAccountItem(acc, formatSidebarCurrency) {
   const isSelected = selectedAccountMode === 'single' && selectedAccountId === acc.account_id;
   const selectedClass = isSelected ? 'selected' : '';
   const syncDot = _getSyncDotHtml(acc);
+  const mismatchDot = _getPlaidMismatchDotHtml(acc);
 
   return `
     <div class="sidebar-account-item ${selectedClass}" tabindex="0"
@@ -449,7 +495,7 @@ function _renderSidebarAccountItem(acc, formatSidebarCurrency) {
       <div class="sidebar-account-label">
         ${syncDot}<span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span><span class="sidebar-account-mask">${displayNameSuffix}</span>
       </div>
-      <div class="${balanceColorClass}">${balanceStr}</div>
+      <div class="${balanceColorClass} sidebar-balance-cell">${mismatchDot}${balanceStr}</div>
     </div>
   `;
 }
