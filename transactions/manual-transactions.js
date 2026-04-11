@@ -433,30 +433,11 @@ function _showManualTxnError(message) {
 }
 
 /**
- * Return a user-facing validation error when a linked account date falls
- * inside the plaid-synced window; otherwise return null.
+ * Return a user-facing validation error for linked-account date rules.
+ * MANUAL_CLEARED creation is now allowed at any date in linked accounts,
+ * so this guard is relaxed to always permit.
  */
-function _getLinkedAccountDateWindowError(accountId, date) {
-  if (!accountId || !date) return null;
-
-  const selectedAccount = accounts.find(account => account.account_id === accountId);
-  // Why connection_status not origin: origin is immutable (how the account was born),
-  // but connection_status reflects current lifecycle. A converted plaid account
-  // (connection_status='converted') now operates as manual — no date restriction.
-  const isActivelyLinkedToPlaid = selectedAccount && selectedAccount.connection_status === 'linked';
-  const earliestPlaidDate = selectedAccount && selectedAccount.earliest_plaid_transaction_date;
-
-  if (!isActivelyLinkedToPlaid || !earliestPlaidDate) {
-    return null;
-  }
-
-  const todayIso = todayISO();
-  const isInPlaidSyncedWindow = date >= earliestPlaidDate && date <= todayIso;
-
-  if (isInPlaidSyncedWindow) {
-    return `Plaid account: date falls in the Plaid-synced range (${earliestPlaidDate} to ${todayIso}). Use a historical date before ${earliestPlaidDate} or a future date after ${todayIso}.`;
-  }
-
+function _getLinkedAccountDateWindowError(_accountId, _date) {
   return null;
 }
 
@@ -1111,15 +1092,8 @@ function _showManualTransferAccountDropdown(list, rawQuery) {
     const typeBadge = `<span class="transfer-ac-type">${acc.account_category || 'account'}</span>`;
     const highlighted = accountQuery ? _highlightMatch(displayName, accountQuery) : escapeHtml(displayName);
 
-    // Warn when the counterpart transaction date would fall inside a plaid-synced block.
-    // The counterpart inherits the same date — if the target is linked and the date
-    // is on or after its earliest plaid transaction, it's illegal.
-    let warningHtml = '';
-    if (txnDate && acc.connection_status === 'linked' && acc.earliest_plaid_transaction_date) {
-      if (txnDate >= acc.earliest_plaid_transaction_date) {
-        warningHtml = '<span class="transfer-ac-warning" title="Date falls in this account\'s Plaid-synced range — transfer counterpart cannot be created here for this date" style="color:var(--color-warning);margin-left:4px;font-size:11px;">⚠ date conflict</span>';
-      }
-    }
+    // MANUAL_CLEARED in linked accounts is now permitted — no date-conflict warning needed.
+    const warningHtml = '';
 
     return `<div class="category-ac-item transfer-ac-item${index === 0 ? ' active' : ''}" data-value="${escapeHtml(transferValue)}" data-account-id="${escapeHtml(acc.account_id)}">`
       + `<span class="transfer-ac-icon">\u21C4</span> ${highlighted} ${typeBadge}${warningHtml}</div>`;
