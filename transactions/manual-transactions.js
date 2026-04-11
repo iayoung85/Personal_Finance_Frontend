@@ -1320,17 +1320,27 @@ async function skipBillOccurrence(billId, occurrenceDate) {
 
     const data = await response.json();
 
-    // Surgically remove the skipped virtual BILL_FUTURE rows from cache
-    // so the counterpart in the transfer target account disappears immediately
-    // instead of lingering until the 5-min cache TTL expires.
+    // Granular cache patch: remove skipped virtual rows (including _cpt
+    // counterpart for transfer bills) and upsert the rebuilt virtual
+    // transaction set so both accounts see the change instantly.
     if (data.purged_virtual_ids && data.purged_virtual_ids.length) {
       for (const virtualId of data.purged_virtual_ids) {
         _removeCachedTransaction(virtualId);
       }
     }
+    if (data.affected_virtual_transactions && data.affected_virtual_transactions.length) {
+      for (const virtualTxn of data.affected_virtual_transactions) {
+        _replaceCachedTransaction(virtualTxn.transaction_id, virtualTxn);
+      }
+    }
+
+    // Wipe ETag so next background refresh gets a full sync
+    if (window.txnDB) {
+      window.txnDB.setMeta('etag', null).catch(() => {});
+    }
 
     showStatus('Bill occurrence skipped', 'success');
-    await refreshAccountTransactions(selectedAccountId);
+    renderTransactionTable();
 
   } catch (networkError) {
     showStatus(`Failed to skip occurrence: ${networkError.message}`, 'error');
