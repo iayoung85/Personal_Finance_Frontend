@@ -192,11 +192,13 @@ function _formatCsvRow(txn, optionalFields, parentTransactionId) {
   return row;
 }
 
-function generateCSV(metadata) {
+function generateCSV(metadata, txnsOverride) {
   const optionalFields = [];
   $('.field-checkbox:checked').each(function() {
     optionalFields.push($(this).val());
   });
+
+  const txnsSource = txnsOverride || transactions;
 
   // Header comment for format auto-detection on re-import
   let csv = `# PFC Export v1, exported=${new Date().toISOString()}, category_list_hash=${metadata.categoryListHash}\n`;
@@ -212,7 +214,7 @@ function generateCSV(metadata) {
 
   csv += '\n';
 
-  for (const txn of transactions) {
+  for (const txn of txnsSource) {
     // Split children are nested under their parent — skip any that
     // leaked into the top-level array (source='split')
     if (txn.source === 'split') continue;
@@ -240,6 +242,95 @@ function generateCSV(metadata) {
   }
 
   return csv;
+}
+
+// ============================================================
+// Transaction Export (filtered view)
+//
+// Exports only the rows currently visible in the table — i.e.
+// whatever the user has filtered down to via date range, account
+// selection, search, category filter, hide-transfers, etc.
+// Same CSV/JSON format as backup/restore but scoped to the view.
+// ============================================================
+
+async function exportFilteredTransactionsJSON() {
+  try {
+    if (!visibleTransactions.length) {
+      showStatus('No transactions to export', 'error');
+      return;
+    }
+    showStatus('Preparing JSON export...', 'info');
+    const metadata = await _fetchExportMetadata();
+
+    const exportPayload = {
+      metadata: {
+        format: 'pfc_json_v1',
+        exported: new Date().toISOString(),
+        user_id: metadata.userId,
+        category_list_hash: metadata.categoryListHash,
+        category_mappings: metadata.categoryMappings,
+        custom_categories: metadata.customCategories,
+        accounts: metadata.accounts,
+      },
+      transactions: visibleTransactions.filter(
+        txn => txn.source !== 'opening_balance' && txn.source !== 'manual_opening_balance'
+      ),
+    };
+
+    const dataStr = JSON.stringify(exportPayload, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `transactions_filtered_${getDateRange()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showStatus('JSON exported', 'success');
+    setTimeout(() => clearStatus(), 2000);
+  } catch (exportError) {
+    console.error('JSON export failed:', exportError);
+    showStatus('JSON export failed', 'error');
+  }
+}
+
+async function downloadFilteredTransactionsCSV() {
+  try {
+    if (!visibleTransactions.length) {
+      showStatus('No transactions to export', 'error');
+      return;
+    }
+    showStatus('Preparing CSV...', 'info');
+    const metadata = await _fetchExportMetadata();
+    const csv = generateCSV(metadata, visibleTransactions);
+    const dataBlob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `transactions_filtered_${getDateRange()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    clearStatus();
+  } catch (exportError) {
+    console.error('CSV export failed:', exportError);
+    showStatus('CSV export failed', 'error');
+  }
+}
+
+async function copyFilteredTransactionsCSV() {
+  try {
+    if (!visibleTransactions.length) {
+      showStatus('No transactions to export', 'error');
+      return;
+    }
+    showStatus('Preparing CSV...', 'info');
+    const metadata = await _fetchExportMetadata();
+    const csv = generateCSV(metadata, visibleTransactions);
+    await navigator.clipboard.writeText(csv);
+    showStatus('CSV copied to clipboard!', 'success');
+    setTimeout(() => clearStatus(), 2000);
+  } catch (clipboardError) {
+    showStatus('Failed to copy to clipboard', 'error');
+  }
 }
 
 // ============================================================

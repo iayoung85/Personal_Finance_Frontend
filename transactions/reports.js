@@ -432,45 +432,68 @@ function _generateBalanceCSV(data) {
 }
 
 function _generateCategoryCSV(data) {
-  let csv = '"Category",' + data.periods.map(period => `"${_csvEscape(period)}"`).join(',') + ',"Total"\n';
+  const monthNames = ['January','February','March','April','May','June',
+                      'July','August','September','October','November','December'];
 
-  csv += '"Income"\n';
+  // Extract short month name from each period label (e.g. "11/1/25 - 11/30/25" → "November")
+  const periodMonths = data.periods.map(period => {
+    const monthNum = parseInt(period.split('/')[0], 10);
+    return monthNames[monthNum - 1] || '';
+  });
+
+  let csv = ',"Primary Category","Detailed Category",' + data.periods.map(period => `"${_csvEscape(period)}"`).join(',') + ',"Total"\n';
+
+  csv += '"Income",,,' + periodMonths.map(m => `"${m}"`).join(',') + '\n';
   for (const [category, catData] of Object.entries(data.income)) {
-    csv += `,"${_csvEscape(category)}"`;
+    csv += _splitCategoryColumns(category);
     for (const amount of catData.amounts) { csv += `,${amount}`; }
     csv += `,${catData.total}\n`;
   }
-  csv += '"Total Income"';
+  csv += ',,"Total Income"';
   for (const val of data.total_income_row) { csv += `,${val}`; }
   csv += `,${data.total_income_grand}\n`;
 
   csv += '"Expenses"\n';
   for (const [category, catData] of Object.entries(data.expenses)) {
-    csv += `,"${_csvEscape(category)}"`;
+    csv += _splitCategoryColumns(category);
     for (const amount of catData.amounts) { csv += `,${amount}`; }
     csv += `,${catData.total}\n`;
   }
-  csv += '"Total Expenses"';
+  csv += ',,"Total Expenses"';
   for (const val of data.total_expenses_row) { csv += `,${val}`; }
   csv += `,${data.total_expenses_grand}\n`;
 
   if (data.transfers) {
     csv += '"Transfers"\n';
     for (const [category, catData] of Object.entries(data.transfers)) {
-      csv += `,"${_csvEscape(category)}"`;
+      csv += _splitCategoryColumns(category);
       for (const amount of catData.amounts) { csv += `,${amount}`; }
       csv += `,${catData.total}\n`;
     }
-    csv += '"Total Transfers"';
+    csv += ',,"Total Transfers"';
     for (const val of data.total_transfers_row) { csv += `,${val}`; }
     csv += `,${data.total_transfers_grand}\n`;
   }
 
-  csv += '"Total"';
+  csv += ',,"Total"';
   for (const val of data.total_row) { csv += `,${val}`; }
   csv += `,${data.total_grand}\n`;
 
   return csv;
+}
+
+/**
+ * Split "Primary: Detailed" into two CSV columns.
+ * If no colon, primary gets the full name and detailed is empty.
+ */
+function _splitCategoryColumns(category) {
+  const colonIndex = category.indexOf(':');
+  if (colonIndex === -1) {
+    return `,"${_csvEscape(category)}",`;
+  }
+  const primary = category.substring(0, colonIndex).trim();
+  const detailed = category.substring(colonIndex + 1).trim();
+  return `,"${_csvEscape(primary)}","${_csvEscape(detailed)}"`;
 }
 
 

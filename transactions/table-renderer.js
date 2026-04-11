@@ -98,6 +98,7 @@ function renderTransactionTable() {
   const container = document.getElementById('table-container');
   
   if (transactions.length === 0) {
+    visibleTransactions = [];
     container.innerHTML = '<div class="empty-state">No transactions found. Sync transactions first.</div>';
     document.getElementById('export-buttons').classList.add('hidden');
     document.getElementById('pending-table-container').innerHTML = '';
@@ -207,6 +208,7 @@ function renderTransactionTable() {
   });
   
   if (filteredTransactions.length === 0) {
+    visibleTransactions = [];
     container.innerHTML = '<div class="empty-state">No transactions found for the selected criteria.</div>';
     document.getElementById('export-buttons').classList.add('hidden');
     document.getElementById('pending-table-container').innerHTML = '';
@@ -214,6 +216,8 @@ function renderTransactionTable() {
     renderInsightsPanel(); // Still render empty insights
     return;
   }
+
+  visibleTransactions = filteredTransactions;
   
   // Separate transactions into blocks per blueprint structure:
   // 1. Scheduled future (source='scheduled', status='future')
