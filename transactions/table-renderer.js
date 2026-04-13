@@ -108,20 +108,7 @@ let _virtualScrollBound = false;
 let _virtualScrollRaf = 0;
 let _lastRenderedRange = { start: -1, end: -1 };
 
-/**
- * Tag a row HTML string with vrow-even when its logical index is even.
- * Separator rows are not tagged — they have their own distinct styling.
- */
-function _tagRowParity(rowHtml) {
-  if (_virtualRows.length % 2 === 0) {
-    // Inject into existing class attribute, or add one if bare <tr ...>
-    if (rowHtml.indexOf('<tr class="') !== -1) {
-      return rowHtml.replace('<tr class="', '<tr class="vrow-even ');
-    }
-    return rowHtml.replace('<tr ', '<tr class="vrow-even" ');
-  }
-  return rowHtml;
-}
+
 
 /**
  * Render only the rows visible in the current scroll viewport plus a buffer.
@@ -155,7 +142,24 @@ function _renderVisibleWindow(container) {
     bodyHtml += `<tr class="virtual-spacer"><td colspan="${_virtualColCount}" style="height:${topSpacerH}px"></td></tr>`;
   }
   for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
-    bodyHtml += _virtualRows[rowIndex];
+    const entry = _virtualRows[rowIndex];
+    if (typeof entry === 'string') {
+      bodyHtml += entry;
+    } else {
+      if (entry.html === null) {
+        let html = entry.fn();
+        if (entry.even) {
+          if (html.indexOf('<tr class="') !== -1) {
+            html = html.replace('<tr class="', '<tr class="vrow-even ');
+          } else {
+            html = html.replace('<tr ', '<tr class="vrow-even" ');
+          }
+        }
+        entry.html = html;
+        entry.fn = null;
+      }
+      bodyHtml += entry.html;
+    }
   }
   if (bottomSpacerH > 0) {
     bodyHtml += `<tr class="virtual-spacer"><td colspan="${_virtualColCount}" style="height:${bottomSpacerH}px"></td></tr>`;
@@ -617,8 +621,8 @@ function renderTransactionTable() {
       const splitAmountMismatch = Math.abs(splitChildSum - parentAmount) > 0.01;
 
       if (splitAmountMismatch) {
-        // Render the parent row (not children) with a repair prompt.
-        // The split children are hidden until the user fixes the split.
+        const _rowParity = _virtualRows.length % 2 === 0;
+        _virtualRows.push({ even: _rowParity, html: null, fn: () => {
         let rowHtml = '';
         const dateStr = formatDate(txn.date);
         const formattedAmount = _fmtCurrency(parentAmount, txn.iso_currency_code);
@@ -685,7 +689,8 @@ function renderTransactionTable() {
         }
 
         rowHtml += '<td></td></tr>';
-        _virtualRows.push(_tagRowParity(rowHtml));
+        return rowHtml;
+        }});
         renderedTxnIds.add(txn.transaction_id);
         return;
       }
@@ -701,6 +706,8 @@ function renderTransactionTable() {
       }
 
       visibleSplits.forEach((split, idx) => {
+        const _rowParity = _virtualRows.length % 2 === 0;
+        _virtualRows.push({ even: _rowParity, html: null, fn: () => {
         let rowHtml = '';
         const dateStr = formatDate(split.date);
         
@@ -834,7 +841,8 @@ function renderTransactionTable() {
         }
         
         rowHtml += `</tr>`;
-        _virtualRows.push(_tagRowParity(rowHtml));
+        return rowHtml;
+        }});
       });
       
       renderedTxnIds.add(txn.transaction_id);
@@ -842,10 +850,13 @@ function renderTransactionTable() {
     }
 
     // ── Normal (non-split) transaction rendering ──
-    // Classify once, dispatch to the type-specific renderer in row-renderers.js
-    // txnRowType already computed above for block boundary logic — reuse it.
-    let rowHtml = '';
     const txnId = txn.transaction_id || '';
+    if (txn.is_hidden) {
+      _hiddenTxnIdSet.add(txnId);
+    }
+    const _rowParity = _virtualRows.length % 2 === 0;
+    _virtualRows.push({ even: _rowParity, html: null, fn: () => {
+    let rowHtml = '';
     const accountId = txn.account_id || '';
     const isTransfer = isTransferCategory(txn.user_category) || !!txn.transfer_pair_id;
 
@@ -1063,12 +1074,8 @@ function renderTransactionTable() {
 
     rowHtml += '</tr>';
 
-    // Track hidden transactions for data-driven batch unhide
-    if (isHiddenRow) {
-      _hiddenTxnIdSet.add(txnId);
-    }
-
-    _virtualRows.push(_tagRowParity(rowHtml));
+    return rowHtml;
+    }});
   });
   
   // ── Virtual scroll: render visible window + wire scroll listener ──
