@@ -1100,9 +1100,12 @@ function renderTransactionTable() {
   // Attach event listeners for category dropdowns
   attachCategoryDropdownListeners();
   
-  // Defer chart and insights to separate tasks so the table paints first
-  setTimeout(renderCategoryChart, 0);
-  setTimeout(renderInsightsPanel, 0);
+  // Yield to browser: rAF waits for the next frame (after paint),
+  // then setTimeout pushes work to a separate task after that frame.
+  requestAnimationFrame(() => {
+    setTimeout(renderCategoryChart, 0);
+    setTimeout(renderInsightsPanel, 0);
+  });
 
   // Update the batch-unhide toolbar with hidden transaction count
   _updateHiddenTransactionCount();
