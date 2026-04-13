@@ -201,7 +201,7 @@ db.version(1).stores({
 ## Next steps
 1. **Phase 2:** ~~Add Dexie dependency, create `db.js`, `db-worker.js`, `worker-client.js`. Wire into `api.js`. Run one-time localStorage → IndexedDB migration.~~ **DONE**
 2. **Phase 3:** ~~Rip out all localStorage transaction cache code.~~ **DONE** Remaining: streaming reads, incremental writes.
-3. **Phase 4:** Add virtual scrolling to table renderer.
+3. **Phase 4:** Add virtual scrolling to table renderer. **DONE**
 
 ---
 
