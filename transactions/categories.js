@@ -998,15 +998,23 @@ async function unlinkTransfer(txnId) {
       return;
     }
 
+    const data = await response.json();
+
     showStatus('Transfer pair unlinked', 'success');
-    // Refresh both transactions and sidebar balances — the unlinked
-    // counterpart may have changed a different account's balance.
-    await Promise.all([fetchAllTransactions(true), loadAccounts()]);
+
+    // Surgical cache patch — replace only the 2 affected transactions
+    // instead of refetching all 10k+ rows from the server.
+    if (data.affected_transactions) {
+      data.affected_transactions.forEach(txnObj => {
+        _replaceCachedTransaction(txnObj.transaction_id, txnObj);
+      });
+    }
+    _invalidateTransactionCache();
 
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
-      renderTransactionTable();
     }
+    renderTransactionTable();
 
     setTimeout(() => clearStatus(), 3000);
   } catch (error) {
