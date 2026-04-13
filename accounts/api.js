@@ -46,7 +46,6 @@ async function refreshAccessToken() {
 
 async function authenticatedFetch(url, options = {}) {
   const headers = {
-    'ngrok-skip-browser-warning': 'true',
     'Authorization': `Bearer ${token}`,
     ...options.headers
   };
@@ -133,7 +132,7 @@ async function apiFetchBanks(includeArchived = true) {
  */
 async function apiFetchCategories() {
   const url = `${BACKEND_URL}/api/accounts/reference/categories`;
-  const response = await fetch(url, { headers: { 'ngrok-skip-browser-warning': 'true' } }); // No auth required
+  const response = await fetch(url); // No auth required
   if (!response.ok) {
     throw new Error('Failed to fetch categories');
   }
@@ -147,7 +146,7 @@ async function apiFetchCategories() {
  */
 async function apiFetchPopularInstitutions() {
   const url = `${BACKEND_URL}/api/accounts/reference/popular-institutions`;
-  const response = await fetch(url, { headers: { 'ngrok-skip-browser-warning': 'true' } }); // No auth required
+  const response = await fetch(url); // No auth required
   if (!response.ok) {
     throw new Error('Failed to fetch popular institutions');
   }
@@ -162,7 +161,7 @@ async function apiFetchPopularInstitutions() {
  */
 async function apiSearchInstitutions(query) {
   const url = `${BACKEND_URL}/api/accounts/reference/search-institutions?q=${encodeURIComponent(query)}`;
-  const response = await fetch(url, { headers: { 'ngrok-skip-browser-warning': 'true' } }); // No auth required
+  const response = await fetch(url); // No auth required
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || 'Failed to search institutions');

@@ -84,14 +84,14 @@ function detectBackendUrl() {
             if (failures === ports.length && !resolved) {
               // No local backend found — fall back to production
               resolved = true;
-              resolve('https://lenient-present-terrapin.ngrok-free.app');
+              resolve('https://api.isaacyoung.com');
             }
           });
       });
     });
   } else {
-    // Production — backend is proxied through the permanent ngrok tunnel
-    return Promise.resolve('https://lenient-present-terrapin.ngrok-free.app');
+    // Production — backend is on a permanent Cloudflare Tunnel
+    return Promise.resolve('https://api.isaacyoung.com');
   }
 }
 

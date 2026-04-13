@@ -5,7 +5,6 @@
 
 async function authenticatedFetch(url, options = {}) {
   const headers = {
-    'ngrok-skip-browser-warning': 'true',
     'Authorization': `Bearer ${authToken}`,
     'Content-Type': 'application/json',
     ...options.headers

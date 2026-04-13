@@ -1350,7 +1350,6 @@ const IndexConnectionsList = (() => {
     try {
       const response = await fetch(
         `${window.BACKEND_URL || 'http://localhost:8000'}/api/accounts/reference/popular-institutions`,
-        { headers: { 'ngrok-skip-browser-warning': 'true' } },
       );
       const data = await response.json();
       _renderInstitutionResults(data.institutions || []);
@@ -1367,7 +1366,6 @@ const IndexConnectionsList = (() => {
       try {
         const response = await fetch(
           `${window.BACKEND_URL || 'http://localhost:8000'}/api/accounts/reference/popular-institutions`,
-          { headers: { 'ngrok-skip-browser-warning': 'true' } },
         );
         const data = await response.json();
         _renderInstitutionResults(data.institutions || []);
@@ -1382,7 +1380,6 @@ const IndexConnectionsList = (() => {
     try {
       const response = await fetch(
         `${window.BACKEND_URL || 'http://localhost:8000'}/api/accounts/reference/search-institutions?q=${encodeURIComponent(query)}`,
-        { headers: { 'ngrok-skip-browser-warning': 'true' } },
       );
       const data = await response.json();
       const institutions = data.institutions || [];

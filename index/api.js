@@ -12,7 +12,6 @@ const IndexApi = (() => {
   async function authenticatedFetch(url, options = {}) {
     const headers = {
       'Authorization': `Bearer ${IndexState.getAuthToken()}`,
-      'ngrok-skip-browser-warning': 'true', // Bypass ngrok's interstitial on localhost
       ...options.headers,
     };
     const response = await fetch(url, { ...options, headers, cache: 'no-cache' });
@@ -60,7 +59,7 @@ const IndexApi = (() => {
 
     const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       cache: 'no-cache',
     });
@@ -71,7 +70,7 @@ const IndexApi = (() => {
   async function register(payload) {
     const response = await fetch(`${BACKEND_URL}/api/auth/register`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       cache: 'no-cache',
     });
@@ -81,7 +80,6 @@ const IndexApi = (() => {
 
   async function checkRegistrationStatus() {
     const response = await fetch(`${BACKEND_URL}/api/auth/registration-status`, {
-      headers: { 'ngrok-skip-browser-warning': 'true' },
       cache: 'no-cache',
     });
     const data = await response.json();
@@ -91,7 +89,7 @@ const IndexApi = (() => {
   async function forgotPassword(email, frontendUrl) {
     const response = await fetch(`${BACKEND_URL}/api/auth/forgot_password`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, frontend_url: frontendUrl }),
       cache: 'no-cache',
     });
