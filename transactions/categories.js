@@ -957,18 +957,25 @@ async function _applyTransferAssignment(txnId, sourceAccountId, targetAccount) {
       hideTransfersCheckbox.checked = false;
     }
 
-    // Refresh transactions and sidebar balances — the counterpart
-    // transaction changes the target account's balance.
-    await Promise.all([fetchAllTransactions(true), loadAccounts()]);
+    // Surgical cache patch — replace only the affected transactions
+    // instead of refetching all 10k+ rows from the server.
+    if (result.affected_transactions) {
+      result.affected_transactions.forEach(txnObj => {
+        _replaceCachedTransaction(txnObj.transaction_id, txnObj);
+      });
+    }
+    _invalidateTransactionCache();
 
-    // fetchAllTransactions renders the table immediately, but reads the stale
-    // balanceHistoryLookup that was built when the account was last selected.
-    // Re-fetching history and re-rendering ensures the new transfer transaction
-    // row shows a running balance without the user having to re-click the account.
+    // Patch balance history cache for the target account (create path
+    // adds a new transaction that shifts the running balance).
+    if (result.affected_balance_history && result.counterpart_account_id) {
+      _patchBalanceHistoryCache(result.counterpart_account_id, result.affected_balance_history);
+    }
+
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
-      renderTransactionTable();
     }
+    renderTransactionTable();
 
     // Build a descriptive status message
     const unhideNote = wasHidden ? ' ("Hide Transfers" unchecked so you can see it)' : '';
