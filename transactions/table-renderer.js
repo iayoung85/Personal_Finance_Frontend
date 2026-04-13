@@ -187,6 +187,18 @@ function _onVirtualScroll() {
 }
 
 
+// Cached currency formatters — Intl.NumberFormat construction is expensive
+// (~0.5-2ms each). Reusing a single instance per currency across 3000+ rows
+// eliminates thousands of redundant locale-resolution calls.
+const _currencyFormatCache = {};
+function _fmtCurrency(value, currencyCode) {
+  const code = currencyCode || 'USD';
+  if (!_currencyFormatCache[code]) {
+    _currencyFormatCache[code] = new Intl.NumberFormat('en-US', { style: 'currency', currency: code });
+  }
+  return _currencyFormatCache[code].format(value);
+}
+
 function renderTransactionTable() {
   const container = document.getElementById('table-container');
   
@@ -609,9 +621,7 @@ function renderTransactionTable() {
         // The split children are hidden until the user fixes the split.
         let rowHtml = '';
         const dateStr = formatDate(txn.date);
-        const formattedAmount = new Intl.NumberFormat('en-US', {
-          style: 'currency', currency: txn.iso_currency_code || 'USD'
-        }).format(parentAmount);
+        const formattedAmount = _fmtCurrency(parentAmount, txn.iso_currency_code);
         const parentAmountCellClass = parentAmount < 0
           ? 'ledger-amount-cell ledger-negative'
           : 'ledger-amount-cell';
@@ -667,7 +677,7 @@ function renderTransactionTable() {
             ? scheduledLedgerLookup[lookupKey]
             : isPendingRow ? pendingLedgerLookup[lookupKey] : balanceHistoryLookup[lookupKey];
           if (runningBal !== undefined) {
-            const fmtBal = new Intl.NumberFormat('en-US', { style: 'currency', currency: txn.iso_currency_code || 'USD' }).format(runningBal);
+            const fmtBal = _fmtCurrency(runningBal, txn.iso_currency_code);
             rowHtml += `<td class="ledger-cell${runningBal < 0 ? ' ledger-negative' : ''}">${fmtBal}</td>`;
           } else {
             rowHtml += '<td class="ledger-cell ledger-unavailable">—</td>';
@@ -696,10 +706,7 @@ function renderTransactionTable() {
         
         // Amount is already in ledger convention (positive=inflow, negative=outflow)
         const displayAmount = split.amount;
-        const amount = new Intl.NumberFormat('en-US', { 
-          style: 'currency', 
-          currency: split.iso_currency_code || 'USD' 
-        }).format(displayAmount);
+        const amount = _fmtCurrency(displayAmount, split.iso_currency_code);
         const splitAmountCellClass = displayAmount < 0
           ? 'ledger-amount-cell ledger-negative'
           : 'ledger-amount-cell';
@@ -807,10 +814,7 @@ function renderTransactionTable() {
               ? scheduledLedgerLookup[parentLookupKey]
               : isPendingRow ? pendingLedgerLookup[parentLookupKey] : balanceHistoryLookup[parentLookupKey];
             if (parentRunningBalance !== undefined) {
-              const formattedParentBalance = new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: split.iso_currency_code || 'USD'
-              }).format(parentRunningBalance);
+              const formattedParentBalance = _fmtCurrency(parentRunningBalance, split.iso_currency_code);
               const negativeClass = parentRunningBalance < 0 ? ' ledger-negative' : '';
               rowHtml += `<td class="ledger-cell${negativeClass}">${formattedParentBalance}</td>`;
             } else {
@@ -907,10 +911,7 @@ function renderTransactionTable() {
     }
 
     // ── Amount cell ──
-    const amount = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: txn.iso_currency_code || 'USD'
-    }).format(txn.amount);
+    const amount = _fmtCurrency(txn.amount, txn.iso_currency_code);
     const amountCellClass = txn.amount < 0
       ? 'ledger-amount-cell ledger-negative'
       : 'ledger-amount-cell';
@@ -926,19 +927,13 @@ function renderTransactionTable() {
         // BILL_MISSING / MANUAL_MISSING are excluded from the ledger walk.
         ledgerBalanceHtml = '<td class="ledger-cell ledger-unavailable">N/A</td>';
       } else if (txnRowType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING && txn.balance_at_date != null) {
-        const formattedBal = new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: txn.iso_currency_code || 'USD'
-        }).format(txn.balance_at_date);
+        const formattedBal = _fmtCurrency(txn.balance_at_date, txn.iso_currency_code);
         const negClass = txn.balance_at_date < 0 ? ' ledger-negative' : '';
         ledgerBalanceHtml = `<td class="ledger-cell${negClass}" title="Account balance at ${txn.date}">${formattedBal}</td>`;
       } else if (isOpeningBalanceRow && txn.balance_at_date != null) {
         // OB/MOB rows carry the account balance as it stood at that point in
         // time — display that directly rather than looking up the walk history.
-        const formattedBal = new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: txn.iso_currency_code || 'USD'
-        }).format(txn.balance_at_date);
+        const formattedBal = _fmtCurrency(txn.balance_at_date, txn.iso_currency_code);
         const negClass = txn.balance_at_date < 0 ? ' ledger-negative' : '';
         ledgerBalanceHtml = `<td class="ledger-cell${negClass}" title="Account balance as of ${txn.date}">${formattedBal}</td>`;
       } else {
@@ -946,10 +941,7 @@ function renderTransactionTable() {
             ? scheduledLedgerLookup[txn.transaction_id]
             : isPendingRow ? pendingLedgerLookup[txn.transaction_id] : balanceHistoryLookup[txn.transaction_id];
         if (runningBalance !== undefined) {
-          const formattedBalance = new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: txn.iso_currency_code || 'USD'
-          }).format(runningBalance);
+          const formattedBalance = _fmtCurrency(runningBalance, txn.iso_currency_code);
           const negativeClass = runningBalance < 0 ? ' ledger-negative' : '';
           const projectedClass = isFutureBlockRow ? ' ledger-projected' : '';
           ledgerBalanceHtml = `<td class="ledger-cell${negativeClass}${projectedClass}">${formattedBalance}</td>`;
@@ -1100,12 +1092,8 @@ function renderTransactionTable() {
   // Attach event listeners for category dropdowns
   attachCategoryDropdownListeners();
   
-  // Yield to browser: rAF waits for the next frame (after paint),
-  // then setTimeout pushes work to a separate task after that frame.
-  requestAnimationFrame(() => {
-    setTimeout(renderCategoryChart, 0);
-    setTimeout(renderInsightsPanel, 0);
-  });
+  renderCategoryChart();
+  renderInsightsPanel();
 
   // Update the batch-unhide toolbar with hidden transaction count
   _updateHiddenTransactionCount();
