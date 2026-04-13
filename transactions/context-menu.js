@@ -1025,11 +1025,15 @@ function _invalidateTransactionCache() {
 
 /**
  * Batch unhide: unhides all currently selected hidden transactions.
- * Called from the batch toolbar that appears when "Show Hidden" is active.
+ * Uses the data-driven _selectedHiddenTxnIds set so off-screen rows
+ * (not in the DOM due to virtual scroll) are included.
  */
 async function batchUnhideSelected() {
+  // Merge DOM-checked IDs into the data set (covers the visible rows)
   const checkboxes = document.querySelectorAll('.hidden-txn-checkbox:checked');
-  const transactionIds = Array.from(checkboxes).map(cb => cb.dataset.txnId);
+  checkboxes.forEach(cb => _selectedHiddenTxnIds.add(cb.dataset.txnId));
+
+  const transactionIds = Array.from(_selectedHiddenTxnIds);
 
   if (transactionIds.length === 0) {
     showStatus('No hidden transactions selected', 'error');
@@ -1065,10 +1069,11 @@ async function batchUnhideSelected() {
 
 /**
  * Batch unhide all hidden transactions visible in current filter view.
+ * Uses the data-driven _hiddenTxnIdSet so all hidden transactions are
+ * included regardless of virtual scroll position.
  */
 async function batchUnhideAll() {
-  const checkboxes = document.querySelectorAll('.hidden-txn-checkbox');
-  const transactionIds = Array.from(checkboxes).map(cb => cb.dataset.txnId);
+  const transactionIds = Array.from(_hiddenTxnIdSet);
 
   if (transactionIds.length === 0) {
     showStatus('No hidden transactions to unhide', 'error');

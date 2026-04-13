@@ -62,3 +62,8 @@ let reconciliationStatus = null;
 // triggers the balance-history fetch and table re-render.
 let _sidebarSelectDebounceTimer = null;
 const SIDEBAR_SELECT_DEBOUNCE_MS = 250;
+
+// Virtual scroll: data-driven hidden transaction tracking so batch-unhide
+// works correctly even when off-screen rows are not in the DOM.
+let _hiddenTxnIdSet = new Set();
+let _selectedHiddenTxnIds = new Set();

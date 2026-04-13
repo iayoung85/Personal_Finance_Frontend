@@ -103,6 +103,17 @@ $(document).ready(async function() {
 
   // ── Delegated event handlers ──────────────────────────────
 
+  // Track hidden-txn checkbox state for data-driven batch unhide
+  // (virtual scroll means off-screen rows have no DOM checkboxes)
+  $(document).on('change', '.hidden-txn-checkbox', function() {
+    const txnId = this.dataset.txnId;
+    if (this.checked) {
+      _selectedHiddenTxnIds.add(txnId);
+    } else {
+      _selectedHiddenTxnIds.delete(txnId);
+    }
+  });
+
   // Re-render table when optional field checkboxes toggle
   $(document).on('change', '.field-checkbox', function() {
     renderTransactionTable();

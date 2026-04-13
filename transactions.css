@@ -793,7 +793,9 @@ td.description-column {
 td.category-column .category-cell {
   min-width: 0;
 }
-tr:nth-child(even) {
+/* Zebra striping — applied via class at build time so virtual scroll
+   preserves correct alternation regardless of DOM position. */
+tr.vrow-even {
   background: var(--bg-surface-elevated);
 }
 tr:hover {
@@ -3186,10 +3188,18 @@ tr:hover {
   font-style: italic;
 }
 
-/* ── Block tbody backgrounds ── */
+/* ── Block section backgrounds (applied at row level for virtual scroll) ── */
 
-.scheduled-tbody {
+.scheduled-row {
   background: rgba(99,102,241,0.04);
+}
+
+/* ── Virtual scroll spacer rows ── */
+
+.virtual-spacer td {
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
 }
 
 /* ── Block separator rows ── */
@@ -3876,11 +3886,8 @@ tr:hover {
    when "Show Pending" is toggled on in settings.
    ============================================================ */
 
-.pending-tbody {
-  background: rgba(204,167,0,0.04);
-}
-
 .pending-row {
+  background: rgba(204,167,0,0.04);
   opacity: 0.72;
 }
 

@@ -94,6 +94,99 @@ function _isUnmatchedPlaidLedgerRow(txn) {
 }
 
 
+// ── Virtual Scroll Engine ──────────────────────────────────────
+// Only the rows visible in the viewport (plus a buffer) are rendered
+// to the DOM. This eliminates the ~550ms browser parse/layout cost
+// of dumping 10k+ <tr> nodes via innerHTML in one shot.
+const VIRTUAL_ROW_HEIGHT = 44;
+const VIRTUAL_BUFFER_ROWS = 30;
+
+let _virtualRows = [];
+let _virtualHeaderHtml = '';
+let _virtualColCount = 0;
+let _virtualScrollBound = false;
+let _virtualScrollRaf = 0;
+let _lastRenderedRange = { start: -1, end: -1 };
+
+/**
+ * Tag a row HTML string with vrow-even when its logical index is even.
+ * Separator rows are not tagged — they have their own distinct styling.
+ */
+function _tagRowParity(rowHtml) {
+  if (_virtualRows.length % 2 === 0) {
+    // Inject into existing class attribute, or add one if bare <tr ...>
+    if (rowHtml.indexOf('<tr class="') !== -1) {
+      return rowHtml.replace('<tr class="', '<tr class="vrow-even ');
+    }
+    return rowHtml.replace('<tr ', '<tr class="vrow-even" ');
+  }
+  return rowHtml;
+}
+
+/**
+ * Render only the rows visible in the current scroll viewport plus a buffer.
+ * On first call (no existing <table>), builds the full table structure.
+ * On subsequent calls (scroll), updates only the <tbody> content so the
+ * sticky <thead> stays stable and column widths don't flicker.
+ */
+function _renderVisibleWindow(container) {
+  if (!_virtualRows.length) {
+    container.innerHTML = '<div class="empty-state">No transactions found for the selected criteria.</div>';
+    return;
+  }
+
+  const scrollPane = document.querySelector('.transaction-scroll-pane');
+  const scrollTop = scrollPane ? scrollPane.scrollTop : 0;
+  const viewportHeight = scrollPane ? scrollPane.clientHeight : 800;
+
+  const totalRows = _virtualRows.length;
+  const startRow = Math.max(0, Math.floor(scrollTop / VIRTUAL_ROW_HEIGHT) - VIRTUAL_BUFFER_ROWS);
+  const visibleCount = Math.ceil(viewportHeight / VIRTUAL_ROW_HEIGHT);
+  const endRow = Math.min(totalRows, startRow + visibleCount + VIRTUAL_BUFFER_ROWS * 2);
+
+  if (startRow === _lastRenderedRange.start && endRow === _lastRenderedRange.end) return;
+  _lastRenderedRange = { start: startRow, end: endRow };
+
+  const topSpacerH = startRow * VIRTUAL_ROW_HEIGHT;
+  const bottomSpacerH = Math.max(0, (totalRows - endRow) * VIRTUAL_ROW_HEIGHT);
+
+  let bodyHtml = '';
+  if (topSpacerH > 0) {
+    bodyHtml += `<tr class="virtual-spacer"><td colspan="${_virtualColCount}" style="height:${topSpacerH}px"></td></tr>`;
+  }
+  for (let rowIndex = startRow; rowIndex < endRow; rowIndex++) {
+    bodyHtml += _virtualRows[rowIndex];
+  }
+  if (bottomSpacerH > 0) {
+    bodyHtml += `<tr class="virtual-spacer"><td colspan="${_virtualColCount}" style="height:${bottomSpacerH}px"></td></tr>`;
+  }
+
+  const existingTable = container.querySelector('table');
+  if (existingTable) {
+    const tbody = existingTable.querySelector('tbody');
+    if (tbody) {
+      tbody.innerHTML = bodyHtml;
+      return;
+    }
+  }
+  container.innerHTML = _virtualHeaderHtml + '<tbody>' + bodyHtml + '</tbody></table>';
+}
+
+/**
+ * Scroll handler — coalesces rapid scroll events via requestAnimationFrame
+ * so we repaint at most once per frame (~16ms).
+ */
+function _onVirtualScroll() {
+  if (_virtualScrollRaf) return;
+  _virtualScrollRaf = requestAnimationFrame(() => {
+    _virtualScrollRaf = 0;
+    const container = document.getElementById('table-container');
+    if (!container || !_virtualRows.length) return;
+    _renderVisibleWindow(container);
+  });
+}
+
+
 function renderTransactionTable() {
   const container = document.getElementById('table-container');
   
@@ -382,34 +475,34 @@ function renderTransactionTable() {
   
   const showLogoColumn = optionalFields.includes('merchant_logo');
 
-  let html = '<table><thead><tr>';
+  _virtualHeaderHtml = '<table><thead><tr>';
   if (showLogoColumn) {
-    html += '<th class="th-logo" style="width: 36px;"></th>';
+    _virtualHeaderHtml += '<th class="th-logo" style="width: 36px;"></th>';
   }
-  html += '<th class="th-date">Date</th>';
+  _virtualHeaderHtml += '<th class="th-date">Date</th>';
   if (showBankAccountColumn) {
-    html += '<th>Bank/Account</th>';
+    _virtualHeaderHtml += '<th>Bank/Account</th>';
   }
-  html += '<th class="th-description">Description</th>';
+  _virtualHeaderHtml += '<th class="th-description">Description</th>';
   
-  html += '<th class="th-category">Category</th>';
-  if (optionalFields.includes('source')) html += '<th class="th-type">Type</th>';
+  _virtualHeaderHtml += '<th class="th-category">Category</th>';
+  if (optionalFields.includes('source')) _virtualHeaderHtml += '<th class="th-type">Type</th>';
   
   // Optional column headers
-  if (optionalFields.includes('payment_channel')) html += '<th class="th-channel">Channel</th>';
-  if (optionalFields.includes('authorized_datetime')) html += '<th class="th-authorized">Authorized</th>';
-  if (optionalFields.includes('personal_finance_category')) html += '<th class="th-plaid-category">Plaid Category</th>';
+  if (optionalFields.includes('payment_channel')) _virtualHeaderHtml += '<th class="th-channel">Channel</th>';
+  if (optionalFields.includes('authorized_datetime')) _virtualHeaderHtml += '<th class="th-authorized">Authorized</th>';
+  if (optionalFields.includes('personal_finance_category')) _virtualHeaderHtml += '<th class="th-plaid-category">Plaid Category</th>';
   
   // Amount is always pinned toward the right edge of the table,
   // regardless of single-account vs all-accounts view.
-  html += '<th class="th-amount">Amount</th>';
+  _virtualHeaderHtml += '<th class="th-amount">Amount</th>';
   if (showLedgerColumn) {
-    html += '<th class="th-ledger">Balance Ledger</th>';
+    _virtualHeaderHtml += '<th class="th-ledger">Balance Ledger</th>';
   }
   
-  html += '<th style="width: 24px;"></th>'; // Action button column
+  _virtualHeaderHtml += '<th style="width: 24px;"></th>'; // Action button column
 
-  html += '</tr></thead>';
+  _virtualHeaderHtml += '</tr></thead>';
   
   // Calculate column count for separator row
   let colCount = showBankAccountColumn ? 5 : 4; // Date, (Bank), Description, Amount, Delete
@@ -420,15 +513,12 @@ function renderTransactionTable() {
   if (optionalFields.includes('authorized_datetime')) colCount++;
   if (optionalFields.includes('personal_finance_category')) colCount++;
   if (showLedgerColumn) colCount++; // Balance Ledger
+  _virtualColCount = colCount;
   
-  // Open first tbody based on which block comes first
-  if (hasScheduledToShow) {
-    html += '<tbody class="scheduled-tbody">';
-  } else if (hasPendingToShow) {
-    html += '<tbody class="pending-tbody">';
-  } else {
-    html += '<tbody>';
-  }
+  // Initialize virtual rows array and hidden transaction tracking
+  _virtualRows = [];
+  _hiddenTxnIdSet = new Set();
+  _selectedHiddenTxnIds = new Set();
   
   // Track which transactions we've already rendered (split children)
   const renderedTxnIds = new Set();
@@ -470,21 +560,14 @@ function renderTransactionTable() {
     if (!scheduledSectionEnded && !isFutureBlockRow) {
       scheduledSectionEnded = true;
       const schedCount = scheduledFuture.length;
-      html += `<tr class="scheduled-separator-row"><td colspan="${colCount}">▲ ${schedCount} Future Transaction${schedCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
-      html += '</tbody>';
-      if (isPendingRow) {
-        html += '<tbody class="pending-tbody">';
-      } else {
-        html += '<tbody>';
-      }
+      _virtualRows.push(`<tr class="scheduled-separator-row"><td colspan="${colCount}">▲ ${schedCount} Future Transaction${schedCount !== 1 ? 's' : ''} Above ▲</td></tr>`);
     }
 
     // Separator: end of pending block → start of posted
     if (!pendingSectionEnded && !isPendingRow && !isFutureBlockRow) {
       pendingSectionEnded = true;
       const pendingCount = pendingTransactions.length;
-      html += `<tr class="pending-separator-row"><td colspan="${colCount}">▲ ${pendingCount} Pending Transaction${pendingCount !== 1 ? 's' : ''} Above ▲</td></tr>`;
-      html += '</tbody><tbody>';
+      _virtualRows.push(`<tr class="pending-separator-row"><td colspan="${colCount}">▲ ${pendingCount} Pending Transaction${pendingCount !== 1 ? 's' : ''} Above ▲</td></tr>`);
     }
 
     // --- Zone bookmark separators (plaid-synced / manual-historical) ---
@@ -493,13 +576,13 @@ function renderTransactionTable() {
       // Emit "Manual Historical" right after the OB row, before the next transaction
       if (passedOpeningBalance && !emittedManualSep) {
         emittedManualSep = true;
-        html += `<tr class="zone-separator manual-zone"><td colspan="${colCount}"><span class="zone-arrows">▼▼▼</span> manual historical <span class="zone-arrows">▼▼▼</span></td></tr>`;
+        _virtualRows.push(`<tr class="zone-separator manual-zone"><td colspan="${colCount}"><span class="zone-arrows">▼▼▼</span> manual historical <span class="zone-arrows">▼▼▼</span></td></tr>`);
       }
       // Emit "Plaid-Synced" right before the OB row (only if plaid txns exist)
       if (!emittedPlaidSep && txn.source === 'opening_balance') {
         emittedPlaidSep = true;
         if (hasPlaidTxns) {
-          html += `<tr class="zone-separator plaid-zone"><td colspan="${colCount}"><span class="zone-arrows">▲▲▲</span> plaid-synced <span class="zone-arrows">▲▲▲</span></td></tr>`;
+          _virtualRows.push(`<tr class="zone-separator plaid-zone"><td colspan="${colCount}"><span class="zone-arrows">▲▲▲</span> plaid-synced <span class="zone-arrows">▲▲▲</span></td></tr>`);
         }
         passedOpeningBalance = true;
       }
@@ -524,6 +607,7 @@ function renderTransactionTable() {
       if (splitAmountMismatch) {
         // Render the parent row (not children) with a repair prompt.
         // The split children are hidden until the user fixes the split.
+        let rowHtml = '';
         const dateStr = formatDate(txn.date);
         const formattedAmount = new Intl.NumberFormat('en-US', {
           style: 'currency', currency: txn.iso_currency_code || 'USD'
@@ -541,7 +625,7 @@ function renderTransactionTable() {
         const mismatchMemoText = txn.user_memo || '';
         const mismatchMemoHtml = `<span class="txn-memo-text" data-txn-id="${escapeHtml(parentTxnId)}" title="${escapeHtml(mismatchMemoText)}">${mismatchMemoText ? escapeHtml(mismatchMemoText) : '<em class="memo-placeholder">add memo…</em>'}</span>`;
 
-        html += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-account-id="${escapeHtml(txn.account_id || txn.plaid_account_id || '')}" data-amount="${parentAmount || 0}" data-is-split="true" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(txn.date || '')}">
+        rowHtml += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-account-id="${escapeHtml(txn.account_id || txn.plaid_account_id || '')}" data-amount="${parentAmount || 0}" data-is-split="true" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(txn.date || '')}">
           ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
           <td>${escapeHtml(dateStr)}</td>
           ${showBankAccountColumn ? `<td>${escapeHtml(txn.bank_account || '')}</td>` : ''}
@@ -553,7 +637,7 @@ function renderTransactionTable() {
           </td>`;
 
         // Category cell with split-mismatch repair UI (matches header: Description → Category → Type)
-        html += `<td class="split-mismatch-cell">
+        rowHtml += `<td class="split-mismatch-cell">
           <span class="split-mismatch-badge" title="Split amounts no longer add up to the transaction total. This can happen when a matched transaction has a different amount than the original.">⚠ Split broken</span>
           <button class="split-badge-btn split-repair-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Repair splits — amounts no longer match parent total">Repair</button>
           <button class="split-badge-btn split-delete-badge" onclick="handleDeleteSplit('${escapeHtml(parentTxnId)}')" title="Delete all splits and revert to unsplit">🗑</button>
@@ -564,19 +648,19 @@ function renderTransactionTable() {
           const isConverted = txn.source === 'plaid' && txn.status === 'converted';
           const sourceLabel = txn.source === 'manual' ? 'Manual' : isConverted ? 'Prior Download' : 'Downloaded';
           const sourceCssClass = txn.source === 'manual' ? 'manual' : isConverted ? 'plaid-converted' : 'plaid';
-          html += `<td><span class="source-badge ${sourceCssClass}">${sourceLabel}</span></td>`;
+          rowHtml += `<td><span class="source-badge ${sourceCssClass}">${sourceLabel}</span></td>`;
         }
 
         // Fill remaining optional columns
-        if (optionalFields.includes('payment_channel')) html += `<td>${escapeHtml(txn.payment_channel || '')}</td>`;
+        if (optionalFields.includes('payment_channel')) rowHtml += `<td>${escapeHtml(txn.payment_channel || '')}</td>`;
         if (optionalFields.includes('original_description')) {
           const preOverrideText = txn.user_description_override ? escapeHtml(txn.description || txn.name || '') : 'no override';
-          html += `<td class="pre-override-cell">${preOverrideText}</td>`;
+          rowHtml += `<td class="pre-override-cell">${preOverrideText}</td>`;
         }
-        if (optionalFields.includes('authorized_datetime')) html += '<td></td>';
-        if (optionalFields.includes('personal_finance_category')) html += '<td></td>';
+        if (optionalFields.includes('authorized_datetime')) rowHtml += '<td></td>';
+        if (optionalFields.includes('personal_finance_category')) rowHtml += '<td></td>';
 
-        html += `<td class="${parentAmountCellClass}">${formattedAmount}</td>`;
+        rowHtml += `<td class="${parentAmountCellClass}">${formattedAmount}</td>`;
         if (showLedgerColumn) {
           const lookupKey = txn.transaction_id;
           const runningBal = isFutureBlockRow
@@ -584,13 +668,14 @@ function renderTransactionTable() {
             : isPendingRow ? pendingLedgerLookup[lookupKey] : balanceHistoryLookup[lookupKey];
           if (runningBal !== undefined) {
             const fmtBal = new Intl.NumberFormat('en-US', { style: 'currency', currency: txn.iso_currency_code || 'USD' }).format(runningBal);
-            html += `<td class="ledger-cell${runningBal < 0 ? ' ledger-negative' : ''}">${fmtBal}</td>`;
+            rowHtml += `<td class="ledger-cell${runningBal < 0 ? ' ledger-negative' : ''}">${fmtBal}</td>`;
           } else {
-            html += '<td class="ledger-cell ledger-unavailable">—</td>';
+            rowHtml += '<td class="ledger-cell ledger-unavailable">—</td>';
           }
         }
 
-        html += '<td></td></tr>';
+        rowHtml += '<td></td></tr>';
+        _virtualRows.push(_tagRowParity(rowHtml));
         renderedTxnIds.add(txn.transaction_id);
         return;
       }
@@ -606,6 +691,7 @@ function renderTransactionTable() {
       }
 
       visibleSplits.forEach((split, idx) => {
+        let rowHtml = '';
         const dateStr = formatDate(split.date);
         
         // Amount is already in ledger convention (positive=inflow, negative=outflow)
@@ -634,7 +720,7 @@ function renderTransactionTable() {
         const splitMemoPlaceholder = 'add memo…';
         const splitMemoLineHtml = `<span class="txn-memo-text" data-txn-id="${escapeHtml(split.transaction_id)}" data-split-index="${idx}" title="${escapeHtml(splitMemoText)}">${splitMemoText ? escapeHtml(splitMemoText) : `<em class="memo-placeholder">${splitMemoPlaceholder}</em>`}</span>`;
 
-        html += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-parent-txn-id="${escapeHtml(parentTxnId)}" data-split-txn-id="${escapeHtml(split.transaction_id)}" data-split-index="${idx}" data-source="split" data-status="cleared" data-account-id="${escapeHtml(txn.account_id || txn.plaid_account_id || '')}" data-amount="${displayAmount || 0}" data-is-split="true" data-txn-description="${escapeHtml(split.description || split.name || txn.description || txn.name || '')}" data-user-category="${escapeHtml(split.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(split.date || txn.date || '')}">
+        rowHtml += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-parent-txn-id="${escapeHtml(parentTxnId)}" data-split-txn-id="${escapeHtml(split.transaction_id)}" data-split-index="${idx}" data-source="split" data-status="cleared" data-account-id="${escapeHtml(txn.account_id || txn.plaid_account_id || '')}" data-amount="${displayAmount || 0}" data-is-split="true" data-txn-description="${escapeHtml(split.description || split.name || txn.description || txn.name || '')}" data-user-category="${escapeHtml(split.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(split.date || txn.date || '')}">
           ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
           <td>${escapeHtml(dateStr)}</td>
           ${showBankAccountColumn ? `<td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>` : ''}
@@ -664,7 +750,7 @@ function renderTransactionTable() {
           'Type to search categories…',
           splitEditBtn
         );
-        html += `<td class="category-column">${splitCategoryAutocomplete}</td>`;
+        rowHtml += `<td class="category-column">${splitCategoryAutocomplete}</td>`;
 
         // Type/source column after category (matching normal row order)
         if (optionalFields.includes('source')) {
@@ -672,16 +758,16 @@ function renderTransactionTable() {
           const sourceLabel = txn.source === 'manual' ? 'Manual' : isConverted ? 'Prior Download' : 'Downloaded';
           const sourceCssClass = txn.source === 'manual' ? 'manual' : isConverted ? 'plaid-converted' : 'plaid';
           const sourceBadge = `<span class="source-badge ${sourceCssClass}">${sourceLabel}</span>`;
-          html += `<td>${sourceBadge}</td>`;
+          rowHtml += `<td>${sourceBadge}</td>`;
         }
         
         // Add optional field columns
         if (optionalFields.includes('payment_channel')) {
-          html += `<td>${escapeHtml(split.payment_channel || '')}</td>`;
+          rowHtml += `<td>${escapeHtml(split.payment_channel || '')}</td>`;
         }
         if (optionalFields.includes('original_description')) {
           const splitPreOverride = txn.user_description_override ? escapeHtml(txn.description || txn.name || '') : 'no override';
-          html += `<td class="pre-override-cell">${splitPreOverride}</td>`;
+          rowHtml += `<td class="pre-override-cell">${splitPreOverride}</td>`;
         }
         if (optionalFields.includes('authorized_datetime')) {
           let authDisplay = '';
@@ -695,7 +781,7 @@ function renderTransactionTable() {
           } else if (split.authorized_date) {
             authDisplay = split.authorized_date;
           }
-          html += `<td>${escapeHtml(authDisplay)}</td>`;
+          rowHtml += `<td>${escapeHtml(authDisplay)}</td>`;
         }
         if (optionalFields.includes('personal_finance_category')) {
           let plaidCategoryDisplay = '';
@@ -708,13 +794,13 @@ function renderTransactionTable() {
             const displayDetailed = formatCategoryDisplay(trimmed);
             plaidCategoryDisplay = `${displayPrimary}${displayDetailed ? ': ' + displayDetailed : ''}`;
           }
-          html += `<td class="plaid-category-cell" title="${escapeHtml(plaidCategoryDisplay)}">${escapeHtml(plaidCategoryDisplay)}</td>`;
+          rowHtml += `<td class="plaid-category-cell" title="${escapeHtml(plaidCategoryDisplay)}">${escapeHtml(plaidCategoryDisplay)}</td>`;
         }
         
         // Add split action badges on first row only
         if (isFirstSplit) {
           // Amount is always right-aligned; in ledger view add balance too
-          html += `<td class="${splitAmountCellClass}">${amount}</td>`;
+          rowHtml += `<td class="${splitAmountCellClass}">${amount}</td>`;
           if (showLedgerColumn) {
             const parentLookupKey = txn.transaction_id;
             const parentRunningBalance = isFutureBlockRow
@@ -726,24 +812,25 @@ function renderTransactionTable() {
                 currency: split.iso_currency_code || 'USD'
               }).format(parentRunningBalance);
               const negativeClass = parentRunningBalance < 0 ? ' ledger-negative' : '';
-              html += `<td class="ledger-cell${negativeClass}">${formattedParentBalance}</td>`;
+              rowHtml += `<td class="ledger-cell${negativeClass}">${formattedParentBalance}</td>`;
             } else {
-              html += '<td class="ledger-cell ledger-unavailable">—</td>';
+              rowHtml += '<td class="ledger-cell ledger-unavailable">—</td>';
             }
           }
-          html += `<td class="split-actions-cell">
+          rowHtml += `<td class="split-actions-cell">
             <button class="split-badge-btn split-delete-badge" onclick="handleDeleteSplit('${escapeHtml(parentTxnId)}')" title="Delete splits">🗑</button>
           </td>`;
         } else {
           // Non-top split children: show amount but dash for ledger
-          html += `<td class="${splitAmountCellClass}">${amount}</td>`;
+          rowHtml += `<td class="${splitAmountCellClass}">${amount}</td>`;
           if (showLedgerColumn) {
-            html += '<td class="ledger-cell ledger-unavailable">—</td>';
+            rowHtml += '<td class="ledger-cell ledger-unavailable">—</td>';
           }
-          html += `<td></td>`;
+          rowHtml += `<td></td>`;
         }
         
-        html += `</tr>`;
+        rowHtml += `</tr>`;
+        _virtualRows.push(_tagRowParity(rowHtml));
       });
       
       renderedTxnIds.add(txn.transaction_id);
@@ -753,6 +840,7 @@ function renderTransactionTable() {
     // ── Normal (non-split) transaction rendering ──
     // Classify once, dispatch to the type-specific renderer in row-renderers.js
     // txnRowType already computed above for block boundary logic — reuse it.
+    let rowHtml = '';
     const txnId = txn.transaction_id || '';
     const accountId = txn.account_id || '';
     const isTransfer = isTransferCategory(txn.user_category) || !!txn.transfer_pair_id;
@@ -900,7 +988,7 @@ function renderTransactionTable() {
     const hiddenClass = isHiddenRow ? ' txn-hidden' : '';
     const rowCssClass = rendered.rowCssClass;
     const combinedClass = (rowCssClass || '') + hiddenClass;
-    html += `<tr${combinedClass ? ` class="${combinedClass.trim()}"` : ''}${rowDataAttrs}>`;
+    rowHtml += `<tr${combinedClass ? ` class="${combinedClass.trim()}"` : ''}${rowDataAttrs}>`;
 
     // Hidden-row checkbox (for batch unhide) — rendered as first visible cell content
     const hiddenCheckboxHtml = isHiddenRow && showHiddenEnabled
@@ -908,13 +996,13 @@ function renderTransactionTable() {
       : '';
 
     if (showLogoColumn) {
-      html += `<td class="logo-cell">${hiddenCheckboxHtml}${_renderLogoCell(txn)}</td>`;
+      rowHtml += `<td class="logo-cell">${hiddenCheckboxHtml}${_renderLogoCell(txn)}</td>`;
     }
-    html += `<td class="date-column${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="date"' : ''}>${!showLogoColumn ? hiddenCheckboxHtml : ''}${dateStr}</td>`;
+    rowHtml += `<td class="date-column${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="date"' : ''}>${!showLogoColumn ? hiddenCheckboxHtml : ''}${dateStr}</td>`;
     if (showBankAccountColumn) {
-      html += `<td>${txn.bank_account}</td>`;
+      rowHtml += `<td>${txn.bank_account}</td>`;
     }
-    html += `<td class="description-column"${isDescEditable ? ' data-field="description"' : ''}>
+    rowHtml += `<td class="description-column"${isDescEditable ? ' data-field="description"' : ''}>
       <div class="desc-two-line">
         <div class="desc-top-line">${fullBadge}${pendingBadge}<span class="${topLineClass}" title="${escapeHtml(effectiveDisplayName)}">${escapeHtml(topLineText)}</span></div>
         <div class="desc-memo-line">${memoLineHtml}</div>
@@ -922,16 +1010,16 @@ function renderTransactionTable() {
     </td>`;
 
     // Category cell
-    html += `<td class="category-column">${rendered.categoryCell}</td>`;
+    rowHtml += `<td class="category-column">${rendered.categoryCell}</td>`;
 
     // Type badge column (optional field) — placed after category
     if (optionalFields.includes('source')) {
       const sb = rendered.sourceBadge;
-      html += `<td><span class="source-badge ${sb.cssClass}" data-tooltip="${sb.title}">${sb.label}</span></td>`;
+      rowHtml += `<td><span class="source-badge ${sb.cssClass}" data-tooltip="${sb.title}">${sb.label}</span></td>`;
     }
 
     // Optional field cells (type-agnostic)
-    if (optionalFields.includes('payment_channel')) html += `<td>${txn.payment_channel || ''}</td>`;
+    if (optionalFields.includes('payment_channel')) rowHtml += `<td>${txn.payment_channel || ''}</td>`;
     if (optionalFields.includes('authorized_datetime')) {
       let authDisplay = '';
       let authTooltip = '';
@@ -947,7 +1035,7 @@ function renderTransactionTable() {
         authDisplay = txn.authorized_date;
         authTooltip = txn.authorized_date;
       }
-      html += `<td class="auth-date-cell"${authTooltip ? ` title="${escapeHtml(authTooltip)}"` : ''}>${authDisplay}</td>`;
+      rowHtml += `<td class="auth-date-cell"${authTooltip ? ` title="${escapeHtml(authTooltip)}"` : ''}>${authDisplay}</td>`;
     }
     if (optionalFields.includes('personal_finance_category')) {
       let plaidCategoryDisplay = '';
@@ -960,7 +1048,7 @@ function renderTransactionTable() {
         const displayDetailed = formatCategoryDisplay(trimmed);
         plaidCategoryDisplay = `${displayPrimary}${displayDetailed ? ': ' + displayDetailed : ''}`;
       }
-      html += `<td class="plaid-category-cell" title="${escapeHtml(plaidCategoryDisplay)}">${escapeHtml(plaidCategoryDisplay)}</td>`;
+      rowHtml += `<td class="plaid-category-cell" title="${escapeHtml(plaidCategoryDisplay)}">${escapeHtml(plaidCategoryDisplay)}</td>`;
     }
 
     // Amount is always pinned toward the right edge
@@ -973,19 +1061,40 @@ function renderTransactionTable() {
       : '';
     const amountPrefix = isVariableBill ? '~' : '';
     const amountDisplay = isOpeningBalanceRow ? '—' : `${amountPrefix}${amount}${variableDot}`;
-    html += `<td class="${amountCellClass}${extraAmountClass}${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="amount"' : ''}>${amountDisplay}</td>`;
+    rowHtml += `<td class="${amountCellClass}${extraAmountClass}${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="amount"' : ''}>${amountDisplay}</td>`;
     if (showLedgerColumn) {
-      html += ledgerBalanceHtml;
+      rowHtml += ledgerBalanceHtml;
     }
 
     // Action column — provided by the type-specific renderer
-    html += rendered.actionCell;
+    rowHtml += rendered.actionCell;
 
-    html += '</tr>';
+    rowHtml += '</tr>';
+
+    // Track hidden transactions for data-driven batch unhide
+    if (isHiddenRow) {
+      _hiddenTxnIdSet.add(txnId);
+    }
+
+    _virtualRows.push(_tagRowParity(rowHtml));
   });
   
-  html += '</tbody></table>';
-  container.innerHTML = html;
+  // ── Virtual scroll: render visible window + wire scroll listener ──
+  // Clear existing table so the header is rebuilt (columns may have changed)
+  container.innerHTML = '';
+  const scrollPane = document.querySelector('.transaction-scroll-pane');
+  if (scrollPane) scrollPane.scrollTop = 0;
+  _lastRenderedRange = { start: -1, end: -1 };
+  _renderVisibleWindow(container);
+
+  if (!_virtualScrollBound) {
+    const pane = document.querySelector('.transaction-scroll-pane');
+    if (pane) {
+      pane.addEventListener('scroll', _onVirtualScroll, { passive: true });
+      _virtualScrollBound = true;
+    }
+  }
+
   document.getElementById('export-buttons').classList.remove('hidden');
   
   // Attach event listeners for category dropdowns
@@ -1003,14 +1112,14 @@ function renderTransactionTable() {
 
 /**
  * Updates the hidden transaction count badge in the batch-unhide toolbar.
- * Counts how many hidden rows are currently rendered in the table.
+ * Uses the data-driven _hiddenTxnIdSet so the count is correct even when
+ * off-screen rows are not in the DOM (virtual scroll).
  */
 function _updateHiddenTransactionCount() {
   const countEl = document.getElementById('hidden-txn-count');
   if (!countEl) return;
 
-  const hiddenCheckboxes = document.querySelectorAll('.hidden-txn-checkbox');
-  const count = hiddenCheckboxes.length;
+  const count = _hiddenTxnIdSet.size;
   countEl.textContent = count > 0
     ? `${count} hidden transaction${count !== 1 ? 's' : ''}`
     : 'No hidden transactions';
