@@ -490,7 +490,7 @@ function _renderSidebarAccountItem(acc, formatSidebarCurrency) {
   return `
     <div class="sidebar-account-item ${selectedClass}" tabindex="0"
          data-account-id="${acc.account_id}"
-         onclick="selectAccount('${acc.account_id}')"
+         onclick="selectAccount('${acc.account_id}', true)"
          oncontextmenu="event.preventDefault(); _showAccountContextMenu(event, '${acc.account_id}', false)">
       <div class="sidebar-account-label">
         ${syncDot}<span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span><span class="sidebar-account-mask">${displayNameSuffix}</span>
