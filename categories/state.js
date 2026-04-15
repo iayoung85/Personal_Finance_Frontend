@@ -32,8 +32,6 @@ let lastSelectedCustomPrimaryIndex = null;
 // Auth state
 let token = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
-let idleTimeout;
-const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 
 // Status message auto-dismiss timer

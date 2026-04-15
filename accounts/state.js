@@ -8,8 +8,6 @@
 let token = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
 let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
-let idleTimeout;
-const IDLE_TIMEOUT = 30 * 60 * 1000;
 
 // Data caches
 let banksCache = [];          // Array of bank objects (with nested accounts)

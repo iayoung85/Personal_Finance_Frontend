@@ -18,9 +18,6 @@ $(document).ready(async function () {
     return;
   }
 
-  resetIdleTimeout();
-  setupActivityListeners();
-
   // 2. Load banks (with nested accounts) and category reference in parallel
   showToast('Loading accounts…', 'info');
   try {

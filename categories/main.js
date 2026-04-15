@@ -34,9 +34,6 @@ document.addEventListener('DOMContentLoaded', async function initCategoriesPage(
     return;
   }
 
-  resetIdleTimeout();
-  setupActivityListeners();
-
   // Load all categorization data (cache-first, then network)
   await loadCategorizationData();
 

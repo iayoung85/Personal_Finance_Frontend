@@ -12,9 +12,6 @@ let refreshToken = localStorage.getItem('refreshToken');
 let currentUser = null;
 try { currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null'); } catch (_) { currentUser = null; }
 
-const IDLE_TIMEOUT = 15 * 60 * 1000;
-let idleTimeout = null;
-
 // ── App State ───────────────────────────────────────────────
 let allBills = [];
 let allAccounts = [];
@@ -135,7 +132,6 @@ async function refreshAccessToken() {
         refreshToken = data.refresh_token;
         localStorage.setItem('refreshToken', refreshToken);
       }
-      resetIdleTimeout();
       return true;
     }
     return false;
@@ -158,27 +154,6 @@ async function authenticatedFetch(url, options = {}) {
     window.location.href = 'index.html';
   }
   return response;
-}
-
-function resetIdleTimeout() {
-  if (window.LOCAL_AUTO_LOGIN_ENABLED) return;
-  if (idleTimeout) clearTimeout(idleTimeout);
-  if (token && currentUser) {
-    idleTimeout = setTimeout(() => {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('currentUser');
-      alert('You have been logged out due to inactivity.');
-      window.location.href = 'index.html';
-    }, IDLE_TIMEOUT);
-  }
-}
-
-function setupActivityListeners() {
-  if (window.LOCAL_AUTO_LOGIN_ENABLED) return;
-  ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'].forEach(eventName => {
-    document.addEventListener(eventName, resetIdleTimeout, true);
-  });
 }
 
 // ── Status helpers ──────────────────────────────────────────
@@ -882,9 +857,6 @@ $(document).ready(function () {
       window.location.href = 'index.html';
       return;
     }
-
-    setupActivityListeners();
-    resetIdleTimeout();
 
     try {
       // Fetch accounts, bills, and categories in parallel

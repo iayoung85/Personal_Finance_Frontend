@@ -218,7 +218,6 @@ async function refreshAccessToken() {
         refreshToken = data.refresh_token;
         localStorage.setItem('refreshToken', refreshToken);
       }
-      resetIdleTimeout();
       return true;
     } else {
       return false;
@@ -257,38 +256,6 @@ async function authenticatedFetch(url, options = {}) {
   
   return response;
 }
-
-function resetIdleTimeout() {
-  if (window.LOCAL_AUTO_LOGIN_ENABLED) {
-    return;
-  }
-  // Clear existing timeout
-  if (idleTimeout) {
-    clearTimeout(idleTimeout);
-  }
-  
-  // Only set idle timeout if user is logged in
-  if (token && currentUser) {
-    idleTimeout = setTimeout(() => {
-      logout();
-      alert('You have been logged out due to inactivity for security reasons.');
-    }, IDLE_TIMEOUT);
-  }
-}
-
-function setupActivityListeners() {
-  if (window.LOCAL_AUTO_LOGIN_ENABLED) {
-    return;
-  }
-  // List of events that indicate user activity
-  const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
-  
-  events.forEach(event => {
-    document.addEventListener(event, resetIdleTimeout, true);
-  });
-}
-
-
 
 function logout() {
   localStorage.removeItem('authToken');

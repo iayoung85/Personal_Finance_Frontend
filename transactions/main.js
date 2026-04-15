@@ -16,8 +16,6 @@ $(document).ready(async function() {
     return;
   }
   setDefaultDates();
-  resetIdleTimeout();
-  setupActivityListeners();
 
   // Load accounts and settings in parallel; keep checkboxes unchecked until both complete
   await Promise.all([loadAccounts(), loadSettings()]);

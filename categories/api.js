@@ -39,7 +39,6 @@ async function refreshAccessToken() {
         refreshToken = data.refresh_token;
         localStorage.setItem('refreshToken', refreshToken);
       }
-      resetIdleTimeout();
       return true;
     } else {
       return false;
@@ -71,32 +70,6 @@ async function authenticatedFetch(url, options = {}) {
   }
 
   return response;
-}
-
-function resetIdleTimeout() {
-  if (window.LOCAL_AUTO_LOGIN_ENABLED) {
-    return;
-  }
-  if (idleTimeout) {
-    clearTimeout(idleTimeout);
-  }
-
-  if (token && currentUser) {
-    idleTimeout = setTimeout(() => {
-      logout();
-      alert('You have been logged out due to inactivity for security reasons.');
-    }, IDLE_TIMEOUT);
-  }
-}
-
-function setupActivityListeners() {
-  if (window.LOCAL_AUTO_LOGIN_ENABLED) {
-    return;
-  }
-  const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
-  events.forEach(eventName => {
-    document.addEventListener(eventName, resetIdleTimeout, true);
-  });
 }
 
 function logout() {

@@ -45,17 +45,8 @@ $(document).ready(async function() {
  */
 function initializePage() {
   setupSettingsMenu();
-  setupActivityListeners();
   renderGlobalDeletionBanner();
   loadProfileDetails();
-}
-
-/**
- * Placeholder for any page-wide activity tracking that may be
- * needed in the future (e.g. idle timeout, session heartbeat).
- */
-function setupActivityListeners() {
-  // No-op for now; reserved for future session management.
 }
 
 

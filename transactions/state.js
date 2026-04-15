@@ -26,8 +26,6 @@ let searchTokens = [];
 // Auth state
 let token = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
-let idleTimeout;
-const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 
 // Chart state

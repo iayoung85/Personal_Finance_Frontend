@@ -11,9 +11,6 @@ let refreshToken = localStorage.getItem('refreshToken');
 let currentUser = null;
 try { currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null'); } catch (_) { currentUser = null; }
 
-const IDLE_TIMEOUT = 15 * 60 * 1000;
-let idleTimeout = null;
-
 // ── App State ───────────────────────────────────────────────
 let allAlerts = [];
 let allCategories = [];
@@ -42,7 +39,6 @@ async function refreshAccessToken() {
         refreshToken = data.refresh_token;
         localStorage.setItem('refreshToken', refreshToken);
       }
-      resetIdleTimeout();
       return true;
     }
     return false;
@@ -69,24 +65,6 @@ async function authenticatedFetch(url, options = {}) {
   }
   return response;
 }
-
-function resetIdleTimeout() {
-  if (window.LOCAL_AUTO_LOGIN_ENABLED) return;
-  if (idleTimeout) clearTimeout(idleTimeout);
-  if (token && currentUser) {
-    idleTimeout = setTimeout(() => {
-      alert('You have been logged out due to inactivity.');
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('currentUser');
-      window.location.href = 'index.html';
-    }, IDLE_TIMEOUT);
-  }
-}
-
-['mousemove', 'keydown', 'click', 'scroll'].forEach(evt =>
-  document.addEventListener(evt, resetIdleTimeout, { passive: true })
-);
 
 // ── Category Autocomplete ────────────────────────────────────
 // Fetch/cache handled by shared/categories-autocomplete.js
@@ -660,7 +638,6 @@ async function init() {
       window.location.href = 'index.html';
       return;
     }
-    resetIdleTimeout();
   }
 
   const loading = document.getElementById('sa-loading');
