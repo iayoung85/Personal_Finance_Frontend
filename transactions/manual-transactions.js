@@ -29,8 +29,13 @@ function openAddManualTransactionModal() {
   
   // Group accounts: offline/manual first, then linked with a visual badge.
   // This makes it clear which accounts have date restrictions for manual txns.
-  const offlineAccounts = accounts.filter(a => a.connection_status !== 'linked');
-  const linkedAccounts = accounts.filter(a => a.connection_status === 'linked');
+  const visibleAccounts = accounts.filter(a => !a.is_hidden && !a.is_archived);
+  const offlineAccounts = visibleAccounts
+    .filter(a => a.connection_status !== 'linked')
+    .sort((a, b) => _buildAccountDisplayName(a).localeCompare(_buildAccountDisplayName(b)));
+  const linkedAccounts = visibleAccounts
+    .filter(a => a.connection_status === 'linked')
+    .sort((a, b) => _buildAccountDisplayName(a).localeCompare(_buildAccountDisplayName(b)));
 
   if (offlineAccounts.length > 0) {
     accountOptions += '<optgroup label="Offline / Manual Accounts">';

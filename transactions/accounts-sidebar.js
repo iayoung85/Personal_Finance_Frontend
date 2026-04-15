@@ -293,7 +293,8 @@ function renderAccountsSidebar() {
 
   // Separate visible vs hidden accounts
   const visibleAccounts = accounts.filter(acc => !acc.is_hidden);
-  const hiddenAccounts = accounts.filter(acc => acc.is_hidden);
+  const hiddenAccounts = accounts.filter(acc => acc.is_hidden)
+    .sort((a, b) => _buildAccountDisplayName(a).localeCompare(_buildAccountDisplayName(b)));
 
   // Compute total balance across visible accounts only
   const totalBalance = sumAccountBalances(visibleAccounts);

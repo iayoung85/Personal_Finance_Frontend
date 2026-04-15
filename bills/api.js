@@ -38,6 +38,7 @@ async function fetchAccounts() {
   (data.banks || []).forEach(bank => {
     const bankName = bank.bank_name || bank.custom_name || bank.institution_id || 'Bank';
     (bank.accounts || []).forEach(account => {
+      if (account.is_hidden) return;
       const mask = account.effective_mask || account.user_mask || account.mask;
       let namePart = account.custom_name || account.account_name || 'Account';
       if (showMask && mask && !namePart.includes(mask)) {
@@ -50,6 +51,7 @@ async function fetchAccounts() {
       });
     });
   });
+  flatAccounts.sort((a, b) => a.display_name.localeCompare(b.display_name));
   return flatAccounts;
 }
 

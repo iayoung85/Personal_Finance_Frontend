@@ -625,7 +625,12 @@ async function _handleContextEditSchedule(txnData) {
  */
 function _openInlineBillModal(billId, extraOptions) {
   const billModalAccounts = accounts
-    .filter(acct => !acct.is_archived)
+    .filter(acct => !acct.is_archived && !acct.is_hidden)
+    .sort((a, b) => {
+      const nameA = a.bank_name ? `${a.bank_name} - ${a.custom_name || a.account_name}` : (a.custom_name || a.account_name || '');
+      const nameB = b.bank_name ? `${b.bank_name} - ${b.custom_name || b.account_name}` : (b.custom_name || b.account_name || '');
+      return nameA.localeCompare(nameB);
+    })
     .map(acct => ({
       account_id: acct.account_id,
       display_name: acct.bank_name

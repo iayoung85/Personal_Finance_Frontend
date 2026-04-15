@@ -24,10 +24,11 @@ function openTransferAssignmentModal(transactionId, sourceAccountId, amount) {
   }).format(Math.abs(amount));
   const amountBadgeClass = isDebit ? 'debit' : 'credit';
 
-  // Build list of eligible target accounts (exclude source account and archived)
+  // Build list of eligible target accounts (exclude source, archived, and hidden)
   const eligibleAccounts = accounts.filter(account => {
     if (account.account_id === sourceAccountId) return false;
-    if (account.status === 'archived') return false;
+    if (account.is_archived || account.status === 'archived') return false;
+    if (account.is_hidden) return false;
     return true;
   });
 
@@ -46,6 +47,7 @@ function openTransferAssignmentModal(transactionId, sourceAccountId, amount) {
 
   let accountListHtml = '<ul class="transfer-account-list">';
   Object.entries(accountsByType).forEach(([accountType, accountGroup]) => {
+    accountGroup.sort((a, b) => _buildAccountDisplayName(a).localeCompare(_buildAccountDisplayName(b)));
     accountGroup.forEach(account => {
       const displayName = _buildAccountDisplayName(account);
       const typeLabel = accountType.charAt(0).toUpperCase() + accountType.slice(1);
