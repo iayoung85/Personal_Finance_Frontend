@@ -366,7 +366,11 @@ async function _saveRowInlineEdits() {
       // (investment performance) and balance shifts — full refresh required.
       await refreshAccountTransactions(editedAccountId || selectedAccountId);
       if (selectedAccountMode === 'single' && selectedAccountId) {
-        await fetchBalanceHistory(selectedAccountId);
+        if (data.affected_balance_history) {
+          _patchBalanceHistoryCache(editedAccountId || selectedAccountId, data.affected_balance_history);
+        } else {
+          await fetchBalanceHistory(selectedAccountId);
+        }
       }
 
       // Refresh account data before rendering so future-row balance

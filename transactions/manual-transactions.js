@@ -65,7 +65,7 @@ function openAddManualTransactionModal() {
     <div style="display: grid; gap: 14px;">
       <div id="manual-txn-error-banner" style="display:none; padding: 8px 12px; background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); border-radius: 4px; color: var(--color-danger); font-size: 13px;"></div>
       <div>
-        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Merchant Name (Optional)</label>
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Merchant Name and/or Description (Optional)</label>
         <input id="manual-txn-merchant" type="text" placeholder="e.g., Starbucks" class="modal-input" maxlength="128">
         <small style="color: var(--text-muted); margin-top: 2px; display: block;">Payee or merchant for this transaction</small>
       </div>
@@ -208,7 +208,7 @@ function openEditManualTransactionModal(transactionId) {
     <div style="display: grid; gap: 14px;">
       <div id="manual-txn-error-banner" style="display:none; padding: 8px 12px; background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); border-radius: 4px; color: var(--color-danger); font-size: 13px;"></div>
       <div>
-        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Merchant Name (Optional)</label>
+        <label style="display: block; font-weight: 500; margin-bottom: 6px;">Merchant Name And/Or Description (Optional)</label>
         <input id="manual-txn-merchant" type="text" value="${escapeHtml(txnMerchant)}" class="modal-input" maxlength="128">
       </div>
 

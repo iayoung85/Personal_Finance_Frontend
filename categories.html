@@ -162,6 +162,7 @@
               <div class="card-header">
                 <h3>Rules</h3>
               </div>
+              <p class="panel-note">Rules auto-categorize <strong>newly synced Plaid transactions</strong> AND any manual transactions a user creates where the category field is left blank, based on their description, merchant name, or amount. They do not retroactively change existing transactions.</p>
               <div class="rule-form">
                 <input id="rule-name" type="text" placeholder="Rule name">
                 <select id="rule-match-type">
@@ -217,7 +218,7 @@
 
             <div class="panel-actions">
               <button onclick="recategorizeAllTransactions()" class="btn-recategorize">
-                🔄 Recategorize All Transactions
+                🔄 Recategorize All Transactions. Nuclear option.
               </button>
             </div>
 

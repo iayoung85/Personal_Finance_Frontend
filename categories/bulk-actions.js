@@ -672,7 +672,7 @@ async function recategorizeAllTransactions() {
   // Step 2: Confirm with user
   if (!confirm(
     'Recategorize all historical transactions?\n\n' +
-    'This will re-run the categorization pipeline (mappings → rules → overrides) on all transactions. This may take a moment.'
+    'this is a nuclear option and will change your entire spending history if tracked via monthly category summaries. This will re-run the categorization pipeline (mappings → rules → overrides) on all transactions. This may take a moment. Are you sure you want to proceed?'
   )) {
     return;
   }

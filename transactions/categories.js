@@ -1097,6 +1097,9 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
   const txnMerchant   = txn?.merchant_name || '';
   const txnAmount     = txn?.amount != null ? Math.abs(txn.amount) : '';
   const txnCurrency   = txn?.iso_currency_code || 'USD';
+  const txnSource     = txn?.source || '';
+  const userOverride  = txn?.user_description_override || '';
+  const isManualTxn   = txnSource === 'manual';
 
   // Smart default: prefer merchant if available, fall back to description
   const hasMerchant = !!txnMerchant;
@@ -1108,6 +1111,45 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
   // Format amount for display
   const fmtAmount = txnAmount !== '' ? new Intl.NumberFormat('en-US', { style: 'currency', currency: txnCurrency }).format(txnAmount) : '—';
 
+  // Build the "Transaction being matched" preview rows.
+  // For Plaid txns: show the original Plaid data that rules match against,
+  // plus the user's override label if they renamed the description.
+  // For manual txns: description and merchant are often identical (merchant
+  // is the primary field), so collapse them into one row.
+  let previewRows = '';
+  if (isManualTxn) {
+    previewRows = `
+      <tr>
+        <td class="rule-modal-label">Merchant / Desc</td>
+        <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnMerchant || txnDescription) || '<em class="rule-modal-empty">empty</em>'}</td>
+      </tr>
+    `;
+  } else {
+    const overrideHint = (userOverride && userOverride !== txnDescription)
+      ? `<br><span style="color: var(--text-muted); font-size: 0.85em; font-family: inherit;">You renamed this to: <strong>${escapeHtml(userOverride)}</strong></span>`
+      : '';
+    previewRows = `
+      <tr>
+        <td class="rule-modal-label">Description</td>
+        <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnDescription) || '<em class="rule-modal-empty">empty</em>'}${overrideHint}</td>
+      </tr>
+      <tr>
+        <td class="rule-modal-label">Merchant</td>
+        <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnMerchant) || '<em class="rule-modal-empty">not available</em>'}</td>
+      </tr>
+    `;
+  }
+  previewRows += `
+    <tr>
+      <td class="rule-modal-label">Amount</td>
+      <td style="padding:3px 0; font-family: monospace;">${fmtAmount}</td>
+    </tr>
+  `;
+
+  const previewNote = isManualTxn
+    ? '<small style="color: var(--text-muted); display: block; margin-top: 6px;">Rules match against the merchant name and description you entered when creating this transaction.</small>'
+    : '<small style="color: var(--text-muted); display: block; margin-top: 6px;">Rules match against the original Plaid data shown above, not any custom labels you may have set.</small>';
+
   // Build rule configuration form — all colors use CSS variables so they
   // automatically match the VS Code dark theme defined in theme.css.
   const formHtml = `
@@ -1115,21 +1157,11 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
 
       <!-- Transaction preview so users can see what each field refers to -->
       <details open class="rule-modal-preview">
-        <summary style="font-weight: 600; cursor: pointer; user-select: none;">Transaction being matched</summary>
+        <summary style="font-weight: 600; cursor: pointer; user-select: none;">Data rules match against</summary>
         <table style="width:100%; margin-top: 8px; font-size: 0.92em; border-collapse: collapse;">
-          <tr>
-            <td class="rule-modal-label">Description</td>
-            <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnDescription) || '<em class="rule-modal-empty">empty</em>'}</td>
-          </tr>
-          <tr>
-            <td class="rule-modal-label">Merchant</td>
-            <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnMerchant) || '<em class="rule-modal-empty">not available</em>'}</td>
-          </tr>
-          <tr>
-            <td class="rule-modal-label">Amount</td>
-            <td style="padding:3px 0; font-family: monospace;">${fmtAmount}</td>
-          </tr>
+          ${previewRows}
         </table>
+        ${previewNote}
       </details>
 
       <div>
@@ -1185,12 +1217,12 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
         <span style="font-weight: 500;">Active</span>
       </label>
 
-      <!-- Editable category assignment — changing this also updates the
-           source transaction (override), same as editing it in the table. -->
+      <!-- Editable category assignment — changing this also recategorizes
+           this specific transaction (override for Plaid, direct edit for manual). -->
       <div class="rule-modal-category-block">
         <div class="rule-modal-category-header">
           <span class="rule-modal-category-title">Assign category</span>
-          <span class="rule-modal-category-sub">Changing this will also update this transaction</span>
+          <span class="rule-modal-category-sub">Editing this will also recategorize this transaction</span>
         </div>
         <div style="position: relative; margin-top: 8px;">
           <input id="rule-modal-category" type="text" value="${escapeHtml(originalCategory)}" placeholder="Type to search categories" autocomplete="off" class="modal-input">
@@ -1330,28 +1362,48 @@ async function submitCategoryRule(txnId, accountId, originalCategory) {
   }
 
   try {
-    // If the user changed the category, apply an override to the source
-    // transaction before creating the rule, so both changes land atomically
-    // from the user's perspective.
+    // If the user changed the category, update this specific transaction.
+    // For Plaid transactions: POST to the override API (creates an override record).
+    // For manual transactions: PUT to the manual update API (direct edit, no override).
     if (txnId && targetCategory !== originalCategory) {
-      const overrideResponse = await authenticatedFetch(
-        `${BACKEND_URL}/api/categorization/transactions/${encodeURIComponent(txnId)}/categorize`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_category: targetCategory })
+      const sourceTxn = transactions.find(t => t.transaction_id === txnId);
+      const isManual = sourceTxn && sourceTxn.source === 'manual';
+
+      if (isManual) {
+        const manualResponse = await authenticatedFetch(
+          `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(txnId)}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_category: targetCategory })
+          }
+        );
+        const manualData = await manualResponse.json();
+        if (!manualResponse.ok) {
+          showStatus(manualData.error || 'Failed to update transaction category', 'error');
+          return;
         }
-      );
-      const overrideData = await overrideResponse.json();
-      if (!overrideResponse.ok) {
-        showStatus(overrideData.error || 'Failed to update transaction category', 'error');
-        return;
-      }
-      // Sync the local transactions array so the table reflects this immediately
-      const txn = transactions.find(t => t.transaction_id === txnId);
-      if (txn) {
-        txn.user_category = overrideData.updated_category || targetCategory;
-        txn.is_override = true;
+        if (sourceTxn) {
+          sourceTxn.user_category = targetCategory;
+        }
+      } else {
+        const overrideResponse = await authenticatedFetch(
+          `${BACKEND_URL}/api/categorization/transactions/${encodeURIComponent(txnId)}/categorize`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_category: targetCategory })
+          }
+        );
+        const overrideData = await overrideResponse.json();
+        if (!overrideResponse.ok) {
+          showStatus(overrideData.error || 'Failed to update transaction category', 'error');
+          return;
+        }
+        if (sourceTxn) {
+          sourceTxn.user_category = overrideData.updated_category || targetCategory;
+          sourceTxn.is_override = true;
+        }
       }
     }
 
@@ -1379,22 +1431,13 @@ async function submitCategoryRule(txnId, accountId, originalCategory) {
     }
 
     closeModal();
-    showStatus(`Rule created: "${ruleName}". Recategorizing transactions...`, 'success');
 
-    // Backend already applied rule to matching transactions.
-    // Re-fetch transaction list if any were updated (no Plaid sync needed).
-    const updatedCount = data.transactions_updated || 0;
-    const skippedCount = data.overrides_skipped || 0;
-
-    if (updatedCount > 0 || skippedCount > 0) {
-      await fetchAllTransactions(true);
-      let msg = `Rule created: "${ruleName}" — applied to ${updatedCount} transaction${updatedCount !== 1 ? 's' : ''}`;
-      if (skippedCount > 0) {
-        msg += `. ${skippedCount} transaction${skippedCount !== 1 ? 's were' : ' was'} skipped because ${skippedCount !== 1 ? 'they have' : 'it has'} a manual override.`;
-      }
-      showStatus(msg, 'success');
+    const categoryChanged = targetCategory !== originalCategory;
+    if (categoryChanged) {
+      showStatus(`Rule created: "${ruleName}" — this transaction updated. Rule will apply to future syncs.`, 'success');
+      renderTransactionTable();
     } else {
-      showStatus(`Rule created: "${ruleName}" — will apply to future transactions`, 'success');
+      showStatus(`Rule created: "${ruleName}" — will apply to future syncs.`, 'success');
     }
 
     setTimeout(() => clearStatus(), 3000);
@@ -1670,7 +1713,7 @@ async function createRuleFromModal(targetCategory) {
     localStorage.removeItem('pf_catpage_cached_at');
   } catch (e) { /* cache removal failure is non-fatal */ }
 
-  showStatus(`Rule "${ruleName}" created successfully (${data.transactions_updated} transactions updated)`, 'success');
+  showStatus(`Rule "${ruleName}" created successfully. It will apply to future Plaid syncs.`, 'success');
   setTimeout(() => clearStatus(), 2000);
   
   // Close the modal after successful creation
@@ -1749,7 +1792,7 @@ async function loadAvailableCategories(forceNetwork = false) {
 }
 
 /**
- * Trigger backend recategorization of all transactions.
+ * DEAD CODE. Trigger backend recategorization of all transactions.
  * Updates the transactions table with computed user_category values.
  */
 async function recategorizeTransactions() {

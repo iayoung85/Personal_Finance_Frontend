@@ -221,13 +221,7 @@ async function _deleteRule(ruleId) {
       return;
     }
     closeModal();
-
-    const recategorized = data.transactions_recategorized || 0;
-    if (recategorized > 0) {
-      showStatus(`Rule deleted — ${recategorized} transaction${recategorized !== 1 ? 's' : ''} recategorized`, 'success');
-    } else {
-      showStatus('Rule deleted', 'success');
-    }
+    showStatus('Rule deleted', 'success');
 
     await loadCategorizationData(true);
   } catch (networkError) {

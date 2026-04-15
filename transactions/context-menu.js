@@ -247,23 +247,21 @@ function _buildMenuItems(txnData) {
   // Missing transactions get similar quick-fix options
   if (isMissing) {
     // Show "Mark Paid/Received" for BILL_MISSING and MANUAL_MISSING rows
-    // in accounts that don't accumulate plaid transactions. The only
-    // accounts where we block this action are linked non-investment
-    // accounts — those get regular plaid transaction syncs so the user
-    // should match instead.
+    // in all accounts. For linked accounts this allows users to mark a transaction as paid.
+    // when plaid fails to deliver the transaction in a timely fashion which is quite often.
     if (txnType === TXN_TYPE.BILL_MISSING || txnType === TXN_TYPE.MANUAL_MISSING) {
       const acct = accounts.find(findAcct => findAcct.account_id === txnData.accountId);
       const isLinkedNonInvestment = acct
         && acct.connection_status === 'linked'
         && acct.plaid_type !== 'investment';
-      if (!isLinkedNonInvestment) {
-        const markPaidLabel = txnData.amount < 0 ? '✅ Mark Paid' : '✅ Mark Received';
-        items.push({
-          label: markPaidLabel,
-          action: 'mark-paid-missing',
-          separator: false,
-        });
-      }
+      
+      const markPaidLabel = txnData.amount < 0 ? '✅ Mark Paid' : '✅ Mark Received';
+      items.push({
+        label: markPaidLabel,
+        action: 'mark-paid-missing',
+        separator: false,
+      });
+      
     }
     items.push({
       label: '✏️ Modify',
@@ -390,6 +388,24 @@ function _buildMenuItems(txnData) {
       action: 'make-transfer',
       separator: false,
     });
+  }
+
+  // "Match to Transaction" — MANUAL_CLEARED in linked depository accounts.
+  // When a user hand-enters a transaction and Plaid later delivers the real
+  // one, this lets them merge metadata onto the Plaid row instead of
+  // deleting and re-entering.
+  if (isManual) {
+    const matchAcct = accounts.find(findAcct => findAcct.account_id === txnData.accountId);
+    const isLinkedDepository = matchAcct
+      && matchAcct.connection_status === 'linked'
+      && matchAcct.plaid_type !== 'investment';
+    if (isLinkedDepository) {
+      items.push({
+        label: '🔗 Match to Transaction',
+        action: 'match-to-adjacent',
+        separator: false,
+      });
+    }
   }
 
   // Visual separator before destructive actions
@@ -716,7 +732,7 @@ async function _handleContextDeleteMissing(txnData) {
 }
 
 /**
- * Mark a BILL_MISSING row as paid in an offline or transitioned account.
+ * Mark a BILL_MISSING or MANUAL_MISSING row as paid in an offline or transitioned account.
  * Transitions BILL_MISSING → MANUAL_CLEARED via the resolve_missing
  * endpoint with action='keep'.
  */
