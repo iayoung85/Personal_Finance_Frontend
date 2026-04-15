@@ -468,10 +468,10 @@
             </select>
           </div>
 
-          <!-- Fiscal Year start-month selector — only visible when interval=monthly and type=category -->
-          <div class="reports-form-row" id="fiscal-year-row" style="display:none;">
+          <!-- Fiscal Year start-month selector — used by both report types -->
+          <div class="reports-form-row" id="fiscal-year-row">
             <label for="report-fiscal-month">Fiscal Year Start Month</label>
-            <select id="report-fiscal-month" class="modal-input">
+            <select id="report-fiscal-month" class="modal-input" onchange="_onFiscalMonthChange()">
               <option value="1">January</option>
               <option value="2">February</option>
               <option value="3">March</option>
@@ -485,19 +485,32 @@
               <option value="11" selected>November</option>
               <option value="12">December</option>
             </select>
-            <p class="reports-hint">Aligns the date range to a 12-month fiscal year starting in this month.</p>
           </div>
 
-          <div class="reports-form-row reports-date-row">
+          <!-- Balance mode: month/year pickers -->
+          <div class="reports-form-row reports-date-row" id="report-balance-dates">
             <div>
-              <label for="report-start-date">Start Date</label>
-              <input type="date" id="report-start-date" class="modal-input">
+              <label for="report-start-month">Start Month</label>
+              <input type="month" id="report-start-month" class="modal-input">
             </div>
             <div>
-              <label for="report-end-date">End Date</label>
-              <input type="date" id="report-end-date" class="modal-input">
+              <label for="report-end-month">End Month</label>
+              <input type="month" id="report-end-month" class="modal-input">
             </div>
           </div>
+
+          <!-- Category mode: year pickers + fiscal range preview -->
+          <div class="reports-form-row reports-date-row" id="report-category-dates" style="display:none;">
+            <div>
+              <label for="report-start-year">Start Year</label>
+              <select id="report-start-year" class="modal-input" onchange="_updateCategoryDatePreview()"></select>
+            </div>
+            <div>
+              <label for="report-end-year">End Year</label>
+              <select id="report-end-year" class="modal-input" onchange="_updateCategoryDatePreview()"></select>
+            </div>
+          </div>
+          <p id="report-category-preview" class="reports-hint" style="display:none;"></p>
 
           <!-- Options row — toggles vary by report type -->
           <div class="reports-form-row reports-options-row">

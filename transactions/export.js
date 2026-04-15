@@ -398,24 +398,27 @@ async function exportBalanceSnapshotJSON() {
 
 /**
  * Convert snapshot data into a CSV string.
- * Columns: Bank, Account, Type, Balance, Currency
- * Account name always includes the mask suffix (e.g. "Checking (...1234)").
+ * Columns: Bank, Account, [Mask], Type, Balance, Currency
+ * Mask column only appears when the showMaskWithName preference is enabled.
  * Includes a summary footer with category totals and net worth.
  */
 function _generateBalanceSnapshotCSV(data) {
+  const showMask = getAppConfig().showMaskWithName;
+
   let csv = `Balance Snapshot as of ${data.as_of_date}\n`;
-  csv += 'Bank,Account,Type,Balance,Currency\n';
+  csv += showMask ? 'Bank,Account,Mask,Type,Balance,Currency\n'
+                  : 'Bank,Account,Type,Balance,Currency\n';
 
   for (const bank of data.banks) {
     const bankName = (bank.bank_name || '').replace(/"/g, '""');
     for (const account of bank.accounts) {
-      let accountName = account.custom_name || account.account_name || '';
-      if (account.mask) {
-        accountName += ` (...${account.mask})`;
-      }
-      accountName = accountName.replace(/"/g, '""');
+      const accountName = (account.custom_name || account.account_name || '').replace(/"/g, '""');
       const subtypeLabel = (account.account_subcategory || account.account_category || '').replace(/_/g, ' ');
-      csv += `"${bankName}","${accountName}","${subtypeLabel}",${account.balance},${account.currency}\n`;
+      csv += `"${bankName}","${accountName}"`;
+      if (showMask) {
+        csv += `,"${account.effective_mask || ''}"`;
+      }
+      csv += `,"${subtypeLabel}",${account.balance},${account.currency}\n`;
     }
   }
 

@@ -18,23 +18,12 @@ function closeReportsModal() {
 
 /**
  * Set sensible defaults when the modal opens.
- * Start date = 3 years ago (first of that month).
- * End date = today.
+ * Balance mode: start = first month of the prior fiscal year, end = current month.
+ * Category mode: year selectors populated, preview shown.
  */
 function _initReportsDefaults() {
-  const now = new Date();
-  const threeYearsAgo = new Date(now.getFullYear() - 3, now.getMonth(), 1);
-
-  const startInput = document.getElementById('report-start-date');
-  const endInput = document.getElementById('report-end-date');
-
-  if (!startInput.value) {
-    startInput.value = _formatDateInput(threeYearsAgo);
-  }
-  if (!endInput.value) {
-    endInput.value = _formatDateInput(now);
-  }
-
+  _populateCategoryYearSelects();
+  _applyBalanceDateDefaults();
   _onReportTypeChange();
 }
 
@@ -43,6 +32,69 @@ function _formatDateInput(dateObj) {
   const month = String(dateObj.getMonth() + 1).padStart(2, '0');
   const day = String(dateObj.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+/** Format a Date as YYYY-MM for type="month" inputs. */
+function _formatMonthInput(dateObj) {
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+/** Read the selected fiscal start month (1-12). */
+function _getFiscalMonth() {
+  return parseInt(document.getElementById('report-fiscal-month').value, 10);
+}
+
+/**
+ * Compute the balance-mode default start month:
+ * first month of the fiscal year *before* the current fiscal year.
+ *
+ * Example: fiscal start = November, today = April 2026.
+ * Current FY started Nov 2025. Prior FY started Nov 2024.
+ * Default start = Nov 2024, default end = Apr 2026.
+ */
+function _applyBalanceDateDefaults() {
+  const now = new Date();
+  const fiscalMonth = _getFiscalMonth();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+
+  // Determine what year the current fiscal year started
+  let currentFiscalStartYear = currentYear;
+  if (currentMonth < fiscalMonth) {
+    currentFiscalStartYear = currentYear - 1;
+  }
+  // Prior fiscal year started one year before that
+  const priorFiscalStartYear = currentFiscalStartYear - 1;
+
+  const startInput = document.getElementById('report-start-month');
+  const endInput = document.getElementById('report-end-month');
+
+  startInput.value = _formatMonthInput(new Date(priorFiscalStartYear, fiscalMonth - 1, 1));
+  endInput.value = _formatMonthInput(now);
+}
+
+/** Populate start/end year <select> elements for category mode. */
+function _populateCategoryYearSelects() {
+  const startSelect = document.getElementById('report-start-year');
+  const endSelect = document.getElementById('report-end-year');
+
+  if (startSelect.options.length > 0) return;
+
+  const currentYear = new Date().getFullYear();
+  const earliestYear = currentYear - 10;
+
+  for (let year = earliestYear; year <= currentYear + 1; year++) {
+    startSelect.add(new Option(year, year));
+    endSelect.add(new Option(year, year));
+  }
+
+  // Default: start 2 years ago, end current year
+  startSelect.value = String(currentYear - 1);
+  endSelect.value = String(currentYear);
+
+  _updateCategoryDatePreview();
 }
 
 
@@ -56,17 +108,83 @@ function _onReportTypeChange() {
   document.getElementById('report-option-zero-label').style.display = isBalance ? '' : 'none';
   document.getElementById('report-option-transfers-label').style.display = isBalance ? 'none' : '';
 
-  // Fiscal year row only relevant for category reports
-  _onReportIntervalChange();
+  // Balance mode uses month pickers; category mode uses year selects
+  document.getElementById('report-balance-dates').style.display = isBalance ? '' : 'none';
+  document.getElementById('report-category-dates').style.display = isBalance ? 'none' : '';
+  document.getElementById('report-category-preview').style.display = isBalance ? 'none' : '';
+
+  // Balance mode is always monthly; category mode keeps the interval selector
+  document.getElementById('report-interval').closest('.reports-form-row').style.display = isBalance ? 'none' : '';
+
+  if (!isBalance) {
+    _updateCategoryDatePreview();
+  }
 }
 
 function _onReportIntervalChange() {
-  const reportType = document.getElementById('report-type').value;
-  const interval = document.getElementById('report-interval').value;
+  _updateCategoryDatePreview();
+}
 
-  // Show fiscal-year month picker only for category + monthly
-  const showFiscal = reportType === 'category' && interval === 'monthly';
-  document.getElementById('fiscal-year-row').style.display = showFiscal ? '' : 'none';
+/** Recalculate balance defaults when fiscal month changes. */
+function _onFiscalMonthChange() {
+  const reportType = document.getElementById('report-type').value;
+  if (reportType === 'balance') {
+    _applyBalanceDateDefaults();
+  } else {
+    _updateCategoryDatePreview();
+  }
+}
+
+const _MONTH_NAMES = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December'
+];
+
+/**
+ * Show a preview of the actual fiscal date range for category mode.
+ *
+ * Fiscal years are named after the calendar year they END in.
+ * FY2025 with fiscal start November = Nov 2024 – Oct 2025.
+ * FY2025 with fiscal start January  = Jan 2025 – Dec 2025.
+ */
+function _updateCategoryDatePreview() {
+  const previewEl = document.getElementById('report-category-preview');
+  const startFY = parseInt(document.getElementById('report-start-year').value, 10);
+  const endFY = parseInt(document.getElementById('report-end-year').value, 10);
+  const fiscalMonth = _getFiscalMonth();
+
+  if (!startFY || !endFY) {
+    previewEl.style.display = 'none';
+    return;
+  }
+
+  const { startDate, endDate } = _fiscalYearRange(startFY, endFY, fiscalMonth);
+  const rangeStartMonth = _MONTH_NAMES[startDate.getMonth()];
+  const rangeEndMonth = _MONTH_NAMES[endDate.getMonth()];
+
+  previewEl.textContent = `Report range: ${rangeStartMonth} ${startDate.getFullYear()} – ${rangeEndMonth} ${endDate.getFullYear()}`;
+  previewEl.style.display = '';
+}
+
+/**
+ * Compute the calendar date range for a span of fiscal years.
+ *
+ * Fiscal years are named after the calendar year they END in.
+ * FY2025 with fiscal start month 11 (Nov) → Nov 1 2024 – Oct 31 2025.
+ * FY2025 with fiscal start month 1  (Jan) → Jan 1 2025 – Dec 31 2025.
+ */
+function _fiscalYearRange(startFY, endFY, fiscalMonth) {
+  // FY start: month M of year (FY - 1) when M > 1, or month 1 of year FY when M == 1
+  const startCalendarYear = fiscalMonth === 1 ? startFY : startFY - 1;
+  const rangeStart = new Date(startCalendarYear, fiscalMonth - 1, 1);
+
+  // FY end: month (M-1) of year FY when M > 1, or month 12 of year FY when M == 1
+  const endMonth = fiscalMonth === 1 ? 12 : fiscalMonth - 1;
+  const endCalendarYear = endFY;
+  const lastDay = new Date(endCalendarYear, endMonth, 0).getDate();
+  const rangeEnd = new Date(endCalendarYear, endMonth - 1, lastDay);
+
+  return { startDate: rangeStart, endDate: rangeEnd };
 }
 
 
@@ -78,22 +196,37 @@ let _lastReportType = null;
 
 async function generateReport() {
   const reportType = document.getElementById('report-type').value;
-  const interval = document.getElementById('report-interval').value;
-  let startDate = document.getElementById('report-start-date').value;
-  let endDate = document.getElementById('report-end-date').value;
+  let startDate, endDate, interval;
 
-  if (!startDate || !endDate) {
-    _showReportsError('Please select both start and end dates.');
-    return;
-  }
+  if (reportType === 'balance') {
+    interval = 'monthly';
+    const startMonth = document.getElementById('report-start-month').value;
+    const endMonth = document.getElementById('report-end-month').value;
 
-  // For fiscal-year mode, align dates to the chosen fiscal start month
-  const fiscalRow = document.getElementById('fiscal-year-row');
-  if (fiscalRow.style.display !== 'none') {
-    const fiscalMonth = parseInt(document.getElementById('report-fiscal-month').value, 10);
-    const aligned = _alignToFiscalYear(startDate, endDate, fiscalMonth);
-    startDate = aligned.startDate;
-    endDate = aligned.endDate;
+    if (!startMonth || !endMonth) {
+      _showReportsError('Please select both start and end months.');
+      return;
+    }
+
+    // type="month" gives "YYYY-MM"; expand to first/last day
+    startDate = startMonth + '-01';
+    const [endYear, endMon] = endMonth.split('-').map(Number);
+    const lastDay = new Date(endYear, endMon, 0).getDate();
+    endDate = `${endMonth}-${String(lastDay).padStart(2, '0')}`;
+  } else {
+    interval = document.getElementById('report-interval').value;
+    const startYear = parseInt(document.getElementById('report-start-year').value, 10);
+    const endYear = parseInt(document.getElementById('report-end-year').value, 10);
+    const fiscalMonth = _getFiscalMonth();
+
+    if (!startYear || !endYear) {
+      _showReportsError('Please select both start and end years.');
+      return;
+    }
+
+    const range = _fiscalYearRange(startYear, endYear, fiscalMonth);
+    startDate = _formatDateInput(range.startDate);
+    endDate = _formatDateInput(range.endDate);
   }
 
   _showReportsLoading(true);
@@ -126,40 +259,6 @@ async function generateReport() {
     _showReportsLoading(false);
   }
 }
-
-/**
- * Align date range to full fiscal-year boundaries.
- * E.g. fiscal start month = 11 (November): fiscal year runs Nov 1 – Oct 31.
- * The start date snaps backward to the nearest fiscal year start,
- * and the end date snaps forward to the nearest fiscal year end.
- */
-function _alignToFiscalYear(startStr, endStr, fiscalMonth) {
-  const start = new Date(startStr + 'T00:00:00');
-  const end = new Date(endStr + 'T00:00:00');
-
-  // Snap start to fiscal year start: find the nearest fiscalMonth/1 on or before start
-  let fiscalStartYear = start.getFullYear();
-  if (start.getMonth() + 1 < fiscalMonth) {
-    fiscalStartYear--;
-  }
-  const fiscalStart = new Date(fiscalStartYear, fiscalMonth - 1, 1);
-
-  // Snap end to fiscal year end: the month before fiscalMonth, last day, on or after end
-  let fiscalEndYear = end.getFullYear();
-  if (end.getMonth() + 1 >= fiscalMonth) {
-    fiscalEndYear++;
-  }
-  const fiscalEndMonth = fiscalMonth - 1 === 0 ? 12 : fiscalMonth - 1;
-  const fiscalEndMonthYear = fiscalEndMonth === 12 ? fiscalEndYear - 1 : fiscalEndYear;
-  const lastDay = new Date(fiscalEndMonthYear, fiscalEndMonth, 0).getDate();
-  const fiscalEnd = new Date(fiscalEndMonthYear, fiscalEndMonth - 1, lastDay);
-
-  return {
-    startDate: _formatDateInput(fiscalStart),
-    endDate: _formatDateInput(fiscalEnd),
-  };
-}
-
 
 // ── API calls ───────────────────────────────────────────────
 
@@ -202,6 +301,7 @@ async function _fetchCategoryReport(startDate, endDate, interval, includeTransfe
 function _renderBalanceReport(data, interval) {
   const container = document.getElementById('reports-table-container');
   const titleEl = document.getElementById('reports-output-title');
+  const showMask = getAppConfig().showMaskWithName;
 
   const periodCount = data.periods.length;
   if (periodCount === 0) {
@@ -231,8 +331,12 @@ function _renderBalanceReport(data, interval) {
       html += `<td colspan="${periodCount}"></td></tr>`;
 
       for (const account of subgroupData.accounts) {
+        let displayName = account.name;
+        if (showMask && account.effective_mask) {
+          displayName += ` (...${account.effective_mask})`;
+        }
         html += '<tr class="reports-account-row">';
-        html += `<td class="reports-indent-2">${_escapeHtml(account.name)}</td>`;
+        html += `<td class="reports-indent-2">${_escapeHtml(displayName)}</td>`;
         for (const balance of account.balances) {
           html += `<td class="reports-num-col">${_formatCurrency(balance)}</td>`;
         }
@@ -391,38 +495,47 @@ function _generateReportCSV() {
 
 function _generateBalanceCSV(data) {
   const periods = data.periods;
-  let csv = ',' + periods.map(dateStr => `"${dateStr}"`).join(',') + '\n';
+  const showMask = getAppConfig().showMaskWithName;
+
+  // Header row: Account label, optional Mask column, then one column per period
+  let csv = showMask ? '"Account","Mask"' : '"Account"';
+  csv += ',' + periods.map(dateStr => `"${dateStr}"`).join(',') + '\n';
+
+  // Empty padding for the mask column when present
+  const maskPad = showMask ? ',' : '';
 
   for (const [sectionKey, sectionData] of Object.entries(data.sections)) {
     const sectionLabel = sectionKey === 'assets' ? 'Assets' : 'Liabilities';
-    csv += `"${sectionLabel}"\n`;
+    csv += `"${sectionLabel}"${maskPad}\n`;
 
     for (const [subgroupLabel, subgroupData] of Object.entries(sectionData.subgroups)) {
-      csv += `,"${subgroupLabel}"\n`;
+      csv += `"  ${subgroupLabel}"${maskPad}\n`;
 
       for (const account of subgroupData.accounts) {
-        csv += `," - ${_csvEscape(account.name)}"`;
+        const mask = account.effective_mask || '';
+        csv += `"    ${_csvEscape(account.name)}"`;
+        csv += showMask ? `,"${_csvEscape(mask)}"` : '';
         for (const balance of account.balances) {
           csv += `,${balance}`;
         }
         csv += '\n';
       }
 
-      csv += `," - Total ${subgroupLabel}"`;
+      csv += `"  Total ${subgroupLabel}"${maskPad}`;
       for (const subtotal of subgroupData.subtotals) {
         csv += `,${subtotal}`;
       }
       csv += '\n';
     }
 
-    csv += `"Total ${sectionLabel}"`;
+    csv += `"Total ${sectionLabel}"${maskPad}`;
     for (const total of sectionData.section_totals) {
       csv += `,${total}`;
     }
     csv += '\n';
   }
 
-  csv += '"Net Worth"';
+  csv += `"Net Worth"${maskPad}`;
   for (const nw of data.net_worth_row) {
     csv += `,${nw}`;
   }
