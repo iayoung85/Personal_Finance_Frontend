@@ -33,12 +33,19 @@ async function fetchAccounts() {
   const data = await response.json();
   // Flatten banks → accounts with display names
   const flatAccounts = [];
+  const config = typeof getAppConfig === 'function' ? getAppConfig() : {};
+  const showMask = config.showMaskWithName !== false;
   (data.banks || []).forEach(bank => {
     const bankName = bank.bank_name || bank.custom_name || bank.institution_id || 'Bank';
     (bank.accounts || []).forEach(account => {
+      const mask = account.effective_mask || account.user_mask || account.mask;
+      let namePart = account.custom_name || account.account_name || 'Account';
+      if (showMask && mask && !namePart.includes(mask)) {
+        namePart = `${namePart} (${mask})`;
+      }
       flatAccounts.push({
         account_id: account.account_id,
-        display_name: `${bankName} - ${account.custom_name || account.account_name || 'Account'} (${account.mask || '****'})`,
+        display_name: `${bankName} - ${namePart}`,
         bank_name: bankName
       });
     });

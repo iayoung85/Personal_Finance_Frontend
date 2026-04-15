@@ -143,7 +143,7 @@ function renderInvestmentSidebar() {
 
     accounts.forEach(acc => {
       const displayName = buildAccountDisplayName(acc);
-      const maskMatch = displayName.match(/^(.*?)(\s*\(\d{3,6}\))$/);
+      const maskMatch = displayName.match(/^(.*?)(\s*\([A-Za-z0-9]{1,10}\))$/);
       const displayNameMain = maskMatch ? maskMatch[1] : displayName;
       const displayNameSuffix = maskMatch ? maskMatch[2] : '';
       const balanceStr = formatCompactCurrency(acc.current_balance);

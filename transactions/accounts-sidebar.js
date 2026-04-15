@@ -13,12 +13,25 @@ let _showHiddenAccounts = false;
  * Custom name takes priority and is shown as-is (user controls mask inclusion).
  * Default format: <bank_name> - <account_name>(...<mask>)
  */
+/**
+ * Build the human-readable display name for an account.
+ * When showMaskWithName preference is on, appends (mask) to custom names
+ * unless the mask is already embedded.
+ */
 function _buildAccountDisplayName(acc) {
-  if (acc.custom_name) return acc.custom_name;
+  const mask = acc.effective_mask || acc.user_mask || acc.mask;
+  const config = typeof getAppConfig === 'function' ? getAppConfig() : {};
+  const showMask = config.showMaskWithName !== false;
+
+  if (acc.custom_name) {
+    if (showMask && mask && !acc.custom_name.includes(mask)) {
+      return `${acc.custom_name} (${mask})`;
+    }
+    return acc.custom_name;
+  }
 
   const bankPrefix = acc.bank_name || acc.institution_name || '';
   const accountName = acc.account_name || 'Unknown Account';
-  const mask = acc.mask;
 
   let nameWithMask = accountName;
   if (mask && !accountName.includes(mask)) {
@@ -171,6 +184,8 @@ async function loadAccounts() {
       connection_status: a.connection_status || 'manual',
       plaid_type: a.plaid_type || null,
       mask: a.mask || null,
+      user_mask: a.user_mask || null,
+      effective_mask: a.effective_mask || a.user_mask || a.mask || null,
       last_updated: a.last_balance_update || a.last_updated || null,
       is_archived: a.is_archived || false,
       is_hidden: a.is_hidden || false,

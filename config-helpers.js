@@ -29,6 +29,7 @@ const APP_CONFIG_DEFAULTS = {
   emailWeeklySummary: false,
   emailBillReminders: true,
   billReminderDaysBefore: 3,
+  showMaskWithName: true,
 };
 
 /**

@@ -246,6 +246,15 @@ function _renderViewDefaultsCard(config) {
         </select>
         <p class="text-muted stub-note">The date range pre-selected when opening the Transactions or Dashboard page.</p>
       </div>
+      <div class="form-group">
+        <label class="stub-checkbox-label">
+          <input type="checkbox" id="showMaskWithName"
+            ${config.showMaskWithName !== false ? 'checked' : ''}
+            onchange="handleAppConfigChange('showMaskWithName', this.checked)">
+          <span>Show account mask alongside display name (e.g. "My Checking (1234)")</span>
+        </label>
+        <p class="text-muted stub-note">Appends the last digits of the account number to custom names in sidebars and dropdowns. Accounts that already include the mask in their name are unaffected.</p>
+      </div>
     </div>
   `;
 }

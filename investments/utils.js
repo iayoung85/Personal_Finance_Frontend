@@ -60,10 +60,19 @@ function csvEscape(value) {
  * Custom name takes priority.
  */
 function buildAccountDisplayName(account) {
-  if (account.custom_name) return account.custom_name;
+  const mask = account.effective_mask || account.user_mask || account.mask;
+  const config = typeof getAppConfig === 'function' ? getAppConfig() : {};
+  const showMask = config.showMaskWithName !== false;
+
+  if (account.custom_name) {
+    if (showMask && mask && !account.custom_name.includes(mask)) {
+      return `${account.custom_name} (${mask})`;
+    }
+    return account.custom_name;
+  }
+
   const institution = account.institution_name || '';
   const accountName = account.account_name || 'Unknown Account';
-  const mask = account.mask;
   let nameWithMask = accountName;
   if (mask && !accountName.includes(mask)) {
     nameWithMask = `${accountName} (${mask})`;

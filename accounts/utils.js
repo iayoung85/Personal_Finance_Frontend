@@ -18,14 +18,23 @@ function formatCurrency(amount, currency = 'USD') {
 
 /**
  * Build the human-readable display name for an account.
- * Custom name takes priority; otherwise "BankName - AccountName (mask)".
+ * When showMaskWithName preference is on, appends (mask) to custom names
+ * unless the mask is already embedded.  Falls back to "BankName - AccountName (mask)".
  */
 function buildAccountDisplayName(account) {
-  if (account.custom_name) return account.custom_name;
+  const mask = account.effective_mask || account.user_mask || account.mask;
+  const config = typeof getAppConfig === 'function' ? getAppConfig() : {};
+  const showMask = config.showMaskWithName !== false;
+
+  if (account.custom_name) {
+    if (showMask && mask && !account.custom_name.includes(mask)) {
+      return `${account.custom_name} (${mask})`;
+    }
+    return account.custom_name;
+  }
 
   const bankName = account.bank_name || '';
   const accountName = account.account_name || 'Unknown Account';
-  const mask = account.mask;
 
   let nameWithMask = accountName;
   if (mask && !accountName.includes(mask)) {

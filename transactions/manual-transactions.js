@@ -35,7 +35,7 @@ function openAddManualTransactionModal() {
   if (offlineAccounts.length > 0) {
     accountOptions += '<optgroup label="Offline / Manual Accounts">';
     offlineAccounts.forEach(account => {
-      const displayName = account.custom_name || account.account_name || account.institution_name || 'Unknown Account';
+      const displayName = _buildAccountDisplayName(account);
       const categoryLabel = account.account_category || '';
       accountOptions += `<option value="${escapeHtml(account.account_id)}">${escapeHtml(displayName)} (${escapeHtml(categoryLabel)})</option>`;
     });
@@ -45,7 +45,7 @@ function openAddManualTransactionModal() {
   if (linkedAccounts.length > 0) {
     accountOptions += '<optgroup label="🔗 Plaid-Linked (historical or future)">';
     linkedAccounts.forEach(account => {
-      const displayName = account.custom_name || account.account_name || account.institution_name || 'Unknown Account';
+      const displayName = _buildAccountDisplayName(account);
       const categoryLabel = account.account_category || '';
       accountOptions += `<option value="${escapeHtml(account.account_id)}">${escapeHtml(displayName)} (${escapeHtml(categoryLabel)})</option>`;
     });

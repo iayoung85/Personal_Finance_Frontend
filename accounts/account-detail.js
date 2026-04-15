@@ -79,7 +79,7 @@ function _buildAccountDetailHtml(account) {
         </div>
         <div class="metadata-item">
           <span class="metadata-label">Mask</span>
-          <span class="metadata-value">${account.mask || '—'}</span>
+          <span class="metadata-value">${account.effective_mask || '—'}</span>
         </div>
         <div class="metadata-item">
           <span class="metadata-label">Bank</span>
@@ -183,6 +183,20 @@ function _buildAccountActions(account) {
     `<button class="btn-action" onclick="promptRenameAccount('${account.account_id}', '${_escapeAttr(account.custom_name || '')}')">Rename</button>`,
     'info-rename',
     'Sets a custom display name. Leave empty to reset to the default bank-account name format.'
+  );
+
+  // ── Set Mask ──
+  const currentMask = account.user_mask || account.mask || '';
+  const maskLabel = currentMask ? 'Change Mask' : 'Set Mask';
+  const maskDesc = currentMask
+    ? `Current mask: ${currentMask}. Change the last digits displayed alongside this account.`
+    : 'No mask on this account. Set the last digits to display alongside the account name in sidebars.';
+  actions += _actionItem(
+    maskLabel,
+    maskDesc,
+    `<button class="btn-action" onclick="promptSetMask('${account.account_id}', '${_escapeAttr(currentMask)}')">${maskLabel}</button>`,
+    'info-mask',
+    'Sets a short identifier (e.g. last 4 digits) shown in parentheses next to the account name. Leave empty to clear. Does not affect Plaid data.'
   );
 
   // ── Change Category ──
@@ -446,6 +460,26 @@ async function promptRenameAccount(accountId, currentCustomName) {
     await reloadAndReselect();
   } catch (renameError) {
     showToast(`Failed to rename: ${renameError.message}`, 'error');
+  }
+}
+
+async function promptSetMask(accountId, currentMask) {
+  const newMask = prompt('Enter account mask (e.g. last 4 digits). Leave empty to clear:', currentMask);
+  if (newMask === null) return;
+
+  const trimmed = newMask.trim();
+  if (trimmed.length > 10) {
+    showToast('Mask must be 10 characters or fewer', 'error');
+    return;
+  }
+
+  try {
+    showToast('Updating mask…', 'info');
+    await apiUpdateAccount(accountId, { user_mask: trimmed || null });
+    showToast(trimmed ? 'Mask updated' : 'Mask cleared', 'success');
+    await reloadAndReselect();
+  } catch (maskError) {
+    showToast(`Failed to update mask: ${maskError.message}`, 'error');
   }
 }
 
