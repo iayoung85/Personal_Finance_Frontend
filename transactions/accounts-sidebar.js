@@ -417,10 +417,14 @@ function renderAccountsSidebar() {
 
   // ===== HIDDEN ACCOUNTS TOGGLE & LIST =====
   if (hiddenAccounts.length > 0) {
+    const hiddenTotal = sumAccountBalances(hiddenAccounts);
+    const hiddenTotalStr = formatSidebarCurrency(hiddenTotal);
+    const hiddenTotalClass = hiddenTotal < 0 ? 'sidebar-account-balance-negative' : 'sidebar-account-balance';
     const toggleClass = _showHiddenAccounts ? 'expanded' : '';
     html += `
       <div class="sidebar-hidden-toggle ${toggleClass}" onclick="_toggleHiddenAccountsView()">
         <span>${_showHiddenAccounts ? '▾' : '▸'} Hidden Accounts (${hiddenAccounts.length})</span>
+        <span class="${hiddenTotalClass}" style="margin-left: auto; font-size: 12px;">${hiddenTotalStr}</span>
       </div>
     `;
 
@@ -428,10 +432,14 @@ function renderAccountsSidebar() {
       html += '<div class="sidebar-hidden-list">';
       hiddenAccounts.forEach(acc => {
         const displayName = _buildAccountDisplayName(acc);
+        const accBalance = acc.current_balance || 0;
+        const accBalanceStr = accBalance !== 0 ? formatSidebarCurrency(accBalance) : '';
+        const accBalanceClass = accBalance < 0 ? 'sidebar-account-balance-negative' : 'sidebar-account-balance';
         html += `
           <div class="sidebar-hidden-account-item"
                oncontextmenu="event.preventDefault(); _showAccountContextMenu(event, '${acc.account_id}', true)">
             <span class="sidebar-hidden-account-name" title="${displayName}">${displayName}</span>
+            ${accBalanceStr ? `<span class="${accBalanceClass}" style="font-size: 12px; white-space: nowrap; margin-left: 8px;">${accBalanceStr}</span>` : ''}
             <button class="sidebar-unhide-btn" title="Unhide account"
                     onclick="event.stopPropagation(); _unhideAccount('${acc.account_id}')">
               Unhide
