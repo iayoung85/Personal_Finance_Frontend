@@ -99,9 +99,8 @@ function _renderAccountList() {
   // Get accounts to display — filter by selected bank and search text
   let visibleAccounts = _getFilteredAccounts(filterLower);
 
-  // Separate active vs hidden vs archived
+  // Separate active vs archived
   const activeAccounts = [];
-  const hiddenAccounts = [];
   const archivedAccounts = [];
 
   for (const account of visibleAccounts) {
@@ -117,8 +116,6 @@ function _renderAccountList() {
 
     if (inArchivedGroup) {
       archivedAccounts.push(account);
-    } else if (account.is_hidden) {
-      hiddenAccounts.push(account);
     } else {
       activeAccounts.push(account);
     }
@@ -133,27 +130,12 @@ function _renderAccountList() {
 
   let html = '';
 
-  if (activeAccounts.length === 0 && hiddenAccounts.length === 0 && archivedAccounts.length === 0) {
+  if (activeAccounts.length === 0 && archivedAccounts.length === 0) {
     html = '<div style="padding: 12px; color: #999; font-size: 13px; text-align: center;">No accounts found</div>';
   }
 
   for (const account of activeAccounts) {
     html += _renderAccountListItem(account);
-  }
-
-  // Hidden accounts (collapsible group)
-  if (hiddenAccounts.length > 0) {
-    html += `
-      <div class="sidebar-archived-group">
-        <div class="sidebar-archived-toggle" onclick="toggleHiddenAccounts()">
-          ▸ Hidden (${hiddenAccounts.length})
-        </div>
-        <div class="sidebar-archived-items" id="hidden-accounts-list">
-    `;
-    for (const account of hiddenAccounts) {
-      html += _renderAccountListItem(account);
-    }
-    html += '</div></div>';
   }
 
   // Archived accounts under archived banks
@@ -358,17 +340,6 @@ function toggleArchivedAccounts() {
     toggleBtn.textContent = list.classList.contains('expanded')
       ? `▾ Archived (${list.children.length})`
       : `▸ Archived (${list.children.length})`;
-  }
-}
-
-function toggleHiddenAccounts() {
-  const list = document.getElementById('hidden-accounts-list');
-  if (list) list.classList.toggle('expanded');
-  const toggleBtn = list?.previousElementSibling;
-  if (toggleBtn) {
-    toggleBtn.textContent = list.classList.contains('expanded')
-      ? `▾ Hidden (${list.children.length})`
-      : `▸ Hidden (${list.children.length})`;
   }
 }
 
