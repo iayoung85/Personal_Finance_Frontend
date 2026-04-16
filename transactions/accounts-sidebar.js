@@ -84,6 +84,7 @@ function toggleSidebar() {
 }
 
 async function selectAccount(accountId, skipDebounce = false) {
+  _saveScrollPosition();
   selectedAccountMode = 'single';
   selectedAccountId = accountId;
   localStorage.setItem('pf_selected_account', accountId);
@@ -109,6 +110,7 @@ async function selectAccount(accountId, skipDebounce = false) {
 }
 
 function selectAllAccountsMode() {
+  _saveScrollPosition();
   selectedAccountMode = 'all';
   selectedAccountId = null;
   localStorage.removeItem('pf_selected_account');

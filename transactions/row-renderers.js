@@ -270,13 +270,13 @@ function _renderMissingRow(ctx) {
 
 
 function _renderMatchedRow(ctx) {
-  const buttons = `<button class="unmatch-btn" data-txn-id="${escapeHtml(ctx.txnId)}" onclick="unmatchScheduledTransaction('${escapeHtml(ctx.txnId)}')" title="Undo match — revert to missing + unhide plaid transaction">Unmatch</button>`;
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
-    'Type to search categories…', buttons
+    'Type to search categories…', ''
   );
 
   const approveOnclick = `event.stopPropagation(); approveMatch('${escapeHtml(ctx.txnId)}').then(() => { showStatus('Match approved', 'success'); refreshAccountTransactions('${escapeHtml(ctx.accountId)}'); }).catch(err => showStatus(err.message, 'error'));`;
+  const unmatchOnclick = `event.stopPropagation(); unmatchScheduledTransaction('${escapeHtml(ctx.txnId)}')`;
 
   // Bill badge when this matched row originated from a bill template
   let billBadge = '';
@@ -288,8 +288,13 @@ function _renderMatchedRow(ctx) {
     billBadge = `<span class="source-badge bill-provenance" data-tooltip="${hoverTitle}" title="${hoverTitle}">📋</span> `;
   }
 
+  const actionGroup = `<span class="match-action-group">`
+    + `<button class="approve-match-badge" data-txn-id="${escapeHtml(ctx.txnId)}" onclick="${approveOnclick}" title="Approve this match — removes the manual counterpart">✓</button>`
+    + `<button class="reject-match-badge" onclick="${unmatchOnclick}" title="Unmatch — revert to missing + unhide plaid transaction">✗</button>`
+    + `</span> `;
+
   return {
-    typeBadge: billBadge + `<button class="approve-match-badge" data-txn-id="${escapeHtml(ctx.txnId)}" onclick="${approveOnclick}" title="Click to approve this match — removes the manual counterpart">✓</button> `,
+    typeBadge: billBadge + actionGroup,
     categoryCell,
     actionCell: '<td></td>',
     rowCssClass: 'matched-row',
@@ -302,13 +307,13 @@ function _renderMatchedRow(ctx) {
 function _renderMatchedPairRow(ctx) {
   const matchInfo = ctx.txn.match_info;
   const unmatchId = escapeHtml(matchInfo.matched_txn_id);
-  const buttons = `<button class="unmatch-btn" data-txn-id="${unmatchId}" onclick="unmatchScheduledTransaction('${unmatchId}')" title="Undo match — revert manual to missing + detach from plaid">Unmatch</button>`;
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
-    'Type to search categories…', buttons
+    'Type to search categories…', ''
   );
 
   const approveOnclick = `event.stopPropagation(); approveMatch('${unmatchId}').then(() => { showStatus('Match approved', 'success'); refreshAccountTransactions('${escapeHtml(ctx.accountId)}'); }).catch(err => showStatus(err.message, 'error'));`;
+  const unmatchOnclick = `event.stopPropagation(); unmatchScheduledTransaction('${unmatchId}')`;
 
   // Bill badge when the matched counterpart originated from a bill template
   let billBadge = '';
@@ -320,13 +325,48 @@ function _renderMatchedPairRow(ctx) {
     billBadge = `<span class="source-badge bill-provenance" data-tooltip="${hoverTitle}" title="${hoverTitle}">📋</span> `;
   }
 
+  const actionGroup = `<span class="match-action-group">`
+    + `<button class="approve-match-badge" data-txn-id="${unmatchId}" onclick="${approveOnclick}" title="Approve this match — removes the manual counterpart">✓</button>`
+    + `<button class="reject-match-badge" onclick="${unmatchOnclick}" title="Unmatch — revert manual to missing + detach from plaid">✗</button>`
+    + `</span> `;
+
   return {
-    typeBadge: billBadge + `<button class="approve-match-badge" data-txn-id="${unmatchId}" onclick="${approveOnclick}" title="Click to approve this match — removes the manual counterpart">✓</button> `,
+    typeBadge: billBadge + actionGroup,
     categoryCell,
     actionCell: '<td></td>',
     rowCssClass: 'matched-row',
     sourceBadge: { label: 'Matched', cssClass: 'matched', title: matchInfo.matched_bill_id ? 'Bill-matched plaid transaction' : 'Plaid transaction merged with user-entered counterpart' },
     displayName: matchInfo.matched_description || _txnDescription(ctx.txn),
+  };
+}
+
+
+function _renderSuggestedPairRow(ctx) {
+  const suggestionInfo = ctx.txn.suggestion_info;
+  const suggestedTxnId = escapeHtml(suggestionInfo.suggested_txn_id);
+  const proposalId = suggestionInfo.proposal_id;
+  const confidencePct = Math.round((suggestionInfo.confidence || 0) * 100);
+
+  const categoryCell = _buildCategoryAutocomplete(
+    ctx.txnId, ctx.accountId, ctx.currentFullCategory,
+    'Type to search categories…', ''
+  );
+
+  const approveOnclick = `event.stopPropagation(); approveSuggestion('${suggestedTxnId}', '${escapeHtml(ctx.txnId)}', '${escapeHtml(ctx.accountId)}')`;
+  const dismissOnclick = `event.stopPropagation(); dismissSuggestion(${proposalId}, '${escapeHtml(ctx.accountId)}')`;
+
+  const actionGroup = `<span class="match-action-group">`
+    + `<button class="approve-suggestion-badge" data-txn-id="${suggestedTxnId}" onclick="${approveOnclick}" title="Approve suggested match (${confidencePct}% confidence)">✓</button>`
+    + `<button class="reject-suggestion-badge" onclick="${dismissOnclick}" title="Dismiss suggestion — the manual row will reappear as missing">✗</button>`
+    + `</span> `;
+
+  return {
+    typeBadge: actionGroup,
+    categoryCell,
+    actionCell: '<td></td>',
+    rowCssClass: 'suggested-row',
+    sourceBadge: { label: 'Suggested', cssClass: 'suggested', title: `System-suggested match (${confidencePct}% confidence)` },
+    displayName: suggestionInfo.suggested_description || _txnDescription(ctx.txn),
   };
 }
 
@@ -542,6 +582,11 @@ function renderRowByType(ctx) {
   // Matched rows (the manual/scheduled side) — approve + unmatch
   if (rowType === TXN_TYPE.BILL_MATCHED || rowType === TXN_TYPE.MANUAL_MATCH) {
     return _renderMatchedRow(ctx);
+  }
+
+  // Suggested pair (plaid side with a pending system proposal) — yellow badge
+  if (ctx.txn.suggestion_info) {
+    return _renderSuggestedPairRow(ctx);
   }
 
   // Matched pair (the plaid side, carrying match_info) — approve + unmatch

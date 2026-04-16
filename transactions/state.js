@@ -55,6 +55,11 @@ let balanceHistoryLoading = false;
 // Reconciliation banner state — populated by checkAndRenderReconciliationBanner()
 let reconciliationStatus = null;
 
+// Scroll position cache — remembers where the user was scrolled to
+// per view so switching between accounts preserves position.
+// Key: accountId string or 'all'.  Value: scrollTop number.
+let _scrollPositionCache = {};
+
 // Debounce timer for sidebar account selection. When users arrow-key
 // through accounts rapidly, only the last account they settle on
 // triggers the balance-history fetch and table re-render.

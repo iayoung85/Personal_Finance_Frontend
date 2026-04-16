@@ -817,6 +817,49 @@ async function _selectMatchCandidate(missingTxnId, targetTxnId) {
   }
 }
 
+// ─── Suggestion (system proposal) inline actions ────────────
+
+/**
+ * Approve a system-suggested match by performing a manual ledger match.
+ * Called from the yellow checkmark button in the suggested pair row.
+ */
+async function approveSuggestion(suggestedTxnId, plaidTxnId, accountId) {
+  if (!confirm('Approve this suggested match? The manual transaction will be merged into the Plaid transaction.')) return;
+  try {
+    await manualReconciliationMatch(suggestedTxnId, plaidTxnId);
+    showStatus('Suggestion approved — manual transaction merged', 'success');
+    await refreshAccountTransactions(accountId);
+  } catch (approveError) {
+    showStatus(`Failed to approve suggestion: ${approveError.message}`, 'error');
+  }
+}
+
+/**
+ * Dismiss a system-suggested match.  The proposal is marked dismissed and
+ * the manual missing row reappears in the ledger on next refresh.
+ */
+async function dismissSuggestion(proposalId, accountId) {
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/resolution/dismiss_suggestion`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposal_id: proposalId }),
+      }
+    );
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to dismiss suggestion');
+    }
+    showStatus('Suggestion dismissed', 'success');
+    await refreshAccountTransactions(accountId);
+  } catch (dismissError) {
+    showStatus(`Failed to dismiss suggestion: ${dismissError.message}`, 'error');
+  }
+}
+
+
 // ─── Approve match API calls ────────────────────────────────
 
 /**

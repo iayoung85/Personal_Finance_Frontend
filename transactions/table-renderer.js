@@ -102,11 +102,80 @@ const VIRTUAL_ROW_HEIGHT = 44;
 const VIRTUAL_BUFFER_ROWS = 30;
 
 let _virtualRows = [];
+let _virtualRowDates = [];
 let _virtualHeaderHtml = '';
 let _virtualColCount = 0;
 let _virtualScrollBound = false;
 let _virtualScrollRaf = 0;
 let _lastRenderedRange = { start: -1, end: -1 };
+
+// Scroll-date tooltip: follows the cursor and shows "Mon YYYY" while scrolling
+let _scrollBubbleTimer = null;
+let _lastMouseY = 0;
+let _mouseTrackingBound = false;
+const _MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function _getOrCreateScrollBubble() {
+  let bubble = document.getElementById('scroll-date-bubble');
+  if (!bubble) {
+    bubble = document.createElement('div');
+    bubble.id = 'scroll-date-bubble';
+    bubble.className = 'scroll-date-bubble';
+    document.body.appendChild(bubble);
+  }
+  return bubble;
+}
+
+function _bindMouseTracking() {
+  if (_mouseTrackingBound) return;
+  const pane = document.querySelector('.transaction-scroll-pane');
+  if (!pane) return;
+  pane.addEventListener('mousemove', (event) => { _lastMouseY = event.clientY; }, { passive: true });
+  _mouseTrackingBound = true;
+}
+
+function _showScrollDateBubble(scrollTop) {
+  if (!_virtualRowDates.length) return;
+  const rowIndex = Math.min(
+    Math.floor(scrollTop / VIRTUAL_ROW_HEIGHT),
+    _virtualRowDates.length - 1
+  );
+  // Walk forward from the computed row to find the nearest row with a date
+  // (separator rows have null dates).
+  let dateStr = null;
+  for (let scanIndex = rowIndex; scanIndex < _virtualRowDates.length; scanIndex++) {
+    if (_virtualRowDates[scanIndex]) { dateStr = _virtualRowDates[scanIndex]; break; }
+  }
+  if (!dateStr) {
+    for (let scanIndex = rowIndex - 1; scanIndex >= 0; scanIndex--) {
+      if (_virtualRowDates[scanIndex]) { dateStr = _virtualRowDates[scanIndex]; break; }
+    }
+  }
+  if (!dateStr) return;
+
+  const year = dateStr.slice(0, 4);
+  const monthIndex = parseInt(dateStr.slice(5, 7), 10) - 1;
+  const label = `${_MONTH_SHORT[monthIndex]} ${year}`;
+
+  const bubble = _getOrCreateScrollBubble();
+  bubble.textContent = label;
+
+  // Position to the left of the scrollbar, at the cursor's Y level
+  const pane = document.querySelector('.transaction-scroll-pane');
+  if (pane) {
+    const paneRect = pane.getBoundingClientRect();
+    bubble.style.top = `${_lastMouseY}px`;
+    bubble.style.left = `${paneRect.right - 80}px`;
+  }
+
+  bubble.classList.add('visible');
+
+  if (_scrollBubbleTimer) clearTimeout(_scrollBubbleTimer);
+  _scrollBubbleTimer = setTimeout(() => {
+    bubble.classList.remove('visible');
+    _scrollBubbleTimer = null;
+  }, 1200);
+}
 
 
 
@@ -187,6 +256,8 @@ function _onVirtualScroll() {
     const container = document.getElementById('table-container');
     if (!container || !_virtualRows.length) return;
     _renderVisibleWindow(container);
+    const scrollPane = document.querySelector('.transaction-scroll-pane');
+    if (scrollPane) _showScrollDateBubble(scrollPane.scrollTop);
   });
 }
 
@@ -201,6 +272,17 @@ function _fmtCurrency(value, currencyCode) {
     _currencyFormatCache[code] = new Intl.NumberFormat('en-US', { style: 'currency', currency: code });
   }
   return _currencyFormatCache[code].format(value);
+}
+
+/**
+ * Snapshot the current scroll position so it can be restored when the
+ * user returns to this account/view later in the same session.
+ */
+function _saveScrollPosition() {
+  const scrollPane = document.querySelector('.transaction-scroll-pane');
+  if (!scrollPane) return;
+  const cacheKey = selectedAccountId || 'all';
+  _scrollPositionCache[cacheKey] = scrollPane.scrollTop;
 }
 
 function renderTransactionTable() {
@@ -343,10 +425,19 @@ function renderTransactionTable() {
   // Today in YYYY-MM-DD for comparing against txn.date strings
   const _todayDateStr = _formatDateLocal(new Date());
 
+  // Scroll anchor: on initial load show only the 10 nearest future rows
+  // instead of the furthest-out projections at the very top.
+  const FUTURE_ROWS_TO_SHOW = 7;
+  let _futureSeparatorRowIndex = -1;
+
   filteredTransactions.forEach(txn => {
     // Matched manual/scheduled rows are merged into their plaid
     // counterpart by the backend — skip them entirely.
     if (txn.hidden_by_match) return;
+
+    // Suggested manual missing rows are hidden in favor of the plaid
+    // row which carries suggestion_info (yellow badge).
+    if (txn.hidden_by_suggestion) return;
 
     // All Accounts view: hide system rows always
     if (isAllAccounts) {
@@ -533,6 +624,7 @@ function renderTransactionTable() {
   
   // Initialize virtual rows array and hidden transaction tracking
   _virtualRows = [];
+  _virtualRowDates = [];
   _hiddenTxnIdSet = new Set();
   _selectedHiddenTxnIds = new Set();
   
@@ -565,6 +657,7 @@ function renderTransactionTable() {
     const isFutureBlockRow = (txn.source === 'scheduled' && txn.status === 'future')
       || txnRowType === TXN_TYPE.MANUAL_FUTURE
       || (txnRowType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING && txn.date > _todayDateStr);
+
     const isMissingRow = txnRowType === TXN_TYPE.BILL_MISSING
       || txnRowType === TXN_TYPE.MANUAL_MISSING;
     const isOpeningBalanceRow = txnRowType === TXN_TYPE.SYSTEM_OPENING_BALANCE
@@ -576,7 +669,9 @@ function renderTransactionTable() {
     if (!scheduledSectionEnded && !isFutureBlockRow) {
       scheduledSectionEnded = true;
       const schedCount = scheduledFuture.length;
+      _futureSeparatorRowIndex = _virtualRows.length;
       _virtualRows.push(`<tr class="scheduled-separator-row"><td colspan="${colCount}">▲ ${schedCount} Future Transaction${schedCount !== 1 ? 's' : ''} Above ▲</td></tr>`);
+      _virtualRowDates.push(null);
     }
 
     // Separator: end of pending block → start of posted
@@ -584,6 +679,7 @@ function renderTransactionTable() {
       pendingSectionEnded = true;
       const pendingCount = pendingTransactions.length;
       _virtualRows.push(`<tr class="pending-separator-row"><td colspan="${colCount}">▲ ${pendingCount} Pending Transaction${pendingCount !== 1 ? 's' : ''} Above ▲</td></tr>`);
+      _virtualRowDates.push(null);
     }
 
     // --- Zone bookmark separators (plaid-synced / manual-historical) ---
@@ -593,12 +689,14 @@ function renderTransactionTable() {
       if (passedOpeningBalance && !emittedManualSep) {
         emittedManualSep = true;
         _virtualRows.push(`<tr class="zone-separator manual-zone"><td colspan="${colCount}"><span class="zone-arrows">▼▼▼</span> manual historical <span class="zone-arrows">▼▼▼</span></td></tr>`);
+        _virtualRowDates.push(null);
       }
       // Emit "Plaid-Synced" right before the OB row (only if plaid txns exist)
       if (!emittedPlaidSep && txn.source === 'opening_balance') {
         emittedPlaidSep = true;
         if (hasPlaidTxns) {
           _virtualRows.push(`<tr class="zone-separator plaid-zone"><td colspan="${colCount}"><span class="zone-arrows">▲▲▲</span> plaid-synced <span class="zone-arrows">▲▲▲</span></td></tr>`);
+          _virtualRowDates.push(null);
         }
         passedOpeningBalance = true;
       }
@@ -622,6 +720,7 @@ function renderTransactionTable() {
 
       if (splitAmountMismatch) {
         const _rowParity = _virtualRows.length % 2 === 0;
+        _virtualRowDates.push(txn.date);
         _virtualRows.push({ even: _rowParity, html: null, fn: () => {
         let rowHtml = '';
         const dateStr = formatDate(txn.date);
@@ -707,6 +806,7 @@ function renderTransactionTable() {
 
       visibleSplits.forEach((split, idx) => {
         const _rowParity = _virtualRows.length % 2 === 0;
+        _virtualRowDates.push(split.date);
         _virtualRows.push({ even: _rowParity, html: null, fn: () => {
         let rowHtml = '';
         const dateStr = formatDate(split.date);
@@ -855,6 +955,7 @@ function renderTransactionTable() {
       _hiddenTxnIdSet.add(txnId);
     }
     const _rowParity = _virtualRows.length % 2 === 0;
+    _virtualRowDates.push(txn.date);
     _virtualRows.push({ even: _rowParity, html: null, fn: () => {
     let rowHtml = '';
     const accountId = txn.account_id || '';
@@ -963,7 +1064,7 @@ function renderTransactionTable() {
     }
 
     // ── Data attributes for context menu ──
-    const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(txn.date || '')}"`;
+    const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-suggestion-txn-id="${escapeHtml(txn.suggestion_info?.suggested_txn_id || '')}" data-suggestion-proposal-id="${txn.suggestion_info?.proposal_id || ''}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(txn.date || '')}"`;
 
     // ── Inline-edit eligibility (date, description, amount) ──
     const isInlineEditable = EDITABLE_TYPES.has(txnRowType);
@@ -1082,9 +1183,27 @@ function renderTransactionTable() {
   // Clear existing table so the header is rebuilt (columns may have changed)
   container.innerHTML = '';
   const scrollPane = document.querySelector('.transaction-scroll-pane');
-  if (scrollPane) scrollPane.scrollTop = 0;
   _lastRenderedRange = { start: -1, end: -1 };
+  // First render establishes the virtual spacers so the scroll pane has
+  // its full content height. Without this the browser clamps scrollTop to 0
+  // because the container is empty after innerHTML = ''.
   _renderVisibleWindow(container);
+
+  if (scrollPane) {
+    const cacheKey = selectedAccountId || 'all';
+    const cachedPosition = _scrollPositionCache[cacheKey];
+
+    if (cachedPosition !== undefined && cachedPosition > 0) {
+      // Restore the position the user was at last time they viewed this account.
+      scrollPane.scrollTop = cachedPosition;
+    } else if (_futureSeparatorRowIndex > FUTURE_ROWS_TO_SHOW) {
+      // First visit: skip far-future rows, show the 10 nearest.
+      scrollPane.scrollTop = (_futureSeparatorRowIndex - FUTURE_ROWS_TO_SHOW) * VIRTUAL_ROW_HEIGHT;
+    }
+    // Re-render so the visible window matches the new scroll position.
+    _lastRenderedRange = { start: -1, end: -1 };
+    _renderVisibleWindow(container);
+  }
 
   if (!_virtualScrollBound) {
     const pane = document.querySelector('.transaction-scroll-pane');
@@ -1093,6 +1212,7 @@ function renderTransactionTable() {
       _virtualScrollBound = true;
     }
   }
+  _bindMouseTracking();
 
   document.getElementById('export-buttons').classList.remove('hidden');
   
