@@ -114,6 +114,7 @@ const IndexConnectionsList = (() => {
     const statusIndicator = _renderConnectionStatusIndicator(bank.connection_status);
     const syncBadges = isLinked ? _renderSyncBadges(bank.billed_products || []) : '';
     const actionButtons = _renderActionButtons(bank);
+    const countBreakdown = _renderAccountCountBreakdown(bank);
 
     return `
       <li class="bank-card" data-bank-id="${bank.bank_id}">
@@ -122,6 +123,7 @@ const IndexConnectionsList = (() => {
           <div class="bank-info">
             <span class="bank-name">${displayName}</span>
             <span class="bank-meta">${accountLabel} ${statusIndicator}</span>
+            ${countBreakdown}
             ${syncBadges}
           </div>
         </div>
@@ -129,6 +131,26 @@ const IndexConnectionsList = (() => {
           ${actionButtons}
         </div>
       </li>`;
+  }
+
+  /**
+   * Render hidden/archived account counts alongside the active count so the
+   * user can tell at a glance whether a bank row is hiding accounts behind
+   * the default filter.
+   */
+  function _renderAccountCountBreakdown(bank) {
+    const hiddenCount = bank.hidden_account_count || 0;
+    const archivedCount = bank.archived_account_count || 0;
+    if (hiddenCount === 0 && archivedCount === 0) return '';
+
+    const parts = [];
+    if (hiddenCount > 0) {
+      parts.push(`<span class="bank-account-count bank-account-count-hidden" title="Accounts hidden from the default view">${hiddenCount} hidden</span>`);
+    }
+    if (archivedCount > 0) {
+      parts.push(`<span class="bank-account-count bank-account-count-archived" title="Archived accounts">${archivedCount} archived</span>`);
+    }
+    return `<div class="bank-account-counts">${parts.join(' ')}</div>`;
   }
 
   function _renderConnectionStatusIndicator(connectionStatus) {

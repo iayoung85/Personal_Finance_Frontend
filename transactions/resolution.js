@@ -879,12 +879,22 @@ async function approveMatch(transactionId) {
 }
 
 /**
- * Approve every matched transaction for the current user in one call.
+ * Approve matched transactions. When ``transactionIds`` is provided, the
+ * backend scopes the approval to that subset (used by the context menu so
+ * the action honors the current filter/search view). When omitted, every
+ * matched transaction for the user is approved.
  */
-async function approveAllMatches() {
+async function approveAllMatches(transactionIds) {
+  const body = Array.isArray(transactionIds) && transactionIds.length > 0
+    ? { transaction_ids: transactionIds }
+    : {};
   const response = await authenticatedFetch(
     `${BACKEND_URL}/api/transactions/approve_all_matches`,
-    { method: 'POST' }
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
   );
   if (!response.ok) {
     const data = await response.json();

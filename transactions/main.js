@@ -20,9 +20,12 @@ $(document).ready(async function() {
   // Load accounts and settings in parallel; keep checkboxes unchecked until both complete
   await Promise.all([loadAccounts(), loadSettings()]);
 
-  // Restore last-selected account from previous session, or default to all
+  // Restore last-selected account from previous session, or default to all.
+  // Deep-links with ?search= (e.g. report drill-downs) always show all accounts
+  // so the filter matches across the full ledger.
+  const hasSearchParam = new URLSearchParams(window.location.search).has('search');
   const savedAccountId = localStorage.getItem('pf_selected_account');
-  const savedAccountExists = savedAccountId && accounts.some(a => a.account_id === savedAccountId);
+  const savedAccountExists = !hasSearchParam && savedAccountId && accounts.some(a => a.account_id === savedAccountId);
   if (savedAccountExists) {
     await selectAccount(savedAccountId, true);
   } else {
@@ -72,6 +75,9 @@ $(document).ready(async function() {
   // Plaid webhooks keep the DB up to date automatically; the user can force
   // a sync by clicking the "Re-sync" button which calls syncTransactions().
   await fetchAllTransactions(false);
+
+  // Sidebar badges depend on transaction data — rebuild now that txns are loaded
+  renderAccountsSidebar();
 
   // Render dynamic period buttons after transactions are loaded
   renderDynamicPeriodButtons();

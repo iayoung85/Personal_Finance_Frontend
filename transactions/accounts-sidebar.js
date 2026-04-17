@@ -499,6 +499,15 @@ function _getPlaidMismatchDotHtml(acc) {
   return `<span class="plaid-mismatch-dot" title="Plaid balance mismatch: $${diff.toFixed(2)} difference"></span>`;
 }
 
+function _getUnreviewedCountForAccount(accountId) {
+  if (!Array.isArray(transactions) || transactions.length === 0) return 0;
+  let count = 0;
+  for (const txn of transactions) {
+    if (txn.reviewed === false && txn.account_id === accountId) count++;
+  }
+  return count;
+}
+
 function _renderSidebarAccountItem(acc, formatSidebarCurrency) {
   const displayName = _buildAccountDisplayName(acc);
   const maskMatch = displayName.match(/^(.*?)(\s*\(\d{3,6}\))$/);
@@ -513,13 +522,18 @@ function _renderSidebarAccountItem(acc, formatSidebarCurrency) {
   const syncDot = _getSyncDotHtml(acc);
   const mismatchDot = _getPlaidMismatchDotHtml(acc);
 
+  const unreviewedCount = _getUnreviewedCountForAccount(acc.account_id);
+  const unreviewedBadge = unreviewedCount > 0
+    ? `<span class="sidebar-unreviewed-badge" title="${unreviewedCount} unreviewed transaction${unreviewedCount > 1 ? 's' : ''}">${unreviewedCount}</span>`
+    : '';
+
   return `
     <div class="sidebar-account-item ${selectedClass}" tabindex="0"
          data-account-id="${acc.account_id}"
          onclick="selectAccount('${acc.account_id}', true)"
          oncontextmenu="event.preventDefault(); _showAccountContextMenu(event, '${acc.account_id}', false)">
       <div class="sidebar-account-label">
-        ${syncDot}<span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span><span class="sidebar-account-mask">${displayNameSuffix}</span>
+        ${syncDot}<span class="sidebar-account-name-text" title="${displayName}">${displayNameMain}</span><span class="sidebar-account-mask">${displayNameSuffix}</span>${unreviewedBadge}
       </div>
       <div class="${balanceColorClass} sidebar-balance-cell">${mismatchDot}${balanceStr}</div>
     </div>

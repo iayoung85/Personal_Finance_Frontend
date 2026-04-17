@@ -316,9 +316,11 @@ async function _updateManualTransaction(transactionId, accountId) {
   const category = document.getElementById('manual-txn-category').value;
   const memo = document.getElementById('manual-txn-memo').value.trim();
 
-  // Validate required fields
-  if (!amount || amount <= 0 || isNaN(amount)) {
-    _showManualTxnError('Amount must be a positive number');
+  // Validate required fields. Zero is intentionally allowed so users can
+  // book $0 markdowns (e.g. garnishment carved out of a paycheck) without
+  // touching the real running balance.
+  if (isNaN(amount) || amount < 0) {
+    _showManualTxnError('Amount must be zero or a positive number');
     return;
   }
   if (!date) {
@@ -698,9 +700,10 @@ async function saveManualTransaction() {
   const category = document.getElementById('manual-txn-category').value;
   const memo = document.getElementById('manual-txn-memo').value.trim();
 
-  // Validate required fields — show errors inline on the modal
-  if (!amount || amount <= 0 || isNaN(amount)) {
-    _showManualTxnError('Amount must be a positive number (sign is set by Type)');
+  // Validate required fields — show errors inline on the modal. Zero is
+  // allowed so users can book $0 accounting markdowns.
+  if (isNaN(amount) || amount < 0) {
+    _showManualTxnError('Amount must be zero or a positive number (sign is set by Type)');
     return;
   }
   if (!date) {
@@ -862,6 +865,16 @@ async function deleteManualTransaction(manualTransactionId) {
     showStatus('Manual transaction deleted successfully', 'success');
     var deletedTxn = transactions.find(function(findTxn) { return findTxn.transaction_id === manualTransactionId; });
     _removeCachedTransaction(manualTransactionId);
+
+    // A manual-to-manual transfer cascade-deletes its partner on the server.
+    // Evict those partner rows from the cache so the ledger matches reality
+    // without requiring a full page reload.
+    if (data && Array.isArray(data.cascade_deleted_ids)) {
+      for (var cdi = 0; cdi < data.cascade_deleted_ids.length; cdi++) {
+        _removeCachedTransaction(data.cascade_deleted_ids[cdi]);
+        delete balanceHistoryLookup[data.cascade_deleted_ids[cdi]];
+      }
+    }
 
     // Patch any affected trending rows (investment accounts) returned by
     // the backend instead of doing a full account refetch.

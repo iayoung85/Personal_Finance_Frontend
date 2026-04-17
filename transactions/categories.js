@@ -975,6 +975,10 @@ async function _applyTransferAssignment(txnId, sourceAccountId, targetAccount) {
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
     }
+    // Refresh sidebar balances for both accounts in the transfer pair.
+    // Without this, the new running balance stays stale in the sidebar
+    // until a full page refresh or account switch.
+    await loadAccounts();
     renderTransactionTable();
 
     // Build a descriptive status message
@@ -1021,6 +1025,9 @@ async function unlinkTransfer(txnId) {
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
     }
+    // Mirror the assignment path — sidebar balances need refreshing since
+    // unlinking also moves money between accounts from an accounting view.
+    await loadAccounts();
     renderTransactionTable();
 
     setTimeout(() => clearStatus(), 3000);

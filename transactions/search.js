@@ -373,6 +373,22 @@ function initSearchBar() {
   const searchInput = document.getElementById('search-input');
   if (!searchInput) return;
 
+  // Honor a ?search=… URL parameter so deep-link drill-downs (e.g. from the
+  // category summary report) arrive with the filter already applied.
+  try {
+    const urlSearch = new URLSearchParams(window.location.search).get('search');
+    if (urlSearch) {
+      searchInput.value = urlSearch;
+      searchQuery = urlSearch;
+      searchTokens = parseSearchQuery(urlSearch);
+      _toggleSearchClearButton(urlSearch);
+    }
+  } catch (urlParseError) {
+    // A malformed query string should never wedge the page — fall back to
+    // an empty search and continue.
+    console.warn('Ignoring malformed ?search= parameter:', urlParseError);
+  }
+
   let debounceTimer = null;
 
   searchInput.addEventListener('input', function() {

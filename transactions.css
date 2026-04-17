@@ -4800,6 +4800,61 @@ th.th-date {
   width: 85px;
 }
 
+/* Pulsing blue dot prefix on transactions that have not yet been reviewed.
+   Sits to the left of the date so users can tell at a glance which rows
+   still need attention. Cleared automatically on match-approve or via the
+   right-click "Mark visible as reviewed" action. */
+.unreviewed-dot {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary, #4c8dff);
+  vertical-align: middle;
+  cursor: pointer;
+  animation: unreviewed-dot-pulse 1.8s ease-in-out infinite;
+}
+.unreviewed-dot:hover {
+  filter: brightness(1.2);
+  transform: scale(1.3);
+}
+
+@keyframes unreviewed-dot-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(76, 141, 255, 0.6); }
+  50%      { opacity: 0.55; box-shadow: 0 0 0 4px rgba(76, 141, 255, 0); }
+}
+
+/* Sidebar badge: blue dot with white count of unreviewed transactions */
+.sidebar-unreviewed-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent-primary, #4c8dff);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  margin-left: auto;
+}
+
+/* Category summary report drill-down links — blend with table text,
+   reveal interactivity on hover */
+.reports-drilldown-link {
+  color: inherit;
+  text-decoration: none;
+  cursor: default;
+}
+.reports-drilldown-link:hover {
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* Description input stretches to fill */
 .inline-edit-description {
   min-width: 120px;

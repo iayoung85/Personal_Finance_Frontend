@@ -48,6 +48,29 @@ function _logoFallbackChar(txn) {
   }
 }
 
+async function _markSingleTransactionReviewed(transactionId) {
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/mark_reviewed`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction_ids: [transactionId] }),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Failed to mark reviewed');
+
+    const txn = transactions.find(t => t.transaction_id === transactionId);
+    if (txn) txn.reviewed = true;
+    _cacheTransactions(transactions);
+    renderTransactionTable();
+    renderAccountsSidebar();
+  } catch (reviewError) {
+    showStatus(`Failed to mark reviewed: ${reviewError.message}`, 'error');
+  }
+}
+
 /**
  * Build a child transaction object suitable for existing search helpers.
  * Child values override parent values while inheriting missing fields.
@@ -1102,7 +1125,14 @@ function renderTransactionTable() {
     if (showLogoColumn) {
       rowHtml += `<td class="logo-cell">${hiddenCheckboxHtml}${_renderLogoCell(txn)}</td>`;
     }
-    rowHtml += `<td class="date-column${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="date"' : ''}>${!showLogoColumn ? hiddenCheckboxHtml : ''}${dateStr}</td>`;
+    // Unreviewed dot: Plaid-sourced rows land in the ledger as ``reviewed=false``
+    // and get a pulsing blue indicator to nudge the user to verify/categorize
+    // before moving on. Approving a match auto-flips the flag, and the
+    // context-menu "Mark visible as reviewed" action clears it in bulk.
+    const unreviewedDot = (txn.reviewed === false && !isFutureBlockRow && !isOpeningBalanceRow)
+      ? `<span class="unreviewed-dot" title="Click to mark reviewed" onclick="event.stopPropagation(); _markSingleTransactionReviewed('${txnId}')"></span>`
+      : '';
+    rowHtml += `<td class="date-column${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="date"' : ''}>${!showLogoColumn ? hiddenCheckboxHtml : ''}${unreviewedDot}${dateStr}</td>`;
     if (showBankAccountColumn) {
       rowHtml += `<td>${txn.bank_account}</td>`;
     }

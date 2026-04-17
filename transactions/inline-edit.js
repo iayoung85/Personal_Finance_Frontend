@@ -430,8 +430,11 @@ function _parseAmountInput(rawAmountInput) {
     .replace(/[+\-]/g, '');
 
   const parsedFloat = Number.parseFloat(normalizedString);
-  if (!Number.isFinite(parsedFloat) || parsedFloat <= 0) {
-    return { ok: false, error: 'Amount must be a positive number' };
+  // Zero is allowed so users can book $0 markdowns without touching the
+  // running balance. Negative input on its own is rejected — the sign
+  // comes from the "+"/"−" prefix or type_override.
+  if (!Number.isFinite(parsedFloat) || parsedFloat < 0) {
+    return { ok: false, error: 'Amount must be zero or a positive number' };
   }
 
   return {

@@ -442,13 +442,59 @@ function _renderCategoryRows(categoryMap, periodCount) {
   for (const [category, catData] of Object.entries(categoryMap)) {
     html += '<tr class="reports-category-row">';
     html += `<td class="reports-indent-1">${_escapeHtml(category)}</td>`;
-    for (const amount of catData.amounts) {
-      html += `<td class="reports-num-col">${_formatCurrency(amount)}</td>`;
+    for (let periodIdx = 0; periodIdx < catData.amounts.length; periodIdx++) {
+      const amount = catData.amounts[periodIdx];
+      const periodDates = (_lastReportData && _lastReportData.period_dates)
+        ? _lastReportData.period_dates[periodIdx]
+        : null;
+      html += `<td class="reports-num-col">${_renderCategoryAmountCell(amount, category, periodDates)}</td>`;
     }
-    html += `<td class="reports-num-col">${_formatCurrency(catData.total)}</td>`;
+    html += `<td class="reports-num-col">${_renderCategoryAmountCell(catData.total, category, null)}</td>`;
     html += '</tr>';
   }
   return html;
+}
+
+/**
+ * Build a search-bar-compatible date token from period start/end ISO dates.
+ * Full calendar months use the compact YYYY-MM form; partial months or
+ * yearly ranges use date:YYYY-MM-DD..YYYY-MM-DD.
+ */
+function _buildPeriodSearchToken(periodDates) {
+  if (!periodDates) return null;
+  const startStr = periodDates.start;
+  const endStr = periodDates.end;
+
+  // Detect full calendar month: starts on the 1st and ends on the last day
+  const startParts = startStr.split('-');
+  const endParts = endStr.split('-');
+  if (startParts[0] === endParts[0] && startParts[1] === endParts[1] && startParts[2] === '01') {
+    const lastDay = new Date(Number(endParts[0]), Number(endParts[1]), 0).getDate();
+    if (Number(endParts[2]) === lastDay) {
+      return `date:${startParts[0]}-${startParts[1]}`;
+    }
+  }
+  return `date:${startStr}..${endStr}`;
+}
+
+/**
+ * Render a category-report amount as a clickable link that opens the
+ * transactions page in a new tab with the search bar prefilled. Zero
+ * amounts render as plain text so we don't invite the user to click
+ * into an empty view.
+ */
+function _renderCategoryAmountCell(amount, category, periodDates) {
+  const formatted = _formatCurrency(amount);
+  if (!amount || !category) return formatted;
+
+  const tokens = [];
+  const dateToken = _buildPeriodSearchToken(periodDates);
+  if (dateToken) tokens.push(dateToken);
+  tokens.push(`cat:"${category}"`);
+  const searchQuery = tokens.join(' ');
+  const href = `transactions.html?search=${encodeURIComponent(searchQuery)}`;
+
+  return `<a class="reports-drilldown-link" href="${href}" target="_blank" rel="noopener" title="Open matching transactions in a new tab">${formatted}</a>`;
 }
 
 

@@ -159,6 +159,20 @@ function _appendInspectMenuItem(items, txnData) {
     separator: false,
   });
 
+  // Always let the user clear the pulsing unreviewed dots from whatever
+  // they're currently looking at. Scoping to the filtered view lines up
+  // with how the user thinks about "I've finished eyeballing this page."
+  const visibleRows = Array.isArray(visibleTransactions) ? visibleTransactions : [];
+  const unreviewedCount = visibleRows.filter(txn => txn && txn.reviewed === false).length;
+  if (unreviewedCount > 0) {
+    items[items.length - 1].separator = true;
+    items.push({
+      label: `✓ Mark ${unreviewedCount} visible reviewed`,
+      action: 'mark-visible-reviewed',
+      separator: false,
+    });
+  }
+
   return items;
 }
 
@@ -547,6 +561,9 @@ function _dispatchContextAction(action, txnData) {
     case 'approve-all-matches':
       _handleContextApproveAllMatches(txnData);
       break;
+    case 'mark-visible-reviewed':
+      _handleContextMarkVisibleReviewed();
+      break;
     case 'mark-paid':
       _handleContextMarkPaid(txnData);
       break;
@@ -839,18 +856,86 @@ async function _handleContextApproveMatch(txnData) {
 }
 
 /**
- * Approve every matched transaction for the current user at once.
+ * Approve every matched transaction in the current filtered view.
+ * Collects the IDs visible in the ledger (honoring search, date filter,
+ * hide-transfers, etc.) and asks the backend to approve only those —
+ * rather than sweeping every match across every account.
  */
 async function _handleContextApproveAllMatches() {
-  if (!confirm('Approve all matched transactions? This will permanently delete every manual counterpart.')) return;
+  const visibleRows = Array.isArray(visibleTransactions) ? visibleTransactions : [];
+  // A "matched" row in the ledger is anything with status === 'matched'
+  // (plaid side) or 'bill_matched' (bill side). The backend handles the
+  // plaid/manual reparenting, so sending either id from a merged pair
+  // resolves the same match.
+  const matchedIds = visibleRows
+    .filter(txn => txn && (txn.status === 'matched' || txn.status === 'bill_matched'))
+    .map(txn => txn.matchManualTxnId || txn.transaction_id)
+    .filter(Boolean);
+
+  if (matchedIds.length === 0) {
+    showStatus('No matched transactions in the current view.', 'info');
+    setTimeout(() => clearStatus(), 2500);
+    return;
+  }
+
+  const confirmMsg = `Approve ${matchedIds.length} matched transaction(s) in the current view? This will permanently delete the manual counterpart for each.`;
+  if (!confirm(confirmMsg)) return;
 
   try {
-    const result = await approveAllMatches();
+    const result = await approveAllMatches(matchedIds);
     showStatus(`Approved ${result.approved_count} match(es)`, 'success');
     _invalidateTransactionCache();
     await fetchAllTransactions(true);
   } catch (approveError) {
     showStatus(`Failed to approve matches: ${approveError.message}`, 'error');
+  }
+}
+
+/**
+ * Clear the pulsing unreviewed dot from every visible transaction.
+ * Scoped to the filtered/search view so users can chunk their review work
+ * without accidentally acknowledging rows they haven't looked at yet.
+ */
+async function _handleContextMarkVisibleReviewed() {
+  const visibleRows = Array.isArray(visibleTransactions) ? visibleTransactions : [];
+  const unreviewedIds = visibleRows
+    .filter(txn => txn && txn.reviewed === false && txn.transaction_id)
+    .map(txn => txn.transaction_id);
+
+  if (unreviewedIds.length === 0) {
+    showStatus('Nothing to mark — every visible row is already reviewed.', 'info');
+    setTimeout(() => clearStatus(), 2500);
+    return;
+  }
+
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/mark_reviewed`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction_ids: unreviewedIds }),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to mark transactions reviewed');
+    }
+
+    // Patch the local cache in place so the dots disappear immediately
+    // without a full refetch.
+    const updatedSet = new Set(data.updated_ids || unreviewedIds);
+    for (const txn of transactions) {
+      if (updatedSet.has(txn.transaction_id)) txn.reviewed = true;
+    }
+    _cacheTransactions(transactions);
+    renderTransactionTable();
+    renderAccountsSidebar();
+
+    showStatus(`Marked ${data.updated_count || unreviewedIds.length} transaction(s) reviewed`, 'success');
+    setTimeout(() => clearStatus(), 2500);
+  } catch (markError) {
+    showStatus(`Failed to mark reviewed: ${markError.message}`, 'error');
   }
 }
 

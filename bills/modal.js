@@ -1006,7 +1006,16 @@ async function _billModalSave() {
 
   if (!formData.account_id) { _bmShowError('Please select an account.'); return; }
   if (!formData.description) { _bmShowError('Please enter a description.'); return; }
-  if (!formData.amount || formData.amount <= 0) { _bmShowError('Please enter a valid amount greater than 0.'); return; }
+  // Variable-amount bills may be saved at $0 so the user isn't tricked into
+  // seeing a real pending amount before the bill actually materializes.
+  // Fixed-amount bills still need a non-zero amount.
+  const amountValue = Number(formData.amount);
+  if (isNaN(amountValue) || amountValue < 0) {
+    _bmShowError('Please enter a valid amount (zero or greater).'); return;
+  }
+  if (!formData.amount_variable && amountValue === 0) {
+    _bmShowError('Please enter a valid amount greater than 0, or mark the bill as variable.'); return;
+  }
   if (!formData.start_date) { _bmShowError('Please set a start date.'); return; }
 
   if (formData.start_date && !parseDateInput(formData.start_date)) {
