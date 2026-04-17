@@ -14,6 +14,9 @@ let plaidTaxonomy = [];
 let migrationLog = [];
 let overrides = []; // Overrides summary: [{category_name, transaction_count}]
 
+// Account list for account-scoped rules — [{account_id, display_name}]
+let ruleAccountOptions = [];
+
 // Primary mapping state — derived from detailed mappings
 let primaryCategoryMappings = {};
 

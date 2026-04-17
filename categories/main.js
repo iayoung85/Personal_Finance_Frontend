@@ -59,6 +59,9 @@ document.addEventListener('DOMContentLoaded', async function initCategoriesPage(
   // If another page (e.g. transactions manual-txn modal) sent us a category
   // to pre-create, populate the custom category form with it.
   _applyPrefillCustomCategory();
+
+  // If redirected from transactions page Rule button, pre-fill the rule form
+  applyRulePrefill();
 });
 
 /**

@@ -165,19 +165,28 @@
               <p class="panel-note">Rules auto-categorize <strong>newly synced Plaid transactions</strong> AND any manual transactions a user creates where the category field is left blank, based on their description, merchant name, or amount. They do not retroactively change existing transactions.</p>
               <div class="rule-form">
                 <input id="rule-name" type="text" placeholder="Rule name">
-                <select id="rule-match-type">
-                  <option value="name_contains">Description contains</option>
-                  <option value="merchant_contains">Merchant contains</option>
-                  <option value="amount_range">Amount range</option>
-                  <option value="regex">Regular expression (advanced)</option>
-                </select>
-                <input id="rule-match-value" type="text" placeholder="Match value">
-                <select id="rule-target-category"></select>
-                <input id="rule-priority" type="number" placeholder="Priority" value="0">
-                <label class="inline-checkbox"><input id="rule-case-sensitive" type="checkbox"> Case sensitive</label>
+
+                <div id="rule-conditions-container">
+                  <!-- Condition rows are rendered by JS -->
+                </div>
+                <button type="button" class="secondary" onclick="addConditionRow()">+ Add condition</button>
+
+                <div class="rule-category-priority-row">
+                  <div class="rule-category-field" style="position: relative;">
+                    <input id="rule-target-category" type="text" placeholder="Target category" autocomplete="off">
+                    <div id="rule-target-category-list" class="rule-cat-ac-list"></div>
+                  </div>
+                  <div class="rule-priority-field">
+                    <label for="rule-priority">Priority</label>
+                    <input id="rule-priority" type="number" value="0" title="Higher number = evaluated first. Same priority = oldest rule wins.">
+                  </div>
+                </div>
                 <label class="inline-checkbox"><input id="rule-active" type="checkbox" checked> Active</label>
-                <button id="rule-save-btn" onclick="saveRule()">Create Rule</button>
-                <button id="rule-cancel-btn" class="secondary hidden" onclick="cancelRuleEdit()">Cancel</button>
+                <div class="rule-form-actions">
+                  <button id="rule-save-btn" onclick="saveRule()">Create Rule</button>
+                  <button id="rule-cancel-btn" class="secondary hidden" onclick="cancelRuleEdit()">Cancel</button>
+                  <button type="button" class="secondary rule-help-btn" onclick="showRuleHelp()" title="Rule building help">?</button>
+                </div>
               </div>
               <div id="rules-table" class="rules-table"></div>
             </div>
@@ -358,6 +367,7 @@
   <script src="nav-sidebar.js"></script>
 
   <!-- Categories modules — load order matters -->
+  <script src="shared/categories-autocomplete.js"></script>
   <script src="categories/state.js"></script>
   <script src="categories/api.js"></script>
   <script src="categories/utils.js"></script>

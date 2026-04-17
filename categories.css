@@ -650,16 +650,142 @@ tr:hover {
 
 /* ── Rules Engine ──────────────────────────────────────────── */
 .rule-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  align-items: center;
   margin-bottom: 12px;
 }
 
 .rule-form input,
 .rule-form select {
   min-height: 36px;
+}
+
+.rule-category-priority-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.rule-category-field {
+  flex: 5;
+  min-width: 0;
+}
+
+.rule-category-field input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.rule-category-priority-row > input[type="number"] {
+  flex: 1;
+  max-width: 80px;
+}
+
+.rule-priority-field {
+  display: flex;
+  flex-direction: column;
+  max-width: 80px;
+}
+
+.rule-priority-field label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.rule-priority-field input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.rule-form-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.rule-help-btn {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* ── Condition Rows ────────────────────────────────────────── */
+#rule-conditions-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-inset, var(--bg-secondary));
+}
+
+.condition-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.condition-row select,
+.condition-row input {
+  min-height: 32px;
+  font-size: 13px;
+}
+
+.condition-match-type {
+  min-width: 160px;
+}
+
+.condition-value-container {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex: 1;
+}
+
+.condition-value-container input[type="text"],
+.condition-value-container select {
+  flex: 1;
+  min-width: 120px;
+}
+
+.condition-amount-min,
+.condition-amount-max {
+  width: 90px;
+  min-width: 70px;
+}
+
+.condition-range-dash {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.condition-remove-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 4px;
+}
+
+.condition-operator-label {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 2px 0;
 }
 
 .inline-checkbox {
@@ -674,6 +800,35 @@ tr:hover {
 .audit-log table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
+}
+
+/* Column width hints for the rules table (7 columns) */
+.rules-table th:nth-child(1),
+.rules-table td:nth-child(1) { width: 52px; }   /* Priority */
+.rules-table th:nth-child(2),
+.rules-table td:nth-child(2) { width: 90px; }    /* Created */
+.rules-table th:nth-child(3),
+.rules-table td:nth-child(3) { width: 18%; }     /* Name */
+.rules-table th:nth-child(4),
+.rules-table td:nth-child(4) { width: auto; }    /* Match — gets remaining space */
+.rules-table th:nth-child(5),
+.rules-table td:nth-child(5) { width: 16%; }     /* Target */
+.rules-table th:nth-child(6),
+.rules-table td:nth-child(6) { width: 44px; }    /* Active */
+.rules-table th:nth-child(7),
+.rules-table td:nth-child(7) { width: 150px; }   /* Actions */
+
+.rules-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Match column: allow wrapping for compound conditions */
+.rules-table td:nth-child(4) {
+  white-space: normal;
+  word-break: break-word;
 }
 
 .rules-table th,
@@ -694,6 +849,119 @@ tr:hover {
 .rules-actions button {
   padding: 4px 8px;
   font-size: 12px;
+}
+
+.rule-conflict-badge {
+  display: inline-block;
+  font-size: 13px;
+  cursor: help;
+  vertical-align: middle;
+  margin-left: 4px;
+  color: var(--color-warning, #f59e0b);
+}
+
+.rule-row-conflicted td {
+  opacity: 0.65;
+}
+
+/* ── Rule Prefill Banner (shown when redirected from transactions) ── */
+.rule-prefill-banner {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--accent-primary);
+  border-left: 4px solid var(--accent-primary);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.prefill-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.prefill-dismiss {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 4px;
+}
+
+.prefill-table {
+  width: 100%;
+  margin: 0 0 6px;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.prefill-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 3px 8px 3px 0;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.prefill-value {
+  padding: 3px 0;
+  font-family: monospace;
+  color: var(--text-primary);
+}
+
+/* ── Rule Target Category Autocomplete ─────────────────────── */
+.rule-cat-ac-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 0 0 4px 4px;
+  box-shadow: var(--shadow-md);
+  display: none;
+}
+
+.rule-cat-ac-item {
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.rule-cat-ac-item:last-child {
+  border-bottom: none;
+}
+
+.rule-cat-ac-item.active,
+.rule-cat-ac-item:hover {
+  background: var(--bg-selected);
+  color: var(--accent-link);
+}
+
+.rule-cat-ac-item strong {
+  color: var(--accent-link);
+}
+
+.rule-cat-ac-empty {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.rule-cat-ac-more {
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
 }
 
 /* ── Bulk Actions ──────────────────────────────────────────── */

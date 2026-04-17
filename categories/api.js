@@ -204,6 +204,7 @@ async function loadCategorizationData(forceNetwork = false) {
       authenticatedFetch(`${BACKEND_URL}/api/categorization/migration-log`),
       authenticatedFetch(`${BACKEND_URL}/api/categorization/validation/broken-rules`),
       authenticatedFetch(`${BACKEND_URL}/api/categorization/transaction-overrides/summary`),
+      authenticatedFetch(`${BACKEND_URL}/api/accounts/banks`),
     ];
     if (needTaxonomy) {
       fetches.push(authenticatedFetch(`${BACKEND_URL}/api/categorization/plaid-taxonomy`));
@@ -216,6 +217,7 @@ async function loadCategorizationData(forceNetwork = false) {
     const logData = await responses[2].json();
     const brokenRulesData = await responses[3].json();
     const overridesData = await responses[4].json();
+    const banksData = await responses[5].json();
 
     categoryMappings = responses[0].ok ? (categoriesData.category_mappings || {}) : {};
     customCategories = responses[0].ok ? (categoriesData.custom_categories || []) : [];
@@ -223,6 +225,23 @@ async function loadCategorizationData(forceNetwork = false) {
     rules = responses[1].ok ? (rulesData.rules || []) : [];
     migrationLog = responses[2].ok ? (logData.migrations || []) : [];
     overrides = responses[4].ok ? (overridesData.overrides_by_category || []) : [];
+
+    // Build account options for account-scoped rules.
+    // Exclude archived/hidden accounts so users only target active ones.
+    ruleAccountOptions = [];
+    if (responses[5].ok && banksData.banks) {
+      for (const bank of banksData.banks) {
+        if (bank.is_archived) continue;
+        for (const account of (bank.accounts || [])) {
+          if (account.is_archived || account.is_hidden) continue;
+          ruleAccountOptions.push({
+            account_id: account.account_id,
+            display_name: `${account.custom_name || account.account_name || 'Unknown'} (${bank.custom_name || bank.bank_name || 'Unknown Bank'})`,
+          });
+        }
+      }
+      ruleAccountOptions.sort((a, b) => a.display_name.localeCompare(b.display_name));
+    }
 
     // Handle broken rules from the batch response
     if (responses[3].ok && brokenRulesData.has_broken_rules) {
@@ -233,8 +252,8 @@ async function loadCategorizationData(forceNetwork = false) {
     }
 
     if (needTaxonomy) {
-      const taxonomyData = await responses[5].json();
-      plaidTaxonomy = responses[5].ok ? (taxonomyData.categories || []) : [];
+      const taxonomyData = await responses[6].json();
+      plaidTaxonomy = responses[6].ok ? (taxonomyData.categories || []) : [];
     } else {
       plaidTaxonomy = cachedTaxonomy;
     }

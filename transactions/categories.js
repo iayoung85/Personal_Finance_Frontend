@@ -615,7 +615,7 @@ function attachCategoryDropdownListeners() {
         }
       }
     }
-    openCategoryRuleModal(txn, parsed.primary, parsed.detailed, txnId, accountId);
+    _redirectToRulesPage(txn, parsed.primary, parsed.detailed, accountId);
   });
 }
 
@@ -1076,7 +1076,13 @@ async function clearOverride(event) {
  * The category section is editable — changing it here also updates the
  * source transaction (same as applying a manual override directly).
  */
-function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, accountId) {
+/**
+ * Stash transaction context into sessionStorage and navigate to the
+ * categories Rules Engine panel, where the form will be pre-filled.
+ * Consolidates rule creation into one place so the user always sees
+ * existing rules + the conflict detector when building a new rule.
+ */
+function _redirectToRulesPage(txn, selectedPrimary, selectedDetailed, accountId) {
   if (!selectedPrimary) {
     showStatus('Please select a primary category', 'warning');
     return;
@@ -1088,502 +1094,51 @@ function openCategoryRuleModal(txn, selectedPrimary, selectedDetailed, txnId, ac
     return;
   }
 
-  // originalCategory is used later to detect whether the user changed the
-  // category inside the modal (triggers an override on the source transaction).
-  const originalCategory = resolvedTarget.value;
-
-  // --- Transaction field values for preview & smart defaults ---
   const txnDescription = txn?.name || '';
   const txnMerchant   = txn?.merchant_name || '';
   const txnAmount     = txn?.amount != null ? Math.abs(txn.amount) : '';
   const txnCurrency   = txn?.iso_currency_code || 'USD';
   const txnSource     = txn?.source || '';
   const userOverride  = txn?.user_description_override || '';
-  const isManualTxn   = txnSource === 'manual';
 
-  // Smart default: prefer merchant if available, fall back to description
   const hasMerchant = !!txnMerchant;
   const defaultMatchType  = hasMerchant ? 'merchant_contains' : 'name_contains';
   const defaultMatchValue = hasMerchant ? txnMerchant : txnDescription;
   const bestLabel = hasMerchant ? txnMerchant : txnDescription;
-  const defaultRuleName = `${selectedPrimary}${selectedDetailed ? ' - ' + selectedDetailed : ''} (${bestLabel})`.trim();
 
-  // Format amount for display
-  const fmtAmount = txnAmount !== '' ? new Intl.NumberFormat('en-US', { style: 'currency', currency: txnCurrency }).format(txnAmount) : '—';
+  // Resolve account display name for the prefill banner
+  const acct = accountId ? accounts.find(a => a.account_id === accountId) : null;
+  const accountDisplayName = acct ? _buildAccountDisplayName(acct) : '';
 
-  // Build the "Transaction being matched" preview rows.
-  // For Plaid txns: show the original Plaid data that rules match against,
-  // plus the user's override label if they renamed the description.
-  // For manual txns: description and merchant are often identical (merchant
-  // is the primary field), so collapse them into one row.
-  let previewRows = '';
-  if (isManualTxn) {
-    previewRows = `
-      <tr>
-        <td class="rule-modal-label">Merchant / Desc</td>
-        <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnMerchant || txnDescription) || '<em class="rule-modal-empty">empty</em>'}</td>
-      </tr>
-    `;
-  } else {
-    const overrideHint = (userOverride && userOverride !== txnDescription)
-      ? `<br><span style="color: var(--text-muted); font-size: 0.85em; font-family: inherit;">You renamed this to: <strong>${escapeHtml(userOverride)}</strong></span>`
-      : '';
-    previewRows = `
-      <tr>
-        <td class="rule-modal-label">Description</td>
-        <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnDescription) || '<em class="rule-modal-empty">empty</em>'}${overrideHint}</td>
-      </tr>
-      <tr>
-        <td class="rule-modal-label">Merchant</td>
-        <td style="padding:3px 0; font-family: monospace;">${escapeHtml(txnMerchant) || '<em class="rule-modal-empty">not available</em>'}</td>
-      </tr>
-    `;
-  }
-  previewRows += `
-    <tr>
-      <td class="rule-modal-label">Amount</td>
-      <td style="padding:3px 0; font-family: monospace;">${fmtAmount}</td>
-    </tr>
-  `;
+  sessionStorage.setItem('pf_rule_prefill', JSON.stringify({
+    txnName: txnDescription,
+    txnMerchant: txnMerchant,
+    txnAmount: txnAmount,
+    txnCurrency: txnCurrency,
+    txnSource: txnSource,
+    userOverride: userOverride,
+    accountId: accountId || '',
+    accountDisplayName: accountDisplayName,
+    targetCategory: resolvedTarget.value,
+    defaultMatchType: defaultMatchType,
+    defaultMatchValue: defaultMatchValue,
+    defaultRuleName: `${selectedPrimary}${selectedDetailed ? ' - ' + selectedDetailed : ''} (${bestLabel})`.trim(),
+  }));
 
-  const previewNote = isManualTxn
-    ? '<small style="color: var(--text-muted); display: block; margin-top: 6px;">Rules match against the merchant name and description you entered when creating this transaction.</small>'
-    : '<small style="color: var(--text-muted); display: block; margin-top: 6px;">Rules match against the original Plaid data shown above, not any custom labels you may have set.</small>';
-
-  // Build rule configuration form — all colors use CSS variables so they
-  // automatically match the VS Code dark theme defined in theme.css.
-  const formHtml = `
-    <div style="display: grid; gap: 14px;">
-
-      <!-- Transaction preview so users can see what each field refers to -->
-      <details open class="rule-modal-preview">
-        <summary style="font-weight: 600; cursor: pointer; user-select: none;">Data rules match against</summary>
-        <table style="width:100%; margin-top: 8px; font-size: 0.92em; border-collapse: collapse;">
-          ${previewRows}
-        </table>
-        ${previewNote}
-      </details>
-
-      <div>
-        <label class="rule-modal-field-label">Rule Name</label>
-        <input id="rule-modal-name" type="text" placeholder="Rule name"
-               value="${escapeHtml(defaultRuleName)}" class="modal-input">
-      </div>
-
-      <div>
-        <label class="rule-modal-field-label">Match Type</label>
-        <select id="rule-modal-match-type" onchange="_ruleModalMatchTypeChanged()" class="modal-input">
-          <option value="name_contains"${defaultMatchType === 'name_contains' ? ' selected' : ''}>Description contains</option>
-          <option value="merchant_contains"${defaultMatchType === 'merchant_contains' ? ' selected' : ''}>Merchant contains</option>
-          <option value="amount_range">Amount range</option>
-          <option value="regex">Regular expression (advanced)</option>
-        </select>
-        <small id="rule-modal-match-hint" class="rule-modal-hint"></small>
-      </div>
-
-      <!-- Text-based match value (description / merchant / regex) -->
-      <div id="rule-modal-text-group">
-        <label class="rule-modal-field-label">Match Value</label>
-        <input id="rule-modal-match-value" type="text" placeholder="Text to search for"
-               value="${escapeHtml(defaultMatchValue)}" class="modal-input">
-      </div>
-
-      <!-- Amount range inputs (shown only for amount_range) -->
-      <div id="rule-modal-amount-group" style="display: none;">
-        <label class="rule-modal-field-label">Amount Range</label>
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <input id="rule-modal-amount-min" type="number" step="0.01" min="0"
-                 placeholder="Min" value="" class="modal-input" style="flex:1;">
-          <span style="color: var(--text-secondary);">to</span>
-          <input id="rule-modal-amount-max" type="number" step="0.01" min="0"
-                 placeholder="Max" value="" class="modal-input" style="flex:1;">
-        </div>
-        <small class="rule-modal-hint">Leave either blank for no limit. Matches absolute value of amount.</small>
-      </div>
-
-      <div>
-        <label class="rule-modal-field-label">Priority</label>
-        <input id="rule-modal-priority" type="number" placeholder="0" value="0" class="modal-input">
-        <small class="rule-modal-hint">Higher priority rules are applied first. Default is 0.</small>
-      </div>
-
-      <label id="rule-modal-case-row" style="display: flex; align-items: center; gap: 6px;">
-        <input id="rule-modal-case-sensitive" type="checkbox">
-        <span style="font-weight: 500;">Case sensitive</span>
-      </label>
-
-      <label style="display: flex; align-items: center; gap: 6px;">
-        <input id="rule-modal-active" type="checkbox" checked>
-        <span style="font-weight: 500;">Active</span>
-      </label>
-
-      <!-- Editable category assignment — changing this also recategorizes
-           this specific transaction (override for Plaid, direct edit for manual). -->
-      <div class="rule-modal-category-block">
-        <div class="rule-modal-category-header">
-          <span class="rule-modal-category-title">Assign category</span>
-          <span class="rule-modal-category-sub">Editing this will also recategorize this transaction</span>
-        </div>
-        <div style="position: relative; margin-top: 8px;">
-          <input id="rule-modal-category" type="text" value="${escapeHtml(originalCategory)}" placeholder="Type to search categories" autocomplete="off" class="modal-input">
-          <div id="rule-modal-category-list" class="category-ac-list" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 99999;"></div>
-        </div>
-      </div>
-
-    </div>
-  `;
-
-  openModal({
-    title: 'Create Categorization Rule',
-    body: formHtml,
-    actions: [
-      { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Create Rule', onClick: () => submitCategoryRule(txnId, accountId, originalCategory) }
-    ]
-  });
-
-  // Wire category autocomplete
-  setTimeout(() => _wireRuleModalCategoryAutocomplete(), 50);
-
-  // Store txn data on the modal for match-type switching
-  window._ruleModalTxn = { description: txnDescription, merchant: txnMerchant, amount: txnAmount };
-
-  // Trigger hint update for initial match type
-  _ruleModalMatchTypeChanged();
-}
-
-/**
- * Update the rule modal form when the match type dropdown changes.
- * Toggles between text input and amount-range inputs and updates hints.
- */
-function _ruleModalMatchTypeChanged() {
-  const matchType  = document.getElementById('rule-modal-match-type').value;
-  const textGroup  = document.getElementById('rule-modal-text-group');
-  const amtGroup   = document.getElementById('rule-modal-amount-group');
-  const hintEl     = document.getElementById('rule-modal-match-hint');
-  const caseRow    = document.getElementById('rule-modal-case-row');
-  const matchInput = document.getElementById('rule-modal-match-value');
-  const txnData    = window._ruleModalTxn || {};
-
-  // Toggle field visibility
-  const isAmount = matchType === 'amount_range';
-  textGroup.style.display  = isAmount ? 'none' : '';
-  amtGroup.style.display   = isAmount ? ''     : 'none';
-  caseRow.style.display    = isAmount ? 'none' : 'flex';
-
-  // Update hint & pre-fill based on selected match type
-  switch (matchType) {
-    case 'name_contains':
-      hintEl.textContent = 'Matches the Description column of your transactions.';
-      matchInput.value = txnData.description || '';
-      matchInput.placeholder = 'Text to search for in description';
-      break;
-    case 'merchant_contains':
-      hintEl.textContent = 'Matches the Merchant field (may be empty for some transactions).';
-      matchInput.value = txnData.merchant || '';
-      matchInput.placeholder = 'Text to search for in merchant name';
-      break;
-    case 'amount_range': {
-      hintEl.textContent = 'Matches transactions whose absolute amount falls within this range.';
-      // Pre-fill with a reasonable range around the current amount
-      const amt = txnData.amount;
-      if (amt !== '' && amt != null) {
-        const rounded = Math.round(amt * 100) / 100;
-        document.getElementById('rule-modal-amount-min').value = Math.max(0, rounded - 5).toFixed(2);
-        document.getElementById('rule-modal-amount-max').value = (rounded + 5).toFixed(2);
-      }
-      break;
-    }
-    case 'regex':
-      hintEl.textContent = 'Advanced: matches the Description field using a regular expression pattern.';
-      matchInput.value = txnData.description || '';
-      matchInput.placeholder = 'Regular expression pattern';
-      break;
-  }
-}
-
-/**
- * Submit the rule creation form and call the API.
- *
- * If the user changed the category inside the modal (vs originalCategory),
- * we first apply a manual override to the source transaction — same behavior
- * as editing the category inline in the table.
- */
-async function submitCategoryRule(txnId, accountId, originalCategory) {
-  const ruleName = document.getElementById('rule-modal-name').value.trim();
-  const matchType = document.getElementById('rule-modal-match-type').value;
-  const priority = parseInt(document.getElementById('rule-modal-priority').value || '0', 10);
-  const caseSensitive = document.getElementById('rule-modal-case-sensitive').checked;
-  const isActive = document.getElementById('rule-modal-active').checked;
-
-  // Read the (possibly edited) category from the text input
-  const categoryInputValue = (document.getElementById('rule-modal-category')?.value || '').trim();
-  const resolvedTarget = _resolveAutocompleteCategory(categoryInputValue);
-  if (resolvedTarget.error) {
-    showStatus(resolvedTarget.error, 'warning');
-    return;
-  }
-  if (resolvedTarget.isTransfer) {
-    showStatus('Transfer assignments cannot be saved as rules.', 'warning');
-    return;
-  }
-  const targetCategory = resolvedTarget.value;
-
-  if (!ruleName) {
-    showStatus('Rule name is required', 'warning');
-    return;
-  }
-
-  // Build matchValue based on match type
-  let matchValue;
-  if (matchType === 'amount_range') {
-    const minVal = document.getElementById('rule-modal-amount-min').value.trim();
-    const maxVal = document.getElementById('rule-modal-amount-max').value.trim();
-    if (!minVal && !maxVal) {
-      showStatus('Please enter at least a minimum or maximum amount', 'warning');
-      return;
-    }
-    matchValue = {};
-    if (minVal) matchValue.min = parseFloat(minVal);
-    if (maxVal) matchValue.max = parseFloat(maxVal);
-  } else {
-    matchValue = document.getElementById('rule-modal-match-value').value.trim();
-  }
-
-  if (matchType !== 'amount_range' && !matchValue) {
-    showStatus('Match value is required', 'warning');
-    return;
-  }
-
-  const targetValidation = validateTargetCategory(targetCategory);
-  if (targetValidation.error) {
-    showStatus(targetValidation.error, 'warning');
-    return;
-  }
-
+  // Invalidate categories cache so freshly created rules appear immediately
   try {
-    // If the user changed the category, update this specific transaction.
-    // For Plaid transactions: POST to the override API (creates an override record).
-    // For manual transactions: PUT to the manual update API (direct edit, no override).
-    if (txnId && targetCategory !== originalCategory) {
-      const sourceTxn = transactions.find(t => t.transaction_id === txnId);
-      const isManual = sourceTxn && sourceTxn.source === 'manual';
+    localStorage.removeItem('pf_catpage_data');
+    localStorage.removeItem('pf_catpage_cached_at');
+  } catch (cacheError) { /* non-fatal */ }
 
-      if (isManual) {
-        const manualResponse = await authenticatedFetch(
-          `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(txnId)}`,
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_category: targetCategory })
-          }
-        );
-        const manualData = await manualResponse.json();
-        if (!manualResponse.ok) {
-          showStatus(manualData.error || 'Failed to update transaction category', 'error');
-          return;
-        }
-        if (sourceTxn) {
-          sourceTxn.user_category = targetCategory;
-        }
-      } else {
-        const overrideResponse = await authenticatedFetch(
-          `${BACKEND_URL}/api/categorization/transactions/${encodeURIComponent(txnId)}/categorize`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_category: targetCategory })
-          }
-        );
-        const overrideData = await overrideResponse.json();
-        if (!overrideResponse.ok) {
-          showStatus(overrideData.error || 'Failed to update transaction category', 'error');
-          return;
-        }
-        if (sourceTxn) {
-          sourceTxn.user_category = overrideData.updated_category || targetCategory;
-          sourceTxn.is_override = true;
-        }
-      }
-    }
-
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/rules`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        rule_name: ruleName,
-        match_criteria: {
-          match_type: matchType,
-          match_value: matchValue,
-          case_sensitive: caseSensitive
-        },
-        target_category: targetCategory,
-        priority: priority,
-        is_active: isActive
-      })
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      showStatus(data.error || 'Failed to create rule', 'error');
-      return;
-    }
-
-    closeModal();
-
-    const categoryChanged = targetCategory !== originalCategory;
-    if (categoryChanged) {
-      showStatus(`Rule created: "${ruleName}" — this transaction updated. Rule will apply to future syncs.`, 'success');
-      renderTransactionTable();
-    } else {
-      showStatus(`Rule created: "${ruleName}" — will apply to future syncs.`, 'success');
-    }
-
-    setTimeout(() => clearStatus(), 3000);
-  } catch (error) {
-    showStatus(`Failed to create rule: ${error.message}`, 'error');
-  }
+  window.location.href = 'categories.html#rules';
 }
 
-/**
- * Wire category autocomplete onto the rule modal's text input.
- * Uses the same pattern as _wireUpManualCategoryAutocomplete.
- */
-function _wireRuleModalCategoryAutocomplete() {
-  const input = document.getElementById('rule-modal-category');
-  const list  = document.getElementById('rule-modal-category-list');
-  if (!input || !list) return;
 
-  input.addEventListener('input', () => {
-    _showRuleModalCategoryDropdown(input, list);
-  });
-
-  input.addEventListener('focus', () => {
-    input.select();
-    if (input.value.trim()) {
-      _showRuleModalCategoryDropdown(input, list);
-    }
-  });
-
-  input.addEventListener('keydown', (event) => {
-    const items = list.querySelectorAll('.category-ac-item');
-    const activeItem = list.querySelector('.category-ac-item.active');
-    const activeIndex = Array.from(items).indexOf(activeItem);
-
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      const nextIndex = Math.min(activeIndex + 1, items.length - 1);
-      items.forEach(item => item.classList.remove('active'));
-      if (items[nextIndex]) {
-        items[nextIndex].classList.add('active');
-        items[nextIndex].scrollIntoView({ block: 'nearest' });
-      }
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      const prevIndex = Math.max(activeIndex - 1, 0);
-      items.forEach(item => item.classList.remove('active'));
-      if (items[prevIndex]) {
-        items[prevIndex].classList.add('active');
-        items[prevIndex].scrollIntoView({ block: 'nearest' });
-      }
-    } else if (event.key === 'Tab') {
-      const target = activeItem || items[0];
-      if (target) {
-        event.preventDefault();
-        input.value = target.dataset.value;
-        list.innerHTML = '';
-        list.style.display = 'none';
-      }
-    } else if (event.key === 'Enter') {
-      const target = activeItem || items[0];
-      if (target) {
-        event.preventDefault();
-        input.value = target.dataset.value;
-        list.innerHTML = '';
-        list.style.display = 'none';
-      }
-    } else if (event.key === 'Escape') {
-      list.innerHTML = '';
-      list.style.display = 'none';
-    }
-  });
-
-  input.addEventListener('blur', () => {
-    setTimeout(() => {
-      list.innerHTML = '';
-      list.style.display = 'none';
-    }, 200);
-  });
-
-  list.addEventListener('mousedown', (event) => {
-    const item = event.target.closest('.category-ac-item');
-    if (item) {
-      event.preventDefault();
-      input.value = item.dataset.value;
-      list.innerHTML = '';
-      list.style.display = 'none';
-    }
-  });
-}
-
-/**
- * Show filtered category suggestions in the rule modal's category input.
- * Rules cannot assign transfer categories, so "[" mode is intentionally omitted.
- */
-function _showRuleModalCategoryDropdown(input, list) {
-  const query = (input.value || '').trim();
-  const queryLower = query.toLowerCase();
-
-  if (!query) {
-    list.innerHTML = '';
-    list.style.display = 'none';
-    return;
-  }
-
-  let matches;
-  if (queryLower.includes(':')) {
-    const [qPrimary, qDetailed] = queryLower.split(':').map(s => s.trim());
-    matches = (availableCategories || []).filter(cat => {
-      const parts = cat.toLowerCase().split(':').map(s => s.trim());
-      const primaryMatch = !qPrimary || (parts[0] || '').includes(qPrimary);
-      const detailedMatch = !qDetailed || (parts[1] || '').includes(qDetailed);
-      return primaryMatch && detailedMatch;
-    });
-  } else {
-    matches = (availableCategories || []).filter(cat =>
-      cat.toLowerCase().includes(queryLower)
-    );
-  }
-
-  const maxVisible = 10;
-  const shown = matches.slice(0, maxVisible);
-
-  if (shown.length === 0) {
-    list.innerHTML = '<div class="category-ac-empty">No matching categories</div>';
-    list.style.display = 'block';
-    return;
-  }
-
-  const html = shown.map((cat, i) => {
-    const highlighted = _highlightMatch(cat, query);
-    return `<div class="category-ac-item${i === 0 ? ' active' : ''}" data-value="${escapeHtml(cat)}">${highlighted}</div>`;
-  }).join('');
-
-  const overflow = matches.length > maxVisible
-    ? `<div class="category-ac-more">${matches.length - maxVisible} more\u2026</div>` : '';
-
-  list.innerHTML = html + overflow;
-  list.style.display = 'block';
-}
-
-// ───── Categorize Modal (legacy simple modal) ─────
+// ───── Categorize Modal ─────
 
 function openCategorizeModal(txn, selectedCategory, accountId, txnId) {
-  const merchant = txn?.merchant_name || txn?.name || '';
   const categoryOptions = buildCategoryOptions(selectedCategory);
-  const defaultRuleName = `${selectedCategory} - ${merchant}`.trim();
-  const defaultMatchValue = merchant || txn?.name || '';
 
   openModal({
     title: 'Categorize Transaction',
@@ -1596,40 +1151,16 @@ function openCategorizeModal(txn, selectedCategory, accountId, txnId) {
         <label>Category</label>
         <select id="modal-category-select" class="table-inline-select">${categoryOptions}</select>
       </div>
-      <div style="margin-top: 12px;">
-        <label class="inline-checkbox"><input id="modal-save-rule" type="checkbox"> Save as rule for future transactions</label>
-      </div>
-      <div id="modal-rule-fields" style="margin-top: 8px; display: none;">
-        <input id="modal-rule-name" type="text" placeholder="Rule name" value="${escapeHtml(defaultRuleName)}">
-        <select id="modal-rule-match-type">
-          <option value="merchant_contains">Merchant contains</option>
-          <option value="name_contains">Name contains</option>
-          <option value="amount_range">Amount range</option>
-          <option value="regex">Regular expression (advanced)</option>
-        </select>
-        <input id="modal-rule-match-value" type="text" placeholder="Match value" value="${escapeHtml(defaultMatchValue)}">
-        <label class="inline-checkbox"><input id="modal-rule-case" type="checkbox"> Case sensitive</label>
-        <input id="modal-rule-priority" type="number" value="0" placeholder="Priority">
-      </div>
     `,
     actions: [
       { label: 'Cancel', className: 'secondary', onClick: closeModal },
-      { label: 'Save', onClick: () => applyManualCategory(txnId, accountId) }
+      { label: 'Save', onClick: () => _applyCategorizeAndClose(txn, txnId, accountId) }
     ]
   });
-
-  const saveRuleCheckbox = document.getElementById('modal-save-rule');
-  if (saveRuleCheckbox) {
-    saveRuleCheckbox.addEventListener('change', () => {
-      const fields = document.getElementById('modal-rule-fields');
-      fields.style.display = saveRuleCheckbox.checked ? 'grid' : 'none';
-    });
-  }
 }
 
-async function applyManualCategory(txnId, accountId) {
+async function _applyCategorizeAndClose(txn, txnId, accountId) {
   const selectedCategory = document.getElementById('modal-category-select').value;
-  const saveRule = document.getElementById('modal-save-rule').checked;
 
   try {
     const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/transactions/${encodeURIComponent(txnId)}/categorize`, {
@@ -1643,13 +1174,8 @@ async function applyManualCategory(txnId, accountId) {
       return;
     }
 
-    if (saveRule) {
-      await createRuleFromModal(selectedCategory);
-    }
-
     closeModal();
-    // Update local array directly — backend already persisted the override
-    const txn = transactions.find(t => t.transaction_id === txnId);
+
     if (txn) {
       txn.user_category = selectedCategory;
       txn.is_override = true;
@@ -1662,62 +1188,10 @@ async function applyManualCategory(txnId, accountId) {
     try {
       localStorage.removeItem('pf_catpage_data');
       localStorage.removeItem('pf_catpage_cached_at');
-    } catch (e) { /* cache removal failure is non-fatal */ }
-  } catch (error) {
-    showStatus(`Failed to categorize transaction: ${error.message}`, 'error');
+    } catch (cacheError) { /* non-fatal */ }
+  } catch (networkError) {
+    showStatus(`Failed to categorize transaction: ${networkError.message}`, 'error');
   }
-}
-
-async function createRuleFromModal(targetCategory) {
-  const ruleName = document.getElementById('modal-rule-name').value.trim();
-  const matchType = document.getElementById('modal-rule-match-type').value;
-  const matchValue = document.getElementById('modal-rule-match-value').value.trim();
-  const caseSensitive = document.getElementById('modal-rule-case').checked;
-  const priority = parseInt(document.getElementById('modal-rule-priority').value || '0', 10);
-
-  if (!ruleName || !matchValue) {
-    showStatus('Rule name and match value are required', 'warning');
-    return;
-  }
-
-  const targetValidation = validateTargetCategory(targetCategory);
-  if (targetValidation.error) {
-    showStatus(targetValidation.error, 'warning');
-    return;
-  }
-
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/rules`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      rule_name: ruleName,
-      match_criteria: {
-        match_type: matchType,
-        match_value: matchValue,
-        case_sensitive: caseSensitive
-      },
-      target_category: targetCategory,
-      priority
-    })
-  });
-
-  const data = await response.json();
-  if (!response.ok) {
-    showStatus(data.error || 'Failed to create rule', 'error');
-    return;
-  }
-
-  // Invalidate categories page cache so newly created rule shows up immediately
-  try {
-    localStorage.removeItem('pf_catpage_data');
-    localStorage.removeItem('pf_catpage_cached_at');
-  } catch (e) { /* cache removal failure is non-fatal */ }
-
-  showStatus(`Rule "${ruleName}" created successfully. It will apply to future Plaid syncs.`, 'success');
-  setTimeout(() => clearStatus(), 2000);
-  
-  // Close the modal after successful creation
-  closeModal();
 }
 
 // ───── Category Data Loading ─────
