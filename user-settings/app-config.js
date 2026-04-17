@@ -58,13 +58,28 @@ async function _patchPreferencesToServer(updates) {
 // ── Section Renderers ─────────────────────────────────────────
 
 /**
- * Builds the Appearance card HTML.
- *
- * Light mode is not yet implemented, so the theme toggle is
- * rendered as disabled with an explanatory note rather than
- * hiding it entirely — this signals to users that it is planned.
+ * Builds the Appearance card HTML with a 3-way theme toggle.
+ * "Auto" follows the OS preference via CSS prefers-color-scheme.
  */
 function _renderAppearanceCard(config) {
+  const currentTheme = config.theme || 'dark';
+
+  const themeOptions = [
+    { value: 'dark',  label: 'Dark',  description: 'VS Code Dark+ inspired palette' },
+    { value: 'light', label: 'Light', description: 'Solarized Light — warm, reduced blue' },
+    { value: 'auto',  label: 'Auto',  description: 'Follows your OS appearance setting' },
+  ];
+
+  const themeRadios = themeOptions.map(opt => `
+    <label class="stub-radio-label${currentTheme === opt.value ? ' selected' : ''}">
+      <input type="radio" name="theme" value="${opt.value}"
+        ${currentTheme === opt.value ? 'checked' : ''}
+        onchange="handleThemeChange(this.value)">
+      <span>${opt.label}</span>
+      <span class="example-value">${opt.description}</span>
+    </label>
+  `).join('');
+
   return `
     <div class="card">
       <div class="card-header">
@@ -72,22 +87,22 @@ function _renderAppearanceCard(config) {
       </div>
       <div class="form-group">
         <label>Color Theme</label>
-        <div class="stub-option-group">
-          <label class="stub-radio-label">
-            <input type="radio" name="theme" value="dark" checked disabled>
-            <span>Dark</span>
-            <span class="badge-active">Active</span>
-          </label>
-          <label class="stub-radio-label stub-disabled">
-            <input type="radio" name="theme" value="light" disabled>
-            <span>Light</span>
-            <span class="badge-coming-soon">Coming soon</span>
-          </label>
-        </div>
-        <p class="text-muted stub-note">Light mode is not yet available. The toggle is shown here for future wiring.</p>
+        <div class="stub-option-group">${themeRadios}</div>
       </div>
     </div>
   `;
+}
+
+/**
+ * Applies the chosen theme immediately and persists it to the
+ * backend. Separated from handleAppConfigChange so the visual
+ * switch happens before the network round-trip completes.
+ *
+ * @param {string} theme - 'dark', 'light', or 'auto'.
+ */
+async function handleThemeChange(theme) {
+  applyTheme(theme);
+  await handleAppConfigChange('theme', theme);
 }
 
 /**

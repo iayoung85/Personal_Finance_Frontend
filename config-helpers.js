@@ -47,3 +47,21 @@ function getAppConfig() {
     return { ...APP_CONFIG_DEFAULTS };
   }
 }
+
+const VALID_THEMES = ['dark', 'light', 'auto'];
+
+/**
+ * Sets [data-theme] on <html> and persists in localStorage.
+ * Called from the settings panel when the user picks a theme,
+ * and also once on page load after config-helpers.js is parsed.
+ *
+ * @param {string} theme - One of 'dark', 'light', or 'auto'.
+ */
+function applyTheme(theme) {
+  const resolvedTheme = VALID_THEMES.includes(theme) ? theme : 'dark';
+  document.documentElement.dataset.theme = resolvedTheme;
+}
+
+// Re-apply on load so the attribute stays in sync even if
+// theme-loader.js ran before localStorage was fully populated.
+applyTheme(getAppConfig().theme);

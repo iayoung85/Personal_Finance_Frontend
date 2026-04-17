@@ -1,17 +1,29 @@
 /* ============================================================
-   theme.css — VS Code Dark+ Inspired Dark Theme
+   theme.css — Design Token Palette (Dark + Light + Auto)
    ============================================================
    Single source of truth for all colors. Every page-specific
    stylesheet references these variables, so changing the
    palette here changes the entire app.
+
+   Theme selection is driven by [data-theme] on <html>:
+     "dark"  → dark variables  (the :root default)
+     "light" → explicit light override
+     "auto"  → follows OS via prefers-color-scheme
+
+   theme-loader.js sets data-theme synchronously in <head>
+   before first paint so users never see a flash.
    ============================================================ */
 
+
+/* ═══════════════════════════════════════════════════════════
+   DARK  (VS Code Dark+ — default / fallback)
+   ═══════════════════════════════════════════════════════════ */
 :root {
   /* ── Page & Surface Backgrounds ──────────────────────────── */
   --bg-page:              #1e1e1e;
   --bg-surface:           #252526;
   --bg-surface-elevated:  #2d2d2d;
-  --bg-inset:             #1e1e1e;   /* recessed areas like table alt rows */
+  --bg-inset:             #1e1e1e;
   --bg-input:             #3c3c3c;
   --bg-hover:             #2a2d2e;
   --bg-selected:          #04395e;
@@ -100,6 +112,187 @@
 }
 
 
+/* ═══════════════════════════════════════════════════════════
+   LIGHT  (Solarized Light — reduced blue, warm parchment)
+   ───────────────────────────────────────────────────────────
+   Explicit [data-theme="light"] selection.
+   Keep this block and the @media auto block below in sync —
+   they contain identical variable values.
+   ═══════════════════════════════════════════════════════════ */
+:root[data-theme="light"] {
+  --bg-page:              #fdf6e3;
+  --bg-surface:           #ffffff;
+  --bg-surface-elevated:  #f5f0e2;
+  --bg-inset:             #f5eedb;
+  --bg-input:             #ffffff;
+  --bg-hover:             #eee8d5;
+  --bg-selected:          rgba(42, 161, 152, 0.15);
+  --bg-sidebar:           #eee8d5;
+  --bg-overlay:           rgba(0, 0, 0, 0.35);
+  --bg-tooltip:           #2d3436;
+
+  --text-primary:         #586e75;
+  --text-secondary:       #657b83;
+  --text-muted:           #93a1a1;
+  --text-bright:          #073642;
+  --text-heading:         #002b36;
+  --text-inverse:         #fdf6e3;
+
+  --border-primary:       #d3cbb7;
+  --border-subtle:        #e0d8c4;
+  --border-strong:        #93a1a1;
+
+  --accent-primary:       #2aa198;
+  --accent-primary-hover: #238e86;
+  --accent-link:          #2aa198;
+  --accent-focus:         rgba(42, 161, 152, 0.40);
+  --accent-purple:        #6c71c4;
+  --accent-orange:        #cb4b16;
+
+  --color-success:        #859900;
+  --color-success-muted:  #6b7d00;
+  --color-success-bg:     rgba(133, 153, 0, 0.12);
+  --color-success-border: rgba(133, 153, 0, 0.30);
+
+  --color-danger:         #dc322f;
+  --color-danger-muted:   #b52825;
+  --color-danger-bg:      rgba(220, 50, 47, 0.10);
+  --color-danger-border:  rgba(220, 50, 47, 0.30);
+
+  --color-warning:        #b58900;
+  --color-warning-bg:     rgba(181, 137, 0, 0.12);
+  --color-warning-border: rgba(181, 137, 0, 0.30);
+
+  --color-info:           #268bd2;
+  --color-info-bg:        rgba(38, 139, 210, 0.10);
+  --color-info-border:    rgba(38, 139, 210, 0.25);
+
+  --color-positive:       #859900;
+  --color-negative:       #dc322f;
+
+  --shadow-sm:            0 1px 3px rgba(0, 0, 0, 0.10), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md:            0 4px 12px rgba(0, 0, 0, 0.12);
+  --shadow-lg:            0 10px 30px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.05);
+
+  --table-header-bg:      #f5f0e2;
+  --table-row-alt:        #faf6ed;
+  --table-row-hover:      #eee8d5;
+  --table-border:         #d3cbb7;
+
+  --scrollbar-bg:         transparent;
+  --scrollbar-thumb:      #cdc5b1;
+  --scrollbar-thumb-hover:#b8b0a0;
+
+  --gradient-auth:        linear-gradient(135deg, #fdf6e3 0%, #eee8d5 50%, #fdf6e3 100%);
+
+  --badge-plaid-bg:       #eee8d5;
+  --badge-plaid-text:     #586e75;
+  --badge-manual-bg:      rgba(42, 161, 152, 0.12);
+  --badge-manual-text:    #2aa198;
+  --badge-success-bg:     rgba(133, 153, 0, 0.15);
+  --badge-success-text:   #6b7d00;
+  --badge-danger-bg:      rgba(220, 50, 47, 0.12);
+  --badge-danger-text:    #b52825;
+  --badge-warning-bg:     rgba(181, 137, 0, 0.12);
+  --badge-warning-text:   #8a6800;
+  --badge-info-bg:        rgba(38, 139, 210, 0.10);
+  --badge-info-text:      #1f72b0;
+  --badge-purple-bg:      rgba(108, 113, 196, 0.12);
+  --badge-purple-text:    #5a5eaa;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   AUTO  (follows OS preference via prefers-color-scheme)
+   ───────────────────────────────────────────────────────────
+   Dark OS → the :root defaults already apply (no override).
+   Light OS → identical values to the explicit light block.
+   ═══════════════════════════════════════════════════════════ */
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] {
+    --bg-page:              #fdf6e3;
+    --bg-surface:           #ffffff;
+    --bg-surface-elevated:  #f5f0e2;
+    --bg-inset:             #f5eedb;
+    --bg-input:             #ffffff;
+    --bg-hover:             #eee8d5;
+    --bg-selected:          rgba(42, 161, 152, 0.15);
+    --bg-sidebar:           #eee8d5;
+    --bg-overlay:           rgba(0, 0, 0, 0.35);
+    --bg-tooltip:           #2d3436;
+
+    --text-primary:         #586e75;
+    --text-secondary:       #657b83;
+    --text-muted:           #93a1a1;
+    --text-bright:          #073642;
+    --text-heading:         #002b36;
+    --text-inverse:         #fdf6e3;
+
+    --border-primary:       #d3cbb7;
+    --border-subtle:        #e0d8c4;
+    --border-strong:        #93a1a1;
+
+    --accent-primary:       #2aa198;
+    --accent-primary-hover: #238e86;
+    --accent-link:          #2aa198;
+    --accent-focus:         rgba(42, 161, 152, 0.40);
+    --accent-purple:        #6c71c4;
+    --accent-orange:        #cb4b16;
+
+    --color-success:        #859900;
+    --color-success-muted:  #6b7d00;
+    --color-success-bg:     rgba(133, 153, 0, 0.12);
+    --color-success-border: rgba(133, 153, 0, 0.30);
+
+    --color-danger:         #dc322f;
+    --color-danger-muted:   #b52825;
+    --color-danger-bg:      rgba(220, 50, 47, 0.10);
+    --color-danger-border:  rgba(220, 50, 47, 0.30);
+
+    --color-warning:        #b58900;
+    --color-warning-bg:     rgba(181, 137, 0, 0.12);
+    --color-warning-border: rgba(181, 137, 0, 0.30);
+
+    --color-info:           #268bd2;
+    --color-info-bg:        rgba(38, 139, 210, 0.10);
+    --color-info-border:    rgba(38, 139, 210, 0.25);
+
+    --color-positive:       #859900;
+    --color-negative:       #dc322f;
+
+    --shadow-sm:            0 1px 3px rgba(0, 0, 0, 0.10), 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-md:            0 4px 12px rgba(0, 0, 0, 0.12);
+    --shadow-lg:            0 10px 30px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.05);
+
+    --table-header-bg:      #f5f0e2;
+    --table-row-alt:        #faf6ed;
+    --table-row-hover:      #eee8d5;
+    --table-border:         #d3cbb7;
+
+    --scrollbar-bg:         transparent;
+    --scrollbar-thumb:      #cdc5b1;
+    --scrollbar-thumb-hover:#b8b0a0;
+
+    --gradient-auth:        linear-gradient(135deg, #fdf6e3 0%, #eee8d5 50%, #fdf6e3 100%);
+
+    --badge-plaid-bg:       #eee8d5;
+    --badge-plaid-text:     #586e75;
+    --badge-manual-bg:      rgba(42, 161, 152, 0.12);
+    --badge-manual-text:    #2aa198;
+    --badge-success-bg:     rgba(133, 153, 0, 0.15);
+    --badge-success-text:   #6b7d00;
+    --badge-danger-bg:      rgba(220, 50, 47, 0.12);
+    --badge-danger-text:    #b52825;
+    --badge-warning-bg:     rgba(181, 137, 0, 0.12);
+    --badge-warning-text:   #8a6800;
+    --badge-info-bg:        rgba(38, 139, 210, 0.10);
+    --badge-info-text:      #1f72b0;
+    --badge-purple-bg:      rgba(108, 113, 196, 0.12);
+    --badge-purple-text:    #5a5eaa;
+  }
+}
+
+
 /* ============================================================
    GLOBAL DARK DEFAULTS
    Applied to common elements across all pages.
@@ -157,4 +350,150 @@
 .site-footer a:hover {
   color: var(--accent-link);
   text-decoration: underline;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   LIGHT-MODE COMPONENT OVERRIDES
+   ───────────────────────────────────────────────────────────
+   Fixes for components that hard-code `color: white` or rely
+   on dark-mode-only contrast. These selectors target the
+   attribute set by theme-loader.js; both explicit "light" and
+   the auto media query are covered.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Buttons: default all buttons to readable text ───────── */
+:root[data-theme="light"] button {
+  color: var(--text-primary);
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] button {
+    color: var(--text-primary);
+  }
+}
+
+/* Restore white text on accent/colored-background buttons */
+:root[data-theme="light"] .btn-primary,
+:root[data-theme="light"] .btn-sync,
+:root[data-theme="light"] .btn-manual-txn,
+:root[data-theme="light"] .btn-reports,
+:root[data-theme="light"] .btn-backup-restore,
+:root[data-theme="light"] .btn-check,
+:root[data-theme="light"] .btn-recategorize,
+:root[data-theme="light"] .btn-delete-overrides,
+:root[data-theme="light"] .btn-download-csv,
+:root[data-theme="light"] .btn-full,
+:root[data-theme="light"] .remove-detailed-btn,
+:root[data-theme="light"] .panel-actions button,
+:root[data-theme="light"] .btn-batch-unhide:hover,
+:root[data-theme="light"] .btn-batch-unhide-all:hover {
+  color: #ffffff;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] .btn-primary,
+  :root[data-theme="auto"] .btn-sync,
+  :root[data-theme="auto"] .btn-manual-txn,
+  :root[data-theme="auto"] .btn-reports,
+  :root[data-theme="auto"] .btn-backup-restore,
+  :root[data-theme="auto"] .btn-check,
+  :root[data-theme="auto"] .btn-recategorize,
+  :root[data-theme="auto"] .btn-delete-overrides,
+  :root[data-theme="auto"] .btn-download-csv,
+  :root[data-theme="auto"] .btn-full,
+  :root[data-theme="auto"] .remove-detailed-btn,
+  :root[data-theme="auto"] .panel-actions button,
+  :root[data-theme="auto"] .btn-batch-unhide:hover,
+  :root[data-theme="auto"] .btn-batch-unhide-all:hover {
+    color: #ffffff;
+  }
+}
+
+/* ── Token labels inside connect-bank buttons ────────────── */
+:root[data-theme="light"] .btn-primary .token-label-txn {
+  color: #d4f5c9;
+}
+:root[data-theme="light"] .btn-primary .token-label-inv {
+  color: #ffe0b2;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] .btn-primary .token-label-txn {
+    color: #d4f5c9;
+  }
+  :root[data-theme="auto"] .btn-primary .token-label-inv {
+    color: #ffe0b2;
+  }
+}
+
+/* ── Modals: visible border so they read as a real window ── */
+:root[data-theme="light"] .modal {
+  border: 1px solid var(--border-primary);
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] .modal {
+    border: 1px solid var(--border-primary);
+  }
+}
+
+/* ── Containers / cards: subtle border for depth ─────────── */
+:root[data-theme="light"] .container {
+  border: 1px solid var(--border-subtle);
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] .container {
+    border: 1px solid var(--border-subtle);
+  }
+}
+
+/* ── Tooltip text: needs to be light on the dark bg ──────── */
+:root[data-theme="light"] [data-tooltip]::after {
+  color: #eee8d5;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] [data-tooltip]::after {
+    color: #eee8d5;
+  }
+}
+
+/* ── Status dots: keep dark-mode palette for consistency ─── */
+:root[data-theme="light"] .status-dot.linked {
+  background: #34d399;
+}
+:root[data-theme="light"] .status-dot.converted {
+  background: #3794ff;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] .status-dot.linked {
+    background: #34d399;
+  }
+  :root[data-theme="auto"] .status-dot.converted {
+    background: #3794ff;
+  }
+}
+
+/* ── Hidden-transactions toolbar: uses missing vars ──────── */
+:root[data-theme="light"] .batch-unhide-toolbar {
+  background: var(--bg-surface-elevated);
+  border-color: var(--border-primary);
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] .batch-unhide-toolbar {
+    background: var(--bg-surface-elevated);
+    border-color: var(--border-primary);
+  }
+}
+
+/* ── Unreviewed dots: keep blue instead of teal accent ───── */
+:root[data-theme="light"] .unreviewed-dot {
+  background: #3794ff;
+}
+:root[data-theme="light"] .sidebar-unreviewed-badge {
+  background: #3794ff;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] .unreviewed-dot {
+    background: #3794ff;
+  }
+  :root[data-theme="auto"] .sidebar-unreviewed-badge {
+    background: #3794ff;
+  }
 }
