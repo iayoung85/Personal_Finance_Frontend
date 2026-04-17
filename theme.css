@@ -374,6 +374,8 @@
 
 /* Restore white text on accent/colored-background buttons */
 :root[data-theme="light"] .btn-primary,
+:root[data-theme="light"] .btn-danger,
+:root[data-theme="light"] .btn-warn,
 :root[data-theme="light"] .btn-sync,
 :root[data-theme="light"] .btn-manual-txn,
 :root[data-theme="light"] .btn-reports,
@@ -385,12 +387,19 @@
 :root[data-theme="light"] .btn-full,
 :root[data-theme="light"] .remove-detailed-btn,
 :root[data-theme="light"] .panel-actions button,
+:root[data-theme="light"] .bank-btn,
+:root[data-theme="light"] .chart-type-btn,
+:root[data-theme="light"] [onclick="syncAllHoldings()"],
+:root[data-theme="light"] [onclick*="exportBillsCSV"],
+:root[data-theme="light"] [onclick*="importBillsCSV"],
 :root[data-theme="light"] .btn-batch-unhide:hover,
 :root[data-theme="light"] .btn-batch-unhide-all:hover {
   color: #ffffff;
 }
 @media (prefers-color-scheme: light) {
   :root[data-theme="auto"] .btn-primary,
+  :root[data-theme="auto"] .btn-danger,
+  :root[data-theme="auto"] .btn-warn,
   :root[data-theme="auto"] .btn-sync,
   :root[data-theme="auto"] .btn-manual-txn,
   :root[data-theme="auto"] .btn-reports,
@@ -402,6 +411,11 @@
   :root[data-theme="auto"] .btn-full,
   :root[data-theme="auto"] .remove-detailed-btn,
   :root[data-theme="auto"] .panel-actions button,
+  :root[data-theme="auto"] .bank-btn,
+  :root[data-theme="auto"] .chart-type-btn,
+  :root[data-theme="auto"] [onclick="syncAllHoldings()"],
+  :root[data-theme="auto"] [onclick*="exportBillsCSV"],
+  :root[data-theme="auto"] [onclick*="importBillsCSV"],
   :root[data-theme="auto"] .btn-batch-unhide:hover,
   :root[data-theme="auto"] .btn-batch-unhide-all:hover {
     color: #ffffff;
