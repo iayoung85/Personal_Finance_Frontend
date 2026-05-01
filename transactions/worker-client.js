@@ -9,28 +9,66 @@ var txnDB = (function() {
   var messageId = 0;
   var pending = new Map();
   var readyResolve = null;
+  var readySettled = false;
+  var readyTimeoutId = null;
   var readyPromise = new Promise(function(resolve) { readyResolve = resolve; });
+  var WORKER_READY_TIMEOUT_MS = 2500;
 
   var _workerDegraded = false;
+
+  function _resolveReadyOnce() {
+    if (readySettled) return;
+    readySettled = true;
+    if (readyTimeoutId) {
+      clearTimeout(readyTimeoutId);
+      readyTimeoutId = null;
+    }
+    readyResolve();
+  }
+
+  function _degradeWorker(detail) {
+    if (_workerDegraded && !worker) {
+      _resolveReadyOnce();
+      return;
+    }
+
+    _workerDegraded = true;
+
+    if (worker) {
+      try { worker.terminate(); } catch (_ignored) {}
+      worker = null;
+    }
+
+    pending.forEach(function(callbacks) {
+      callbacks.reject(new Error(detail));
+    });
+    pending.clear();
+
+    _surfaceWorkerFailure(detail);
+    _resolveReadyOnce();
+  }
 
   function _init() {
     try {
       worker = new Worker('transactions/worker/db-worker.js');
     } catch (err) {
-      console.error('Failed to start IndexedDB worker:', err);
-      _workerDegraded = true;
-      _surfaceWorkerFailure('IndexedDB worker failed to start: ' + err.message);
-      // Mark ready so callers don't hang; all ops will gracefully no-op
-      readyResolve();
+      _degradeWorker('IndexedDB worker failed to start: ' + err.message);
       return;
     }
+
+    readyTimeoutId = setTimeout(function() {
+      _degradeWorker(
+        'IndexedDB worker did not become ready within ' +
+        WORKER_READY_TIMEOUT_MS + 'ms'
+      );
+    }, WORKER_READY_TIMEOUT_MS);
 
     worker.onmessage = function(e) {
       var msg = e.data;
 
       // Worker startup signal
       if (msg.type === 'ready') {
-        readyResolve();
+        _resolveReadyOnce();
         return;
       }
 
@@ -48,8 +86,7 @@ var txnDB = (function() {
 
     worker.onerror = function(err) {
       console.error('IndexedDB worker error:', err);
-      _workerDegraded = true;
-      _surfaceWorkerFailure('IndexedDB worker encountered an error');
+      _degradeWorker('IndexedDB worker encountered an error');
     };
   }
 
@@ -91,6 +128,7 @@ var txnDB = (function() {
 
   /** Query transactions. All params optional. Returns array. */
   function query(params) {
+    if (!worker) return Promise.resolve([]);
     return _send('query', params || {}).then(function(res) {
       return res.data || [];
     });
@@ -98,6 +136,7 @@ var txnDB = (function() {
 
   /** Get total transaction count in IndexedDB. */
   function count() {
+    if (!worker) return Promise.resolve(0);
     return _send('count').then(function(res) {
       return res.count || 0;
     });
@@ -110,11 +149,13 @@ var txnDB = (function() {
 
   /** Clear all transactions and metadata from IndexedDB. */
   function clear() {
+    if (!worker) return Promise.resolve();
     return _send('clear');
   }
 
   /** Get a metadata value by key. */
   function getMeta(key) {
+    if (!worker) return Promise.resolve(undefined);
     return _send('get-meta', { key: key }).then(function(res) {
       return res.value;
     });
@@ -122,6 +163,7 @@ var txnDB = (function() {
 
   /** Set a metadata value. */
   function setMeta(key, value) {
+    if (!worker) return Promise.resolve();
     return _send('set-meta', { key: key, value: value });
   }
 
