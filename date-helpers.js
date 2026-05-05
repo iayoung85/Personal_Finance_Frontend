@@ -275,12 +275,49 @@ function _parseISOToParts(isoValue) {
  * @param {HTMLInputElement} inputEl
  * @param {Object} layout - One of the _SEGMENTED_LAYOUTS entries.
  */
-function _wireSegmentedDateInput(inputEl, layout) {
+function _wireSegmentedDateInput(inputEl, layout, options = {}) {
   const { segmentTypes, segmentRanges, buildDisplay } = layout;
 
   let activeSegment = 0;
   let digitBuffer   = '';
   let parts = { month: 0, day: 0, year: 0 };
+
+  function _normalizeISOValue(isoValue) {
+    if (typeof options.normalizeISOValue !== 'function') return isoValue;
+    return options.normalizeISOValue(isoValue) || isoValue;
+  }
+
+  function _currentISOValueFromParts() {
+    const yearStr = String(parts.year).padStart(4, '0');
+    const monthStr = String(parts.month).padStart(2, '0');
+    const dayStr = String(parts.day).padStart(2, '0');
+    return `${yearStr}-${monthStr}-${dayStr}`;
+  }
+
+  function _syncISOValueFromParts({ normalize = false, reason = '' } = {}) {
+    const rawValue = _currentISOValueFromParts();
+    const nextValue = normalize ? _normalizeISOValue(rawValue) : rawValue;
+
+    if (normalize && rawValue !== nextValue) {
+      inputEl.dataset.lastNormalizedFrom = rawValue;
+      inputEl.dataset.lastNormalizedTo = nextValue;
+      inputEl.dataset.lastNormalizedReason = reason;
+    } else {
+      delete inputEl.dataset.lastNormalizedFrom;
+      delete inputEl.dataset.lastNormalizedTo;
+      delete inputEl.dataset.lastNormalizedReason;
+    }
+
+    const normalizedDate = parseDateInput(nextValue);
+    if (normalize && normalizedDate && !Number.isNaN(normalizedDate.getTime())) {
+      parts = {
+        year: normalizedDate.getFullYear(),
+        month: normalizedDate.getMonth() + 1,
+        day: normalizedDate.getDate(),
+      };
+    }
+    inputEl.dataset.isoValue = nextValue;
+  }
 
   /** Which data field the currently-active visual segment controls. */
   function _activeType() {
@@ -303,6 +340,7 @@ function _wireSegmentedDateInput(inputEl, layout) {
   /** Rewrite the visible value from `parts` and highlight. */
   function _render() {
     parts.day = _clampDay(parts.day, parts.month, parts.year);
+    _syncISOValueFromParts();
     inputEl.value = buildDisplay(parts.month, parts.day, parts.year);
     _highlight();
   }
@@ -321,6 +359,7 @@ function _wireSegmentedDateInput(inputEl, layout) {
       parts.year = Math.max(1900, Math.min(2099, numericValue));
     }
     digitBuffer = '';
+    _syncISOValueFromParts();
   }
 
   /** Move to a different segment, committing pending digits first. */
@@ -394,6 +433,23 @@ function _wireSegmentedDateInput(inputEl, layout) {
     // ── Increment / Decrement ──
     if (key === 'ArrowUp' || key === 'ArrowDown') {
       _commitBuffer();
+      if (options.useWholeDateArrowStep) {
+        const direction = key === 'ArrowUp' ? 1 : -1;
+        const currentDate = parseDateInput(inputEl.dataset.isoValue || _currentISOValueFromParts());
+        if (!currentDate || Number.isNaN(currentDate.getTime())) return;
+
+        currentDate.setDate(currentDate.getDate() + direction);
+        parts = {
+          year: currentDate.getFullYear(),
+          month: currentDate.getMonth() + 1,
+          day: currentDate.getDate(),
+        };
+        _syncISOValueFromParts({ normalize: true, reason: 'arrow-step' });
+        inputEl.value = buildDisplay(parts.month, parts.day, parts.year);
+        _highlight();
+        return;
+      }
+
       const direction = key === 'ArrowUp' ? 1 : -1;
       const type = _activeType();
 
@@ -497,10 +553,7 @@ function _wireSegmentedDateInput(inputEl, layout) {
   inputEl.addEventListener('blur', () => {
     _commitBuffer();
     parts.day = _clampDay(parts.day, parts.month, parts.year);
-    const yearStr  = String(parts.year).padStart(4, '0');
-    const monthStr = String(parts.month).padStart(2, '0');
-    const dayStr   = String(parts.day).padStart(2, '0');
-    inputEl.dataset.isoValue = `${yearStr}-${monthStr}-${dayStr}`;
+    _syncISOValueFromParts({ normalize: true, reason: 'blur' });
     inputEl.value = buildDisplay(parts.month, parts.day, parts.year);
     inputEl.dispatchEvent(new Event('change', { bubbles: true }));
   });
@@ -552,7 +605,7 @@ function getDateInputValue(elOrId) {
  *
  * @param {HTMLInputElement} inputEl - The text input to watch.
  */
-function autoFormatDateInput(inputEl) {
+function autoFormatDateInput(inputEl, options = {}) {
   if (!inputEl || inputEl.dataset.dateAutoFormatWired) return;
   inputEl.dataset.dateAutoFormatWired = 'true';
 
@@ -571,12 +624,17 @@ function autoFormatDateInput(inputEl) {
       const yearStr  = String(initParts.year).padStart(4, '0');
       const monthStr = String(initParts.month).padStart(2, '0');
       const dayStr   = String(initParts.day).padStart(2, '0');
-      inputEl.dataset.isoValue = `${yearStr}-${monthStr}-${dayStr}`;
-      inputEl.value = layout.buildDisplay(initParts.month, initParts.day, initParts.year);
+      const initialIsoValue = `${yearStr}-${monthStr}-${dayStr}`;
+      const normalizedIsoValue = typeof options.normalizeISOValue === 'function'
+        ? (options.normalizeISOValue(initialIsoValue) || initialIsoValue)
+        : initialIsoValue;
+      const normalizedParts = _parseISOToParts(normalizedIsoValue);
+      inputEl.dataset.isoValue = normalizedIsoValue;
+      inputEl.value = layout.buildDisplay(normalizedParts.month, normalizedParts.day, normalizedParts.year);
     }
   }
 
-  _wireSegmentedDateInput(inputEl, layout);
+  _wireSegmentedDateInput(inputEl, layout, options);
 }
 
 /**

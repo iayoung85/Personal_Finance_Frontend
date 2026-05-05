@@ -451,7 +451,7 @@ function _renderTransferRow(ctx) {
 
 function _renderManualClearedRow(ctx) {
   // Manual transactions have no Plaid-assigned category to revert to — overrides
-  // don't apply here. Category edits go directly to PUT /api/transactions/manual/<id>.
+  // don't apply here. Category edits go directly to PUT /api/transactions/<id>.
   const buttons =
       `<button class="category-rule" data-txn-id="${ctx.txnId}" data-account-id="${ctx.accountId}">Rule</button>`
     + `<button class="category-split" data-txn-id="${ctx.txnId}" onclick="window.splitModalTxnId='${escapeHtml(ctx.txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(ctx.txnId)}')); return false;" title="Split this transaction">Split</button>`;

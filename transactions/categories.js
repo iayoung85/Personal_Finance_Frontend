@@ -778,7 +778,7 @@ function _resolveAutocompleteCategory(value) {
 async function _updateManualTransactionCategory(txnId, categoryString) {
   try {
     const response = await authenticatedFetch(
-      `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(txnId)}`,
+      `${BACKEND_URL}/api/transactions/${encodeURIComponent(txnId)}`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

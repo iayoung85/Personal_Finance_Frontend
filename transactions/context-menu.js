@@ -959,7 +959,7 @@ async function _handleContextMarkPaid(txnData) {
     // materializes automatically. Sending an empty payload triggers
     // materialization without changing any fields.
     const response = await authenticatedFetch(
-      `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(txnData.txnId)}`,
+      `${BACKEND_URL}/api/transactions/${encodeURIComponent(txnData.txnId)}`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

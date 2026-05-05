@@ -13,7 +13,113 @@
 let _activeInlineEditor = null;
 let _activeRowEditSession = null;
 
-const _ROW_EDIT_FIELD_ORDER = ['date', 'description', 'amount'];
+const _PLAID_DATE_EDIT_WINDOW_DAYS = 3;
+
+
+function _getRowTxnType(row) {
+  if (!row) return null;
+  return getTransactionType({
+    source: row.dataset.source || '',
+    status: row.dataset.status || '',
+  });
+}
+
+
+function _getRowEditFieldOrder(txnType) {
+  return getInlineEditableFields(txnType);
+}
+
+
+function _shiftISODate(dateString, dayDelta) {
+  const parsedDate = parseDateInput(dateString);
+  if (!parsedDate || Number.isNaN(parsedDate.getTime())) return '';
+  parsedDate.setDate(parsedDate.getDate() + dayDelta);
+  return toISODateStr(parsedDate);
+}
+
+
+function _getPlaidDateConstraint(txn, txnType) {
+  if (txnType !== TXN_TYPE.PLAID_CLEARED || !txn || !txn.date) return null;
+
+  const minDate = _shiftISODate(txn.date, -_PLAID_DATE_EDIT_WINDOW_DAYS);
+  const maxRangeDate = _shiftISODate(txn.date, _PLAID_DATE_EDIT_WINDOW_DAYS);
+  if (!minDate || !maxRangeDate) return null;
+
+  const todayDate = todayISO();
+  return {
+    min: minDate,
+    max: maxRangeDate < todayDate ? maxRangeDate : todayDate,
+  };
+}
+
+
+function _normalizeDateForSession(rawDateValue, editSession) {
+  const parsedDate = parseDateInput(rawDateValue);
+  if (!parsedDate || Number.isNaN(parsedDate.getTime())) {
+    return { ok: false, error: 'Enter a valid date' };
+  }
+
+  let normalizedDate = toISODateStr(parsedDate);
+  let clamped = false;
+  const constraint = editSession ? editSession.plaid_date_constraint : null;
+
+  if (constraint) {
+    if (normalizedDate < constraint.min) {
+      normalizedDate = constraint.min;
+      clamped = true;
+    }
+    if (normalizedDate > constraint.max) {
+      normalizedDate = constraint.max;
+      clamped = true;
+    }
+  }
+
+  return {
+    ok: true,
+    value: normalizedDate,
+    clamped,
+    constraint,
+  };
+}
+
+
+function _buildDateInputOptions(editSession) {
+  if (!editSession || !editSession.plaid_date_constraint) return {};
+
+  return {
+    useWholeDateArrowStep: true,
+    normalizeISOValue(isoValue) {
+      const normalized = _normalizeDateForSession(isoValue, editSession);
+      return normalized.ok ? normalized.value : isoValue;
+    },
+  };
+}
+
+
+function _consumeDateNormalization(inputEl) {
+  if (!inputEl) return null;
+
+  const fromValue = inputEl.dataset.lastNormalizedFrom || '';
+  const toValue = inputEl.dataset.lastNormalizedTo || '';
+  const reason = inputEl.dataset.lastNormalizedReason || '';
+
+  delete inputEl.dataset.lastNormalizedFrom;
+  delete inputEl.dataset.lastNormalizedTo;
+  delete inputEl.dataset.lastNormalizedReason;
+
+  if (!fromValue || !toValue || fromValue === toValue) return null;
+  return { from: fromValue, to: toValue, reason };
+}
+
+
+function _showPlaidDateClampStatus(normalizedDate, constraint) {
+  if (!constraint) return;
+
+  showStatus(
+    `Plaid dates can only move between ${formatDate(constraint.min)} and ${formatDate(constraint.max)}. Adjusted to ${formatDate(normalizedDate)}.`,
+    'warning'
+  );
+}
 
 
 function initInlineEditing() {
@@ -69,26 +175,26 @@ function _handleInlineClick(event) {
     return;
   }
 
-  if (!EDITABLE_TYPES.has(txnType)) return;
-  if (!_ROW_EDIT_FIELD_ORDER.includes(field)) return;
+  const editableFields = _getRowEditFieldOrder(txnType);
+  if (!editableFields.includes(field)) return;
 
-  _openRowFieldEditor({ cell: targetCell, row, txnId, field });
+  _openRowFieldEditor({ cell: targetCell, row, txnId, field, txnType });
 }
 
 
-function _openRowFieldEditor({ cell, row, txnId, field }) {
+function _openRowFieldEditor({ cell, row, txnId, field, txnType }) {
   if (!_commitActiveFieldToSession()) {
     return;
   }
 
-  const editSession = _ensureRowEditSession(row, txnId);
+  const editSession = _ensureRowEditSession(row, txnId, txnType);
   if (!editSession) return;
 
   _dismissActiveEditor({ clearRowSession: false });
 
   const originalHtml = cell.innerHTML;
   const descriptionPrefixHtml = field === 'description' ? _getLeadingElementHtml(cell) : '';
-  const input = _buildInputForField(field, editSession.draft);
+  const input = _buildInputForField(field, editSession);
 
   if (!input) return;
 
@@ -123,12 +229,16 @@ function _openRowFieldEditor({ cell, row, txnId, field }) {
       const staged = _commitActiveFieldToSession();
       if (!staged) return;
       const nextField = _getAdjacentEditableField(row, field, keyboardEvent.shiftKey ? -1 : 1);
-      if (!nextField) return;
+      if (!nextField) {
+        _dismissActiveEditor({ clearRowSession: false });
+        return;
+      }
       _openRowFieldEditor({
         cell: nextField.cell,
         row,
         txnId,
         field: nextField.field,
+        txnType: editSession.txn_type,
       });
       return;
     }
@@ -144,6 +254,9 @@ function _openRowFieldEditor({ cell, row, txnId, field }) {
   input.addEventListener('blur', () => {
     setTimeout(() => {
       if (_activeInlineEditor && _activeInlineEditor.input === input) {
+        if (_activeInlineEditor.field === 'date' && editSession.plaid_date_constraint) {
+          _commitActiveFieldToSession();
+        }
         _dismissActiveEditor({ clearRowSession: false });
       }
     }, 120);
@@ -151,15 +264,16 @@ function _openRowFieldEditor({ cell, row, txnId, field }) {
 }
 
 
-function _buildInputForField(field, draftState) {
+function _buildInputForField(field, editSession) {
   const input = document.createElement('input');
   input.className = 'inline-edit-input';
+  const draftState = editSession.draft;
 
   if (field === 'date') {
     input.type = 'text';
     input.classList.add('inline-edit-date', 'date-input');
     input.value = draftState.date;
-    autoFormatDateInput(input);
+    autoFormatDateInput(input, _buildDateInputOptions(editSession));
     return input;
   }
 
@@ -183,7 +297,7 @@ function _buildInputForField(field, draftState) {
 }
 
 
-function _ensureRowEditSession(row, txnId) {
+function _ensureRowEditSession(row, txnId, txnType) {
   if (_activeRowEditSession && _activeRowEditSession.txn_id === txnId) {
     return _activeRowEditSession;
   }
@@ -194,10 +308,16 @@ function _ensureRowEditSession(row, txnId) {
 
   const txn = transactions.find(find_txn => find_txn.transaction_id === txnId);
   if (!txn) return null;
+  const resolvedTxnType = txnType || getTransactionType(txn);
+  const editableFields = _getRowEditFieldOrder(resolvedTxnType);
+  if (!resolvedTxnType || editableFields.length === 0) return null;
 
   const absolute_amount = Math.abs(Number(txn.amount || 0));
   _activeRowEditSession = {
     txn_id: txnId,
+    txn_type: resolvedTxnType,
+    editable_fields: editableFields,
+    plaid_date_constraint: _getPlaidDateConstraint(txn, resolvedTxnType),
     row,
     original: {
       date: txn.date || '',
@@ -216,10 +336,15 @@ function _ensureRowEditSession(row, txnId) {
 
 
 function _getAdjacentEditableField(row, currentField, direction) {
-  const editableCells = _ROW_EDIT_FIELD_ORDER
+  const editableFields = (_activeRowEditSession && _activeRowEditSession.row === row)
+    ? _activeRowEditSession.editable_fields
+    : _getRowEditFieldOrder(_getRowTxnType(row));
+
+  const editableCells = editableFields
     .map(field => ({ field, cell: row.querySelector(`td[data-field="${field}"]`) }))
     .filter(cellInfo => !!cellInfo.cell);
 
+  if (editableCells.length <= 1) return null;
   if (editableCells.length === 0) return null;
 
   const currentIndex = editableCells.findIndex(cellInfo => cellInfo.field === currentField);
@@ -244,9 +369,29 @@ function _commitActiveFieldToSession() {
       showStatus('Date is required', 'error');
       return false;
     }
-    _activeRowEditSession.draft.date = value;
+
+    const normalizedDate = _normalizeDateForSession(value, _activeRowEditSession);
+    if (!normalizedDate.ok) {
+      showStatus(normalizedDate.error, 'error');
+      return false;
+    }
+
+    const normalizationMeta = _consumeDateNormalization(_activeInlineEditor.input);
+    const shouldShowClampStatus = !!_activeRowEditSession.plaid_date_constraint
+      && ((normalizationMeta && normalizationMeta.reason !== 'arrow-step') || normalizedDate.clamped);
+
+    _activeRowEditSession.draft.date = normalizedDate.value;
+
+    if (_activeInlineEditor.input && normalizedDate.value !== value) {
+      setDateInputValue(_activeInlineEditor.input, normalizedDate.value);
+    }
+
+    if (shouldShowClampStatus) {
+      _showPlaidDateClampStatus(normalizedDate.value, _activeRowEditSession.plaid_date_constraint);
+    }
+
     if (_activeInlineEditor) {
-      _activeInlineEditor.originalHtml = _formatDateDisplay(value);
+      _activeInlineEditor.originalHtml = _formatDateDisplay(normalizedDate.value);
       _activeInlineEditor.cell.classList.add('inline-staged');
     }
     return true;
@@ -293,28 +438,33 @@ async function _saveRowInlineEdits() {
   if (!_activeRowEditSession) return;
 
   const editSession = _activeRowEditSession;
+  const editableFields = Array.isArray(editSession.editable_fields)
+    ? editSession.editable_fields
+    : _getRowEditFieldOrder(editSession.txn_type);
   const payload = {};
 
-  if (editSession.draft.date !== editSession.original.date) {
+  if (editableFields.includes('date') && editSession.draft.date !== editSession.original.date) {
     payload.date = editSession.draft.date;
   }
 
   const normalized_description = (editSession.draft.description || '').trim();
   // Blank description signals "reset to original" — backend will fall back
   // to original_description. Always send the key so the backend sees the intent.
-  if (normalized_description !== editSession.original.description) {
+  if (editableFields.includes('description') && normalized_description !== editSession.original.description) {
     payload.description = normalized_description;
   }
 
-  const amountDiffResult = _getAmountDiff(editSession.draft.amount_input, editSession.original.signed_amount);
-  if (!amountDiffResult.ok) {
-    showStatus(amountDiffResult.error, 'error');
-    return;
-  }
-  if (amountDiffResult.has_change) {
-    payload.amount = amountDiffResult.absolute_amount;
-    if (amountDiffResult.type_override) {
-      payload.type = amountDiffResult.type_override;
+  if (editableFields.includes('amount')) {
+    const amountDiffResult = _getAmountDiff(editSession.draft.amount_input, editSession.original.signed_amount);
+    if (!amountDiffResult.ok) {
+      showStatus(amountDiffResult.error, 'error');
+      return;
+    }
+    if (amountDiffResult.has_change) {
+      payload.amount = amountDiffResult.absolute_amount;
+      if (amountDiffResult.type_override) {
+        payload.type = amountDiffResult.type_override;
+      }
     }
   }
 
@@ -326,7 +476,7 @@ async function _saveRowInlineEdits() {
 
   try {
     const response = await authenticatedFetch(
-      `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(editSession.txn_id)}`,
+      `${BACKEND_URL}/api/transactions/${encodeURIComponent(editSession.txn_id)}`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

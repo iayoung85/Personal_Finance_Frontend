@@ -75,7 +75,7 @@ db.version(1).stores({
 
 ### Data flow: user edit (inline date/amount/description)
 ```
-1. PUT /api/transactions/manual/{id} → success
+1. PUT /api/transactions/{id} → success
 2. Worker: { type: 'delete', id } (stale row)
 3. fetchAllTransactions(true) → new data → Worker: { type: 'bulk-write', data }
 4. renderTransactionTable()

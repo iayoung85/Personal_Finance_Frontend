@@ -181,7 +181,7 @@ function openAddManualTransactionModal() {
 /**
  * Open modal to edit an existing manual transaction.
  * Reuses the same form layout as the create modal with fields pre-populated.
- * Calls PUT /api/transactions/manual/<id> on submit instead of POST.
+ * Calls PUT /api/transactions/<id> on submit instead of POST.
  *
  * Why a separate function instead of parameterising openAddManualTransactionModal:
  * the create modal has plaid-account date advisory logic, account-selection wiring,
@@ -356,7 +356,7 @@ async function _updateManualTransaction(transactionId, accountId) {
     };
 
     const response = await authenticatedFetch(
-      `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(transactionId)}`,
+      `${BACKEND_URL}/api/transactions/${encodeURIComponent(transactionId)}`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -557,7 +557,7 @@ async function _submitPendingManualTransaction() {
   try {
     if (pending.mode === 'edit') {
       const response = await authenticatedFetch(
-        `${BACKEND_URL}/api/transactions/manual/${encodeURIComponent(pending.transactionId)}`,
+        `${BACKEND_URL}/api/transactions/${encodeURIComponent(pending.transactionId)}`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

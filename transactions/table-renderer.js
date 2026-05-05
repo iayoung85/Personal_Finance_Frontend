@@ -1090,9 +1090,11 @@ function renderTransactionTable() {
     const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-suggestion-txn-id="${escapeHtml(txn.suggestion_info?.suggested_txn_id || '')}" data-suggestion-proposal-id="${txn.suggestion_info?.proposal_id || ''}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(txn.date || '')}"`;
 
     // ── Inline-edit eligibility (date, description, amount) ──
-    const isInlineEditable = EDITABLE_TYPES.has(txnRowType);
+    const isDateInlineEditable = canInlineEditDate(txnRowType);
+    const isRowDescEditable = canInlineEditDescription(txnRowType);
+    const isAmountInlineEditable = canInlineEditAmount(txnRowType);
     const isPlaidDescEditable = (txnRowType === TXN_TYPE.PLAID_CLEARED || txnRowType === TXN_TYPE.PLAID_PENDING);
-    const isDescEditable = isInlineEditable || isPlaidDescEditable;
+    const isDescEditable = isRowDescEditable || isPlaidDescEditable;
 
     // Prefer user_description_override for plaid rows (if the user set one)
     const effectiveDisplayName = txn.user_description_override || rendered.displayName;
@@ -1132,7 +1134,7 @@ function renderTransactionTable() {
     const unreviewedDot = (txn.reviewed === false && !isFutureBlockRow && !isOpeningBalanceRow)
       ? `<span class="unreviewed-dot" title="Click to mark reviewed" onclick="event.stopPropagation(); _markSingleTransactionReviewed('${txnId}')"></span>`
       : '';
-    rowHtml += `<td class="date-column${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="date"' : ''}>${!showLogoColumn ? hiddenCheckboxHtml : ''}${unreviewedDot}${dateStr}</td>`;
+    rowHtml += `<td class="date-column${isDateInlineEditable ? ' inline-editable' : ''}"${isDateInlineEditable ? ' data-field="date"' : ''}>${!showLogoColumn ? hiddenCheckboxHtml : ''}${unreviewedDot}${dateStr}</td>`;
     if (showBankAccountColumn) {
       rowHtml += `<td>${txn.bank_account}</td>`;
     }
@@ -1195,7 +1197,7 @@ function renderTransactionTable() {
       : '';
     const amountPrefix = isVariableBill ? '~' : '';
     const amountDisplay = isOpeningBalanceRow ? '—' : `${amountPrefix}${amount}${variableDot}`;
-    rowHtml += `<td class="${amountCellClass}${extraAmountClass}${isInlineEditable ? ' inline-editable' : ''}"${isInlineEditable ? ' data-field="amount"' : ''}>${amountDisplay}</td>`;
+    rowHtml += `<td class="${amountCellClass}${extraAmountClass}${isAmountInlineEditable ? ' inline-editable' : ''}"${isAmountInlineEditable ? ' data-field="amount"' : ''}>${amountDisplay}</td>`;
     if (showLedgerColumn) {
       rowHtml += ledgerBalanceHtml;
     }

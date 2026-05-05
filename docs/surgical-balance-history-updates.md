@@ -12,7 +12,7 @@ All of the following endpoints now include an optional `affected_balance_history
 | Endpoint | Method |
 |---|---|
 | `/api/transactions/manual` | POST (create) |
-| `/api/transactions/manual/<id>` | PUT (update & bill-missing reschedule) |
+| `/api/transactions/<id>` | PUT (update & bill-missing reschedule) |
 | `/api/transactions/manual/<id>` | DELETE |
 | `/api/transactions/resolve_missing/<id>` | DELETE |
 | `/api/transactions/resolve_missing/<id>` | POST (keep) |

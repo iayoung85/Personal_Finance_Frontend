@@ -91,6 +91,39 @@ const EDITABLE_TYPES = new Set([
   TXN_TYPE.BILL_MISSING,
 ]);
 
+const DATE_EDITABLE_TYPES = new Set([
+  ...EDITABLE_TYPES,
+  TXN_TYPE.PLAID_CLEARED,
+]);
+
+const DESCRIPTION_EDITABLE_TYPES = new Set(EDITABLE_TYPES);
+
+const AMOUNT_EDITABLE_TYPES = new Set(EDITABLE_TYPES);
+
+function isRowInlineEditable(txnType) {
+  return EDITABLE_TYPES.has(txnType);
+}
+
+function canInlineEditDate(txnType) {
+  return DATE_EDITABLE_TYPES.has(txnType);
+}
+
+function canInlineEditDescription(txnType) {
+  return DESCRIPTION_EDITABLE_TYPES.has(txnType);
+}
+
+function canInlineEditAmount(txnType) {
+  return AMOUNT_EDITABLE_TYPES.has(txnType);
+}
+
+function getInlineEditableFields(txnType) {
+  const fields = [];
+  if (canInlineEditDate(txnType)) fields.push('date');
+  if (canInlineEditDescription(txnType)) fields.push('description');
+  if (canInlineEditAmount(txnType)) fields.push('amount');
+  return fields;
+}
+
 const MATCHABLE_TYPES = new Set([
   TXN_TYPE.BILL_MATCHED,
   TXN_TYPE.BILL_MISSING,

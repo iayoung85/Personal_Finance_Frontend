@@ -17,7 +17,7 @@ Currently the only way to modify splits is:
 - `POST /api/transactions/split` — recreate them
 
 And the only way to modify a manual txn's own fields is:
-- `PUT /api/transactions/manual/{id}` — no awareness of splits
+- `PUT /api/transactions/{id}` — no awareness of splits
 
 There is **no single call** that lets the frontend modify the parent txn metadata (date, amount, description, merchant, category, memo) **and** update its split rows atomically. This request adds that capability.
 
@@ -28,7 +28,7 @@ There is **no single call** that lets the frontend modify the parent txn metadat
 ### Endpoint
 
 ```
-PUT /api/transactions/manual/{transaction_id}
+PUT /api/transactions/{transaction_id}
 ```
 
 **This is an extension of the existing route.** No new URL needed.
@@ -40,7 +40,7 @@ When the `splits` key is present in the request body, the backend must apply the
 ### Request Shape
 
 ```json
-PUT /api/transactions/manual/txn_abc123
+PUT /api/transactions/txn_abc123
 {
   "amount": -65.00,
   "date": "2026-04-10",
@@ -97,13 +97,13 @@ When the parent is a **Plaid** transaction, the frontend will **only** send `spl
 
 ## What the Frontend Expects Back
 
-The existing `PUT /api/transactions/manual/{id}` response shape should be **extended** to include the updated split rows. All existing response fields remain unchanged.
+The existing `PUT /api/transactions/{id}` response shape should be **extended** to include the updated split rows. All existing response fields remain unchanged.
 
 ### Extended Response Shape (`200`)
 
 ```json
 {
-  "message": "Manual transaction updated successfully",
+  "message": "Transaction updated successfully",
   "transaction_id": "txn_abc123",
   "transaction": {
     "transaction_id": "txn_abc123",
@@ -137,7 +137,7 @@ The existing `PUT /api/transactions/manual/{id}` response shape should be **exte
 
 The `transaction` object in the response **must** include the `splits` array with full split child objects (as it already does in `GET /api/transactions`). This is critical so the frontend can do a **surgical Dexie upsert** of the parent row (which embeds the splits) without a full account re-fetch.
 
-Currently, `PUT /api/transactions/manual/{id}` returns `transaction` but it is **unclear whether `splits` is populated on that returned object**. If it isn't today, please include it going forward. The frontend upsert logic is:
+Currently, `PUT /api/transactions/{id}` returns `transaction` but it is **unclear whether `splits` is populated on that returned object**. If it isn't today, please include it going forward. The frontend upsert logic is:
 
 ```js
 // After successful PUT, upsert parent (which now carries updated splits inline)
@@ -149,7 +149,7 @@ _replaceCachedTransaction(data.transaction.transaction_id, data.transaction);
 
 ## What Should NOT Change
 
-- All existing callers of `PUT /api/transactions/manual/{id}` that do **not** send `splits` continue working unmodified
+- All existing callers of `PUT /api/transactions/{id}` that do **not** send `splits` continue working unmodified
 - `POST /api/transactions/split` continues to exist and function — the existing split creation modal still uses it
 - `DELETE /api/transactions/split/{id}` continues to exist — the existing split modal still uses it
 - `GET /api/transactions/split/{id}` continues to exist — the existing split modal still fetches via it
@@ -182,7 +182,7 @@ If the backend team wants to support `POST /api/transactions/manual` with a `spl
 
 ## Summary of Backend Work Required
 
-1. **Extend `PUT /api/transactions/manual/{id}`** to accept an optional `splits` array
+1. **Extend `PUT /api/transactions/{id}`** to accept an optional `splits` array
 2. When `splits` is present: atomically apply parent edits → delete old splits → create new splits
 3. **Ensure `transaction.splits` is populated in the `PUT` response** (may already be the case — please verify)
 4. Consider relaxing the "manual source only" guard to allow Plaid parents when payload only contains `splits` and no locked parent fields
