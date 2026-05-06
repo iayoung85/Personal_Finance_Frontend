@@ -203,6 +203,8 @@ async function loadAccounts() {
     console.debug('loadAccounts: mapped', accounts.length, 'accounts');
 
     renderAccountsSidebar();
+    // Keep the Plaid balance indicator in sync with freshly loaded account data.
+    updatePlaidBalanceIndicator();
 
     showStatus('Accounts loaded successfully', 'success');
     setTimeout(() => clearStatus(), 2000);

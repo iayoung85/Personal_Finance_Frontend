@@ -1021,9 +1021,6 @@ function renderTransactionTable() {
 
     // Supplementary badges that can co-exist with the type badge
     let fullBadge = rendered.typeBadge;
-    if (txn.is_override) {
-      fullBadge += '<span class="override-badge" title="Manual category override">⊘</span> ';
-    }
     if (txn.is_split) {
       fullBadge += '<span class="split-badge" title="Split transaction">✂</span> ';
     }

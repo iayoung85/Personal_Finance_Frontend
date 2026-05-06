@@ -494,7 +494,9 @@ function _renderCategoryAmountCell(amount, category, periodDates) {
   const searchQuery = tokens.join(' ');
   const href = `transactions.html?search=${encodeURIComponent(searchQuery)}`;
 
-  return `<a class="reports-drilldown-link" href="${href}" target="_blank" rel="noopener" title="Open matching transactions in a new tab">${formatted}</a>`;
+  // Named target reuses the same tab/window for all drilldowns so the user
+  // isn't buried in extra tabs after exploring several report cells.
+  return `<a class="reports-drilldown-link" href="${href}" target="pfc-drilldown" title="Open matching transactions (reuses drilldown tab)">${formatted}</a>`;
 }
 
 

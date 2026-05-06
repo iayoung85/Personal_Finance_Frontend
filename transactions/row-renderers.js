@@ -402,7 +402,7 @@ function _renderOrphanedRow(ctx) {
  */
 function _renderPlaidConvertedRow(ctx) {
   const clearOverrideBtn = ctx.txn.is_override
-    ? `<button class='clear-override' data-txn-id='${ctx.txnId}' onclick='clearOverride(event)' title='Remove override'>✕</button>`
+    ? `<button class='clear-override' data-txn-id='${ctx.txnId}' onclick='clearOverride(event)' title='Overridden category — click to restore default'>🔒</button>`
     : '';
 
   const buttons = clearOverrideBtn
@@ -485,7 +485,7 @@ function _renderManualClearedRow(ctx) {
  */
 function _renderDefaultRow(ctx) {
   const clearOverrideBtn = ctx.txn.is_override
-    ? `<button class='clear-override' data-txn-id='${ctx.txnId}' onclick='clearOverride(event)' title='Remove override'>✕</button>`
+    ? `<button class='clear-override' data-txn-id='${ctx.txnId}' onclick='clearOverride(event)' title='Overridden category — click to restore default'>🔒</button>`
     : '';
 
   const buttons = clearOverrideBtn
