@@ -298,23 +298,17 @@
     </div>
   </div>
 
-  <!-- ═══ Chart Modal (expense breakdown) ═══ -->
-  <div id="chart-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeChartModal()">
-    <div class="modal modal-chart">
+  <!-- ═══ Category Summary Modal ═══ -->
+  <div id="category-summary-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeCategorySummaryModal()">
+    <div class="modal modal-category-summary">
       <div class="modal-header">
-        <h2>Expense Category Breakdown</h2>
-        <button class="modal-close" onclick="closeChartModal()">✕</button>
+        <h2>Category Summary</h2>
+        <button class="modal-close" onclick="closeCategorySummaryModal()">✕</button>
       </div>
       <div class="modal-body">
-        <div class="chart-toggle-buttons">
-          <button id="chart-primary-btn" class="chart-toggle-btn active" onclick="switchChartView('primary')">Primary</button>
-          <button id="chart-detailed-btn" class="chart-toggle-btn" onclick="switchChartView('detailed')">Detailed</button>
-          <button id="chart-drilldown-back" class="chart-toggle-btn chart-back-btn hidden" onclick="chartDrilldownBack()">← Back</button>
-        </div>
-        <div class="chart-container">
-          <canvas id="category-chart"></canvas>
-          <div id="chart-empty-state" class="chart-empty-state">No transaction data to visualize</div>
-        </div>
+        <div id="category-summary-stats" class="category-summary-stats"></div>
+        <div id="category-summary-content" class="category-summary-grid"></div>
+        <div id="category-summary-empty" class="category-summary-empty-state">No transaction data to summarize</div>
       </div>
     </div>
   </div>
@@ -571,8 +565,9 @@
   <script src="transactions/filters.js"></script>
   <script src="transactions/settings.js"></script>
   <script src="transactions/accounts-sidebar.js"></script>
+  <script src="transactions/analytics.js"></script>
   <script src="transactions/insights.js"></script>
-  <script src="transactions/chart.js"></script>
+  <script src="transactions/category-summary.js"></script>
   <script src="transactions/row-renderers.js"></script>
   <script src="transactions/table-renderer.js"></script>
   <script src="transactions/batch-edit-manager.js"></script>

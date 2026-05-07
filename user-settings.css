@@ -559,6 +559,20 @@ button {
   color: var(--text-muted);
 }
 
+.tracked-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.tracked-insight-slot {
+  margin-bottom: 0;
+}
+
+.tracked-insight-select {
+  width: 100%;
+}
+
 /* Inline checkbox + label row */
 .stub-checkbox-label {
   display: flex;

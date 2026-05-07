@@ -481,17 +481,17 @@ async function copyBalanceSnapshotCSV() {
 // ============================================================
 // Category Summary Exports (2-E)
 //
-// Aggregates filtered transactions by primary and detailed
-// category, matching the same filter logic used by the chart.
+// Aggregates the currently visible ledger rows by primary and
+// detailed category, reusing the shared analytics summary slice.
 // Produces a hierarchical breakdown: primary totals with
 // detailed subcategory rows nested underneath.
 // ============================================================
 
 /**
- * Build a hierarchical category summary from the currently filtered transactions.
+ * Build a hierarchical category summary from the currently visible ledger rows.
  *
- * Reuses _getFilteredTransactionsForChart() from chart.js so the numbers
- * always match what the user sees in the pie chart.
+ * Reuses buildVisibleCategorySummaryData() so the export stays aligned with
+ * the category summary modal and its exclusion rules.
  *
  * Amounts preserve ledger-convention signs:
  *   negative = money out (spending), positive = money in (refunds).
@@ -503,54 +503,7 @@ async function copyBalanceSnapshotCSV() {
  * and each detailed entry has { category, total, count }.
  */
 function _buildCategorySummaryExportData() {
-  const filteredTransactions = _getFilteredTransactionsForChart();
-  const summary = {};
-
-  for (const txn of filteredTransactions) {
-    const fullCategory = txn.user_category || 'Uncategorized';
-    const parsed = parseCategoryString(fullCategory);
-    const primaryKey = parsed.primary || 'Uncategorized';
-    const detailedKey = parsed.detailed || '';
-    // Preserve ledger-convention sign: negative = spending, positive = refund/inflow
-    const amount = txn.amount || 0;
-
-    if (!summary[primaryKey]) {
-      summary[primaryKey] = { total: 0, count: 0, detailed: {} };
-    }
-    summary[primaryKey].total += amount;
-    summary[primaryKey].count += 1;
-
-    if (detailedKey) {
-      if (!summary[primaryKey].detailed[detailedKey]) {
-        summary[primaryKey].detailed[detailedKey] = { total: 0, count: 0 };
-      }
-      summary[primaryKey].detailed[detailedKey].total += amount;
-      summary[primaryKey].detailed[detailedKey].count += 1;
-    }
-  }
-
-  // Sort by magnitude (largest absolute total first) so biggest categories surface at top
-  const primaries = Object.entries(summary)
-    .map(([name, data]) => {
-      const detailedEntries = Object.entries(data.detailed)
-        .map(([detailedName, detailedData]) => ({
-          category: detailedName,
-          total: Math.round(detailedData.total * 100) / 100,
-          count: detailedData.count,
-        }))
-        .sort((entryA, entryB) => Math.abs(entryB.total) - Math.abs(entryA.total));
-
-      return {
-        category: name,
-        total: Math.round(data.total * 100) / 100,
-        count: data.count,
-        detailed: detailedEntries,
-      };
-    })
-    .sort((entryA, entryB) => Math.abs(entryB.total) - Math.abs(entryA.total));
-
-  const grandTotal = primaries.reduce((sum, primary) => sum + primary.total, 0);
-  const grandCount = primaries.reduce((sum, primary) => sum + primary.count, 0);
+  const summaryData = buildVisibleCategorySummaryData();
 
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
@@ -559,9 +512,12 @@ function _buildCategorySummaryExportData() {
     date_range: `${startDate} to ${endDate}`,
     start_date: startDate,
     end_date: endDate,
-    grand_total: Math.round(grandTotal * 100) / 100,
-    transaction_count: grandCount,
-    categories: primaries,
+    grand_total: summaryData.grand_total,
+    spending_total: summaryData.spending_total,
+    income_total: summaryData.income_total,
+    investment_trending_total: summaryData.investment_trending_total,
+    transaction_count: summaryData.transaction_count,
+    categories: summaryData.categories,
   };
 }
 

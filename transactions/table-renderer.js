@@ -426,7 +426,7 @@ function renderTransactionTable() {
     container.innerHTML = '<div class="empty-state">No transactions found for the selected criteria.</div>';
     document.getElementById('export-buttons').classList.add('hidden');
     document.getElementById('pending-table-container').innerHTML = '';
-    renderCategoryChart(); // Clear chart when no data
+    renderCategorySummaryModal();
     renderInsightsPanel(); // Still render empty insights
     return;
   }
@@ -1248,7 +1248,7 @@ function renderTransactionTable() {
   // Attach event listeners for category dropdowns
   attachCategoryDropdownListeners();
   
-  renderCategoryChart();
+  renderCategorySummaryModal();
   renderInsightsPanel();
 
   // Update the batch-unhide toolbar with hidden transaction count

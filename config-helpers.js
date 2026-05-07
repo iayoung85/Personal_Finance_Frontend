@@ -30,6 +30,7 @@ const APP_CONFIG_DEFAULTS = {
   emailBillReminders: true,
   billReminderDaysBefore: 3,
   showMaskWithName: true,
+  trackedInsightCategories: [],
 };
 
 /**

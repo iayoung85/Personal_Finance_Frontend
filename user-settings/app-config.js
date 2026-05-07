@@ -55,6 +55,55 @@ async function _patchPreferencesToServer(updates) {
   return null;
 }
 
+function _escapeAppConfigHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function _normalizeTrackedInsightPrimary(categoryName) {
+  if (!categoryName || typeof categoryName !== 'string') {
+    return '';
+  }
+
+  const trimmed = categoryName.trim();
+  if (!trimmed || trimmed.startsWith('[') || /(transfer|adjust(?:ment)?)/i.test(trimmed)) {
+    return '';
+  }
+
+  return trimmed.split(':')[0].trim();
+}
+
+async function _fetchTrackedInsightPrimaryCategories(selectedCategories = []) {
+  const primaryCategories = new Set(
+    (Array.isArray(selectedCategories) ? selectedCategories : [])
+      .filter(categoryName => typeof categoryName === 'string' && categoryName.trim())
+      .map(categoryName => categoryName.trim())
+  );
+
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/available`);
+    if (!response.ok) {
+      return Array.from(primaryCategories).sort((left, right) => left.localeCompare(right));
+    }
+
+    const data = await response.json();
+    (data.available_categories || []).forEach(categoryName => {
+      const primaryCategory = _normalizeTrackedInsightPrimary(categoryName);
+      if (primaryCategory) {
+        primaryCategories.add(primaryCategory);
+      }
+    });
+  } catch (error) {
+    console.warn('Unable to load tracked insight categories:', error.message);
+  }
+
+  return Array.from(primaryCategories).sort((left, right) => left.localeCompare(right));
+}
+
 // ── Section Renderers ─────────────────────────────────────────
 
 /**
@@ -274,6 +323,43 @@ function _renderViewDefaultsCard(config) {
   `;
 }
 
+function _renderTrackedInsightCategoriesCard(config, availablePrimaryCategories) {
+  const selectedCategories = Array.isArray(config.trackedInsightCategories)
+    ? config.trackedInsightCategories.slice(0, 3)
+    : [];
+  const optionValues = Array.from(new Set([
+    ...availablePrimaryCategories,
+    ...selectedCategories,
+  ])).sort((left, right) => left.localeCompare(right));
+
+  const buildOptions = (selectedValue) => optionValues.map(categoryName => `
+    <option value="${_escapeAppConfigHtml(categoryName)}"${selectedValue === categoryName ? ' selected' : ''}>${_escapeAppConfigHtml(categoryName)}</option>
+  `).join('');
+
+  const selectHtml = [0, 1, 2].map(index => {
+    const selectedValue = selectedCategories[index] || '';
+    return `
+      <div class="form-group tracked-insight-slot">
+        <label for="trackedInsightCategory${index + 1}">Tracked Category ${index + 1}</label>
+        <select id="trackedInsightCategory${index + 1}" class="tracked-insight-select" onchange="handleTrackedInsightCategoriesChange()">
+          <option value="">None</option>
+          ${buildOptions(selectedValue)}
+        </select>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Transaction Insights</h3>
+      </div>
+      <div class="tracked-insight-grid">${selectHtml}</div>
+      <p class="text-muted stub-note">Choose up to 3 primary categories for the transactions insights bar. Totals stay net, while averages use debits for spending categories and credits for income categories. Transfer and adjustment categories are excluded.</p>
+    </div>
+  `;
+}
+
 /**
  * Builds the Notifications card HTML.
  * These controls are stubs — no backend persistence exists yet.
@@ -321,12 +407,14 @@ function _renderNotificationsCard(config) {
 async function loadAppConfigSettings() {
   const container = $('#app-config-content');
   const config = await _fetchPreferencesFromServer();
+  const trackedInsightCategories = await _fetchTrackedInsightPrimaryCategories(config.trackedInsightCategories);
 
   const html = `
     ${_renderAppearanceCard(config)}
     ${_renderDateFormattingCard(config)}
     ${_renderNumberDisplayCard(config)}
     ${_renderViewDefaultsCard(config)}
+    ${_renderTrackedInsightCategoriesCard(config, trackedInsightCategories)}
     ${_renderNotificationsCard(config)}
     <div id="app-config-message"></div>
   `;
@@ -349,6 +437,31 @@ async function handleAppConfigChange(key, value) {
 
   if (result) {
     messageEl.html('<div class="message success">Preference saved.</div>');
+  } else {
+    messageEl.html('<div class="message error">Failed to save — try again.</div>');
+  }
+  setTimeout(() => messageEl.html(''), 2000);
+}
+
+async function handleTrackedInsightCategoriesChange() {
+  const selectedCategories = [];
+
+  document.querySelectorAll('.tracked-insight-select').forEach(selectEl => {
+    const value = (selectEl.value || '').trim();
+    if (value && !selectedCategories.includes(value)) {
+      selectedCategories.push(value);
+    }
+  });
+
+  const result = await _patchPreferencesToServer({
+    trackedInsightCategories: selectedCategories.slice(0, 3),
+  });
+
+  await loadAppConfigSettings();
+
+  const messageEl = $('#app-config-message');
+  if (result) {
+    messageEl.html('<div class="message success">Tracked categories saved.</div>');
   } else {
     messageEl.html('<div class="message error">Failed to save — try again.</div>');
   }

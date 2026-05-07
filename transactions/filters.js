@@ -384,26 +384,12 @@ function closeConfigModal() {
   document.getElementById('config-modal').classList.add('hidden');
 }
 
-/**
- * Toggle the expense chart modal open/closed.
- * Replaces the old openChartModal so the same 📊 button opens AND closes the chart.
- */
 function toggleChartModal() {
-  const modal = document.getElementById('chart-modal');
-  if (modal.classList.contains('hidden')) {
-    modal.classList.remove('hidden');
-    // Re-render chart when modal opens so canvas sizes correctly
-    renderCategoryChart();
-  } else {
-    modal.classList.add('hidden');
-  }
+  toggleCategorySummaryModal();
 }
 
-/**
- * Close the expense chart modal.
- */
 function closeChartModal() {
-  document.getElementById('chart-modal').classList.add('hidden');
+  closeCategorySummaryModal();
 }
 
 // ===== Helper: latest transaction date =====
