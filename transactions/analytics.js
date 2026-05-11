@@ -144,6 +144,15 @@ function _shouldSkipLedgerParentForAnalytics(txn) {
     return true;
   }
 
+  // Projected future rows (BILL_FUTURE, MANUAL_FUTURE) are intentionally
+  // excluded from insights and the category summary — they represent
+  // forecasted activity that has not occurred yet, so including them
+  // would distort spending totals and category breakdowns regardless of
+  // the active date filter window.
+  if (txnType === TXN_TYPE.BILL_FUTURE || txnType === TXN_TYPE.MANUAL_FUTURE) {
+    return true;
+  }
+
   return txnType === TXN_TYPE.MANUAL_ORPHANED;
 }
 
