@@ -133,7 +133,12 @@ function _renderScheduledRow(ctx) {
 
   const badge = '<span class="source-badge scheduled" title="Scheduled future transaction">📅</span> ';
 
-  const buttons = '';
+  // Splits are persisted on the future row now and inherited by the
+  // eventual cleared replacement, letting users plan paycheck splits ahead.
+  const splitBtn = ctx.txnId
+    ? `<button class="category-split" data-txn-id="${ctx.txnId}" onclick="window.splitModalTxnId='${escapeHtml(ctx.txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(ctx.txnId)}')); return false;" title="Split this transaction">Split</button>`
+    : '';
+  const buttons = splitBtn;
 
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
@@ -205,7 +210,12 @@ function _renderMaterializedBillRow(ctx) {
 
   const badge = `<span class="source-badge scheduled bill-materialized" data-tooltip="${hoverTitle}">📝</span> `;
 
-  const buttons = '';
+  // Allow splitting a materialized bill occurrence (e.g. paycheck day arrived
+  // and the bill row needs its allocations now that the amount is known).
+  const splitBtn = ctx.txnId
+    ? `<button class="category-split" data-txn-id="${ctx.txnId}" onclick="window.splitModalTxnId='${escapeHtml(ctx.txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(ctx.txnId)}')); return false;" title="Split this transaction">Split</button>`
+    : '';
+  const buttons = splitBtn;
 
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
@@ -230,7 +240,12 @@ function _renderMaterializedBillRow(ctx) {
 
 
 function _renderMissingRow(ctx) {
-  const buttons = '';
+  // Missing rows have real DB rows, so splits are persistable. Useful when
+  // the user knows the expected payment will need allocation breakdown.
+  const splitBtn = ctx.txnId
+    ? `<button class="category-split" data-txn-id="${ctx.txnId}" onclick="window.splitModalTxnId='${escapeHtml(ctx.txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(ctx.txnId)}')); return false;" title="Split this transaction">Split</button>`
+    : '';
+  const buttons = splitBtn;
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
     'Type to search categories…', buttons

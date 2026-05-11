@@ -37,6 +37,7 @@ let _billModalAccounts = [];
 let _billModalCategories = [];
 let _billModalOnSave = null;
 let _billModalEditData = null;
+let _billModalSplitRowSeq = 0;
 
 const _BILL_DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const _BILL_DAY_ABBREV = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -173,6 +174,9 @@ function _billModalEnsureDOM() {
                 <div id="bill-category-ac-list" class="bill-category-ac-list"></div>
               </div>
               <small style="color: #666;">Type <kbd>[</kbd> to mark as transfer to another account</small>
+              <small id="bill-category-splits-note" style="display:none; color: var(--text-secondary, #888); font-style: italic;">
+                Category is set by the auto-split allocations below.
+              </small>
             </div>
 
             <div class="bill-field">
@@ -189,6 +193,26 @@ function _billModalEnsureDOM() {
             Select a frequency and fill in the details above to see a preview.
           </div>
           <div id="bill-preview-dates" class="bill-preview-dates"></div>
+        </div>
+
+        <!-- Splits template (optional auto-split on maturation) -->
+        <div class="bill-splits-section">
+          <h4>Auto-split allocations <small style="color:#888;font-weight:normal;">(optional)</small></h4>
+          <div class="bill-splits-help">
+            Break this bill into category-specific allocations that are applied
+            automatically when the bill matures (e.g. a $0 paycheck split into
+            +$400 income and &minus;$400 child-care). Split totals must equal
+            the bill amount. Leave empty for a standard single-category bill.
+          </div>
+          <div id="bill-split-rows" class="split-rows"></div>
+          <div class="bill-split-actions">
+            <button type="button" id="bill-split-add-btn" class="secondary">+ Add allocation</button>
+            <div class="bill-split-summary">
+              <span>Sum: <span id="bill-split-sum">$0.00</span></span>
+              <span>Remaining: <span id="bill-split-remaining" class="balanced">$0.00</span></span>
+            </div>
+          </div>
+          <div id="bill-split-validation-error" class="split-rows-validation hidden"></div>
         </div>
       </div>
 
@@ -214,6 +238,14 @@ function _billModalEnsureDOM() {
   typeSelect.addEventListener('change', () => _billModalSyncTypeDropdown(amountInput, typeSelect));
   amountInput.addEventListener('blur', () => _billModalDecorateAmountOnBlur(amountInput, typeSelect));
   amountInput.addEventListener('focus', () => _billModalStripDecorationOnFocus(amountInput));
+
+  // Splits UI: add-allocation button + recompute on amount/type change
+  document.getElementById('bill-split-add-btn').addEventListener('click', () => {
+    _billModalAddSplitRow();
+    _billModalUpdateSplitsValidation();
+  });
+  amountInput.addEventListener('input', _billModalUpdateSplitsValidation);
+  typeSelect.addEventListener('change', _billModalUpdateSplitsValidation);
 }
 
 // ── Public API ───────────────────────────────────────────────
@@ -352,6 +384,7 @@ function _billModalResetForm() {
   document.getElementById('bill-end-date').value = '';
   document.getElementById('bill-end-date').dataset.isoValue = '';
   document.getElementById('bill-max-occurrences').value = '12';
+  _billModalSetSplitRows([]);
   _billModalOnEndTypeChange();
 }
 
@@ -375,6 +408,8 @@ function _billModalPopulateFromBill(bill) {
   if (bill.end_type === 'after_occurrences' && bill.max_occurrences) {
     document.getElementById('bill-max-occurrences').value = bill.max_occurrences;
   }
+
+  _billModalSetSplitRows(Array.isArray(bill.splits_template) ? bill.splits_template : []);
 
   // Stash for frequency-specific field population inside onFrequencyChange
   _billModalEditData = bill;
@@ -973,6 +1008,8 @@ function _billModalReadFormData() {
   const secondDateInput = document.getElementById('bill-second-date');
   if (secondDateInput) secondDate = getDateInputValue(secondDateInput);
 
+  const splitsTemplate = _billModalReadSplitRows();
+
   return {
     frequency,
     account_id: accountId,
@@ -992,7 +1029,8 @@ function _billModalReadFormData() {
     second_date: secondDate,
     end_type: endType,
     end_date: endDate,
-    max_occurrences: maxOccurrences
+    max_occurrences: maxOccurrences,
+    splits_template: splitsTemplate
   };
 }
 
@@ -1013,8 +1051,29 @@ async function _billModalSave() {
   if (isNaN(amountValue) || amountValue < 0) {
     _bmShowError('Please enter a valid amount (zero or greater).'); return;
   }
-  if (!formData.amount_variable && amountValue === 0) {
+  const splitsTemplate = Array.isArray(formData.splits_template) ? formData.splits_template : [];
+  const hasSplits = splitsTemplate.length > 0;
+  if (!formData.amount_variable && amountValue === 0 && !hasSplits) {
     _bmShowError('Please enter a valid amount greater than 0, or mark the bill as variable.'); return;
+  }
+  if (hasSplits) {
+    if (formData.amount_variable) {
+      _bmShowError('Splits are not allowed on variable-amount bills. Set a fixed amount or remove the splits.'); return;
+    }
+    if (splitsTemplate.length < 2) {
+      _bmShowError('Add at least 2 split allocations, or remove all of them.'); return;
+    }
+    if (splitsTemplate.some(s => s.amount === null || s.amount === undefined || isNaN(s.amount))) {
+      _bmShowError('Every split allocation needs a valid amount.'); return;
+    }
+    if (splitsTemplate.some(s => !s.category)) {
+      _bmShowError('Every split allocation needs a category.'); return;
+    }
+    const signedTarget = formData.isCredit ? amountValue : -amountValue;
+    const sum = splitsTemplate.reduce((acc, s) => acc + Number(s.amount), 0);
+    if (Math.abs(sum - signedTarget) >= 0.01) {
+      _bmShowError(`Split allocations must sum to the bill amount. Sum: ${sum.toFixed(2)}, Target: ${signedTarget.toFixed(2)}.`); return;
+    }
   }
   if (!formData.start_date) { _bmShowError('Please set a start date.'); return; }
 
@@ -1058,7 +1117,8 @@ async function _billModalSave() {
     day_of_week: formData.day_of_week,
     end_type: formData.end_type,
     end_date: formData.end_date,
-    max_occurrences: formData.max_occurrences
+    max_occurrences: formData.max_occurrences,
+    splits_template: splitsTemplate
   };
 
   try {
@@ -1089,6 +1149,174 @@ function _bmShowError(message) {
   banner.textContent = message;
   banner.style.display = 'block';
   setTimeout(() => { banner.style.display = 'none'; }, 6000);
+}
+
+// ── Splits Template UI ───────────────────────────────────────
+
+function _billModalSetSplitRows(splits) {
+  const container = document.getElementById('bill-split-rows');
+  if (!container) return;
+  container.innerHTML = '';
+  _billModalSplitRowSeq = 0;
+  (splits || []).forEach(split => {
+    _billModalAddSplitRow({
+      amount: split.amount,
+      category: split.category || '',
+      user_memo: split.user_memo || '',
+      description: split.description || '',
+    });
+  });
+  _billModalUpdateSplitsValidation();
+}
+
+function _billModalAddSplitRow(initial) {
+  const container = document.getElementById('bill-split-rows');
+  if (!container) return;
+  const seq = _billModalSplitRowSeq++;
+  const data = initial || {};
+  const amountStr = (data.amount !== undefined && data.amount !== null && data.amount !== '')
+    ? Number(data.amount).toFixed(2) : '';
+
+  const row = document.createElement('div');
+  row.className = 'split-row';
+  row.dataset.rowSeq = seq;
+  row.innerHTML = `
+    <div>
+      <div class="split-row-label">Amount</div>
+      <input type="text" inputmode="decimal" class="bill-split-amount" placeholder="0.00" value="${escapeHtml(amountStr)}">
+    </div>
+    <div>
+      <div class="split-row-label">Description (Optional)</div>
+      <input type="text" class="bill-split-description" placeholder="Inherits bill description" maxlength="500" value="${escapeHtml(data.description || '')}">
+    </div>
+    <div>
+      <div class="split-row-label">Category</div>
+      <div style="position: relative;">
+        <input type="text" class="bill-split-category" placeholder="Type to search, or [ for transfers" autocomplete="off" value="${escapeHtml(data.category || '')}">
+        <div class="bill-split-category-ac-list bill-category-ac-list" style="display:none;"></div>
+      </div>
+    </div>
+    <div>
+      <div class="split-row-label">Memo (Optional)</div>
+      <input type="text" class="bill-split-memo" placeholder="Optional note" maxlength="256" value="${escapeHtml(data.user_memo || '')}">
+    </div>
+    <button type="button" class="split-row-remove" title="Remove this allocation">&minus;</button>
+  `;
+  container.appendChild(row);
+
+  row.querySelector('.split-row-remove').addEventListener('click', () => {
+    row.remove();
+    _billModalUpdateSplitsValidation();
+  });
+  row.querySelector('.bill-split-amount').addEventListener('input', _billModalUpdateSplitsValidation);
+
+  const catInput = row.querySelector('.bill-split-category');
+  const catList = row.querySelector('.bill-split-category-ac-list');
+  // Match the main bill-category field: same autocomplete classes (so
+  // dropdown styling inherits from bill-modal.css) and the [transfer]
+  // mode that lets users pick a counterpart account.
+  const liveInput = wireUpCategoryAutocomplete(catInput, catList, {
+    categories: _billModalCategories,
+    itemClass: 'bill-category-ac-item',
+    emptyClass: 'bill-category-ac-empty',
+    moreClass: 'bill-category-ac-more',
+    onCustomQuery: (query, dropdownList) => {
+      if (!query.startsWith('[')) return false;
+      _bmShowTransferAccountDropdown(dropdownList, query);
+      return true;
+    },
+  });
+  liveInput.addEventListener('change', _billModalUpdateSplitsValidation);
+  liveInput.addEventListener('input', _billModalUpdateSplitsValidation);
+}
+
+function _billModalReadSplitRows() {
+  const rows = document.querySelectorAll('#bill-split-rows .split-row');
+  const splits = [];
+  rows.forEach(row => {
+    const amountRaw = (row.querySelector('.bill-split-amount').value || '').trim();
+    const category = (row.querySelector('.bill-split-category').value || '').trim();
+    const memo = (row.querySelector('.bill-split-memo').value || '').trim();
+    const description = (row.querySelector('.bill-split-description').value || '').trim();
+    if (!amountRaw && !category) return; // skip empty rows
+    const amount = parseFloat(amountRaw.replace(/[$,]/g, ''));
+    splits.push({
+      amount: isNaN(amount) ? null : amount,
+      category,
+      user_memo: memo || null,
+      description: description || null,
+    });
+  });
+  return splits;
+}
+
+function _billModalCurrentSignedAmount() {
+  const rawAmount = (document.getElementById('bill-amount').value || '').replace(/[^0-9.]/g, '');
+  const amount = parseFloat(rawAmount) || 0;
+  const isCredit = document.getElementById('bill-type').value === 'credit';
+  return isCredit ? amount : -amount;
+}
+
+function _billModalUpdateSplitsValidation() {
+  const sumEl = document.getElementById('bill-split-sum');
+  const remainEl = document.getElementById('bill-split-remaining');
+  const errorEl = document.getElementById('bill-split-validation-error');
+  if (!sumEl || !remainEl || !errorEl) return;
+
+  const splits = _billModalReadSplitRows();
+  const total = splits.reduce((acc, s) => acc + (typeof s.amount === 'number' && !isNaN(s.amount) ? s.amount : 0), 0);
+  const target = _billModalCurrentSignedAmount();
+  const remaining = target - total;
+
+  const fmt = (n) => {
+    const sign = n < 0 ? '-' : '';
+    return `${sign}$${Math.abs(n).toFixed(2)}`;
+  };
+
+  sumEl.textContent = fmt(total);
+  remainEl.textContent = fmt(remaining);
+
+  const balanced = Math.abs(remaining) < 0.01;
+  remainEl.classList.toggle('balanced', balanced);
+  remainEl.classList.toggle('unbalanced', !balanced);
+
+  // When splits are present the parent category becomes meaningless
+  // (every dollar lives in a child), so we disable the main field and
+  // surface a small inline note.
+  const splitsActive = splits.length > 0;
+  const categoryInput = document.getElementById('bill-category');
+  const categoryNote = document.getElementById('bill-category-splits-note');
+  if (categoryInput) {
+    categoryInput.disabled = splitsActive;
+    if (splitsActive) {
+      categoryInput.value = '';
+      categoryInput.placeholder = 'Auto-split — see allocations below';
+    } else {
+      categoryInput.placeholder = 'Type to search, or [ for transfers';
+    }
+  }
+  if (categoryNote) categoryNote.style.display = splitsActive ? 'block' : 'none';
+
+  let message = '';
+  if (splits.length === 0) {
+    // Empty is allowed (single-category bill)
+  } else if (splits.length < 2) {
+    message = 'Add at least 2 allocations, or remove the lone row.';
+  } else if (splits.some(s => s.amount === null || s.amount === undefined || isNaN(s.amount))) {
+    message = 'Every allocation needs a valid amount.';
+  } else if (splits.some(s => !s.category)) {
+    message = 'Every allocation needs a category.';
+  } else if (!balanced) {
+    message = `Allocations don't balance. Remaining: ${fmt(remaining)}.`;
+  }
+
+  if (message) {
+    errorEl.textContent = message;
+    errorEl.classList.remove('hidden');
+  } else {
+    errorEl.textContent = '';
+    errorEl.classList.add('hidden');
+  }
 }
 
 // ── Amount +/- Helpers ───────────────────────────────────────
