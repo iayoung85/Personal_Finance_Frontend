@@ -24,6 +24,21 @@ function _txnDescription(txn) {
 
 
 /**
+ * Render the "Modified" badge for plaid transactions whose amount has
+ * been overridden by the user. The backend sets amount_modified=true on
+ * any PLAID_CLEARED or PLAID_CONVERTED row whose amount was changed via
+ * PUT /api/transactions/<id>; reset-plaid-amount clears the flag.
+ *
+ * @param {Object} txn - The transaction record.
+ * @returns {string} HTML fragment (possibly empty) to prepend to the description cell.
+ */
+function _amountModifiedBadge(txn) {
+  if (!txn || !txn.amount_modified) return '';
+  return '<span class="source-badge amount-modified" title="Amount edited by user — right-click to reset to original Plaid value">✎ Modified</span> ';
+}
+
+
+/**
  * Shared autocomplete input + buttons template used by most category cells.
  * Avoids duplicating the same 8-line HTML block across every renderer.
  *
@@ -436,7 +451,7 @@ function _renderPlaidConvertedRow(ctx) {
     : '<td></td>';
 
   return {
-    typeBadge: '',
+    typeBadge: _amountModifiedBadge(ctx.txn),
     categoryCell,
     actionCell,
     rowCssClass: '',
@@ -454,7 +469,7 @@ function _renderTransferRow(ctx) {
   );
 
   return {
-    typeBadge: '<span class="transfer-badge" title="Transfer">⇄</span> ',
+    typeBadge: _amountModifiedBadge(ctx.txn) + '<span class="transfer-badge" title="Transfer">⇄</span> ',
     categoryCell,
     actionCell: '<td></td>',
     rowCssClass: ctx.isPendingRow ? 'pending-row' : '',
@@ -513,7 +528,7 @@ function _renderDefaultRow(ctx) {
   );
 
   return {
-    typeBadge: '',
+    typeBadge: _amountModifiedBadge(ctx.txn),
     categoryCell: enhancedCategory,
     actionCell: '<td></td>',
     rowCssClass: ctx.isPendingRow ? 'pending-row' : '',

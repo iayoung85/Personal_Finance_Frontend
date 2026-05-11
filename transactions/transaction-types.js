@@ -98,10 +98,20 @@ const DATE_EDITABLE_TYPES = new Set([
 
 const DESCRIPTION_EDITABLE_TYPES = new Set(EDITABLE_TYPES);
 
-const AMOUNT_EDITABLE_TYPES = new Set(EDITABLE_TYPES);
+const AMOUNT_EDITABLE_TYPES = new Set([
+  ...EDITABLE_TYPES,
+  // Users can correct a plaid amount when Plaid reports the wrong value.
+  // The backend sets amount_modified=true on the txn so the row can show
+  // a "Modified" badge; the reset endpoint restores the original amount
+  // from plaid_raw_blob.
+  TXN_TYPE.PLAID_CLEARED,
+]);
 
 function isRowInlineEditable(txnType) {
-  return EDITABLE_TYPES.has(txnType);
+  // PLAID_CLEARED supports date and amount editing but is excluded from
+  // EDITABLE_TYPES (which gates description/full edits). Treat it as
+  // inline-editable so the row click handler opens an edit session.
+  return EDITABLE_TYPES.has(txnType) || txnType === TXN_TYPE.PLAID_CLEARED;
 }
 
 function canInlineEditDate(txnType) {

@@ -136,6 +136,7 @@ function _buildContextTxnData(row) {
     isHidden: row.dataset.isHidden
       ? row.dataset.isHidden === 'true'
       : !!(fallbackTxn.is_hidden || parentTxn?.is_hidden),
+    amountModified: !!(fallbackTxn.amount_modified || parentTxn?.amount_modified),
     txnDate: row.dataset.txnDate || fallbackTxn.date || parentTxn?.date || '',
     localTransaction,
     parentTransaction: parentTxn,
@@ -406,6 +407,17 @@ function _buildMenuItems(txnData) {
     }
   }
 
+  // "Reset Plaid Amount" — visible only when the user has overridden the
+  // original Plaid-reported amount. Restores the value from plaid_raw_blob
+  // and clears the amount_modified flag.
+  if ((isPlaid || isPlaidConverted) && txnData.amountModified) {
+    items.push({
+      label: '↺ Reset Plaid Amount',
+      action: 'reset-plaid-amount',
+      separator: false,
+    });
+  }
+
   // "This is a Bill" — plaid, manual, plaid-converted, pending (NOT scheduled, missing, split, opening, orphaned)
   const showBill = isPlaid || (isManual && !isOrphaned) || isPlaidConverted || isPending;
   if (showBill) {
@@ -581,6 +593,9 @@ function _dispatchContextAction(action, txnData) {
       break;
     case 'unhide':
       _handleContextUnhide(txnData);
+      break;
+    case 'reset-plaid-amount':
+      _handleContextResetPlaidAmount(txnData);
       break;
     case 'inspect-data':
       _handleContextInspectData(txnData);
@@ -1090,6 +1105,53 @@ async function _handleContextUnhide(txnData) {
     renderTransactionTable();
   } catch (networkError) {
     showStatus(`Failed to unhide transaction: ${networkError.message}`, 'error');
+  }
+}
+
+/**
+ * Reset a plaid transaction's amount to the value recorded in
+ * plaid_raw_blob. Clears amount_modified, triggers a balance walk on
+ * the backend, and refreshes the affected account so the ledger and
+ * balance history reflect the restored amount.
+ */
+async function _handleContextResetPlaidAmount(txnData) {
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/${encodeURIComponent(txnData.txnId)}/reset-plaid-amount`,
+      { method: 'POST' }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      showStatus(data.error || 'Failed to reset amount', 'error');
+      return;
+    }
+
+    if (data.transaction && data.transaction.transaction_id) {
+      _replaceCachedTransaction(txnData.txnId, data.transaction);
+    } else {
+      _patchCachedTransaction(txnData.txnId, { amount_modified: false });
+    }
+
+    // Reset touches balances and may shift future-row projections,
+    // so refresh the affected account before re-rendering.
+    const affectedAccountId = data.transaction?.account_id || txnData.accountId;
+    if (affectedAccountId) {
+      await refreshAccountTransactions(affectedAccountId);
+      if (selectedAccountMode === 'single' && selectedAccountId === affectedAccountId) {
+        if (data.affected_balance_history) {
+          _patchBalanceHistoryCache(affectedAccountId, data.affected_balance_history);
+        } else {
+          await fetchBalanceHistory(affectedAccountId);
+        }
+      }
+      await loadAccounts();
+    }
+    renderTransactionTable();
+    showStatus(data.message || 'Plaid amount restored', 'success');
+  } catch (networkError) {
+    showStatus(`Failed to reset amount: ${networkError.message}`, 'error');
   }
 }
 
