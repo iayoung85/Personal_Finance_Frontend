@@ -11,13 +11,27 @@ const DATE_FILTER_CUSTOM_START_KEY = 'pf_date_filter_custom_start';
 const DATE_FILTER_CUSTOM_END_KEY = 'pf_date_filter_custom_end';
 // For month buttons, remember which year+month was selected
 const DATE_FILTER_MONTH_KEY = 'pf_date_filter_month';
+const DEFAULT_FORECAST_HORIZON_DAYS = 90;
+const MAX_FORECAST_HORIZON_DAYS = 365;
 
 function _formatDateLocal(date) {
   return toISODateStr(date);
 }
 
+function _parseForecastHorizonDays(rawValue, defaultDays = DEFAULT_FORECAST_HORIZON_DAYS) {
+  const parsedDays = Number.parseInt(rawValue, 10);
+  if (Number.isNaN(parsedDays)) {
+    return defaultDays;
+  }
+  return Math.max(0, Math.min(MAX_FORECAST_HORIZON_DAYS, parsedDays));
+}
+
+function _getForecastHorizonDays() {
+  return _parseForecastHorizonDays(document.getElementById('bills-future-days')?.value);
+}
+
 // ===== "Show all" baseline dates =====
-// Default range: earliest txn to tomorrow — never filters out transactions.
+// Default range: earliest txn through the active forecast horizon.
 
 function _allTimeStartDate() {
   if (transactions && transactions.length > 0) {
@@ -40,19 +54,47 @@ function _tomorrowDateStr() {
 }
 
 /**
- * Return a date string for today + bills-future-days.
- * Used by filters that should include projected future bills.
+ * Return a date string for today + the forecast horizon.
+ * Used by filters that include projected future rows.
  */
 function _futureEndDateStr() {
-  const futureDays = parseInt(document.getElementById('bills-future-days')?.value, 10) || 90;
+  const futureDays = _getForecastHorizonDays();
   const end = new Date();
   end.setDate(end.getDate() + futureDays);
   return _formatDateLocal(end);
 }
 
+function _isForecastLimitedFutureTxnType(txnType) {
+  return txnType === TXN_TYPE.BILL_FUTURE || txnType === TXN_TYPE.MANUAL_FUTURE;
+}
+
+function _isFutureTxnPastForecastHorizon(txn, txnType, todayDateStr, forecastEndDateStr) {
+  if (!_isForecastLimitedFutureTxnType(txnType)) {
+    return false;
+  }
+  if (!txn.date || txn.date <= todayDateStr) {
+    return false;
+  }
+  return txn.date > forecastEndDateStr;
+}
+
+function _refreshDateFilterWindowForForecastHorizon() {
+  const activeFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+
+  if (activeFilter === 'all') {
+    _applyAllTimeDates();
+  } else if (activeFilter === 'mtd') {
+    _applyMonthToDate();
+  } else if (activeFilter === 'ytd') {
+    _applyYearToDate();
+  } else if (activeFilter === 'last_12_months' || !activeFilter) {
+    _applyLast12Months();
+  }
+}
+
 /**
  * Write "show everything" range into the hidden start-date / end-date inputs.
- * End date extends by bills-future-days so projected bills remain visible.
+ * End date extends by the forecast horizon so projected future rows remain visible.
  */
 function _applyAllTimeDates() {
   document.getElementById('start-date').value = _allTimeStartDate();
@@ -61,7 +103,7 @@ function _applyAllTimeDates() {
 
 /**
  * Set start-date/end-date to the last 12 months from today,
- * plus bills-future-days into the future so projected bills
+ * plus the forecast horizon into the future so projected rows
  * are visible by default.
  */
 function _applyLast12Months() {
@@ -408,32 +450,12 @@ function _latestTransactionDate() {
 // ===== Dynamic Month Buttons (last 6 months) =====
 
 /**
- * Auto-extend the end-date to include all projected future transactions.
- * Called after transactions are loaded so that future bill occurrences,
- * manual-future rows, and projected investment trending rows remain visible
- * without manual date range adjustment.
+ * Refresh forecast-aware date ranges after transactions/settings change.
+ * The forecast horizon caps projected future rows; it should not expand to
+ * the furthest MANUAL_FUTURE row in the payload.
  */
 function autoExtendEndDateForScheduled() {
-  if (!transactions || transactions.length === 0) return;
-  const todayDateStr = _formatDateLocal(new Date());
-
-  const latestScheduledDate = transactions.reduce((latest, txn) => {
-    const txnType = getTransactionType(txn);
-    const isProjectedFutureType = txnType === TXN_TYPE.BILL_FUTURE
-      || txnType === TXN_TYPE.MANUAL_FUTURE;
-
-    if (isProjectedFutureType) {
-      if (!latest || txn.date > latest) return txn.date;
-    }
-    return latest;
-  }, null);
-
-  if (latestScheduledDate) {
-    const currentEndDate = document.getElementById('end-date').value;
-    if (latestScheduledDate > currentEndDate) {
-      document.getElementById('end-date').value = latestScheduledDate;
-    }
-  }
+  _refreshDateFilterWindowForForecastHorizon();
 
   // When "Show All Dates" is active, snap start-date to real earliest txn.
   // Otherwise the default (last_12_months) handles itself.

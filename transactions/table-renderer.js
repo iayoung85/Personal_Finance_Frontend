@@ -365,6 +365,8 @@ function renderTransactionTable() {
   const hideTransfers = document.getElementById('hide-transfers').checked;
   const showHiddenEnabled = document.getElementById('show-hidden-toggle').checked;
   const showUnmatchedOnlyEnabled = document.getElementById('show-unmatched-toggle')?.checked;
+  const todayDateStr = _formatDateLocal(new Date());
+  const forecastEndDateStr = _futureEndDateStr();
   
   // Get selected optional fields
   const optionalFields = [];
@@ -374,6 +376,12 @@ function renderTransactionTable() {
   
   // Apply all filters to transactions array
   const filteredTransactions = transactions.filter(txn => {
+    const txnType = getTransactionType(txn);
+
+    if (_isFutureTxnPastForecastHorizon(txn, txnType, todayDateStr, forecastEndDateStr)) {
+      return false;
+    }
+
     // Filter by date range
     if (txn.date < startDate || txn.date > endDate) {
       return false;
@@ -485,7 +493,7 @@ function renderTransactionTable() {
   const postedTransactions = [];
 
   // Today in YYYY-MM-DD for comparing against txn.date strings
-  const _todayDateStr = _formatDateLocal(new Date());
+  const _todayDateStr = todayDateStr;
 
   // Scroll anchor: on initial load show only the 10 nearest future rows
   // instead of the furthest-out projections at the very top.

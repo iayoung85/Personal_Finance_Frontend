@@ -41,7 +41,7 @@ async function saveSettings() {
       hide_transfers: hideTransfers,
       show_overrides_only: showOverridesOnly,
       show_pending: document.getElementById('show-pending-toggle').checked,
-      bills_future_days: parseInt(document.getElementById('bills-future-days').value, 10) || 90
+      bills_future_days: _getForecastHorizonDays()
     };
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transaction_viewer_settings`, {
@@ -58,6 +58,7 @@ async function saveSettings() {
     }
     
     showStatus('Settings saved successfully — refreshing transactions…', 'success');
+    _refreshDateFilterWindowForForecastHorizon();
 
     // Why: bills_future_days and other settings affect the server-side
     // transaction payload (e.g. number of bill occurrence pseudo-txns).
@@ -118,7 +119,8 @@ function applySettings(settings) {
 
   // Apply bills_future_days setting (default to 90 if not set)
   const billsFutureDays = resolvedSettings.bills_future_days !== undefined ? resolvedSettings.bills_future_days : 90;
-  document.getElementById('bills-future-days').value = String(billsFutureDays);
+  document.getElementById('bills-future-days').value = String(_parseForecastHorizonDays(billsFutureDays));
+  _refreshDateFilterWindowForForecastHorizon();
 
   applyLocalViewerSettings();
 }
