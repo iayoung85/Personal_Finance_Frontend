@@ -2661,7 +2661,8 @@ tr:hover {
 /* Old .memo-input / .memo-save styles removed — memo is now inline in the Description column */
 
 /* Autocomplete wrapper — flex-grows to fill available space in the row */
-.category-autocomplete-wrap {
+.category-autocomplete-wrap,
+.bulk-edit-category-wrap {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
@@ -2678,7 +2679,8 @@ tr:hover {
   z-index: 41;
 }
 
-.category-autocomplete {
+.category-autocomplete,
+.bulk-edit-category-input {
   font-size: 10.5px;
   padding: 1px 5px;
   border: 1px solid var(--border-primary);
@@ -2692,19 +2694,22 @@ tr:hover {
   line-height: 1.3;
 }
 
-.category-autocomplete:focus {
+.category-autocomplete:focus,
+.bulk-edit-category-input:focus {
   outline: none;
   border-color: var(--accent-link);
   box-shadow: 0 0 0 2px var(--accent-focus);
 }
 
-.category-autocomplete::placeholder {
+.category-autocomplete::placeholder,
+.bulk-edit-category-input::placeholder {
   color: var(--text-muted);
   font-style: italic;
 }
 
 /* Autocomplete dropdown list */
-.category-ac-list {
+.category-ac-list,
+.bulk-edit-category-ac-list {
   display: none;
   position: absolute;
   top: 100%;
@@ -2720,7 +2725,8 @@ tr:hover {
   overflow-y: auto;
 }
 
-.category-ac-item {
+.category-ac-item,
+.bulk-edit-category-ac-item {
   padding: 6px 10px;
   font-size: 12px;
   cursor: pointer;
@@ -2730,29 +2736,35 @@ tr:hover {
   text-overflow: ellipsis;
 }
 
-.category-ac-item:last-child {
+.category-ac-item:last-child,
+.bulk-edit-category-ac-item:last-child {
   border-bottom: none;
 }
 
 .category-ac-item.active,
-.category-ac-item:hover {
+.category-ac-item:hover,
+.bulk-edit-category-ac-item.active,
+.bulk-edit-category-ac-item:hover {
   background: var(--bg-selected);
   color: var(--accent-link);
 }
 
-.category-ac-item strong {
+.category-ac-item strong,
+.bulk-edit-category-ac-item strong {
   color: var(--accent-link);
   font-weight: 700;
 }
 
-.category-ac-empty {
+.category-ac-empty,
+.bulk-edit-category-ac-empty {
   padding: 8px 10px;
   font-size: 12px;
   color: var(--text-muted);
   font-style: italic;
 }
 
-.category-ac-more {
+.category-ac-more,
+.bulk-edit-category-ac-more {
   padding: 4px 10px;
   font-size: 11px;
   color: var(--text-muted);
@@ -5259,4 +5271,205 @@ th.th-date {
 @keyframes variable-bill-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50%      { opacity: 0.4; transform: scale(0.75); }
+}
+
+/* ── Bulk Modify (TXN-018) ───────────────────────────────────── */
+
+.btn-bulk-modify,
+.btn-bulk-edit-selected,
+.btn-bulk-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-bulk-edit-selected.hidden,
+.btn-bulk-cancel.hidden,
+.btn-bulk-modify.hidden {
+  display: none;
+}
+
+.btn-bulk-edit-selected:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Checkbox column header */
+.th-bulk-select {
+  text-align: left;
+  white-space: nowrap;
+  padding: 4px 8px;
+}
+
+.bulk-selected-count {
+  font-size: 11px;
+  color: var(--text-muted, #999);
+  margin-left: 6px;
+  font-style: italic;
+}
+
+.bulk-select-all-checkbox {
+  cursor: pointer;
+  accent-color: var(--color-primary, #4a90d9);
+}
+
+/* Per-row checkbox cell */
+.bulk-cell {
+  width: 42px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.bulk-cell-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.bulk-row-checkbox {
+  cursor: pointer;
+  accent-color: var(--color-primary, #4a90d9);
+}
+
+.bulk-row-checkbox:disabled {
+  cursor: not-allowed;
+}
+
+/* ── Bulk-edit modal ─────────────────────────────────────────── */
+
+.modal-bulk-edit {
+  width: min(560px, 92vw);
+}
+
+.bulk-edit-instructions {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text-secondary, #aaa);
+}
+
+.bulk-edit-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bulk-edit-field-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle, #333);
+  border-radius: 4px;
+  background: var(--bg-surface-elevated, #232327);
+}
+
+.bulk-edit-field-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.bulk-edit-field-checkbox {
+  cursor: pointer;
+  accent-color: var(--color-primary, #4a90d9);
+}
+
+.bulk-edit-field-input {
+  min-width: 0;
+}
+
+.bulk-edit-field-input .modal-input {
+  width: 100%;
+}
+
+.bulk-edit-toggle-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary, #aaa);
+}
+
+.bulk-edit-empty {
+  padding: 12px;
+  font-style: italic;
+  color: var(--text-muted, #999);
+}
+
+/* Blockers footer */
+.bulk-edit-blockers {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-subtle, #333);
+}
+
+.bulk-edit-blockers-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text-secondary, #aaa);
+}
+
+.bulk-edit-blocker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-secondary, #aaa);
+}
+
+.bulk-edit-blocker-field {
+  font-weight: 600;
+  color: var(--text-primary, #e0e0e0);
+  min-width: 110px;
+  cursor: help;
+}
+
+.bulk-edit-blocker-count {
+  flex: 1;
+  font-style: italic;
+}
+
+.bulk-edit-blocker-expand {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: transparent;
+  color: var(--accent-link, #4a90d9);
+  border: 1px solid var(--accent-link, #4a90d9);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.bulk-edit-blocker-expand:hover {
+  background: var(--accent-link, #4a90d9);
+  color: #fff;
+}
+
+.bulk-edit-blocker-detail {
+  margin: 4px 0 8px 110px;
+  font-size: 11px;
+  color: var(--text-muted, #999);
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.bulk-edit-blocker-detail.hidden {
+  display: none;
+}
+
+.bulk-edit-blocker-detail ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.bulk-edit-blocker-detail code {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  background: var(--bg-input, #1c1c1f);
+  padding: 0 4px;
+  border-radius: 2px;
 }

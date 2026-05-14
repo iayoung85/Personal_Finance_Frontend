@@ -604,8 +604,21 @@ function renderTransactionTable() {
   let pendingSectionEnded = !hasPendingToShow;
   
   const showLogoColumn = optionalFields.includes('merchant_logo');
+  const bulkEditActive = bulkEditState.active;
 
   _virtualHeaderHtml = '<table><thead><tr>';
+  if (bulkEditActive) {
+    const selectedCount = bulkEditState.selectedIds.size;
+    const visibleEligible = (typeof getBulkEligibleVisibleIds === 'function')
+      ? getBulkEligibleVisibleIds()
+      : [];
+    const allVisibleSelected = visibleEligible.length > 0
+      && visibleEligible.every(id => bulkEditState.selectedIds.has(id));
+    _virtualHeaderHtml += `<th class="th-bulk-select" style="width: 42px;">`
+      + `<input type="checkbox" class="bulk-select-all-checkbox" title="Select all visible"${allVisibleSelected ? ' checked' : ''}>`
+      + `<span id="bulk-selected-count" class="bulk-selected-count">${selectedCount} selected</span>`
+      + `</th>`;
+  }
   if (showLogoColumn) {
     _virtualHeaderHtml += '<th class="th-logo" style="width: 36px;"></th>';
   }
@@ -643,6 +656,7 @@ function renderTransactionTable() {
   if (optionalFields.includes('authorized_datetime')) colCount++;
   if (optionalFields.includes('personal_finance_category')) colCount++;
   if (showLedgerColumn) colCount++; // Balance Ledger
+  if (bulkEditActive) colCount++; // Bulk-select checkbox column
   _virtualColCount = colCount;
   
   // Initialize virtual rows array and hidden transaction tracking
@@ -762,6 +776,7 @@ function renderTransactionTable() {
         const mismatchMemoHtml = `<span class="txn-memo-text" data-txn-id="${escapeHtml(parentTxnId)}" title="${escapeHtml(mismatchMemoText)}">${mismatchMemoText ? escapeHtml(mismatchMemoText) : '<em class="memo-placeholder">add memo…</em>'}</span>`;
 
         rowHtml += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-account-id="${escapeHtml(txn.account_id || txn.plaid_account_id || '')}" data-amount="${parentAmount || 0}" data-is-split="true" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(txn.date || '')}">
+          ${bulkEditActive ? renderBulkCheckboxCell(txn) : ''}
           ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
           <td>${escapeHtml(dateStr)}</td>
           ${showBankAccountColumn ? `<td>${escapeHtml(txn.bank_account || '')}</td>` : ''}
@@ -858,6 +873,7 @@ function renderTransactionTable() {
         const splitMemoLineHtml = `<span class="txn-memo-text" data-txn-id="${escapeHtml(split.transaction_id)}" data-split-index="${idx}" title="${escapeHtml(splitMemoText)}">${splitMemoText ? escapeHtml(splitMemoText) : `<em class="memo-placeholder">${splitMemoPlaceholder}</em>`}</span>`;
 
         rowHtml += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-parent-txn-id="${escapeHtml(parentTxnId)}" data-split-txn-id="${escapeHtml(split.transaction_id)}" data-split-index="${idx}" data-source="split" data-status="cleared" data-account-id="${escapeHtml(txn.account_id || txn.plaid_account_id || '')}" data-amount="${displayAmount || 0}" data-is-split="true" data-txn-description="${escapeHtml(split.description || split.name || txn.description || txn.name || '')}" data-user-category="${escapeHtml(split.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(split.date || txn.date || '')}">
+          ${bulkEditActive ? '<td class="bulk-cell bulk-cell-disabled" title="Not bulk-editable"><input type="checkbox" class="bulk-row-checkbox" disabled></td>' : ''}
           ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
           <td>${escapeHtml(dateStr)}</td>
           ${showBankAccountColumn ? `<td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>` : ''}
@@ -1115,6 +1131,9 @@ function renderTransactionTable() {
     const rowCssClass = rendered.rowCssClass;
     const combinedClass = (rowCssClass || '') + hiddenClass;
     rowHtml += `<tr${combinedClass ? ` class="${combinedClass.trim()}"` : ''}${rowDataAttrs}>`;
+    if (bulkEditActive) {
+      rowHtml += renderBulkCheckboxCell(txn);
+    }
 
     // Hidden-row checkbox (for batch unhide) — rendered as first visible cell content
     const hiddenCheckboxHtml = isHiddenRow && showHiddenEnabled

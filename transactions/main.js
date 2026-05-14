@@ -127,6 +127,25 @@ $(document).ready(async function() {
     }
   });
 
+  // ── Bulk-edit selection handlers (TXN-018) ──
+  // Per-row checkbox in the bulk-edit checkbox column.
+  $(document).on('change', '.bulk-row-checkbox', function() {
+    if (this.disabled) return;
+    toggleBulkSelection(this.dataset.txnId, this.checked);
+  });
+
+  // Header "select all visible" checkbox.
+  $(document).on('change', '.bulk-select-all-checkbox', function() {
+    toggleSelectAllVisibleBulk(this.checked);
+  });
+
+  // Clear bulk selection if the user navigates away from /transactions.
+  window.addEventListener('beforeunload', () => {
+    bulkEditState.active = false;
+    bulkEditState.selectedIds = new Set();
+    bulkEditState.preflight = null;
+  });
+
   // Re-render table when optional field checkboxes toggle
   $(document).on('change', '.field-checkbox', function() {
     renderTransactionTable();

@@ -70,3 +70,14 @@ const SIDEBAR_SELECT_DEBOUNCE_MS = 250;
 // works correctly even when off-screen rows are not in the DOM.
 let _hiddenTxnIdSet = new Set();
 let _selectedHiddenTxnIds = new Set();
+
+// Bulk-edit selection state (TXN-018). Mode flips on via the "Bulk modify"
+// toolbar button; the same selection set persists across filter / search /
+// account changes and only clears on Cancel, successful Apply, or page leave.
+const BULK_EDIT_MAX_SELECTION = 500;
+const bulkEditState = {
+  active: false,
+  selectedIds: new Set(),
+  preflight: null,
+  applying: false,
+};

@@ -123,6 +123,9 @@
             <div id="status-message" class="status-message"></div>
           </div>
           <div class="action-row-right">
+            <button id="btn-bulk-modify" onclick="enterBulkEditMode()" class="btn-action btn-bulk-modify" title="Bulk modify a field across many selected transactions">✎ Bulk modify</button>
+            <button id="btn-bulk-edit-selected" onclick="openBulkEditModal()" class="btn-action btn-bulk-edit-selected hidden" disabled>Edit selected (0)</button>
+            <button id="btn-bulk-cancel" onclick="exitBulkEditMode()" class="btn-action btn-bulk-cancel hidden">Cancel</button>
             <button onclick="syncTransactions()" class="btn-action btn-sync">⟳ Re-sync</button>
             <button onclick="openAddManualTransactionModal()" class="btn-action btn-manual-txn" title="Add a manual transaction. For Plaid accounts, use this only for historical transactions that occurred before the earliest Plaid-downloaded entry. Hotkey: Ctrl+M (Windows/Linux) or Cmd+M (Mac)">+ Manual Txn</button>
             <button onclick="openReportsModal()" class="btn-action btn-reports" title="Generate balance and category reports">📊 Reports</button>
@@ -582,6 +585,7 @@
   <script src="transactions/context-menu.js"></script>
   <script src="transactions/transfer-modal.js"></script>
   <script src="transactions/inline-edit.js"></script>
+  <script src="transactions/bulk-edit.js"></script>
   <script src="transactions/import/main.js"></script>
   <script src="transactions/import/file-upload.js"></script>
   <script src="transactions/import/account-mapping.js"></script>

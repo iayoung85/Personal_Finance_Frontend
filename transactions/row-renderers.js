@@ -648,3 +648,32 @@ function renderRowByType(ctx) {
   // Everything else: plaid cleared/pending, reconciliation, investment trending, etc.
   return _renderDefaultRow(ctx);
 }
+
+
+/**
+ * Render the leading bulk-select checkbox cell for a row. Selectable
+ * rows get a live checkbox bound to `bulkEditState.selectedIds`; rows
+ * that are bulk-rejected (system / match / virtual bill / split)
+ * render a disabled and dimmed checkbox with a tooltip explaining why.
+ *
+ * @param {Object} txn - The transaction record.
+ * @returns {string} HTML for a single `<td>` cell.
+ */
+function renderBulkCheckboxCell(txn) {
+  const txnId = txn && txn.transaction_id ? txn.transaction_id : '';
+  const rejected = isRowBulkRejected(txn);
+
+  if (rejected || !txnId) {
+    return `<td class="bulk-cell bulk-cell-disabled" title="Not bulk-editable">`
+      + `<input type="checkbox" class="bulk-row-checkbox" disabled>`
+      + `</td>`;
+  }
+
+  const isChecked = bulkEditState.selectedIds.has(txnId);
+  return `<td class="bulk-cell">`
+    + `<input type="checkbox" class="bulk-row-checkbox" data-txn-id="${escapeHtml(txnId)}"`
+    + (isChecked ? ' checked' : '')
+    + `>`
+    + `</td>`;
+}
+
