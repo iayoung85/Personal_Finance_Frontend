@@ -125,14 +125,6 @@ function _billModalEnsureDOM() {
               <input type="text" id="bill-description" placeholder="e.g., Rent, Netflix, Paycheck" maxlength="500">
             </div>
 
-            <div class="bill-field">
-              <label for="bill-match-description">Bank Statement Description</label>
-              <input type="text" id="bill-match-description" placeholder="e.g., NETFLIX.COM 866-716-0414 CA" maxlength="500">
-              <small style="color: #888; display: block; margin-top: 2px;">
-                How this bill appears on your bank statement. Used instead of Description when matching downloaded transactions.
-              </small>
-            </div>
-
             <div class="bill-field" style="display: grid; grid-template-columns: 1fr auto; gap: 8px;">
               <div>
                 <label for="bill-amount">Default Amount *</label>
@@ -145,16 +137,6 @@ function _billModalEnsureDOM() {
                   <option value="credit">Credit (+)</option>
                 </select>
               </div>
-            </div>
-
-            <div class="bill-field">
-              <label>
-                <input type="checkbox" id="bill-amount-variable" style="margin-right: 6px;">
-                Amount varies (match by name/date only, ignore amount)
-              </label>
-              <small style="color: #888; display: block; margin-top: 2px;">
-                Useful for income or bills where the amount changes each cycle
-              </small>
             </div>
 
             <div class="bill-field">
@@ -182,6 +164,104 @@ function _billModalEnsureDOM() {
             <div class="bill-field">
               <label for="bill-memo">Memo</label>
               <input type="text" id="bill-memo" placeholder="Optional note" maxlength="256">
+            </div>
+          </div>
+        </div>
+
+        <!-- Matching criteria (collapsible) -->
+        <div class="bill-criteria-section">
+          <div class="bill-criteria-header" id="bill-criteria-toggle" role="button" tabindex="0">
+            <span class="bill-criteria-caret" id="bill-criteria-caret">▶</span>
+            <h4>Matching criteria</h4>
+            <span class="bill-criteria-badge" id="bill-criteria-badge" style="display:none;"></span>
+            <span class="bill-criteria-hint">click to expand</span>
+          </div>
+          <div class="bill-criteria-body" id="bill-criteria-body" style="display:none;">
+            <div class="bill-criteria-intro">
+              All criteria you set must pass for a downloaded transaction to auto-match this bill (strict AND).
+              Leave a field blank to disable that criterion.
+            </div>
+
+            <div class="bill-field">
+              <label class="bill-criteria-label">Amount match mode</label>
+              <div class="bill-criteria-radio-row">
+                <label><input type="radio" name="bill-match-amount-mode" value="exact" checked> Exact</label>
+                <label><input type="radio" name="bill-match-amount-mode" value="range"> Range</label>
+              </div>
+              <small>Exact requires the Plaid amount to equal the bill amount. Range allows a min–max band (useful for paychecks, utilities).</small>
+            </div>
+
+            <div class="bill-field bill-range-bounds" id="bill-range-bounds" style="display:none;">
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div>
+                  <label for="bill-match-amount-min">Min</label>
+                  <input type="text" id="bill-match-amount-min" inputmode="decimal" placeholder="0.00">
+                </div>
+                <div>
+                  <label for="bill-match-amount-max">Max</label>
+                  <input type="text" id="bill-match-amount-max" inputmode="decimal" placeholder="0.00">
+                </div>
+              </div>
+              <small>Plaid amount magnitude must fall within this band. Sign is enforced separately.</small>
+              <div id="bill-range-splits-warning" class="bill-range-splits-warning" style="display:none;">
+                Range-mode matching disables auto-splits. Remove the split allocations below, or switch back to Exact mode.
+              </div>
+            </div>
+
+            <div class="bill-field">
+              <label for="bill-match-date-tolerance">Date tolerance (days)</label>
+              <div class="bill-criteria-inline-row">
+                <input type="number" id="bill-match-date-tolerance" min="0" max="14" value="2" style="width:90px;">
+                <label style="margin-left:10px;">
+                  <input type="checkbox" id="bill-match-date-disable"> Disable date check
+                </label>
+              </div>
+              <small>Plaid date must fall within ± this many days of the scheduled occurrence. Maximum 14 — the matching engine only considers Plaid transactions within a 14-day window. Disable if the bill posts on wildly varying dates.</small>
+            </div>
+
+            <div class="bill-field">
+              <label for="bill-match-account-scope">Account scope</label>
+              <select id="bill-match-account-scope">
+                <option value="bill_account" selected>This bill's account</option>
+                <option value="any">Any of my accounts</option>
+              </select>
+              <small>Restrict matching to this bill's account, or allow matching against transactions on any linked account.</small>
+            </div>
+
+            <div class="bill-field">
+              <label>
+                <input type="checkbox" id="bill-match-sign-enforced" checked>
+                Enforce sign
+              </label>
+              <small>Plaid amount sign must match the bill amount sign (debit bill → negative Plaid amount; credit bill → positive).</small>
+            </div>
+
+            <div class="bill-field">
+              <label for="bill-match-plaid-name-patterns">Plaid name patterns</label>
+              <input type="text" id="bill-match-plaid-name-patterns" placeholder="e.g., NETFLIX.COM, NETFLIX 866-716-0414">
+              <small>Comma-separated, case-insensitive substrings tested against Plaid's transaction <code>name</code>. Any match passes. Leave blank to disable.</small>
+            </div>
+
+            <div class="bill-field">
+              <label for="bill-match-merchant-name-patterns">Merchant name patterns</label>
+              <input type="text" id="bill-match-merchant-name-patterns" placeholder="e.g., Netflix, Spotify">
+              <small>Same as above but tested against Plaid's <code>merchant_name</code>. Any match passes.</small>
+            </div>
+
+            <div class="bill-field">
+              <label for="bill-match-pfc-categories">PFC detailed categories</label>
+              <input type="text" id="bill-match-pfc-categories" placeholder="e.g., INCOME_WAGES, RENT_AND_UTILITIES_GAS_AND_ELECTRICITY">
+              <small>
+                Comma-separated Plaid <code>personal_finance_category.detailed</code> codes in <strong>ALL_CAPS_SNAKE_CASE</strong>.
+                The most reliable workflow: inspect the raw Plaid data for past instances of this bill and copy/paste the <code>detailed</code> value here as-is.
+                Any code in this list will pass.
+              </small>
+            </div>
+
+            <div class="bill-field">
+              <label for="bill-match-day-of-month">Day-of-month allowlist</label>
+              <input type="text" id="bill-match-day-of-month" placeholder="e.g., 1, 15">
+              <small>Comma-separated days (1–31). The Plaid date must fall on one of these days. Useful for bills that post 1st-or-15th but never anywhere else. Leave blank to disable.</small>
             </div>
           </div>
         </div>
@@ -246,6 +326,34 @@ function _billModalEnsureDOM() {
   });
   amountInput.addEventListener('input', _billModalUpdateSplitsValidation);
   typeSelect.addEventListener('change', _billModalUpdateSplitsValidation);
+
+  // Matching criteria: collapsible toggle, range/exact swap, date-disable wiring.
+  const criteriaToggle = document.getElementById('bill-criteria-toggle');
+  criteriaToggle.addEventListener('click', _billModalToggleCriteria);
+  criteriaToggle.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      _billModalToggleCriteria();
+    }
+  });
+  document.querySelectorAll('input[name="bill-match-amount-mode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      _billModalOnAmountModeChange();
+      _billModalUpdateCriteriaBadge();
+      _billModalUpdateSplitsValidation();
+    });
+  });
+  document.getElementById('bill-match-date-disable').addEventListener('change', (event) => {
+    document.getElementById('bill-match-date-tolerance').disabled = event.target.checked;
+    _billModalUpdateCriteriaBadge();
+  });
+  // Live badge update on any criteria input edit.
+  document.querySelectorAll(
+    '#bill-criteria-body input, #bill-criteria-body select'
+  ).forEach(field => {
+    field.addEventListener('input', _billModalUpdateCriteriaBadge);
+    field.addEventListener('change', _billModalUpdateCriteriaBadge);
+  });
 }
 
 // ── Public API ───────────────────────────────────────────────
@@ -347,12 +455,21 @@ function _billModalApplyPrefill(prefill) {
   if (prefill.user_category) {
     document.getElementById('bill-category').value = prefill.user_category;
   }
-  if (prefill.match_description) {
-    document.getElementById('bill-match-description').value = prefill.match_description;
-  } else if (prefill.merchant_name) {
-    document.getElementById('bill-match-description').value = prefill.merchant_name;
+
+  // Seed pattern lists from the originating Plaid transaction so the user
+  // sees a reasonable starting matcher instead of an empty form.
+  const plaidNameSeed = prefill.plaid_name || prefill.match_description;
+  if (plaidNameSeed) {
+    document.getElementById('bill-match-plaid-name-patterns').value = plaidNameSeed;
+  }
+  if (prefill.merchant_name) {
+    document.getElementById('bill-match-merchant-name-patterns').value = prefill.merchant_name;
+  }
+  if (prefill.pfc_detailed) {
+    document.getElementById('bill-match-pfc-categories').value = prefill.pfc_detailed;
   }
 
+  _billModalUpdateCriteriaBadge();
   _billModalUpdatePreview();
 }
 
@@ -376,16 +493,33 @@ function _billModalResetForm() {
   document.getElementById('bill-description').value = '';
   document.getElementById('bill-amount').value = '';
   document.getElementById('bill-type').value = 'debit';
-  document.getElementById('bill-amount-variable').checked = false;
   document.getElementById('bill-auto-pay').checked = false;
   document.getElementById('bill-category').value = '';
   document.getElementById('bill-memo').value = '';
-  document.getElementById('bill-match-description').value = '';
   document.getElementById('bill-end-date').value = '';
   document.getElementById('bill-end-date').dataset.isoValue = '';
   document.getElementById('bill-max-occurrences').value = '12';
   _billModalSetSplitRows([]);
+  _billModalResetCriteriaForm();
+  _billModalSetCriteriaExpanded(true); // expanded by default for new bills
   _billModalOnEndTypeChange();
+}
+
+function _billModalResetCriteriaForm() {
+  document.querySelector('input[name="bill-match-amount-mode"][value="exact"]').checked = true;
+  document.getElementById('bill-match-amount-min').value = '';
+  document.getElementById('bill-match-amount-max').value = '';
+  document.getElementById('bill-match-date-tolerance').value = '2';
+  document.getElementById('bill-match-date-tolerance').disabled = false;
+  document.getElementById('bill-match-date-disable').checked = false;
+  document.getElementById('bill-match-account-scope').value = 'bill_account';
+  document.getElementById('bill-match-sign-enforced').checked = true;
+  document.getElementById('bill-match-plaid-name-patterns').value = '';
+  document.getElementById('bill-match-merchant-name-patterns').value = '';
+  document.getElementById('bill-match-pfc-categories').value = '';
+  document.getElementById('bill-match-day-of-month').value = '';
+  _billModalOnAmountModeChange();
+  _billModalUpdateCriteriaBadge();
 }
 
 function _billModalPopulateFromBill(bill) {
@@ -395,11 +529,9 @@ function _billModalPopulateFromBill(bill) {
   const isCredit = bill.amount >= 0;
   document.getElementById('bill-type').value = isCredit ? 'credit' : 'debit';
   document.getElementById('bill-amount').value = Math.abs(bill.amount).toFixed(2);
-  document.getElementById('bill-amount-variable').checked = !!bill.amount_variable;
   document.getElementById('bill-auto-pay').checked = !!bill.auto_pay;
   document.getElementById('bill-category').value = bill.user_category || '';
   document.getElementById('bill-memo').value = bill.memo || '';
-  document.getElementById('bill-match-description').value = bill.match_description || '';
   document.getElementById('bill-end-type').value = bill.end_type || 'never';
   _billModalOnEndTypeChange();
   if (bill.end_type === 'on_date' && bill.end_date) {
@@ -410,9 +542,41 @@ function _billModalPopulateFromBill(bill) {
   }
 
   _billModalSetSplitRows(Array.isArray(bill.splits_template) ? bill.splits_template : []);
+  _billModalPopulateCriteriaFromBill(bill);
 
   // Stash for frequency-specific field population inside onFrequencyChange
   _billModalEditData = bill;
+}
+
+function _billModalPopulateCriteriaFromBill(bill) {
+  const mode = bill.match_amount_mode === 'range' ? 'range' : 'exact';
+  document.querySelector(`input[name="bill-match-amount-mode"][value="${mode}"]`).checked = true;
+  document.getElementById('bill-match-amount-min').value =
+    (bill.match_amount_min !== null && bill.match_amount_min !== undefined) ? Number(bill.match_amount_min).toFixed(2) : '';
+  document.getElementById('bill-match-amount-max').value =
+    (bill.match_amount_max !== null && bill.match_amount_max !== undefined) ? Number(bill.match_amount_max).toFixed(2) : '';
+
+  const toleranceNull = bill.match_date_tolerance_days === null || bill.match_date_tolerance_days === undefined;
+  document.getElementById('bill-match-date-disable').checked = toleranceNull;
+  const toleranceInput = document.getElementById('bill-match-date-tolerance');
+  toleranceInput.value = toleranceNull ? '' : String(bill.match_date_tolerance_days);
+  toleranceInput.disabled = toleranceNull;
+
+  document.getElementById('bill-match-account-scope').value = bill.match_account_scope || 'bill_account';
+  document.getElementById('bill-match-sign-enforced').checked = bill.match_sign_enforced !== false;
+
+  document.getElementById('bill-match-plaid-name-patterns').value =
+    Array.isArray(bill.match_plaid_name_patterns) ? bill.match_plaid_name_patterns.join(', ') : '';
+  document.getElementById('bill-match-merchant-name-patterns').value =
+    Array.isArray(bill.match_merchant_name_patterns) ? bill.match_merchant_name_patterns.join(', ') : '';
+  document.getElementById('bill-match-pfc-categories').value =
+    Array.isArray(bill.match_pfc_detailed_categories) ? bill.match_pfc_detailed_categories.join(', ') : '';
+  document.getElementById('bill-match-day-of-month').value =
+    Array.isArray(bill.match_day_of_month_set) ? bill.match_day_of_month_set.join(', ') : '';
+
+  _billModalOnAmountModeChange();
+  const badgeCount = _billModalUpdateCriteriaBadge();
+  _billModalSetCriteriaExpanded(badgeCount > 0);
 }
 
 // ── Frequency Rendering ──────────────────────────────────────
@@ -753,7 +917,7 @@ function _bmGenerateDescription(formData) {
   const desc = formData.description || '<em>Untitled</em>';
   const amountStr = formData.amount ? formatCurrency(formData.amount) : '$0.00';
   const direction = formData.isCredit ? 'receive' : 'pay';
-  const variable = formData.amount_variable ? ' <span style="color:#e67e22;">(amount varies)</span>' : '';
+  const variable = formData.match_amount_mode === 'range' ? ' <span style="color:#e67e22;">(amount approximate — range match)</span>' : '';
   let freqDesc = '';
 
   switch (formData.frequency) {
@@ -960,11 +1124,10 @@ function _billModalReadFormData() {
   const typeSelect = document.getElementById('bill-type').value;
   const isCredit = typeSelect === 'credit';
   const amount = parseFloat(rawAmount) || 0;
-  const amountVariable = document.getElementById('bill-amount-variable').checked;
   const autoPay = document.getElementById('bill-auto-pay').checked;
   const category = document.getElementById('bill-category').value.trim();
   const memo = document.getElementById('bill-memo').value.trim();
-  const matchDescription = document.getElementById('bill-match-description').value.trim();
+  const criteria = _billModalReadCriteria();
 
   const startDateInput = document.getElementById('bill-start-date');
   let startDate;
@@ -1016,11 +1179,19 @@ function _billModalReadFormData() {
     description,
     amount,
     isCredit,
-    amount_variable: amountVariable,
     auto_pay: autoPay,
     user_category: category || null,
     memo: memo || null,
-    match_description: matchDescription || null,
+    match_amount_mode: criteria.match_amount_mode,
+    match_amount_min: criteria.match_amount_min,
+    match_amount_max: criteria.match_amount_max,
+    match_date_tolerance_days: criteria.match_date_tolerance_days,
+    match_plaid_name_patterns: criteria.match_plaid_name_patterns,
+    match_merchant_name_patterns: criteria.match_merchant_name_patterns,
+    match_pfc_detailed_categories: criteria.match_pfc_detailed_categories,
+    match_day_of_month_set: criteria.match_day_of_month_set,
+    match_account_scope: criteria.match_account_scope,
+    match_sign_enforced: criteria.match_sign_enforced,
     start_date: startDate,
     interval,
     day_of_month: dayOfMonth,
@@ -1053,13 +1224,27 @@ async function _billModalSave() {
   }
   const splitsTemplate = Array.isArray(formData.splits_template) ? formData.splits_template : [];
   const hasSplits = splitsTemplate.length > 0;
-  if (!formData.amount_variable && amountValue === 0 && !hasSplits) {
-    _bmShowError('Please enter a valid amount greater than 0, or mark the bill as variable.'); return;
+  const isRangeMode = formData.match_amount_mode === 'range';
+  if (!isRangeMode && amountValue === 0 && !hasSplits) {
+    _bmShowError('Please enter a valid amount greater than 0, or switch matching to Range mode.'); return;
+  }
+  if (isRangeMode) {
+    const minValue = formData.match_amount_min;
+    const maxValue = formData.match_amount_max;
+    if (minValue === null || maxValue === null || isNaN(minValue) || isNaN(maxValue)) {
+      _bmShowError('Range mode requires both Min and Max amount bounds.'); return;
+    }
+    if (minValue < 0 || maxValue < 0) {
+      _bmShowError('Range bounds must be zero or greater.'); return;
+    }
+    if (minValue > maxValue) {
+      _bmShowError('Range Min must be less than or equal to Max.'); return;
+    }
+    if (hasSplits) {
+      _bmShowError('Splits are not allowed in Range matching mode. Remove splits, or switch back to Exact.'); return;
+    }
   }
   if (hasSplits) {
-    if (formData.amount_variable) {
-      _bmShowError('Splits are not allowed on variable-amount bills. Set a fixed amount or remove the splits.'); return;
-    }
     if (splitsTemplate.length < 2) {
       _bmShowError('Add at least 2 split allocations, or remove all of them.'); return;
     }
@@ -1105,8 +1290,6 @@ async function _billModalSave() {
     amount: signedAmount,
     user_category: formData.user_category,
     memo: formData.memo,
-    match_description: formData.match_description,
-    amount_variable: formData.amount_variable,
     auto_pay: formData.auto_pay,
     frequency: formData.frequency,
     interval: formData.interval,
@@ -1118,7 +1301,17 @@ async function _billModalSave() {
     end_type: formData.end_type,
     end_date: formData.end_date,
     max_occurrences: formData.max_occurrences,
-    splits_template: splitsTemplate
+    splits_template: splitsTemplate,
+    match_amount_mode: formData.match_amount_mode,
+    match_amount_min: formData.match_amount_min,
+    match_amount_max: formData.match_amount_max,
+    match_date_tolerance_days: formData.match_date_tolerance_days,
+    match_plaid_name_patterns: formData.match_plaid_name_patterns,
+    match_merchant_name_patterns: formData.match_merchant_name_patterns,
+    match_pfc_detailed_categories: formData.match_pfc_detailed_categories,
+    match_day_of_month_set: formData.match_day_of_month_set,
+    match_account_scope: formData.match_account_scope,
+    match_sign_enforced: formData.match_sign_enforced
   };
 
   try {
@@ -1149,6 +1342,120 @@ function _bmShowError(message) {
   banner.textContent = message;
   banner.style.display = 'block';
   setTimeout(() => { banner.style.display = 'none'; }, 6000);
+}
+
+// ── Matching Criteria UI ─────────────────────────────────────
+
+function _billModalToggleCriteria() {
+  const body = document.getElementById('bill-criteria-body');
+  const expanded = body.style.display !== 'none';
+  _billModalSetCriteriaExpanded(!expanded);
+}
+
+function _billModalSetCriteriaExpanded(expanded) {
+  const body = document.getElementById('bill-criteria-body');
+  const caret = document.getElementById('bill-criteria-caret');
+  const hint = document.querySelector('.bill-criteria-hint');
+  body.style.display = expanded ? 'block' : 'none';
+  if (caret) caret.textContent = expanded ? '▼' : '▶';
+  if (hint) hint.textContent = expanded ? 'click to collapse' : 'click to expand';
+}
+
+function _billModalOnAmountModeChange() {
+  const modeRadio = document.querySelector('input[name="bill-match-amount-mode"]:checked');
+  const isRange = modeRadio && modeRadio.value === 'range';
+  document.getElementById('bill-range-bounds').style.display = isRange ? 'block' : 'none';
+
+  // When switching to range mode while splits exist, surface the conflict.
+  // The save handler will still hard-block submission; this is just UX nudge.
+  const splitsCount = document.querySelectorAll('#bill-split-rows .split-row').length;
+  const warning = document.getElementById('bill-range-splits-warning');
+  const splitAddBtn = document.getElementById('bill-split-add-btn');
+  if (isRange && splitsCount > 0) {
+    if (warning) warning.style.display = 'block';
+  } else if (warning) {
+    warning.style.display = 'none';
+  }
+  if (splitAddBtn) splitAddBtn.disabled = isRange;
+}
+
+function _parseCommaList(rawValue) {
+  if (!rawValue) return [];
+  return rawValue
+    .split(',')
+    .map(item => item.trim())
+    .filter(item => item.length > 0);
+}
+
+function _billModalReadCriteria() {
+  const modeRadio = document.querySelector('input[name="bill-match-amount-mode"]:checked');
+  const mode = modeRadio ? modeRadio.value : 'exact';
+
+  const minRaw = document.getElementById('bill-match-amount-min').value.replace(/[^0-9.]/g, '');
+  const maxRaw = document.getElementById('bill-match-amount-max').value.replace(/[^0-9.]/g, '');
+  const matchAmountMin = mode === 'range' && minRaw !== '' ? parseFloat(minRaw) : null;
+  const matchAmountMax = mode === 'range' && maxRaw !== '' ? parseFloat(maxRaw) : null;
+
+  const dateDisabled = document.getElementById('bill-match-date-disable').checked;
+  const toleranceRaw = document.getElementById('bill-match-date-tolerance').value;
+  let matchDateTolerance = dateDisabled ? null : (toleranceRaw === '' ? null : parseInt(toleranceRaw, 10));
+  // The matching engine only considers Plaid transactions within a 14-day
+  // window, so larger tolerances would silently have no effect. Clamp here
+  // and let the backend enforce the same cap on save.
+  if (matchDateTolerance !== null && Number.isFinite(matchDateTolerance)) {
+    if (matchDateTolerance < 0) matchDateTolerance = 0;
+    if (matchDateTolerance > 14) matchDateTolerance = 14;
+  }
+
+  const plaidNames = _parseCommaList(document.getElementById('bill-match-plaid-name-patterns').value);
+  const merchantNames = _parseCommaList(document.getElementById('bill-match-merchant-name-patterns').value);
+  // PFC codes are uppercased so the user can paste them in any case and they
+  // still hit Plaid's canonical ALL_CAPS_SNAKE_CASE form.
+  const pfcCodes = _parseCommaList(document.getElementById('bill-match-pfc-categories').value)
+    .map(code => code.toUpperCase());
+  const dayOfMonthRaw = _parseCommaList(document.getElementById('bill-match-day-of-month').value);
+  const dayOfMonth = dayOfMonthRaw
+    .map(value => parseInt(value, 10))
+    .filter(value => Number.isInteger(value) && value >= 1 && value <= 31);
+
+  return {
+    match_amount_mode: mode,
+    match_amount_min: matchAmountMin !== null && !isNaN(matchAmountMin) ? matchAmountMin : null,
+    match_amount_max: matchAmountMax !== null && !isNaN(matchAmountMax) ? matchAmountMax : null,
+    match_date_tolerance_days: matchDateTolerance,
+    match_plaid_name_patterns: plaidNames,
+    match_merchant_name_patterns: merchantNames,
+    match_pfc_detailed_categories: pfcCodes,
+    match_day_of_month_set: dayOfMonth,
+    match_account_scope: document.getElementById('bill-match-account-scope').value || 'bill_account',
+    match_sign_enforced: document.getElementById('bill-match-sign-enforced').checked,
+  };
+}
+
+// Defaults considered "no criterion configured" for the badge count.
+// Stays in sync with the backend defaults declared in bills_models.py.
+function _billModalUpdateCriteriaBadge() {
+  const criteria = _billModalReadCriteria();
+  let count = 0;
+  if (criteria.match_amount_mode === 'range') count++;
+  if (criteria.match_date_tolerance_days === null || criteria.match_date_tolerance_days !== 2) count++;
+  if (criteria.match_plaid_name_patterns.length > 0) count++;
+  if (criteria.match_merchant_name_patterns.length > 0) count++;
+  if (criteria.match_pfc_detailed_categories.length > 0) count++;
+  if (criteria.match_day_of_month_set.length > 0) count++;
+  if (criteria.match_account_scope !== 'bill_account') count++;
+  if (criteria.match_sign_enforced !== true) count++;
+
+  const badge = document.getElementById('bill-criteria-badge');
+  if (!badge) return count;
+  if (count === 0) {
+    badge.style.display = 'none';
+    badge.textContent = '';
+  } else {
+    badge.style.display = 'inline-block';
+    badge.textContent = `${count} criteri${count === 1 ? 'on' : 'a'} set`;
+  }
+  return count;
 }
 
 // ── Splits Template UI ───────────────────────────────────────
@@ -1296,6 +1603,14 @@ function _billModalUpdateSplitsValidation() {
     }
   }
   if (categoryNote) categoryNote.style.display = splitsActive ? 'block' : 'none';
+
+  // Keep the range-mode warning + add-button state in sync as rows change.
+  const modeRadio = document.querySelector('input[name="bill-match-amount-mode"]:checked');
+  const isRangeMode = modeRadio && modeRadio.value === 'range';
+  const rangeWarning = document.getElementById('bill-range-splits-warning');
+  if (rangeWarning) rangeWarning.style.display = (isRangeMode && splitsActive) ? 'block' : 'none';
+  const splitAddBtn = document.getElementById('bill-split-add-btn');
+  if (splitAddBtn) splitAddBtn.disabled = isRangeMode;
 
   let message = '';
   if (splits.length === 0) {

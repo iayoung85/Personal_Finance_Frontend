@@ -283,3 +283,97 @@
   z-index: 1000;
 }
 
+
+/* ── Matching Criteria (collapsible) ─────────────────────── */
+.bill-criteria-section {
+  margin-top: 16px;
+  padding: 10px 14px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-surface);
+}
+.bill-criteria-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+.bill-criteria-header:focus {
+  outline: 2px solid var(--accent-primary, #4a8cff);
+  outline-offset: 2px;
+}
+.bill-criteria-header h4 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-heading);
+}
+.bill-criteria-caret {
+  display: inline-block;
+  width: 12px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.bill-criteria-badge {
+  background: var(--accent-orange, #e67e22);
+  color: #fff;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.bill-criteria-hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+.bill-criteria-body {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-subtle);
+}
+.bill-criteria-intro {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.bill-criteria-label {
+  font-weight: 500;
+}
+.bill-criteria-radio-row,
+.bill-criteria-inline-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+.bill-criteria-body small {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.bill-criteria-body code {
+  background: var(--bg-surface-elevated, #f4f4f4);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+.bill-range-bounds {
+  background: var(--bg-surface-elevated, rgba(0,0,0,0.03));
+  padding: 8px 10px;
+  border-radius: 4px;
+  border-left: 3px solid var(--accent-orange, #e67e22);
+}
+.bill-range-splits-warning {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: rgba(230, 126, 34, 0.12);
+  border-left: 3px solid var(--accent-orange, #e67e22);
+  color: var(--text-primary);
+  font-size: 12px;
+}

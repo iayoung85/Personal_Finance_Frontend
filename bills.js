@@ -306,7 +306,8 @@ function _renderTwoWeekOutlook(activeBills) {
       if (occ.date >= todayIso && occ.date <= cutoffIso) {
         const isTransfer = !!bill.transfer_account_id;
         const isIncome = bill.amount >= 0 && !isTransfer;
-        const isVariableNonIncome = bill.amount_variable && !isIncome;
+        const isApproximate = !!bill.amount_is_approximate;
+        const isVariableNonIncome = isApproximate && !isIncome;
 
         upcomingItems.push({
           date: occ.date,
@@ -314,7 +315,7 @@ function _renderTwoWeekOutlook(activeBills) {
           amount: bill.amount,
           isTransfer: isTransfer,
           isIncome: isIncome,
-          amountVariable: bill.amount_variable,
+          amountVariable: isApproximate,
           isVariableNonIncome: isVariableNonIncome,
           billId: bill.bill_id
         });
@@ -547,7 +548,7 @@ function _renderBillRow(bill) {
   const amountDisplay = (isOut ? '−' : '+') + formatCurrency(bill.amount);
   const freqLabel = FREQUENCY_LABELS[bill.frequency] || bill.frequency;
   const intervalNote = bill.interval > 1 ? ` (every ${bill.interval})` : '';
-  const variableNote = bill.amount_variable ? ' <span title="Amount varies" style="color:#e67e22;font-weight:600;">~</span>' : '';
+  const variableNote = bill.amount_is_approximate ? ' <span title="Amount is approximate (range match)" style="color:#e67e22;font-weight:600;">~</span>' : '';
   const autoPayNote = bill.auto_pay ? ' <span title="Auto-pay enabled" class="auto-pay-badge">AUTO</span>' : '';
   const accountName = escapeHtml(bill.account_name || bill.account_id);
   const category = escapeHtml(bill.user_category || '');

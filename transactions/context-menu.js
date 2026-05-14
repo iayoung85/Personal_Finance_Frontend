@@ -656,7 +656,10 @@ function _handleContextThisIsABill(txnData) {
     account_id: txnData.accountId,
     user_category: txn?.user_category || txnData.userCategory || '',
     merchant_name: txn?.merchant_name || txnData.merchantName || '',
-    match_description: txn?.name || txnData.name || '',
+    plaid_name: txn?.name || txnData.name || '',
+    pfc_detailed: txn?.personal_finance_category?.detailed
+      || txnData.pfcDetailed
+      || '',
   };
 
   _openInlineBillModal(null, { prefill: prefillData });

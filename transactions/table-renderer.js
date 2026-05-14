@@ -1253,10 +1253,10 @@ function renderTransactionTable() {
     // Amount is always pinned toward the right edge
     const extraAmountClass = rendered.amountCssExtra ? ` ${rendered.amountCssExtra}` : '';
     // OB/MOB rows report a balance, not a debit/credit — suppress the amount cell.
-    const isVariableBill = txn.amount_variable
+    const isVariableBill = txn.amount_is_approximate
       && (txnRowType === TXN_TYPE.BILL_FUTURE || txnRowType === TXN_TYPE.BILL_MISSING);
     const variableDot = isVariableBill
-      ? '<span class="variable-bill-dot" title="Amount varies — check actual amount before due date"></span>'
+      ? '<span class="variable-bill-dot" title="Amount approximate — check actual amount before due date"></span>'
       : '';
     const amountPrefix = isVariableBill ? '~' : '';
     const amountDisplay = isOpeningBalanceRow ? '—' : `${amountPrefix}${amount}${variableDot}`;
