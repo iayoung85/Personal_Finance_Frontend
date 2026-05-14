@@ -312,7 +312,14 @@ function _ensureRowEditSession(row, txnId, txnType) {
   const editableFields = _getRowEditFieldOrder(resolvedTxnType);
   if (!resolvedTxnType || editableFields.length === 0) return null;
 
-  const absolute_amount = Math.abs(Number(txn.amount || 0));
+  const signed_amount = Number(txn.amount || 0);
+  const absolute_amount = Math.abs(signed_amount);
+  // Pre-fill with the signed value so the input is WYSIWYG: a leading
+  // "-" means debit, no leading sign means credit. Removing or adding
+  // the "-" flips the type on save.
+  const signed_input_text = Number.isFinite(signed_amount)
+    ? (signed_amount < 0 ? `-${absolute_amount.toFixed(2)}` : absolute_amount.toFixed(2))
+    : '0.00';
   _activeRowEditSession = {
     txn_id: txnId,
     txn_type: resolvedTxnType,
@@ -322,12 +329,12 @@ function _ensureRowEditSession(row, txnId, txnType) {
     original: {
       date: txn.date || '',
       description: txn.description || txn.name || '',
-      signed_amount: Number(txn.amount || 0),
+      signed_amount,
     },
     draft: {
       date: txn.date || '',
       description: txn.description || txn.name || '',
-      amount_input: Number.isFinite(absolute_amount) ? absolute_amount.toFixed(2) : '0.00',
+      amount_input: signed_input_text,
     },
   };
 
@@ -462,9 +469,7 @@ async function _saveRowInlineEdits() {
     }
     if (amountDiffResult.has_change) {
       payload.amount = amountDiffResult.absolute_amount;
-      if (amountDiffResult.type_override) {
-        payload.type = amountDiffResult.type_override;
-      }
+      payload.type = amountDiffResult.effective_type;
     }
   }
 
@@ -538,8 +543,11 @@ function _getAmountDiff(amountInput, originalSignedAmount) {
   const parsedAmount = _parseAmountInput(amountInput);
   if (!parsedAmount.ok) return parsedAmount;
 
-  const defaultType = Number(originalSignedAmount) < 0 ? 'debit' : 'credit';
-  const effectiveType = parsedAmount.type_override || defaultType;
+  // The input is WYSIWYG: a leading "-" produces a debit, no sign
+  // (or an explicit "+") produces a credit. There is no "preserve the
+  // original type" fallback — that previously made unsigned edits on a
+  // debit silently stay debits, which prevented flipping debit → credit.
+  const effectiveType = parsedAmount.type_override === 'debit' ? 'debit' : 'credit';
   const nextSignedAmount = effectiveType === 'debit'
     ? -parsedAmount.absolute_amount
     : parsedAmount.absolute_amount;
@@ -550,7 +558,8 @@ function _getAmountDiff(amountInput, originalSignedAmount) {
       ok: true,
       has_change: false,
       absolute_amount: parsedAmount.absolute_amount,
-      type_override: null,
+      effective_type: effectiveType,
+      signed_amount: nextSignedAmount,
     };
   }
 
@@ -558,7 +567,8 @@ function _getAmountDiff(amountInput, originalSignedAmount) {
     ok: true,
     has_change: true,
     absolute_amount: parsedAmount.absolute_amount,
-    type_override: parsedAmount.type_override,
+    effective_type: effectiveType,
+    signed_amount: nextSignedAmount,
   };
 }
 
@@ -614,8 +624,7 @@ function _formatStagedAmount(txnId, rawInputValue, originalSignedAmount) {
   const parsedAmount = _parseAmountInput(rawInputValue);
   if (!parsedAmount.ok) return null;
 
-  const defaultType = Number(originalSignedAmount) < 0 ? 'debit' : 'credit';
-  const effectiveType = parsedAmount.type_override || defaultType;
+  const effectiveType = parsedAmount.type_override === 'debit' ? 'debit' : 'credit';
   const signedAmount = effectiveType === 'debit'
     ? -parsedAmount.absolute_amount
     : parsedAmount.absolute_amount;
