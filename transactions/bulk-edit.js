@@ -377,11 +377,15 @@ function _buildFieldRow(fieldKey) {
   `;
 
   const inputContainer = row.querySelector('.bulk-edit-field-input');
-  inputContainer.appendChild(_buildInputForField(fieldKey));
+  inputContainer.appendChild(_buildBulkEditInputForField(fieldKey));
   return row;
 }
 
-function _buildInputForField(fieldKey) {
+// Renamed from _buildInputForField to prevent global-scope collision with the
+// identically-named helper in inline-edit.js — both files load as plain scripts
+// on transactions.html, so the second declaration silently overrode the first
+// and broke the inline date editor (placeholder "New date" leaking through).
+function _buildBulkEditInputForField(fieldKey) {
   const inputType = BULK_EDIT_INPUT_TYPE[fieldKey];
   if (inputType === 'category') {
     const wrap = document.createElement('div');

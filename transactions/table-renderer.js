@@ -131,6 +131,15 @@ let _virtualColCount = 0;
 let _virtualScrollBound = false;
 let _virtualScrollRaf = 0;
 let _lastRenderedRange = { start: -1, end: -1 };
+let _lastRenderedScrollCacheKey = null;
+
+function _resetVirtualScrollData() {
+  _virtualRows = [];
+  _virtualRowDates = [];
+  _virtualHeaderHtml = '';
+  _virtualColCount = 0;
+  _lastRenderedRange = { start: -1, end: -1 };
+}
 
 // Scroll-date tooltip: follows the cursor and shows "Mon YYYY" while scrolling
 let _scrollBubbleTimer = null;
@@ -280,7 +289,10 @@ function _onVirtualScroll() {
     if (!container || !_virtualRows.length) return;
     _renderVisibleWindow(container);
     const scrollPane = document.querySelector('.transaction-scroll-pane');
-    if (scrollPane) _showScrollDateBubble(scrollPane.scrollTop);
+    if (scrollPane) {
+      _saveScrollPosition();
+      _showScrollDateBubble(scrollPane.scrollTop);
+    }
   });
 }
 
@@ -301,22 +313,47 @@ function _fmtCurrency(value, currencyCode) {
  * Snapshot the current scroll position so it can be restored when the
  * user returns to this account/view later in the same session.
  */
+function _getScrollPositionCacheKey() {
+  return selectedAccountId || 'all';
+}
+
+function _hasSavedScrollPosition(cacheKey) {
+  return Object.prototype.hasOwnProperty.call(_scrollPositionCache, cacheKey);
+}
+
 function _saveScrollPosition() {
   const scrollPane = document.querySelector('.transaction-scroll-pane');
   if (!scrollPane) return;
-  const cacheKey = selectedAccountId || 'all';
+  const container = document.getElementById('table-container');
+  if (!container || !container.querySelector('table')) return;
+  const cacheKey = _getScrollPositionCacheKey();
   _scrollPositionCache[cacheKey] = scrollPane.scrollTop;
 }
 
 function renderTransactionTable() {
   const container = document.getElementById('table-container');
+  const scrollPane = document.querySelector('.transaction-scroll-pane');
+  const scrollCacheKey = _getScrollPositionCacheKey();
+  const hasExistingVirtualTable = !!(container && container.querySelector('table'));
+  const shouldPreserveLiveScroll = !!(
+    scrollPane
+    && hasExistingVirtualTable
+    && _lastRenderedScrollCacheKey === scrollCacheKey
+  );
+  const preservedScrollTop = shouldPreserveLiveScroll ? scrollPane.scrollTop : null;
+
+  if (shouldPreserveLiveScroll) {
+    _scrollPositionCache[scrollCacheKey] = preservedScrollTop;
+  }
   
   if (transactions.length === 0) {
     visibleTransactions = [];
+    _resetVirtualScrollData();
     container.innerHTML = '<div class="empty-state">No transactions found. Sync transactions first.</div>';
     document.getElementById('export-buttons').classList.add('hidden');
     document.getElementById('pending-table-container').innerHTML = '';
     renderInsightsPanel(); // Still render empty insights
+    _lastRenderedScrollCacheKey = scrollCacheKey;
     return;
   }
 
@@ -423,11 +460,13 @@ function renderTransactionTable() {
   
   if (filteredTransactions.length === 0) {
     visibleTransactions = [];
+    _resetVirtualScrollData();
     container.innerHTML = '<div class="empty-state">No transactions found for the selected criteria.</div>';
     document.getElementById('export-buttons').classList.add('hidden');
     document.getElementById('pending-table-container').innerHTML = '';
     renderCategorySummaryModal();
     renderInsightsPanel(); // Still render empty insights
+    _lastRenderedScrollCacheKey = scrollCacheKey;
     return;
   }
 
@@ -1230,7 +1269,6 @@ function renderTransactionTable() {
   // ── Virtual scroll: render visible window + wire scroll listener ──
   // Clear existing table so the header is rebuilt (columns may have changed)
   container.innerHTML = '';
-  const scrollPane = document.querySelector('.transaction-scroll-pane');
   _lastRenderedRange = { start: -1, end: -1 };
   // First render establishes the virtual spacers so the scroll pane has
   // its full content height. Without this the browser clamps scrollTop to 0
@@ -1238,20 +1276,24 @@ function renderTransactionTable() {
   _renderVisibleWindow(container);
 
   if (scrollPane) {
-    const cacheKey = selectedAccountId || 'all';
-    const cachedPosition = _scrollPositionCache[cacheKey];
+    const cachedPosition = _scrollPositionCache[scrollCacheKey];
 
-    if (cachedPosition !== undefined && cachedPosition > 0) {
+    if (preservedScrollTop !== null) {
+      scrollPane.scrollTop = preservedScrollTop;
+    } else if (_hasSavedScrollPosition(scrollCacheKey)) {
       // Restore the position the user was at last time they viewed this account.
       scrollPane.scrollTop = cachedPosition;
     } else if (_futureSeparatorRowIndex > FUTURE_ROWS_TO_SHOW) {
       // First visit: skip far-future rows, show the 10 nearest.
       scrollPane.scrollTop = (_futureSeparatorRowIndex - FUTURE_ROWS_TO_SHOW) * VIRTUAL_ROW_HEIGHT;
     }
+    _scrollPositionCache[scrollCacheKey] = scrollPane.scrollTop;
     // Re-render so the visible window matches the new scroll position.
     _lastRenderedRange = { start: -1, end: -1 };
     _renderVisibleWindow(container);
   }
+
+  _lastRenderedScrollCacheKey = scrollCacheKey;
 
   if (!_virtualScrollBound) {
     const pane = document.querySelector('.transaction-scroll-pane');
