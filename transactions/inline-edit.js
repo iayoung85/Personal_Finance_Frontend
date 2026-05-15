@@ -175,10 +175,23 @@ function _handleInlineClick(event) {
     return;
   }
 
-  const editableFields = _getRowEditFieldOrder(txnType);
+  // SPLIT_CHILD date editing routes through the parent's transaction_id
+  // (row.dataset.txnId already points to the parent). Validation,
+  // constraint resolution (e.g. PLAID_CLEARED ±3 day window), and
+  // type transitions must use the parent's effective type, not
+  // SPLIT_CHILD. The backend cascades the new date to all siblings.
+  let effectiveType = txnType;
+  if (txnType === TXN_TYPE.SPLIT_CHILD && field === 'date') {
+    const parentTxn = transactions.find(find_txn => find_txn.transaction_id === txnId);
+    if (!parentTxn) return;
+    effectiveType = getTransactionType(parentTxn);
+    if (!effectiveType) return;
+  }
+
+  const editableFields = _getRowEditFieldOrder(effectiveType);
   if (!editableFields.includes(field)) return;
 
-  _openRowFieldEditor({ cell: targetCell, row, txnId, field, txnType });
+  _openRowFieldEditor({ cell: targetCell, row, txnId, field, txnType: effectiveType });
 }
 
 

@@ -115,6 +115,11 @@ function isRowInlineEditable(txnType) {
 }
 
 function canInlineEditDate(txnType) {
+  // SPLIT_CHILD rows expose date editing too: the edit cascades to the
+  // parent (which goes through the parent's normal state-machine date
+  // rules) and to all sibling split children. Constraint resolution
+  // (e.g. PLAID_CLEARED ±3 day window) still uses the parent's type.
+  if (txnType === TXN_TYPE.SPLIT_CHILD) return true;
   return DATE_EDITABLE_TYPES.has(txnType);
 }
 

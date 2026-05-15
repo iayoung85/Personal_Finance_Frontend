@@ -922,7 +922,7 @@ function renderTransactionTable() {
         rowHtml += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-parent-txn-id="${escapeHtml(parentTxnId)}" data-split-txn-id="${escapeHtml(split.transaction_id)}" data-split-index="${idx}" data-source="split" data-status="cleared" data-account-id="${escapeHtml(txn.account_id || txn.plaid_account_id || '')}" data-amount="${displayAmount || 0}" data-is-split="true" data-txn-description="${escapeHtml(split.description || split.name || txn.description || txn.name || '')}" data-user-category="${escapeHtml(split.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(split.date || txn.date || '')}">
           ${bulkEditActive ? '<td class="bulk-cell bulk-cell-disabled" title="Not bulk-editable"><input type="checkbox" class="bulk-row-checkbox" disabled></td>' : ''}
           ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
-          <td>${escapeHtml(dateStr)}</td>
+          <td class="date-column inline-editable" data-field="date" title="Editing the date here updates all splits and the parent transaction">${escapeHtml(dateStr)}</td>
           ${showBankAccountColumn ? `<td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>` : ''}
           <td class="description-column" data-field="description">
             <div class="desc-two-line">
