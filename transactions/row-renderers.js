@@ -180,7 +180,8 @@ function _renderInvestmentTrendingRow(ctx) {
 function _renderScheduledRow(ctx) {
   const scheduledIsTransfer = isTransferCategory(ctx.txn.user_category) || !!ctx.txn.transfer_pair_id;
 
-  const badge = '<span class="source-badge scheduled" title="Scheduled future transaction">📅</span> ';
+  // Emoji type badge removed: AUTO-PAY / UNPAID badges now communicate future status.
+  const badge = '';
 
   // Splits are persisted on the future row now and inherited by the
   // eventual cleared replacement, letting users plan paycheck splits ahead.
@@ -217,7 +218,8 @@ function _renderVirtualBillRow(ctx) {
   const scheduleSummary = escapeHtml(ctx.txn.schedule_summary || '');
   const hoverTitle = `#${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
 
-  const badge = `<span class="source-badge scheduled bill-virtual" data-tooltip="${hoverTitle}">📅</span> ${_unpaidBillBadge(ctx.txn)}`;
+  // Emoji type badge removed: AUTO-PAY / UNPAID badges now communicate future status.
+  const badge = _unpaidBillBadge(ctx.txn);
 
   let buttons = '';
   buttons += `<button class="bill-edit-btn" data-bill-id="${escapeHtml(ctx.txn.bill_id || '')}" title="Edit this bill template">📋 Edit Bill</button>`;
@@ -257,7 +259,8 @@ function _renderMaterializedBillRow(ctx) {
   const scheduleSummary = escapeHtml(ctx.txn.schedule_summary || '');
   const hoverTitle = `Confirmed #${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
 
-  const badge = `<span class="source-badge scheduled bill-materialized" data-tooltip="${hoverTitle}">📝</span> `;
+  // Emoji type badge removed: AUTO-PAY / UNPAID badges now communicate future status.
+  const badge = '';
 
   // Allow splitting a materialized bill occurrence (e.g. paycheck day arrived
   // and the bill row needs its allocations now that the amount is known).
