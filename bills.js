@@ -252,7 +252,7 @@ function renderDashboard() {
   container.style.display = 'block';
 
   _renderMonthlySummary(activeBills);
-  _renderTwoWeekOutlook(activeBills);
+  _renderImportantBillsOutlook(activeBills);
 }
 
 function _renderMonthlySummary(activeBills) {
@@ -286,52 +286,35 @@ function _renderMonthlySummary(activeBills) {
   netElement.className = 'monthly-value ' + (net >= 0 ? 'positive' : 'negative');
 }
 
-function _renderTwoWeekOutlook(activeBills) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const twoWeeksOut = new Date(today);
-  twoWeeksOut.setDate(twoWeeksOut.getDate() + 14);
-
-  const todayIso = today.toISOString().slice(0, 10);
-  const cutoffIso = twoWeeksOut.toISOString().slice(0, 10);
-
+function _renderImportantBillsOutlook(activeBills) {
   const rangeElement = document.getElementById('dash-outlook-range');
-  rangeElement.textContent = `${_formatShortDate(todayIso)} – ${_formatShortDate(cutoffIso)}`;
+  rangeElement.textContent = "Bills you've marked as important";
 
   const upcomingItems = [];
 
   activeBills.forEach(bill => {
-    const occurrences = bill.upcoming_occurrences || [];
-    occurrences.forEach(occ => {
-      if (occ.date >= todayIso && occ.date <= cutoffIso) {
-        const isTransfer = !!bill.transfer_account_id;
-        const isIncome = bill.amount >= 0 && !isTransfer;
-        const isApproximate = !!bill.amount_is_approximate;
-        const isVariableNonIncome = isApproximate && !isIncome;
+    if (!bill.is_important) return;
+    const nextOcc = (bill.upcoming_occurrences || [])[0];
+    if (!nextOcc) return;
 
-        upcomingItems.push({
-          date: occ.date,
-          description: bill.description,
-          amount: bill.amount,
-          isTransfer: isTransfer,
-          isIncome: isIncome,
-          amountVariable: isApproximate,
-          isVariableNonIncome: isVariableNonIncome,
-          billId: bill.bill_id
-        });
-      }
+    const isTransfer = !!bill.transfer_account_id;
+    const isIncome = bill.amount >= 0 && !isTransfer;
+    const isApproximate = !!bill.amount_is_approximate;
+    const isVariableNonIncome = isApproximate && !isIncome;
+
+    upcomingItems.push({
+      date: nextOcc.date,
+      description: bill.description,
+      amount: bill.amount,
+      isTransfer: isTransfer,
+      isIncome: isIncome,
+      amountVariable: isApproximate,
+      isVariableNonIncome: isVariableNonIncome,
+      billId: bill.bill_id
     });
   });
 
-  upcomingItems.sort((itemA, itemB) => {
-    if (itemA.isVariableNonIncome !== itemB.isVariableNonIncome) {
-      return itemA.isVariableNonIncome ? -1 : 1;
-    }
-    if (itemA.isIncome !== itemB.isIncome) {
-      return itemA.isIncome ? 1 : -1;
-    }
-    return itemA.date.localeCompare(itemB.date);
-  });
+  upcomingItems.sort((itemA, itemB) => itemA.date.localeCompare(itemB.date));
 
   const listElement = document.getElementById('dash-outlook-list');
   const emptyElement = document.getElementById('dash-outlook-empty');
@@ -424,6 +407,12 @@ function _sortBills(bills) {
         const dateA = billA.upcoming_occurrences?.[0]?.date || '9999-12-31';
         const dateB = billB.upcoming_occurrences?.[0]?.date || '9999-12-31';
         comparison = dateA.localeCompare(dateB);
+        break;
+      }
+      case 'important': {
+        const importantA = billA.is_important ? 0 : 1;
+        const importantB = billB.is_important ? 0 : 1;
+        comparison = importantA - importantB;
         break;
       }
       case 'direction': {
@@ -556,8 +545,13 @@ function _renderBillRow(bill) {
   const rowClass = bill.is_active ? '' : 'bill-inactive';
   const toggleLabel = bill.is_active ? 'Pause' : 'Resume';
 
+  const importantCell = bill.is_important
+    ? '<span title="Important bill" style="color:#e67e22;font-size:16px;">★</span>'
+    : '';
+
   return `<tr class="${rowClass}">
     <td>${nextDate}</td>
+    <td style="text-align:center;">${importantCell}</td>
     <td>${dirBadge}</td>
     <td>${escapeHtml(bill.description)}${variableNote}${autoPayNote}</td>
     <td class="${amountClass}">${amountDisplay}</td>
@@ -578,6 +572,9 @@ function _groupBills(bills, groupBy) {
   for (const bill of bills) {
     let key;
     switch (groupBy) {
+      case 'important':
+        key = bill.is_important ? 'Important' : 'Other';
+        break;
       case 'auto_pay':
         key = bill.auto_pay ? 'Auto-pay' : 'Manual Pay';
         break;
@@ -599,6 +596,10 @@ function _groupBills(bills, groupBy) {
 
   // Sort group keys: for auto_pay put Manual Pay first so users focus on it
   const sortedKeys = [...groups.keys()].sort((keyA, keyB) => {
+    if (groupBy === 'important') {
+      if (keyA === 'Important') return -1;
+      if (keyB === 'Important') return 1;
+    }
     if (groupBy === 'auto_pay') {
       if (keyA === 'Manual Pay') return -1;
       if (keyB === 'Manual Pay') return 1;
@@ -680,7 +681,7 @@ function renderBillsTable() {
   } else {
     const groups = _groupBills(sorted, groupBy);
     const collapsed = _getCollapsedGroups();
-    const columnCount = table.querySelector('thead tr')?.children.length || 9;
+    const columnCount = table.querySelector('thead tr')?.children.length || 10;
 
     tbody.innerHTML = groups.map(group => {
       const isCollapsed = !!collapsed[group.name];

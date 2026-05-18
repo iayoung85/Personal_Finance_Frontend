@@ -24,21 +24,36 @@ function _txnDescription(txn) {
 
 
 /**
- * Render the "Unpaid Bill" badge that flags BILL_FUTURE / BILL_MISSING /
- * MANUAL_MISSING rows as still owed. When `is_important` is true the
- * badge switches to an orange pulsing variant — replacing the legacy
- * standalone orange dot so the important state and the unpaid state
- * share a single visual element.
+ * Render the unpaid / auto-pay badge that flags BILL_FUTURE / BILL_MISSING /
+ * MANUAL_MISSING rows. Auto-pay bills get an "AUTO-PAY" badge (payment is
+ * expected to happen on its own); everything else gets "UNPAID". When the
+ * underlying bill is flagged important the badge switches to an orange
+ * pulsing variant — replacing the legacy standalone orange dot so the
+ * important state and the unpaid state share a single visual element.
  *
- * @param {boolean} isImportant - Whether the underlying bill is flagged important.
+ * @param {Object} txn - Transaction record (uses is_important and auto_pay).
  * @returns {string} HTML fragment including a trailing space.
  */
-function _unpaidBillBadge(isImportant) {
-  const cssClass = isImportant ? 'unpaid-bill-badge is-important' : 'unpaid-bill-badge';
-  const title = isImportant
-    ? 'Important unpaid bill — pulses until marked paid'
-    : 'Projected bill occurrence not yet paid';
-  return `<span class="${cssClass}" title="${title}">Unpaid Bill</span> `;
+function _unpaidBillBadge(txn) {
+  const isImportant = !!txn.is_important;
+  const isAutoPay = !!txn.auto_pay;
+  const label = isAutoPay ? 'AUTO-PAY' : 'UNPAID';
+  let title;
+  if (isAutoPay) {
+    title = isImportant
+      ? 'Important auto-pay bill — pulses until the payment posts'
+      : 'Auto-pay bill — will be paid automatically';
+  } else {
+    title = isImportant
+      ? 'Important unpaid bill — pulses until marked paid'
+      : 'Projected bill occurrence not yet paid';
+  }
+  const cssClass = [
+    'unpaid-bill-badge',
+    isAutoPay ? 'auto-pay' : '',
+    isImportant ? 'is-important' : '',
+  ].filter(Boolean).join(' ');
+  return `<span class="${cssClass}" title="${title}">${label}</span> `;
 }
 
 
@@ -202,7 +217,7 @@ function _renderVirtualBillRow(ctx) {
   const scheduleSummary = escapeHtml(ctx.txn.schedule_summary || '');
   const hoverTitle = `#${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
 
-  const badge = `<span class="source-badge scheduled bill-virtual" data-tooltip="${hoverTitle}">📅</span> ${_unpaidBillBadge(!!ctx.txn.is_important)}`;
+  const badge = `<span class="source-badge scheduled bill-virtual" data-tooltip="${hoverTitle}">📅</span> ${_unpaidBillBadge(ctx.txn)}`;
 
   let buttons = '';
   buttons += `<button class="bill-edit-btn" data-bill-id="${escapeHtml(ctx.txn.bill_id || '')}" title="Edit this bill template">📋 Edit Bill</button>`;
@@ -301,10 +316,10 @@ function _renderMissingRow(ctx) {
     typeBadge = `<span class="source-badge bill-provenance" data-tooltip="${hoverTitle}" title="${hoverTitle}">📋</span> ` + typeBadge;
   }
 
-  // Unpaid-bill badge appears on every missing row (bill- or manual-originated);
+  // Unpaid / auto-pay badge appears on every missing row (bill- or manual-originated);
   // it carries the is_important pulse so users still see the important flag
   // even on rows that never had the standalone orange dot replacement applied.
-  typeBadge += _unpaidBillBadge(!!ctx.txn.is_important);
+  typeBadge += _unpaidBillBadge(ctx.txn);
 
   // Source badge differentiates bill-originated vs manual-originated missing
   const isBillMissing = ctx.rowType === TXN_TYPE.BILL_MISSING;

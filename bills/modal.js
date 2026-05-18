@@ -155,7 +155,7 @@ function _billModalEnsureDOM() {
                 Mark as important
               </label>
               <small style="color: #888; display: block; margin-top: 2px;">
-                Unpaid occurrences of important bills get an orange unpaid bill badge in the transactions list. The badge disappears once the bill is marked paid.
+                Unpaid occurrences of important bills get an orange pulsing UNPAID / AUTO-PAY badge in the transactions list. The pulse clears once the bill is marked paid.
               </small>
             </div>
 

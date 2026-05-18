@@ -68,6 +68,7 @@
         </select>
         <select id="bills-group-by" title="Group bills by">
           <option value="">No Grouping</option>
+          <option value="important">Important vs Other</option>
           <option value="auto_pay">Auto-pay vs Manual</option>
           <option value="category">Category</option>
           <option value="account">Account</option>
@@ -104,12 +105,12 @@
           </div>
         </div>
 
-        <!-- 2-Week Outlook Card -->
+        <!-- Upcoming Important Bills Card -->
         <div class="dashboard-card outlook-card">
-          <h3>Next 2 Weeks</h3>
-          <p class="card-subtitle" id="dash-outlook-range"></p>
+          <h3>Upcoming Important Bills</h3>
+          <p class="card-subtitle" id="dash-outlook-range">Bills you've marked as important</p>
           <div id="dash-outlook-list" class="outlook-list"></div>
-          <div id="dash-outlook-empty" class="outlook-empty" style="display:none;">No bills due in the next 2 weeks.</div>
+          <div id="dash-outlook-empty" class="outlook-empty" style="display:none;">No upcoming important bills.</div>
           <div class="outlook-footer" id="dash-outlook-footer"></div>
         </div>
       </div>
@@ -126,6 +127,7 @@
         <thead>
           <tr>
             <th class="sortable" data-sort="next_payment">Next Payment<span class="sort-indicator"></span></th>
+            <th class="sortable" data-sort="important" title="Important bills">★<span class="sort-indicator"></span></th>
             <th class="sortable" data-sort="direction">Direction<span class="sort-indicator"></span></th>
             <th class="sortable" data-sort="description">Description<span class="sort-indicator"></span></th>
             <th class="sortable" data-sort="amount">Amount<span class="sort-indicator"></span></th>

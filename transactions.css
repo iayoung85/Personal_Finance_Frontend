@@ -3213,6 +3213,20 @@ tr:hover {
   animation: unpaid-bill-important-pulse 2s ease-in-out infinite;
 }
 
+/* AUTO-PAY variant — uses a calmer slate/neutral tone to signal
+   "you don't need to act, payment will happen on its own". When the
+   bill is also important, .is-important wins (orange + pulse) so the
+   "needs attention" signal overrides the "hands-off" signal. */
+.unpaid-bill-badge.auto-pay {
+  background: #475569;
+  border-color: #475569;
+}
+
+.unpaid-bill-badge.auto-pay.is-important {
+  background: #e67e22;
+  border-color: #e67e22;
+}
+
 @keyframes unpaid-bill-important-pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.55; }
