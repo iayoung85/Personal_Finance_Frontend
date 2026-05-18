@@ -1253,13 +1253,17 @@ function renderTransactionTable() {
     // Amount is always pinned toward the right edge
     const extraAmountClass = rendered.amountCssExtra ? ` ${rendered.amountCssExtra}` : '';
     // OB/MOB rows report a balance, not a debit/credit — suppress the amount cell.
-    const isVariableBill = txn.amount_is_approximate
+    const isApproximateAmount = txn.amount_is_approximate
       && (txnRowType === TXN_TYPE.BILL_FUTURE || txnRowType === TXN_TYPE.BILL_MISSING);
-    const variableDot = isVariableBill
-      ? '<span class="variable-bill-dot" title="Amount approximate — check actual amount before due date"></span>'
+    const isUnpaidBillRow = txnRowType === TXN_TYPE.BILL_FUTURE
+      || txnRowType === TXN_TYPE.BILL_MISSING
+      || txnRowType === TXN_TYPE.MANUAL_MISSING;
+    const showImportantDot = !!txn.is_important && isUnpaidBillRow;
+    const importantDot = showImportantDot
+      ? '<span class="variable-bill-dot" title="Important bill — orange dot clears once paid"></span>'
       : '';
-    const amountPrefix = isVariableBill ? '~' : '';
-    const amountDisplay = isOpeningBalanceRow ? '—' : `${amountPrefix}${amount}${variableDot}`;
+    const amountPrefix = isApproximateAmount ? '~' : '';
+    const amountDisplay = isOpeningBalanceRow ? '—' : `${amountPrefix}${amount}${importantDot}`;
     rowHtml += `<td class="${amountCellClass}${extraAmountClass}${isAmountInlineEditable ? ' inline-editable' : ''}"${isAmountInlineEditable ? ' data-field="amount"' : ''}>${amountDisplay}</td>`;
     if (showLedgerColumn) {
       rowHtml += ledgerBalanceHtml;

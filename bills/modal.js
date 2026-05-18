@@ -150,6 +150,16 @@ function _billModalEnsureDOM() {
             </div>
 
             <div class="bill-field">
+              <label>
+                <input type="checkbox" id="bill-is-important" style="margin-right: 6px;">
+                Mark as important
+              </label>
+              <small style="color: #888; display: block; margin-top: 2px;">
+                Unpaid occurrences of important bills get an orange dot in the transactions list. The dot disappears once the bill is marked paid.
+              </small>
+            </div>
+
+            <div class="bill-field">
               <label for="bill-category">Category</label>
               <div style="position: relative;">
                 <input type="text" id="bill-category" placeholder="Type to search, or [ for transfers" autocomplete="off">
@@ -494,6 +504,7 @@ function _billModalResetForm() {
   document.getElementById('bill-amount').value = '';
   document.getElementById('bill-type').value = 'debit';
   document.getElementById('bill-auto-pay').checked = false;
+  document.getElementById('bill-is-important').checked = false;
   document.getElementById('bill-category').value = '';
   document.getElementById('bill-memo').value = '';
   document.getElementById('bill-end-date').value = '';
@@ -530,6 +541,7 @@ function _billModalPopulateFromBill(bill) {
   document.getElementById('bill-type').value = isCredit ? 'credit' : 'debit';
   document.getElementById('bill-amount').value = Math.abs(bill.amount).toFixed(2);
   document.getElementById('bill-auto-pay').checked = !!bill.auto_pay;
+  document.getElementById('bill-is-important').checked = !!bill.is_important;
   document.getElementById('bill-category').value = bill.user_category || '';
   document.getElementById('bill-memo').value = bill.memo || '';
   document.getElementById('bill-end-type').value = bill.end_type || 'never';
@@ -1125,6 +1137,7 @@ function _billModalReadFormData() {
   const isCredit = typeSelect === 'credit';
   const amount = parseFloat(rawAmount) || 0;
   const autoPay = document.getElementById('bill-auto-pay').checked;
+  const isImportant = document.getElementById('bill-is-important').checked;
   const category = document.getElementById('bill-category').value.trim();
   const memo = document.getElementById('bill-memo').value.trim();
   const criteria = _billModalReadCriteria();
@@ -1180,6 +1193,7 @@ function _billModalReadFormData() {
     amount,
     isCredit,
     auto_pay: autoPay,
+    is_important: isImportant,
     user_category: category || null,
     memo: memo || null,
     match_amount_mode: criteria.match_amount_mode,
@@ -1291,6 +1305,7 @@ async function _billModalSave() {
     user_category: formData.user_category,
     memo: formData.memo,
     auto_pay: formData.auto_pay,
+    is_important: formData.is_important,
     frequency: formData.frequency,
     interval: formData.interval,
     start_date: formData.start_date,
