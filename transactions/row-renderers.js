@@ -221,12 +221,10 @@ function _renderVirtualBillRow(ctx) {
   // Emoji type badge removed: AUTO-PAY / UNPAID badges now communicate future status.
   const badge = _unpaidBillBadge(ctx.txn);
 
-  let buttons = '';
-  buttons += `<button class="bill-edit-btn" data-bill-id="${escapeHtml(ctx.txn.bill_id || '')}" title="Edit this bill template">📋 Edit Bill</button>`;
-
+  // Edit-bill button removed; right-click "Edit schedule" context menu action covers this.
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
-    'Type to search categories…', buttons
+    'Type to search categories…', ''
   );
 
   const actionCell = ctx.txn.bill_id
