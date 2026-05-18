@@ -1158,7 +1158,12 @@ function renderTransactionTable() {
     // ── Inline-edit eligibility (date, description, amount) ──
     const isDateInlineEditable = canInlineEditDate(txnRowType);
     const isRowDescEditable = canInlineEditDescription(txnRowType);
-    const isAmountInlineEditable = canInlineEditAmount(txnRowType);
+    // Auto-split BILL_FUTURE rows expose has_splits_template=true. Editing
+    // the parent amount here would desync the (parent == sum of children)
+    // invariant once the row materializes — the backend blocks it too,
+    // but we lock the click target so users don't see a confusing error.
+    const isAmountInlineEditable = canInlineEditAmount(txnRowType)
+      && !txn.has_splits_template;
     const isPlaidDescEditable = (txnRowType === TXN_TYPE.PLAID_CLEARED || txnRowType === TXN_TYPE.PLAID_PENDING);
     const isDescEditable = isRowDescEditable || isPlaidDescEditable;
 
