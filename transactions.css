@@ -3144,10 +3144,13 @@ tr:hover {
   font-weight: 600;
 }
 
+/* Future rows — unified styling regardless of subtype (MANUAL_FUTURE,
+   BILL_FUTURE/virtual, materialized bill). All future-row subtypes share
+   the same accent-link text color. Background tint and zebra striping are
+   inherited from the cleared-row baseline (transparent / .vrow-even) so
+   text color alone carries the past-vs-future distinction. */
 .scheduled-row td {
   color: var(--accent-link);
-  background: rgba(99,102,241,0.04);
-  border-bottom-color: rgba(99,102,241,0.15);
 }
 
 .scheduled-row .ledger-amount-cell,
@@ -3160,65 +3163,59 @@ tr:hover {
   color: var(--color-danger);
 }
 
-/* Virtual BILL_FUTURE: theoretical / projected occurrence — faded to
-   visually distinguish from confirmed/materialized rows. */
-.bill-virtual-row {
-  opacity: 0.70;
-}
-
-.bill-virtual-row td {
-  color: var(--text-secondary);
-  background: rgba(99,102,241,0.02);
-  border-bottom-color: rgba(99,102,241,0.10);
-}
-
-/* Badge stays fully opaque even though the row is muted */
-.bill-virtual-row .source-badge {
-  opacity: 1.43;  /* 1/0.70 ≈ 1.43 to counteract the parent row's 0.70 */
-}
-
-/* Amount and ledger cells keep their green/red color, not greyed out */
-.bill-virtual-row .ledger-amount-cell,
-.bill-virtual-row .ledger-cell,
-.bill-virtual-row .ledger-projected {
-  opacity: 1.43;  /* counteract parent 0.70 */
-  color: var(--color-success);
-}
-
-.bill-virtual-row .ledger-negative {
-  color: var(--color-danger);
-}
-
-.source-badge.bill-virtual {
+/* BILL_FUTURE (virtual) and materialized bill MANUAL_FUTURE rows share
+   the unified scheduled-row appearance. Their distinguishing badges
+   (📅 vs 📝, and the "Unpaid Bill" badge on virtual rows) carry the
+   semantic difference rather than row tint or opacity. */
+.source-badge.bill-virtual,
+.source-badge.bill-materialized {
   opacity: 1;
-}
-
-/* Materialized bill-originated MANUAL_FUTURE: user has confirmed or
-   customized this occurrence so it is rendered at full prominence. */
-.bill-materialized-row {
-  opacity: 1;
-}
-
-.bill-materialized-row td {
-  color: var(--accent-link);
-  background: rgba(99,102,241,0.07);
-  border-bottom-color: rgba(99,102,241,0.18);
-}
-
-.bill-materialized-row .ledger-amount-cell,
-.bill-materialized-row .ledger-cell,
-.bill-materialized-row .ledger-projected {
-  color: var(--color-success);
-}
-
-.bill-materialized-row .ledger-negative {
-  color: var(--color-danger);
 }
 
 .source-badge.bill-materialized {
   background: rgba(99,102,241,0.15);
   color: rgba(99,102,241,0.95);
   font-weight: 600;
+}
+
+/* "Unpaid Bill" badge — shown on virtual BILL_FUTURE, BILL_MISSING, and
+   MANUAL_MISSING rows to flag the occurrence as still owed. Solid
+   accent-link fill with white text so it pops against the surrounding
+   accent-colored row text in both light and dark mode. Purely
+   informational; no click action to avoid accidental "mark paid"
+   mis-taps.
+
+   The .is-important variant replaces the legacy standalone orange dot:
+   the badge itself turns orange and pulses, merging the two signals
+   ("unpaid" + "important") into a single visual element. */
+.unpaid-bill-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  margin-right: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #ffffff;
+  background: var(--accent-link);
+  border: 1px solid var(--accent-link);
+  border-radius: 3px;
+  white-space: nowrap;
+  vertical-align: middle;
+  line-height: 1.25;
+  cursor: default;
+}
+
+.unpaid-bill-badge.is-important {
+  background: #e67e22;
+  border-color: #e67e22;
+  animation: unpaid-bill-important-pulse 2s ease-in-out infinite;
+}
+
+@keyframes unpaid-bill-important-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
 }
 
 /* Bill provenance badge — shown on BILL_MATCHED (merged plaid row) and
@@ -3322,9 +3319,8 @@ tr:hover {
 
 /* ── Block section backgrounds (applied at row level for virtual scroll) ── */
 
-.scheduled-row {
-  background: rgba(99,102,241,0.04);
-}
+/* Future-row background is applied at the td level above so zebra
+   striping (.vrow-even) can alternate cleanly. No TR-level override here. */
 
 /* ── Virtual scroll spacer rows ── */
 
@@ -3457,20 +3453,35 @@ tr:hover {
 
 /* Split Transaction Group Styling */
 
-/* Split child rows - subtle left-border highlight to group them */
+/* Split child rows - thick accent-link border on all four sides forms a
+   box that groups the splits together. Top/bottom borders are added on
+   .split-first / .split-last so the box closes cleanly regardless of how
+   many splits are in the group. Opacity matches surrounding rows. */
 .split-child-row {
   background: rgba(55, 148, 255, 0.04) !important;
   border-left: 2px solid var(--accent-link) !important;
-  border-right: 1px solid var(--border-subtle) !important;
-  border-bottom: 1px solid var(--border-subtle) !important;
+  border-right: 2px solid var(--accent-link) !important;
+  border-bottom: none !important;
+  opacity: 1;
 }
 
 .split-child-row.split-first {
-  border-top: 1px solid var(--border-primary) !important;
+  border-top: 2px solid var(--accent-link) !important;
 }
 
 .split-child-row.split-last {
-  border-bottom: 1px solid var(--border-primary) !important;
+  border-bottom: 2px solid var(--accent-link) !important;
+}
+
+/* When filtering collapses a split group down to a single visible child,
+   suppress the group tint and box border — the row stands alone and the
+   ✂ badge is sufficient to mark it as a split. */
+.split-child-row.split-solo {
+  background: transparent !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
 }
 
 .split-child-row td {
@@ -5254,23 +5265,6 @@ th.th-date {
 
 .modal-edit-balance .modal-footer .secondary:hover {
   background: var(--bg-selected);
-}
-
-/* ── Variable bill pulsing dot ─────────────────────────────── */
-.variable-bill-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #e67e22;
-  margin-left: 5px;
-  vertical-align: middle;
-  animation: variable-bill-pulse 2s ease-in-out infinite;
-}
-
-@keyframes variable-bill-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.4; transform: scale(0.75); }
 }
 
 /* ── Bulk Modify (TXN-018) ───────────────────────────────────── */

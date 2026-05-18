@@ -24,6 +24,25 @@ function _txnDescription(txn) {
 
 
 /**
+ * Render the "Unpaid Bill" badge that flags BILL_FUTURE / BILL_MISSING /
+ * MANUAL_MISSING rows as still owed. When `is_important` is true the
+ * badge switches to an orange pulsing variant — replacing the legacy
+ * standalone orange dot so the important state and the unpaid state
+ * share a single visual element.
+ *
+ * @param {boolean} isImportant - Whether the underlying bill is flagged important.
+ * @returns {string} HTML fragment including a trailing space.
+ */
+function _unpaidBillBadge(isImportant) {
+  const cssClass = isImportant ? 'unpaid-bill-badge is-important' : 'unpaid-bill-badge';
+  const title = isImportant
+    ? 'Important unpaid bill — pulses until marked paid'
+    : 'Projected bill occurrence not yet paid';
+  return `<span class="${cssClass}" title="${title}">Unpaid Bill</span> `;
+}
+
+
+/**
  * Render the "Modified" badge for plaid transactions whose amount has
  * been overridden by the user. The backend sets amount_modified=true on
  * any PLAID_CLEARED or PLAID_CONVERTED row whose amount was changed via
@@ -183,7 +202,7 @@ function _renderVirtualBillRow(ctx) {
   const scheduleSummary = escapeHtml(ctx.txn.schedule_summary || '');
   const hoverTitle = `#${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
 
-  const badge = `<span class="source-badge scheduled bill-virtual" data-tooltip="${hoverTitle}">📅</span> `;
+  const badge = `<span class="source-badge scheduled bill-virtual" data-tooltip="${hoverTitle}">📅</span> ${_unpaidBillBadge(!!ctx.txn.is_important)}`;
 
   let buttons = '';
   buttons += `<button class="bill-edit-btn" data-bill-id="${escapeHtml(ctx.txn.bill_id || '')}" title="Edit this bill template">📋 Edit Bill</button>`;
@@ -281,6 +300,11 @@ function _renderMissingRow(ctx) {
     const hoverTitle = `Missing bill #${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
     typeBadge = `<span class="source-badge bill-provenance" data-tooltip="${hoverTitle}" title="${hoverTitle}">📋</span> ` + typeBadge;
   }
+
+  // Unpaid-bill badge appears on every missing row (bill- or manual-originated);
+  // it carries the is_important pulse so users still see the important flag
+  // even on rows that never had the standalone orange dot replacement applied.
+  typeBadge += _unpaidBillBadge(!!ctx.txn.is_important);
 
   // Source badge differentiates bill-originated vs manual-originated missing
   const isBillMissing = ctx.rowType === TXN_TYPE.BILL_MISSING;

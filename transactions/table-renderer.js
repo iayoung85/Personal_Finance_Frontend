@@ -907,7 +907,13 @@ function renderTransactionTable() {
         // Note: isFirstSplit/isLastSplit now refer to rendered splits, not original splits
         const isFirstSplit = idx === 0;
         const isLastSplit = idx === visibleSplits.length - 1;
-        const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}${isPendingRow ? ' pending-row' : ''}`;
+        // When filtering hides all but a single split, suppress the group
+        // tint/box border so the lone row blends with surrounding rows.
+        const isSoloSplit = visibleSplits.length === 1;
+        // Future-block splits inherit the parent's future text color via
+        // the scheduled-row class, keeping all future rows visually unified.
+        const scheduledClass = isFutureBlockRow ? ' scheduled-row' : '';
+        const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}${isSoloSplit ? ' split-solo' : ''}${isPendingRow ? ' pending-row' : ''}${scheduledClass}`;
         
         const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
 
@@ -1255,15 +1261,8 @@ function renderTransactionTable() {
     // OB/MOB rows report a balance, not a debit/credit — suppress the amount cell.
     const isApproximateAmount = txn.amount_is_approximate
       && (txnRowType === TXN_TYPE.BILL_FUTURE || txnRowType === TXN_TYPE.BILL_MISSING);
-    const isUnpaidBillRow = txnRowType === TXN_TYPE.BILL_FUTURE
-      || txnRowType === TXN_TYPE.BILL_MISSING
-      || txnRowType === TXN_TYPE.MANUAL_MISSING;
-    const showImportantDot = !!txn.is_important && isUnpaidBillRow;
-    const importantDot = showImportantDot
-      ? '<span class="variable-bill-dot" title="Important bill — orange dot clears once paid"></span>'
-      : '';
     const amountPrefix = isApproximateAmount ? '~' : '';
-    const amountDisplay = isOpeningBalanceRow ? '—' : `${amountPrefix}${amount}${importantDot}`;
+    const amountDisplay = isOpeningBalanceRow ? '—' : `${amountPrefix}${amount}`;
     rowHtml += `<td class="${amountCellClass}${extraAmountClass}${isAmountInlineEditable ? ' inline-editable' : ''}"${isAmountInlineEditable ? ' data-field="amount"' : ''}>${amountDisplay}</td>`;
     if (showLedgerColumn) {
       rowHtml += ledgerBalanceHtml;
@@ -1444,11 +1443,17 @@ function _commitInlineMemo(inputEl) {
   const newMemo = (input.value || '').trim();
   const originalMemo = input.dataset.originalMemo || '';
 
+  // Close the inline editor BEFORE staging the batch edit. stageBatchEdit
+  // applies an optimistic DOM update that rewrites the memo span's contents
+  // via textContent, which detaches this input element. If close runs after
+  // that, input.closest('.txn-memo-text') returns null and the
+  // inline-memo-active marker class never gets cleared, blocking any
+  // subsequent click-to-edit on that span until a re-render.
+  _closeInlineMemoEditor($(input), false);
+
   if (txnId && newMemo !== originalMemo && typeof stageBatchEdit === 'function') {
     stageBatchEdit(String(txnId), { user_memo: newMemo });
   }
-
-  _closeInlineMemoEditor($(input), false);
 }
 
 
