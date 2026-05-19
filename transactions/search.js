@@ -21,7 +21,7 @@
  * Recognized field operators:
  *   description, desc     → description / user_description_override
  *   merchant, from        → merchant_name
- *   category, cat         → user_category + personal_finance_category
+ *   category, cat         → user_category (user-assigned only; Plaid PFC ignored)
  *   memo                  → user_memo
  *   amount                → transaction amount (supports >, <, >=, <=, ..)
  *   date                  → transaction date (supports ..)
@@ -173,6 +173,11 @@ function _parseAmountComparison(token, rawValue) {
  * lowercase string for broad (non-field-specific) matching.
  */
 function _buildSearchableText(txn) {
+  // Category matching uses ONLY user_category. The Plaid-assigned
+  // personal_finance_category is intentionally excluded — when a user
+  // overrides Plaid's classification (e.g., re-labels an INCOME row
+  // as a Transfer), the search must reflect the user's intent, not
+  // the stale Plaid label.
   const parts = [
     txn.description || txn.name || '',
     txn.user_description_override || '',
@@ -181,7 +186,6 @@ function _buildSearchableText(txn) {
     txn.user_memo || '',
     txn.date || '',
     txn.bank_account || '',
-    _formatCategoryForSearch(txn),
   ];
 
   // Include amount as string so users can type dollar amounts
@@ -192,21 +196,6 @@ function _buildSearchableText(txn) {
   }
 
   return parts.join(' ').toLowerCase();
-}
-
-/**
- * Build a category search string from both user_category and
- * personal_finance_category for broader matching coverage.
- */
-function _formatCategoryForSearch(txn) {
-  const segments = [];
-  if (txn.user_category) segments.push(txn.user_category);
-  if (txn.personal_finance_category) {
-    const pfc = txn.personal_finance_category;
-    if (pfc.primary) segments.push(pfc.primary.replace(/_/g, ' '));
-    if (pfc.detailed) segments.push(pfc.detailed.replace(/_/g, ' '));
-  }
-  return segments.join(' ');
 }
 
 /**
@@ -260,9 +249,12 @@ function _matchFieldToken(txn, token) {
     }
 
     case 'category': {
+      // Only match the user-assigned category. Plaid's
+      // personal_finance_category is deliberately ignored so a user-
+      // overridden row (e.g., Plaid INCOME re-labeled as Transfer)
+      // does not leak back into category-based search results.
       const userCat = (txn.user_category || '').toLowerCase();
-      const pfcSearch = _formatCategoryForSearch(txn).toLowerCase();
-      return userCat.includes(valueLower) || pfcSearch.includes(valueLower);
+      return userCat.includes(valueLower);
     }
 
     case 'memo': {
