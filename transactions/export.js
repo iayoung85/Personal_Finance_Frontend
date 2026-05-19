@@ -192,6 +192,51 @@ function _formatCsvRow(txn, optionalFields, parentTransactionId) {
   return row;
 }
 
+function _buildExportSplitChild(parentTxn, splitTxn) {
+  return Object.assign({}, splitTxn, {
+    account_id: splitTxn.account_id || parentTxn.account_id || parentTxn.plaid_account_id || '',
+    bank_account: splitTxn.bank_account || parentTxn.bank_account || '',
+    date: splitTxn.date || parentTxn.date,
+    description: splitTxn.description || splitTxn.name || parentTxn.description || parentTxn.name || '',
+    merchant_name: splitTxn.merchant_name || parentTxn.merchant_name || '',
+    parent_transaction_id: parentTxn.transaction_id || '',
+    source: 'split',
+    status: parentTxn.status,
+    transfer_pair_id: splitTxn.transfer_pair_id || '',
+    user_description_override: splitTxn.user_description_override || '',
+  });
+}
+
+function _getFilteredExportRows(txnsSource) {
+  const exportRows = [];
+
+  for (const txn of txnsSource) {
+    if (txn.source === 'split') continue;
+
+    if (txn.source === 'opening_balance' || txn.source === 'manual_opening_balance') {
+      continue;
+    }
+
+    if (txn.is_split && Array.isArray(txn.splits) && txn.splits.length > 0) {
+      const visibleSplits = txn.splits.filter(split => (
+        _splitMatchesSearch(txn, split) && _splitMatchesCategoryFilter(split)
+      ));
+
+      for (const split of visibleSplits) {
+        exportRows.push({
+          txn: _buildExportSplitChild(txn, split),
+          parentTransactionId: txn.transaction_id || '',
+        });
+      }
+      continue;
+    }
+
+    exportRows.push({ txn, parentTransactionId: '' });
+  }
+
+  return exportRows;
+}
+
 function generateCSV(metadata, txnsOverride) {
   const optionalFields = [];
   $('.field-checkbox:checked').each(function() {
@@ -199,6 +244,7 @@ function generateCSV(metadata, txnsOverride) {
   });
 
   const txnsSource = txnsOverride || transactions;
+  const isFilteredExport = !!txnsOverride;
 
   // Header comment for format auto-detection on re-import
   let csv = `# PFC Export v1, exported=${new Date().toISOString()}, category_list_hash=${metadata.categoryListHash}\n`;
@@ -213,6 +259,13 @@ function generateCSV(metadata, txnsOverride) {
   if (optionalFields.includes('authorized_datetime')) csv += ',Authorized';
 
   csv += '\n';
+
+  if (isFilteredExport) {
+    for (const exportRow of _getFilteredExportRows(txnsSource)) {
+      csv += _formatCsvRow(exportRow.txn, optionalFields, exportRow.parentTransactionId) + '\n';
+    }
+    return csv;
+  }
 
   for (const txn of txnsSource) {
     // Split children are nested under their parent — skip any that
