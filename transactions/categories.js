@@ -840,23 +840,8 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
     }
 
     showStatus(`Override applied: ${categoryString}. Recategorizing transactions...`, 'success');
-    
-    // Update local array directly instead of full re-sync —
-    // the backend already updated the encrypted_transactions table.
-    let txn = transactions.find(t => t.transaction_id === txnId);
-    if (!txn) {
-      for (const parentTxn of transactions) {
-        if (parentTxn.splits) {
-          const splitChild = parentTxn.splits.find(s => s.transaction_id === txnId);
-          if (splitChild) { txn = splitChild; break; }
-        }
-      }
-    }
-    if (txn) {
-      txn.user_category = categoryString;
-      txn.is_override = true;
-      _cacheTransactions(transactions);
-    }
+
+    _patchCategorizationCache(txnId, data, categoryString, true);
     renderTransactionTable();
     
     showStatus(`Override applied: ${categoryString}`, 'success');
@@ -869,6 +854,60 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
   } catch (error) {
     showStatus(`Failed to apply override: ${error.message}`, 'error');
   }
+}
+
+function _patchCategorizationCache(requestedTxnId, responseData, fallbackCategory, fallbackIsOverride) {
+  const purgedVirtualIds = Array.isArray(responseData.purged_virtual_ids)
+    ? responseData.purged_virtual_ids
+    : [];
+
+  purgedVirtualIds.forEach(virtualId => _removeCachedTransaction(virtualId));
+
+  const resolvedTxn = responseData.transaction;
+  if (resolvedTxn && resolvedTxn.transaction_id) {
+    if (
+      requestedTxnId !== resolvedTxn.transaction_id
+      && !purgedVirtualIds.includes(requestedTxnId)
+    ) {
+      _removeCachedTransaction(requestedTxnId);
+    }
+
+    _replaceCachedTransaction(resolvedTxn.transaction_id, resolvedTxn);
+
+    if (
+      responseData.affected_transfer_partner
+      && responseData.affected_transfer_partner.transaction_id
+    ) {
+      _replaceCachedTransaction(
+        responseData.affected_transfer_partner.transaction_id,
+        responseData.affected_transfer_partner,
+      );
+    }
+
+    _sortTransactionsInPlace();
+    return;
+  }
+
+  let txn = transactions.find(t => t.transaction_id === requestedTxnId);
+  if (!txn) {
+    for (const parentTxn of transactions) {
+      if (parentTxn.splits) {
+        const splitChild = parentTxn.splits.find(s => s.transaction_id === requestedTxnId);
+        if (splitChild) {
+          txn = splitChild;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!txn) {
+    return;
+  }
+
+  txn.user_category = responseData.user_category || fallbackCategory;
+  txn.is_override = fallbackIsOverride;
+  _cacheTransactions(transactions);
 }
 
 // ───── Transfer Assignment ─────
@@ -1183,11 +1222,7 @@ async function _applyCategorizeAndClose(txn, txnId, accountId) {
 
     closeModal();
 
-    if (txn) {
-      txn.user_category = selectedCategory;
-      txn.is_override = true;
-      _cacheTransactions(transactions);
-    }
+    _patchCategorizationCache(txnId, data, selectedCategory, true);
     showStatus('Transaction categorized', 'success');
     renderTransactionTable();
     setTimeout(() => clearStatus(), 2000);
