@@ -319,23 +319,24 @@ function _activateCustomRange() {
 
   const savedStart = localStorage.getItem(DATE_FILTER_CUSTOM_START_KEY);
   const savedEnd = localStorage.getItem(DATE_FILTER_CUSTOM_END_KEY);
-  const customStartInput = document.getElementById('custom-start-date');
-  const customEndInput = document.getElementById('custom-end-date');
 
+  let startIso;
+  let endIso;
   if (savedStart && savedEnd) {
-    customStartInput.value = savedStart;
-    customEndInput.value = savedEnd;
-    document.getElementById('start-date').value = savedStart;
-    document.getElementById('end-date').value = savedEnd;
+    startIso = savedStart;
+    endIso = savedEnd;
   } else {
     // Default custom range to current month
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    customStartInput.value = _formatDateLocal(monthStart);
-    customEndInput.value = _formatDateLocal(now);
-    document.getElementById('start-date').value = _formatDateLocal(monthStart);
-    document.getElementById('end-date').value = _formatDateLocal(now);
+    startIso = _formatDateLocal(monthStart);
+    endIso = _formatDateLocal(now);
   }
+
+  setDateInputValue('custom-start-date', startIso);
+  setDateInputValue('custom-end-date', endIso);
+  document.getElementById('start-date').value = startIso;
+  document.getElementById('end-date').value = endIso;
 }
 
 function _hideCustomRangeInputs() {
@@ -344,8 +345,8 @@ function _hideCustomRangeInputs() {
 }
 
 function _onCustomDateChange() {
-  const customStart = document.getElementById('custom-start-date').value;
-  const customEnd = document.getElementById('custom-end-date').value;
+  const customStart = getDateInputValue('custom-start-date');
+  const customEnd = getDateInputValue('custom-end-date');
   if (customStart && customEnd) {
     document.getElementById('start-date').value = customStart;
     document.getElementById('end-date').value = customEnd;
