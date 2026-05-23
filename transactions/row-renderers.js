@@ -207,8 +207,7 @@ function _renderScheduledRow(ctx) {
 
 
 /**
- * Virtual BILL_FUTURE row: greyed-out appearance to indicate the
- * occurrence is theoretical (projected from the bill template, no DB row).
+ * Virtual BILL_FUTURE row: is theoretical (projected from the bill template, no DB row).
  * Right-click context menu provides Mark Paid, Modify, and Skip actions.
  */
 function _renderVirtualBillRow(ctx) {
