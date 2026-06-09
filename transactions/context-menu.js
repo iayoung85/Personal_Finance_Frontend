@@ -1137,6 +1137,10 @@ async function _handleContextResetPlaidAmount(txnData) {
       _patchCachedTransaction(txnData.txnId, { amount_modified: false });
     }
 
+    if (data.transfer_partner_transaction && data.transfer_partner_transaction.transaction_id) {
+      _replaceCachedTransaction(data.transfer_partner_id, data.transfer_partner_transaction);
+    }
+
     // Reset touches balances and may shift future-row projections,
     // so refresh the affected account before re-rendering.
     const affectedAccountId = data.transaction?.account_id || txnData.accountId;

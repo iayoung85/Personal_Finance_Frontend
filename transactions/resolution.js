@@ -129,6 +129,7 @@ async function manualReconciliationMatch(manualTransactionId, targetTransactionI
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || 'Failed to match transactions');
   }
+  await loadAccounts();
   return response.json();
 }
 
@@ -812,6 +813,7 @@ async function _selectMatchCandidate(missingTxnId, targetTxnId) {
 
     closeModal();
     _refreshAfterReconciliation();
+    fetchBalanceHistory(result.account_id);
   } catch (matchError) {
     showStatus(`Match failed: ${matchError.message}`, 'error');
   }
