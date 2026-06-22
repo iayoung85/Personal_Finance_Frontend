@@ -17,6 +17,63 @@ function _applyCachedMobUpdate(responseData) {
   }
 }
 
+function _normalizeManualTransactionEditValue(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') {
+    const trimmedValue = value.trim();
+    return trimmedValue === '' ? null : trimmedValue;
+  }
+  return value;
+}
+
+function _buildManualTransactionEditPayload(transaction, formValues) {
+  const currentTxn = transaction || {};
+  const payload = {};
+
+  const parsedAmount = Number.parseFloat(formValues.amountRaw || '0');
+  const signedAmount = formValues.type === 'credit' ? parsedAmount : -parsedAmount;
+  const currentAmount = Number.isFinite(Number(currentTxn.amount))
+    ? Number(Number(currentTxn.amount).toFixed(2))
+    : null;
+  const nextAmount = Number.isFinite(signedAmount)
+    ? Number(signedAmount.toFixed(2))
+    : null;
+
+  if (nextAmount !== currentAmount) {
+    payload.amount = Number.isFinite(parsedAmount) ? parsedAmount : 0;
+  }
+
+  const currentType = Number(currentTxn.amount || 0) >= 0 ? 'credit' : 'debit';
+  if (formValues.type !== currentType) {
+    payload.type = formValues.type;
+  }
+
+  const currentDate = _normalizeManualTransactionEditValue(currentTxn.date);
+  if (formValues.date !== currentDate) {
+    payload.date = formValues.date;
+  }
+
+  const currentMerchant = _normalizeManualTransactionEditValue(currentTxn.merchant_name);
+  const merchantValue = _normalizeManualTransactionEditValue(formValues.merchant);
+  if (merchantValue !== currentMerchant) {
+    payload.merchant_name = merchantValue;
+  }
+
+  const currentCategory = _normalizeManualTransactionEditValue(currentTxn.user_category);
+  const categoryValue = _normalizeManualTransactionEditValue(formValues.category);
+  if (categoryValue !== currentCategory) {
+    payload.user_category = categoryValue;
+  }
+
+  const currentMemo = _normalizeManualTransactionEditValue(currentTxn.user_memo ?? currentTxn.memo);
+  const memoValue = _normalizeManualTransactionEditValue(formValues.memo);
+  if (memoValue !== currentMemo) {
+    payload.memo = memoValue;
+  }
+
+  return payload;
+}
+
 /**
  * Open modal to create a new manual transaction
  */
@@ -346,14 +403,21 @@ async function _updateManualTransaction(transactionId, accountId) {
   }
 
   try {
-    const payload = {
-      amount,
+    const currentTxn = transactions.find(findTxn => findTxn.transaction_id === transactionId) || {};
+    const payload = _buildManualTransactionEditPayload(currentTxn, {
+      amountRaw: rawAmountStr,
       type: txnType,
       date,
-      merchant_name: merchant || null,
-      user_category: category || null,
-      memo: memo || null,
-    };
+      merchant: merchant,
+      category,
+      memo,
+    });
+
+    if (Object.keys(payload).length === 0) {
+      closeModal();
+      showStatus('No changes were made', 'success');
+      return;
+    }
 
     const response = await authenticatedFetch(
       `${BACKEND_URL}/api/transactions/${encodeURIComponent(transactionId)}`,
@@ -536,18 +600,27 @@ async function _submitPendingManualTransaction() {
   sessionStorage.removeItem('pf_pending_txn_new_categories');
   sessionStorage.removeItem('pf_return_url');
 
-  const payload = {
-    amount: parseFloat(pending.amount),
-    type: pending.type,
-    date: pending.date,
-    merchant_name: pending.merchant || null,
-    user_category: pending.category || null,
-    memo: pending.memo || null,
-  };
+  const payload = pending.mode === 'edit'
+    ? _buildManualTransactionEditPayload(
+        transactions.find(txn => txn.transaction_id === pending.transactionId) || {},
+        {
+          amountRaw: pending.amount,
+          type: pending.type,
+          date: pending.date,
+          merchant: pending.merchant || '',
+          category: pending.category || '',
+          memo: pending.memo || '',
+        }
+      )
+    : {
+        amount: parseFloat(pending.amount),
+        type: pending.type,
+        date: pending.date,
+        merchant_name: pending.merchant || null,
+        user_category: pending.category || null,
+        memo: pending.memo || null,
+      };
 
-  const pendingAccountId = pending.mode === 'edit'
-    ? (transactions.find(txn => txn.transaction_id === pending.transactionId)?.account_id || pending.accountId)
-    : pending.accountId;
   const pendingDateError = _getLinkedAccountDateWindowError(pendingAccountId, pending.date);
   if (pendingDateError) {
     showStatus(pendingDateError, 'error');
