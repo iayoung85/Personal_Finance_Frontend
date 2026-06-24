@@ -377,7 +377,7 @@ function _renderMatchedPairRow(ctx) {
   const matchInfo = ctx.txn.match_info;
   const unmatchId = escapeHtml(matchInfo.matched_txn_id);
   const categoryCell = _buildCategoryAutocomplete(
-    ctx.txnId, ctx.accountId, ctx.currentFullCategory,
+    ctx.txnId, ctx.accountId, matchInfo.matched_user_category,
     'Type to search categories…', ''
   );
 
