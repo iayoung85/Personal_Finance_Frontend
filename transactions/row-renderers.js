@@ -339,9 +339,9 @@ function _renderMissingRow(ctx) {
 
 
 function _renderMatchedRow(ctx) {
-  const matchInfo = ctx.txn.match_info;
+  // const matchInfo = ctx.txn.match_info; matchInfo.matched_user_category
   const categoryCell = _buildCategoryAutocomplete(
-    ctx.txnId, ctx.accountId, matchInfo.matched_user_category,
+    ctx.txnId, ctx.accountId, ctx.currentFullCategory,
     'Type to search categories…', ''
   );
 
