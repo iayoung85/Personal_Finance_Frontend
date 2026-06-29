@@ -418,7 +418,7 @@ function _renderSuggestedPairRow(ctx) {
   const confidencePct = Math.round((suggestionInfo.confidence || 0) * 100);
 
   const categoryCell = _buildCategoryAutocomplete(
-    ctx.txnId, ctx.accountId, ctx.currentFullCategory,
+    ctx.txnId, ctx.accountId, suggestionInfo.suggested_user_category,
     'Type to search categories…', ''
   );
 
