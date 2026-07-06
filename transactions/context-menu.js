@@ -964,7 +964,7 @@ async function _handleContextMarkVisibleReviewed() {
  * Mark Paid: materializes a virtual BILL_FUTURE occurrence into a real
  * MANUAL_FUTURE row in the database. The backend handles the state
  * machine transition (BILL_FUTURE → MANUAL_FUTURE via MATERIALIZE) and
- * adds the occurrence to Bill.skipped_occurrences so the virtual slot
+ * adds the occurrence to Bill.skipped_future_occurrences so the virtual slot
  * is suppressed on the next fetch.
  *
  * The row appears in-place in the scheduled block after refresh, now
@@ -1023,7 +1023,7 @@ async function _handleContextMarkPaid(txnData) {
 
 /**
  * Skip Occurrence: adds the occurrence number to the bill's
- * skipped_occurrences list so it no longer appears in the scheduled
+ * skipped_future_occurrences list so it no longer appears in the scheduled
  * future block. Delegates to the existing skipBillOccurrence() in
  * manual-transactions.js.
  */

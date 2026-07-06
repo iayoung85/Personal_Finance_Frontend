@@ -1219,6 +1219,127 @@ function _billModalReadFormData() {
   };
 }
 
+function _normalizeBillEditComparable(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed === '' ? null : trimmed;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+    return value.map(item => _normalizeBillEditComparable(item));
+  }
+  if (typeof value === 'object') {
+    const keys = Object.keys(value);
+    if (keys.length === 0) return null;
+    return Object.keys(value).sort().reduce((accumulator, key) => {
+      accumulator[key] = _normalizeBillEditComparable(value[key]);
+      return accumulator;
+    }, {});
+  }
+  return value;
+}
+
+function _setBillEditPayloadField(payload, fieldName, nextValue, originalValue) {
+  const normalizedNext = _normalizeBillEditComparable(nextValue);
+  const normalizedOriginal = _normalizeBillEditComparable(originalValue);
+  if (JSON.stringify(normalizedNext) !== JSON.stringify(normalizedOriginal)) {
+    payload[fieldName] = normalizedNext;
+  }
+}
+
+function _synthesizeStartDate(formData) {
+  // If we aren't dealing with a monthly bill, or missing data, return as-is
+  if (formData.frequency !== 'monthly' || !formData.start_date || !formData.day_of_month) {
+    return formData.start_date;
+  }
+
+  // Extract YYYY and MM from whatever the month picker gave us (e.g., '2026-07-01')
+  const [year, month] = formData.start_date.split('-');
+  let day = formData.day_of_month;
+
+  // Handle "Last day of month" (-1)
+  if (day === -1) {
+    // JS Date trick: day 0 of the *next* month gives the last day of the *current* month
+    day = new Date(year, month, 0).getDate();
+  }
+
+  // Pad the day with a leading zero if necessary and stitch it together
+  const paddedDay = String(day).padStart(2, '0');
+  return `${year}-${month}-${paddedDay}`;
+}
+
+function _buildBillUpdatePayload(billId, formData, signedAmount, transferAccountId) {
+  const originalBill = _billModalEditData || null;
+  if (!originalBill || !billId) return {};
+
+  const payload = {};
+
+  // 1. Synthesize the true start date right away
+  const effectiveStartDate = _synthesizeStartDate(formData);
+
+  const nextAmount = Number.isFinite(signedAmount)
+    ? Number(Number(signedAmount).toFixed(2))
+    : null;
+  const originalAmount = Number.isFinite(Number(originalBill.amount))
+    ? Number(Number(originalBill.amount).toFixed(2))
+    : null;
+  if (nextAmount !== originalAmount) {
+    payload.amount = nextAmount;
+  }
+
+  _setBillEditPayloadField(payload, 'account_id', formData.account_id, originalBill.account_id);
+  _setBillEditPayloadField(payload, 'transfer_account_id', transferAccountId, originalBill.transfer_account_id);
+  _setBillEditPayloadField(payload, 'description', formData.description, originalBill.description);
+  _setBillEditPayloadField(payload, 'user_category', formData.user_category, originalBill.user_category);
+  _setBillEditPayloadField(payload, 'memo', formData.memo, originalBill.memo);
+  _setBillEditPayloadField(payload, 'auto_pay', formData.auto_pay, originalBill.auto_pay);
+  _setBillEditPayloadField(payload, 'is_important', formData.is_important, originalBill.is_important);
+  _setBillEditPayloadField(payload, 'frequency', formData.frequency, originalBill.frequency);
+  _setBillEditPayloadField(payload, 'interval', formData.interval, originalBill.interval);
+  _setBillEditPayloadField(payload, 'start_date', effectiveStartDate, originalBill.start_date);
+  _setBillEditPayloadField(payload, 'second_date', formData.second_date, originalBill.second_date);
+  _setBillEditPayloadField(payload, 'day_of_month', formData.day_of_month, originalBill.day_of_month);
+  _setBillEditPayloadField(payload, 'second_day_of_month', formData.second_day_of_month, originalBill.second_day_of_month);
+  _setBillEditPayloadField(payload, 'day_of_week', formData.day_of_week, originalBill.day_of_week);
+  _setBillEditPayloadField(payload, 'end_type', formData.end_type, originalBill.end_type);
+  _setBillEditPayloadField(payload, 'end_date', formData.end_date, originalBill.end_date);
+  _setBillEditPayloadField(payload, 'max_occurrences', formData.max_occurrences, originalBill.max_occurrences);
+  _setBillEditPayloadField(payload, 'splits_template', formData.splits_template, originalBill.splits_template);
+  _setBillEditPayloadField(payload, 'match_amount_mode', formData.match_amount_mode, originalBill.match_amount_mode);
+  _setBillEditPayloadField(payload, 'match_amount_min', formData.match_amount_min, originalBill.match_amount_min);
+  _setBillEditPayloadField(payload, 'match_amount_max', formData.match_amount_max, originalBill.match_amount_max);
+  _setBillEditPayloadField(payload, 'match_date_tolerance_days', formData.match_date_tolerance_days, originalBill.match_date_tolerance_days);
+  _setBillEditPayloadField(payload, 'match_plaid_name_patterns', formData.match_plaid_name_patterns, originalBill.match_plaid_name_patterns);
+  _setBillEditPayloadField(payload, 'match_merchant_name_patterns', formData.match_merchant_name_patterns, originalBill.match_merchant_name_patterns);
+  _setBillEditPayloadField(payload, 'match_pfc_detailed_categories', formData.match_pfc_detailed_categories, originalBill.match_pfc_detailed_categories);
+  _setBillEditPayloadField(payload, 'match_day_of_month_set', formData.match_day_of_month_set, originalBill.match_day_of_month_set);
+  _setBillEditPayloadField(payload, 'match_account_scope', formData.match_account_scope, originalBill.match_account_scope);
+  _setBillEditPayloadField(payload, 'match_sign_enforced', formData.match_sign_enforced, originalBill.match_sign_enforced);
+
+  // 1. Define the fields that constitute a "recurrence rule change"
+  const recurrenceFields = [
+    'frequency', 'interval', 'day_of_month', 'second_day_of_month', 
+    'day_of_week', 'second_date', 'end_type', 'end_date', 'max_occurrences'
+  ];
+
+  // 2. Check if any of these fields were added to the payload
+  const recurrenceChanged = recurrenceFields.some(field => payload.hasOwnProperty(field));
+
+  // 3. If recurrence changed, ensure start_date is present in the payload
+  // (We use formData to get the most recent value from the user's input)
+  if (recurrenceChanged && !payload.hasOwnProperty('start_date')) {
+    payload.start_date = effectiveStartDate;
+  }
+
+  return payload;
+}
 // ── Save Bill ────────────────────────────────────────────────
 
 async function _billModalSave() {
@@ -1297,37 +1418,49 @@ async function _billModalSave() {
     if (matchedAccount) transferAccountId = matchedAccount.account_id;
   }
 
-  const payload = {
-    account_id: formData.account_id,
-    transfer_account_id: transferAccountId,
-    description: formData.description,
-    amount: signedAmount,
-    user_category: formData.user_category,
-    memo: formData.memo,
-    auto_pay: formData.auto_pay,
-    is_important: formData.is_important,
-    frequency: formData.frequency,
-    interval: formData.interval,
-    start_date: formData.start_date,
-    second_date: formData.second_date,
-    day_of_month: formData.day_of_month,
-    second_day_of_month: formData.second_day_of_month,
-    day_of_week: formData.day_of_week,
-    end_type: formData.end_type,
-    end_date: formData.end_date,
-    max_occurrences: formData.max_occurrences,
-    splits_template: splitsTemplate,
-    match_amount_mode: formData.match_amount_mode,
-    match_amount_min: formData.match_amount_min,
-    match_amount_max: formData.match_amount_max,
-    match_date_tolerance_days: formData.match_date_tolerance_days,
-    match_plaid_name_patterns: formData.match_plaid_name_patterns,
-    match_merchant_name_patterns: formData.match_merchant_name_patterns,
-    match_pfc_detailed_categories: formData.match_pfc_detailed_categories,
-    match_day_of_month_set: formData.match_day_of_month_set,
-    match_account_scope: formData.match_account_scope,
-    match_sign_enforced: formData.match_sign_enforced
-  };
+  let payload;
+  if (_billModalEditingId) {
+    payload = _buildBillUpdatePayload(_billModalEditingId, formData, signedAmount, transferAccountId);
+    if (Object.keys(payload).length === 0) {
+      closeBillModal();
+      showStatus('No changes were made', 'success');
+      return;
+    }
+  } else {
+    const effectiveStartDate = _synthesizeStartDate(formData);
+
+    payload = {
+      account_id: formData.account_id,
+      transfer_account_id: transferAccountId,
+      description: formData.description,
+      amount: signedAmount,
+      user_category: formData.user_category,
+      memo: formData.memo,
+      auto_pay: formData.auto_pay,
+      is_important: formData.is_important,
+      frequency: formData.frequency,
+      interval: formData.interval,
+      start_date: effectiveStartDate,
+      second_date: formData.second_date,
+      day_of_month: formData.day_of_month,
+      second_day_of_month: formData.second_day_of_month,
+      day_of_week: formData.day_of_week,
+      end_type: formData.end_type,
+      end_date: formData.end_date,
+      max_occurrences: formData.max_occurrences,
+      splits_template: splitsTemplate,
+      match_amount_mode: formData.match_amount_mode,
+      match_amount_min: formData.match_amount_min,
+      match_amount_max: formData.match_amount_max,
+      match_date_tolerance_days: formData.match_date_tolerance_days,
+      match_plaid_name_patterns: formData.match_plaid_name_patterns,
+      match_merchant_name_patterns: formData.match_merchant_name_patterns,
+      match_pfc_detailed_categories: formData.match_pfc_detailed_categories,
+      match_day_of_month_set: formData.match_day_of_month_set,
+      match_account_scope: formData.match_account_scope,
+      match_sign_enforced: formData.match_sign_enforced
+    };
+  }
 
   try {
     let result;
