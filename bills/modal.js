@@ -1256,13 +1256,29 @@ function _setBillEditPayloadField(payload, fieldName, nextValue, originalValue) 
 
 function _synthesizeStartDate(formData) {
   // If we aren't dealing with a monthly bill, or missing data, return as-is
-  if (formData.frequency !== 'monthly' || !formData.start_date || !formData.day_of_month) {
+  if ((formData.frequency !== 'monthly' && formData.frequency !== 'twice_monthly') || !formData.start_date) {
+    return formData.start_date;
+  }
+
+  const hasMonthlySelection = formData.frequency === 'monthly'
+    ? formData.day_of_month != null
+    : formData.day_of_month != null || formData.second_day_of_month != null;
+  if (!hasMonthlySelection) {
     return formData.start_date;
   }
 
   // Extract YYYY and MM from whatever the month picker gave us (e.g., '2026-07-01')
   const [year, month] = formData.start_date.split('-');
   let day = formData.day_of_month;
+  let secondDay = formData.second_day_of_month;
+
+  if (formData.frequency === 'twice_monthly' && secondDay != null) {
+    const today = new Date();
+    const todayDay = today.getDate();
+    const candidateDays = [day, secondDay].sort((first, second) => first - second);
+    const nextDay = candidateDays.find(candidateDay => candidateDay > todayDay);
+    day = nextDay ?? candidateDays[0];
+  }
 
   // Handle "Last day of month" (-1)
   if (day === -1) {
