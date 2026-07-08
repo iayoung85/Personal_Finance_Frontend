@@ -703,16 +703,18 @@ function _bmRenderMonthly(editData, today) {
   const startDate = editData?.start_date || today;
   const dayOfMonth = editData?.day_of_month ?? parseInt(today.split('-')[2], 10);
   const dayOfWeek = editData?.day_of_week;
+  const isLastWeekdaySelection = dayOfMonth === -2 || (dayOfMonth === -1 && dayOfWeek != null);
+  const isLastDaySelection = dayOfMonth === -1 && !isLastWeekdaySelection;
 
   let dayOptions = '';
   for (let dayNum = 1; dayNum <= 30; dayNum++) {
     const selected = dayNum === dayOfMonth ? 'selected' : '';
     dayOptions += `<option value="${dayNum}" ${selected}>${_bmOrdinal(dayNum)}</option>`;
   }
-  const lastDaySelected = dayOfMonth === 31 ? 'selected' : '';
-  dayOptions += `<option value="31" ${lastDaySelected}>Last day</option>`;
-  const lastWeekdaySelected = dayOfMonth === -1 ? 'selected' : '';
-  dayOptions += `<option value="-1" ${lastWeekdaySelected}>Last weekday\u2026</option>`;
+  const lastDaySelected = isLastDaySelection ? 'selected' : '';
+  dayOptions += `<option value="-1" ${lastDaySelected}>Last day</option>`;
+  const lastWeekdaySelected = isLastWeekdaySelection ? 'selected' : '';
+  dayOptions += `<option value="-2" ${lastWeekdaySelected}>Last weekday…</option>`;
 
   let dowSelect = '<select id="bill-day-of-week" style="display:none;width:auto;">';
   for (let dowIndex = 0; dowIndex < 7; dowIndex++) {
@@ -753,8 +755,8 @@ function _bmRenderTwiceMonthly(editData, today) {
     dayOptions1 += `<option value="${dayNum}" ${dayNum === dayOfMonth ? 'selected' : ''}>${_bmOrdinal(dayNum)}</option>`;
     dayOptions2 += `<option value="${dayNum}" ${dayNum === secondDayOfMonth ? 'selected' : ''}>${_bmOrdinal(dayNum)}</option>`;
   }
-  dayOptions1 += `<option value="31" ${31 === dayOfMonth ? 'selected' : ''}>Last day</option>`;
-  dayOptions2 += `<option value="31" ${31 === secondDayOfMonth ? 'selected' : ''}>Last day</option>`;
+  dayOptions1 += `<option value="-1" ${dayOfMonth === -1 ? 'selected' : ''}>Last day</option>`;
+  dayOptions2 += `<option value="-1" ${secondDayOfMonth === -1 ? 'selected' : ''}>Last day</option>`;
 
   return `
     <div class="freq-inline-row">
@@ -821,7 +823,10 @@ function _bmApplyFreqFieldsFromEdit(frequency, editData) {
   }
   if (frequency === 'monthly' && editData.day_of_month != null) {
     const domSelect = document.getElementById('bill-day-of-month');
-    if (domSelect) domSelect.value = editData.day_of_month;
+    if (domSelect) {
+      const monthlyValue = editData.day_of_month === -1 && editData.day_of_week != null ? '-2' : String(editData.day_of_month);
+      domSelect.value = monthlyValue;
+    }
     _bmOnDayOfMonthChange();
   }
   if (frequency === 'twice_monthly') {
@@ -875,7 +880,7 @@ function _bmOnDayOfMonthChange() {
   const domSelect = document.getElementById('bill-day-of-month');
   const dowSelect = document.getElementById('bill-day-of-week');
   if (!domSelect || !dowSelect) return;
-  dowSelect.style.display = domSelect.value === '-1' ? 'inline-block' : 'none';
+  dowSelect.style.display = domSelect.value === '-2' ? 'inline-block' : 'none';
 }
 
 function _billModalOnEndTypeChange() {
@@ -949,11 +954,13 @@ function _bmGenerateDescription(formData) {
       break;
     }
     case 'monthly': {
-      const dayLabel = formData.day_of_month === -1
-        ? `last ${_BILL_DAY_NAMES[formData.day_of_week ?? 0]}`
-        : formData.day_of_month === 31
+      const dayLabel = formData.day_of_month === -1 && formData.day_of_week != null
+        ? `last ${_BILL_DAY_NAMES[formData.day_of_week]}`
+        : formData.day_of_month === -1
           ? 'last day'
-          : _bmOrdinal(formData.day_of_month || 1);
+          : formData.day_of_month === 31
+            ? 'last day'
+            : _bmOrdinal(formData.day_of_month || 1);
       freqDesc = formData.interval === 1
         ? `Monthly on the ${dayLabel}`
         : `Every ${formData.interval} months on the ${dayLabel}`;
@@ -1166,7 +1173,10 @@ function _billModalReadFormData() {
   let secondDate = null;
 
   const domSelect = document.getElementById('bill-day-of-month');
-  if (domSelect) dayOfMonth = parseInt(domSelect.value, 10);
+  if (domSelect) {
+    const rawDayOfMonthValue = domSelect.value;
+    dayOfMonth = rawDayOfMonthValue === '-2' ? -1 : parseInt(rawDayOfMonthValue, 10);
+  }
 
   const dom2Select = document.getElementById('bill-second-day-of-month');
   if (dom2Select) secondDayOfMonth = parseInt(dom2Select.value, 10);
