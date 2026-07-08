@@ -620,11 +620,6 @@ function _billModalOnFrequencyChange() {
     _bmApplyFreqFieldsFromEdit(frequency, editData);
   }
 
-  // Clear edit data after first render so switching frequency doesn't
-  // re-apply old values to an incompatible form layout
-  if (editData && editData.frequency !== frequency) {
-    _billModalEditData = null;
-  }
 
   // Wire segmented date inputs on freshly rendered fields
   container.querySelectorAll('input.date-input').forEach(autoFormatDateInput);
@@ -1195,7 +1190,12 @@ function _billModalReadFormData() {
   if (secondDateInput) secondDate = getDateInputValue(secondDateInput);
 
   const splitsTemplate = _billModalReadSplitRows();
-
+  if (frequency === 'once') {
+    endType = 'never';
+    endDate = null;
+    maxOccurrences = null;
+    interval = 1; // Good to normalize this too!
+  }
   return {
     frequency,
     account_id: accountId,
