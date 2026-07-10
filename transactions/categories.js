@@ -822,7 +822,9 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
   }
 
   const categoryString = buildCategoryString(selectedPrimary, selectedDetailed);
-  
+  const txn = transactions.find(t => t.transaction_id === txnId);
+  const isUnreviewedTransaction = txn && !txn.reviewed;
+
   try {
     const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/transactions/${encodeURIComponent(txnId)}/categorize`, {
       method: 'POST',
@@ -842,6 +844,14 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
     showStatus(`Override applied: ${categoryString}. Recategorizing transactions...`, 'success');
 
     _patchCategorizationCache(txnId, data, categoryString, true);
+
+    if (isUnreviewedTransaction) {
+      // re-render accounts sidebar to update unreviewed count
+      if (typeof renderAccountsSidebar === 'function') {
+        renderAccountsSidebar();
+      }
+    }
+
     renderTransactionTable();
     
     showStatus(`Override applied: ${categoryString}`, 'success');

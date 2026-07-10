@@ -736,6 +736,19 @@ async function _savePlaidDescriptionEdit(txnId, newDescription) {
   // The backend clears user_description_override when description is empty.
   const isClearing = !newDescription;
 
+  // 1. OPTIMISTIC DOM UPDATE: Close the editor immediately so it doesn't flicker or race with blur
+  if (_activeInlineEditor && _activeInlineEditor.txnId === txnId) {
+    const prefixHtml = _activeInlineEditor.descriptionPrefixHtml || '';
+    
+    // Update the originalHtml to the NEW text so that when we dismiss, 
+    // it stays showing the new text during the API call.
+    _activeInlineEditor.originalHtml = `${prefixHtml}${_escapeInlineText(newDescription)}`;
+    
+    // (Optional) Add a visual cue like a temporary saving/staged class
+    _activeInlineEditor.cell.classList.add('inline-staged'); 
+    
+    _dismissActiveEditor({ clearRowSession: true });
+  }
   try {
     const response = await authenticatedFetch(
       `${BACKEND_URL}/api/transactions/${encodeURIComponent(txnId)}/description`,
@@ -752,12 +765,17 @@ async function _savePlaidDescriptionEdit(txnId, newDescription) {
     }
 
     const txn = transactions.find(find_txn => find_txn.transaction_id === txnId);
+    let reviewedTheTransaction = false;
     if (txn) {
       if (isClearing) {
         txn.user_description_override = null;
       } else {
         txn.user_description_override = newDescription;
         txn.description = newDescription;
+        if (!txn.reviewed) {
+          txn.reviewed = true;
+          reviewedTheTransaction = true;
+        }
       }
     }
 
@@ -769,10 +787,13 @@ async function _savePlaidDescriptionEdit(txnId, newDescription) {
     }
 
     showStatus(isClearing ? 'Description override cleared' : 'Description updated', 'success');
-    _dismissActiveEditor({ clearRowSession: true });
+    if (reviewedTheTransaction) {
+      renderAccountsSidebar();
+    }
     renderTransactionTable();
   } catch (saveError) {
     showStatus(`Description update failed: ${saveError.message}`, 'error');
+    renderTransactionTable();
   }
 }
 

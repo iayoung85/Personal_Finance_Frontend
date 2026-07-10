@@ -194,6 +194,7 @@ function _filterUnchangedFields(transactionId, changes) {
 function _applyOptimisticUpdate(transactionId, changes) {
   const txn = _findTransactionOrSplitChild(transactionId);
   if (!txn) return;
+  let didUpdate = false;
 
   if (changes.user_category) {
     txn.user_category = changes.user_category;
@@ -202,11 +203,20 @@ function _applyOptimisticUpdate(transactionId, changes) {
       txn.is_override = true;
     }
     _updateCategoryDom(transactionId, changes.user_category);
+    didUpdate = true;
   }
 
   if (changes.user_memo !== undefined) {
     txn.user_memo = changes.user_memo;
     _updateMemoDom(transactionId, changes.user_memo);
+    didUpdate = true;
+  }
+  if (didUpdate && txn.reviewed === false) {
+    txn.reviewed = true;
+    _removeUnreviewedDotDom(transactionId);
+    if (typeof renderAccountsSidebar === 'function') {
+      renderAccountsSidebar();
+  }
   }
 }
 
@@ -263,6 +273,22 @@ function _updateMemoDom(transactionId, memoValue) {
     } else {
       memoSpan.innerHTML = '<em class="memo-placeholder">add memo…</em>';
       memoSpan.title = '';
+    }
+  }
+}
+
+/**
+ * Remove the unreviewed dot from the DOM without a full table re-render.
+ */
+function _removeUnreviewedDotDom(transactionId) {
+  // Find the row associated with this transaction
+  const row = document.querySelector(`tr[data-txn-id="${transactionId}"]`);
+  
+  if (row) {
+    // Find the unreviewed dot inside this specific row
+    const dot = row.querySelector('.unreviewed-dot');
+    if (dot) {
+      dot.remove(); // Deletes the span element from the DOM entirely
     }
   }
 }
