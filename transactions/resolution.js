@@ -724,7 +724,9 @@ function openInlineMatchPicker(missingTxnId) {
   // delivery), only show PLAID_CLEARED targets — matching manual-to-manual
   // doesn't make sense in this flow.
   const sourceType = getTransactionType(missingTxn);
-  const isSourceManualCleared = sourceType === TXN_TYPE.MANUAL_CLEARED;
+  const isSourceManualCleared = 
+    sourceType === TXN_TYPE.MANUAL_CLEARED ||
+    sourceType === TXN_TYPE.PLAID_CONVERTED;
   const MATCHABLE_TARGET_TYPES = isSourceManualCleared
     ? new Set([TXN_TYPE.PLAID_CLEARED])
     : new Set([TXN_TYPE.PLAID_CLEARED, TXN_TYPE.MANUAL_CLEARED, TXN_TYPE.PLAID_CONVERTED]);

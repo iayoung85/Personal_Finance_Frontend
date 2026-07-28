@@ -456,6 +456,13 @@ function _buildMenuItems(txnData) {
       });
     }
   }
+  if (isPlaidConverted) {
+    items.push({
+      label: '🔗 Match to Transaction',
+      action: 'match-to-adjacent',
+      separator: false,
+    });
+  }
 
   // Visual separator before destructive actions
   if (items.length > 0) {
