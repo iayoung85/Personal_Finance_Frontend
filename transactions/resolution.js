@@ -798,11 +798,47 @@ function openInlineMatchPicker(missingTxnId) {
   }
 }
 
+function _applyReconciliationMutationToCache(result, removedTxnId) {
+  if (removedTxnId) {
+    _removeCachedTransaction(removedTxnId);
+  }
+
+  if (result && result.transaction && result.transaction.transaction_id) {
+    _replaceCachedTransaction(result.transaction.transaction_id, result.transaction);
+  }
+
+  const partnerTransaction = result?.transfer_partner_transaction || result?.affected_transfer_partner;
+  if (partnerTransaction && partnerTransaction.transaction_id) {
+    _replaceCachedTransaction(partnerTransaction.transaction_id, partnerTransaction);
+  }
+
+  renderTransactionTable();
+  if (typeof renderAccountsSidebar === 'function') {
+    renderAccountsSidebar();
+  }
+}
+
+async function approveMatchedTransactionAndRefresh(transactionId, accountId) {
+  const result = await approveMatch(transactionId);
+  _applyReconciliationMutationToCache(result, transactionId);
+
+  if (accountId) {
+    try {
+      await refreshAccountTransactions(accountId);
+    } catch (refreshError) {
+      console.warn('Failed to refresh account after approve-match', accountId, refreshError);
+    }
+  }
+
+  showStatus('Match approved — manual transaction removed', 'success');
+}
+
 async function _selectMatchCandidate(missingTxnId, targetTxnId) {
   if (!confirm('Link these two transactions?')) return;
 
   try {
     const result = await manualReconciliationMatch(missingTxnId, targetTxnId);
+    _applyReconciliationMutationToCache(result, missingTxnId);
 
     if (result.splits_need_repair) {
       showStatus(
@@ -814,7 +850,6 @@ async function _selectMatchCandidate(missingTxnId, targetTxnId) {
     }
 
     closeModal();
-    _refreshAfterReconciliation();
     fetchBalanceHistory(result.account_id);
   } catch (matchError) {
     showStatus(`Match failed: ${matchError.message}`, 'error');
@@ -830,7 +865,8 @@ async function _selectMatchCandidate(missingTxnId, targetTxnId) {
 async function approveSuggestion(suggestedTxnId, plaidTxnId, accountId) {
   if (!confirm('Approve this suggested match? The manual transaction will be merged into the Plaid transaction.')) return;
   try {
-    await manualReconciliationMatch(suggestedTxnId, plaidTxnId);
+    const result = await manualReconciliationMatch(suggestedTxnId, plaidTxnId);
+    _applyReconciliationMutationToCache(result, suggestedTxnId);
     showStatus('Suggestion approved — manual transaction merged', 'success');
     await refreshAccountTransactions(accountId);
   } catch (approveError) {

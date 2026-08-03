@@ -872,9 +872,9 @@ async function _handleContextApproveMatch(txnData) {
   // row's transaction_id, not the displayed plaid row's.
   const approveId = txnData.matchManualTxnId || txnData.txnId;
   try {
-    await approveMatch(approveId);
+    const result = await approveMatch(approveId);
+    _applyReconciliationMutationToCache(result, approveId);
     showStatus('Match approved — manual transaction removed', 'success');
-    await refreshAccountTransactions(txnData.accountId);
   } catch (approveError) {
     showStatus(`Failed to approve match: ${approveError.message}`, 'error');
   }
