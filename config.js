@@ -45,55 +45,39 @@ function ensureLocalDevSession() {
 
 window.ensureLocalDevSession = ensureLocalDevSession;
 
-function detectBackendUrl() {
-  // Check for backend URL in query params (for ngrok demos)
-  const urlParams = new URLSearchParams(window.location.search);
-  const backendParam = urlParams.get('backend');
-  if (backendParam) {
-     return Promise.resolve(backendParam);
-  }
+// Helper to check if a local backend port is responsive
+async function isPortHealthy(hostname, port, timeoutMs = 2000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  const hostname = window.location.hostname;
-  // Try local ports if on localhost — race both in parallel, first healthy wins
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    const ports = [5501, 8000];
-    const HEALTH_TIMEOUT_MS = 2000;
-
-    return new Promise((resolve) => {
-      let resolved = false;
-      let failures = 0;
-
-      ports.forEach((port) => {
-        const url = `http://${hostname}:${port}`;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
-
-        fetch(`${url}/api/auth/health`, { signal: controller.signal, cache: 'no-cache' })
-          .then((r) => {
-            clearTimeout(timeoutId);
-            if (r.ok && !resolved) {
-              resolved = true;
-              resolve(url);
-            } else {
-              throw new Error('not ok');
-            }
-          })
-          .catch(() => {
-            clearTimeout(timeoutId);
-            failures++;
-            if (failures === ports.length && !resolved) {
-              // No local backend found — fall back to production
-              resolved = true;
-              resolve('https://api.isaacyoung.com');
-            }
-          });
-      });
+  try {
+    const res = await fetch(`http://${hostname}:${port}/api/auth/health`, {
+      signal: controller.signal,
+      cache: 'no-cache'
     });
-  } else {
-    // Production — backend is on a permanent Cloudflare Tunnel
-    return Promise.resolve('https://api.isaacyoung.com');
+    clearTimeout(timeoutId);
+    return res.ok;
+  } catch (_err) {
+    clearTimeout(timeoutId);
+    return false;
   }
 }
+async function detectBackendUrl() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const backendParam = urlParams.get('backend');
+  if (backendParam) return backendParam;
+
+  const hostname = window.location.hostname;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    // Check 5501 first (Flask dev server), then fallback to 8000
+    if (await isPortHealthy(hostname, 5501)) return `http://${hostname}:5501`;
+    if (await isPortHealthy(hostname, 8000)) return `http://${hostname}:8000`;
+  }
+
+  return 'https://api.isaacyoung.com';
+}
+
+
 
 // Usage: All scripts should wait for this promise to resolve before making API calls
 window.BACKEND_URL_PROMISE = detectBackendUrl().then(url => {

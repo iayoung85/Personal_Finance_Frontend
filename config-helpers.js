@@ -34,6 +34,34 @@ const APP_CONFIG_DEFAULTS = {
 };
 
 /**
+ * Fetches user preferences from the backend, saves them to localStorage,
+ * and returns the merged config object.
+ *
+ * @returns {Promise<Object>} Merged app configuration object
+ */
+async function initAppConfig() {
+  const authToken = localStorage.getItem('authToken');
+  
+  // Skip backend fetch if user is not authenticated
+  if (!authToken || typeof authenticatedFetch !== 'function') {
+    return getAppConfig();
+  }
+
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/user/preferences`);
+    if (response.ok) {
+      const serverPrefs = await response.json();
+      localStorage.setItem(APP_CONFIG_KEY, JSON.stringify(serverPrefs));
+      return serverPrefs;
+    }
+  } catch (error) {
+    console.warn('Unable to sync app preferences from server:', error.message);
+  }
+
+  return getAppConfig();
+}
+
+/**
  * Returns the current app config merged with defaults.
  * Reads from the localStorage cache — fast, synchronous,
  * safe to call from any render path.

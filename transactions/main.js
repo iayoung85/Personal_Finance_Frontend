@@ -17,6 +17,8 @@ $(document).ready(async function() {
   }
   setDefaultDates();
 
+  await initAppConfig();
+
   // Load accounts and settings in parallel; keep checkboxes unchecked until both complete
   await Promise.all([loadAccounts(), loadSettings()]);
 
