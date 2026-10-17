@@ -19,7 +19,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Route to correct view based on auth state
     if (IndexState.isLoggedIn()) {
-      showDashboard();
+      // Why: a hidden browser page once reopened this page several times a
+      // second for days, and every open fetched the bank list from the API.
+      showDashboard({ pauseBankLoad: IndexState.recordPageOpen() });
     } else {
       showLogin();
     }

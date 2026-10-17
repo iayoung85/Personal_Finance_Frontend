@@ -69,6 +69,17 @@ const IndexConnectionsList = (() => {
     }
   }
 
+  /** Show a manual load button in place of the bank list, without calling the API. */
+  function showLoadPaused() {
+    const listElement = document.getElementById('connections-list');
+    if (!listElement) return;
+
+    listElement.innerHTML =
+      '<p class="banks-empty-state">This page reopened too many times in a few seconds, so loading is paused.</p>' +
+      '<button type="button" class="btn btn-secondary" id="banks-resume-load">Load banks</button>';
+    document.getElementById('banks-resume-load').addEventListener('click', () => loadBanks());
+  }
+
   // Start polling the backend while any bank is in a pending state.
   function _startPendingPoll() {
     if (_pendingPollId) return; // already running
@@ -1515,6 +1526,7 @@ const IndexConnectionsList = (() => {
 
   return {
     loadBanks,
+    showLoadPaused,
     handleRefresh,
     handleRelink,
     handleDisconnect,

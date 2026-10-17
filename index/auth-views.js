@@ -22,7 +22,11 @@ function showTwoFactorLogin() {
   document.getElementById('two-factor-code')?.focus();
 }
 
-function showDashboard() {
+/**
+ * @param {Object} [options]
+ * @param {boolean} [options.pauseBankLoad=false] - Show a load button instead of fetching banks.
+ */
+function showDashboard(options = {}) {
   // Why: sidebar only appears after authentication, not on login/register views
   document.body.setAttribute('data-nav-mode', 'persistent');
   if (typeof initNavSidebar === 'function' && !document.getElementById('nav-sidebar')) {
@@ -40,7 +44,11 @@ function showDashboard() {
     nameElement.textContent = `${user?.first_name || ''} ${user?.last_name || ''}`.trim();
   }
 
-  IndexConnectionsList.loadBanks();
+  if (options.pauseBankLoad) {
+    IndexConnectionsList.showLoadPaused();
+  } else {
+    IndexConnectionsList.loadBanks();
+  }
 }
 
 function logout() {

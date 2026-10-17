@@ -4,6 +4,29 @@
  * All other modules read/write through these accessors — no direct localStorage access elsewhere.
  */
 
+const PAGE_OPENS_KEY = 'index_page_opens';
+const PAGE_OPEN_WINDOW_MS = 10 * 1000;
+const PAGE_OPEN_LIMIT = 5;
+
+/**
+ * Add one page open to the list of recent opens and decide whether the page
+ * is being reopened in a loop.
+ * @param {Array<number>|*} storedOpens - Earlier open times in ms since epoch; anything malformed is dropped.
+ * @param {number} nowMs - Time of this open in ms since epoch.
+ * @returns {{opens: Array<number>, tooOften: boolean}} The opens to store back, and whether
+ *   more than PAGE_OPEN_LIMIT happened inside PAGE_OPEN_WINDOW_MS.
+ */
+function _trackPageOpen(storedOpens, nowMs) {
+  const earlierOpens = Array.isArray(storedOpens) ? storedOpens : [];
+  const recentOpens = earlierOpens.filter(openedAt => {
+    if (typeof openedAt !== 'number') return false;
+    const ageMs = nowMs - openedAt;
+    return ageMs >= 0 && ageMs < PAGE_OPEN_WINDOW_MS;
+  });
+  recentOpens.push(nowMs);
+  return { opens: recentOpens, tooOften: recentOpens.length > PAGE_OPEN_LIMIT };
+}
+
 const IndexState = (() => {
   let authToken = localStorage.getItem('authToken');
   let refreshToken = localStorage.getItem('refreshToken');
@@ -79,6 +102,23 @@ const IndexState = (() => {
 
     isLoggedIn() {
       return Boolean(authToken && currentUser);
+    },
+
+    /**
+     * Record that the page just opened. Opens are kept in localStorage, not
+     * sessionStorage, so copies of the page the user cannot see are counted too.
+     * @returns {boolean} true when the page is reopening too often to load automatically.
+     */
+    recordPageOpen() {
+      try {
+        const storedOpens = JSON.parse(localStorage.getItem(PAGE_OPENS_KEY) || '[]');
+        const { opens, tooOften } = _trackPageOpen(storedOpens, Date.now());
+        localStorage.setItem(PAGE_OPENS_KEY, JSON.stringify(opens));
+        return tooOften;
+      } catch (err) {
+        console.warn('Failed to record page open', err);
+        return false;
+      }
     },
     /**
      * Set a timestamp (ms since epoch) for an item action.
