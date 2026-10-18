@@ -436,6 +436,9 @@ function _sortBills(bills) {
       case 'account':
         comparison = (billA.account_name || '').localeCompare(billB.account_name || '');
         break;
+      case 'bank':
+        comparison = (billA.bank_name || '').localeCompare(billB.bank_name || '');
+        break;
       case 'category':
         comparison = (billA.user_category || '').localeCompare(billB.user_category || '');
         break;
@@ -540,7 +543,9 @@ function _renderBillRow(bill) {
   const variableNote = bill.amount_is_approximate ? ' <span title="Amount is approximate (range match)" style="color:#e67e22;font-weight:600;">~</span>' : '';
   const autoPayNote = bill.auto_pay ? ' <span title="Auto-pay enabled" class="auto-pay-badge">AUTO</span>' : '';
   const accountName = escapeHtml(bill.account_name || bill.account_id);
+  const bankName = escapeHtml(bill.bank_name || '');
   const category = escapeHtml(bill.user_category || '');
+  const destBank = escapeHtml(bill.transfer_bank_name || '');
   const destAccount = bill.transfer_account_name ? escapeHtml(bill.transfer_account_name) : '';
   const rowClass = bill.is_active ? '' : 'bill-inactive';
   const toggleLabel = bill.is_active ? 'Pause' : 'Resume';
@@ -557,8 +562,10 @@ function _renderBillRow(bill) {
     <td class="${amountClass}">${amountDisplay}</td>
     <td>${freqLabel}${intervalNote}</td>
     <td style="font-size:12px;">${accountName}</td>
+    <td style="font-size:12px;">${bankName}</td>
     <td style="font-size:12px;">${category}</td>
     <td style="font-size:12px;">${destAccount}</td>
+    <td style="font-size:12px;">${destBank}</td>
     <td style="white-space:nowrap;">
       <button class="bill-action-btn" onclick="openBillModal('${bill.bill_id}')" title="Edit">✏️</button>
       <button class="bill-action-btn toggle-active" onclick="toggleBill('${bill.bill_id}')" title="${toggleLabel}">${bill.is_active ? '⏸' : '▶️'}</button>
@@ -681,7 +688,7 @@ function renderBillsTable() {
   } else {
     const groups = _groupBills(sorted, groupBy);
     const collapsed = _getCollapsedGroups();
-    const columnCount = table.querySelector('thead tr')?.children.length || 10;
+    const columnCount = table.querySelector('thead tr')?.children.length || 12;
 
     tbody.innerHTML = groups.map(group => {
       const isCollapsed = !!collapsed[group.name];
