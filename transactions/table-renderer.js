@@ -1206,7 +1206,7 @@ function renderTransactionTable() {
     // before moving on. Approving a match auto-flips the flag, and the
     // context-menu "Mark visible as reviewed" action clears it in bulk.
     const unreviewedDot = (txn.reviewed === false && !isFutureBlockRow && !isOpeningBalanceRow)
-      ? `<span class="unreviewed-dot" title="Click to mark reviewed" onclick="event.stopPropagation(); _markSingleTransactionReviewed('${txnId}')"></span>`
+      ? `<span class="unreviewed-dot" title="${escapeHtml(unreviewedDotTitle(txn))}" onclick="event.stopPropagation(); _markSingleTransactionReviewed('${txnId}')"></span>`
       : '';
     rowHtml += `<td class="date-column${isDateInlineEditable ? ' inline-editable' : ''}"${isDateInlineEditable ? ' data-field="date"' : ''}>${!showLogoColumn ? hiddenCheckboxHtml : ''}${unreviewedDot}${dateStr}</td>`;
     if (showBankAccountColumn) {
