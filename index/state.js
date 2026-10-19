@@ -104,18 +104,6 @@ const IndexState = (() => {
       localStorage.setItem('currentUser', JSON.stringify(currentUser));
     },
 
-    /** Update just the access token (after a silent refresh). */
-    setAccessToken(token) {
-      authToken = token;
-      localStorage.setItem('authToken', authToken);
-    },
-
-    /** Update the refresh token (when backend issues a rotated one). */
-    setRefreshToken(token) {
-      refreshToken = token;
-      localStorage.setItem('refreshToken', refreshToken);
-    },
-
     setTempLoginCreds(creds) { tempLoginCreds = creds; },
     clearTempLoginCreds() { tempLoginCreds = null; },
 

@@ -4,8 +4,9 @@
 // ============================================================
 
 async function authenticatedFetch(url, options = {}) {
+  const sentToken = authToken;
   const headers = {
-    'Authorization': `Bearer ${authToken}`,
+    'Authorization': `Bearer ${sentToken}`,
     'Content-Type': 'application/json',
     ...options.headers
   };
@@ -13,40 +14,15 @@ async function authenticatedFetch(url, options = {}) {
   const response = await fetch(url, { ...options, headers });
 
   if (response.status === 401) {
-    const refreshed = await _refreshAccessToken();
-    if (refreshed) {
+    const renewedToken = await renewSessionAfter401(sentToken);
+    if (renewedToken) {
+      authToken = renewedToken;
       headers['Authorization'] = `Bearer ${authToken}`;
       return fetch(url, { ...options, headers });
     }
-    window.location.href = 'index.html';
-    throw new Error('Session expired');
   }
 
   return response;
-}
-
-async function _refreshAccessToken() {
-  if (!refreshToken) return false;
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken })
-    });
-    if (response.ok) {
-      const data = await response.json();
-      authToken = data.access_token;
-      localStorage.setItem('authToken', authToken);
-      if (data.refresh_token) {
-        refreshToken = data.refresh_token;
-        localStorage.setItem('refreshToken', refreshToken);
-      }
-      return true;
-    }
-  } catch (error) {
-    console.error('Token refresh failed:', error);
-  }
-  return false;
 }
 
 async function fetchItemInfo(itemId) {

@@ -44,11 +44,7 @@ function _buildAccountDisplayName(acc) {
 async function refreshAccounts() {
   try {
     showStatus('Syncing accounts from Plaid...', 'info');
-    const response = await fetch(`${BACKEND_URL}/api/accounts`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts`);
     
     if (!response.ok) {
       throw new Error('Failed to refresh accounts');

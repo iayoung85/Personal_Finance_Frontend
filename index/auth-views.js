@@ -7,6 +7,9 @@
 
 function showLogin() {
   IndexUtils.switchToView('login-view');
+  if (takeSessionExpiredNotice()) {
+    IndexUtils.showMessage('login-message', 'Your session expired. Please sign in again.', 'error');
+  }
 }
 
 function showRegister() {

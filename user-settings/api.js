@@ -6,66 +6,27 @@
 // ============================================================
 
 /**
- * Attempts to refresh the access token using the stored
- * refresh token. Logs out and returns false on any failure.
- *
- * @returns {Promise<boolean>} True if refresh succeeded
- */
-async function refreshAccessToken() {
-  if (!refreshToken) {
-    logout();
-    return false;
-  }
-
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken })
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      authToken = data.access_token;
-      localStorage.setItem('authToken', authToken);
-
-      if (data.refresh_token) {
-        refreshToken = data.refresh_token;
-        localStorage.setItem('refreshToken', refreshToken);
-      }
-
-      return true;
-    } else {
-      logout();
-      return false;
-    }
-  } catch (error) {
-    console.error('Token refresh failed:', error);
-    logout();
-    return false;
-  }
-}
-
-/**
- * Wraps fetch with Bearer auth header. Automatically retries
- * once after a 401 via refreshAccessToken.
+ * Wraps fetch with Bearer auth header. Retries once after a 401
+ * with a renewed token from shared/auth-session.js.
  *
  * @param {string} url     - Target URL
  * @param {object} options - Standard fetch options
  * @returns {Promise<Response>}
  */
 async function authenticatedFetch(url, options = {}) {
+  const sentToken = authToken;
   const headers = {
-    'Authorization': `Bearer ${authToken}`,
+    'Authorization': `Bearer ${sentToken}`,
     ...options.headers
   };
 
   const response = await fetch(url, { ...options, headers });
 
   if (response.status === 401) {
-    const refreshed = await refreshAccessToken();
+    const renewedToken = await renewSessionAfter401(sentToken);
 
-    if (refreshed) {
+    if (renewedToken) {
+      authToken = renewedToken;
       headers['Authorization'] = `Bearer ${authToken}`;
       return fetch(url, { ...options, headers });
     }

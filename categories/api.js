@@ -19,54 +19,22 @@ function refreshAuthState() {
 // Re-read auth state on script load
 refreshAuthState();
 
-async function refreshAccessToken() {
-  if (!refreshToken) {
-    return false;
-  }
-
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken })
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      token = data.access_token;
-      localStorage.setItem('authToken', token);
-      if (data.refresh_token) {
-        refreshToken = data.refresh_token;
-        localStorage.setItem('refreshToken', refreshToken);
-      }
-      return true;
-    } else {
-      return false;
-    }
-  } catch (networkError) {
-    console.error('Token refresh failed:', networkError);
-    return false;
-  }
-}
-
 async function authenticatedFetch(url, options = {}) {
+  const sentToken = token;
   const headers = {
-    'Authorization': `Bearer ${token}`,
+    'Authorization': `Bearer ${sentToken}`,
     ...options.headers
   };
 
   const response = await fetch(url, { ...options, headers });
 
   if (response.status === 401) {
-    const refreshed = await refreshAccessToken();
-    if (refreshed) {
+    const renewedToken = await renewSessionAfter401(sentToken);
+    if (renewedToken) {
+      token = renewedToken;
       headers['Authorization'] = `Bearer ${token}`;
       return fetch(url, { ...options, headers });
     }
-    // Session expired and refresh failed — logout and redirect
-    logout();
-    alert('Session expired. Please log in again.');
-    return Promise.reject(new Error('Session expired'));
   }
 
   return response;

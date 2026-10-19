@@ -10,50 +10,23 @@ const IndexApi = (() => {
    * Every authenticated call in this module should go through this.
    */
   async function authenticatedFetch(url, options = {}) {
+    const sentToken = IndexState.getAuthToken();
     const headers = {
-      'Authorization': `Bearer ${IndexState.getAuthToken()}`,
+      'Authorization': `Bearer ${sentToken}`,
       ...options.headers,
     };
     const response = await fetch(url, { ...options, headers, cache: 'no-cache' });
 
     if (response.status === 401) {
-      const refreshed = await _refreshAccessToken();
-      if (refreshed) {
-        headers['Authorization'] = `Bearer ${IndexState.getAuthToken()}`;
+      const renewedToken = await renewSessionAfter401(sentToken);
+      IndexState.recordOpenDiagnostic(renewedToken ? 'refresh-ok' : 'refresh-failed');
+      if (renewedToken) {
+        IndexState.refreshAuthState();
+        headers['Authorization'] = `Bearer ${renewedToken}`;
         return fetch(url, { ...options, headers, cache: 'no-cache' });
       }
     }
     return response;
-  }
-
-  /** Silent access-token refresh using the stored refresh token. */
-  async function _refreshAccessToken() {
-    const currentRefreshToken = IndexState.getRefreshToken();
-    if (!currentRefreshToken) return false;
-
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: currentRefreshToken }),
-        cache: 'no-cache',
-      });
-      if (!response.ok) {
-        IndexState.recordOpenDiagnostic(`refresh-failed-${response.status}`);
-        return false;
-      }
-
-      const data = await response.json();
-      IndexState.setAccessToken(data.access_token);
-      if (data.refresh_token) {
-        IndexState.setRefreshToken(data.refresh_token);
-      }
-      IndexState.recordOpenDiagnostic(data.refresh_token ? 'refresh-ok-rotated' : 'refresh-ok');
-      return true;
-    } catch (_networkError) {
-      IndexState.recordOpenDiagnostic('refresh-network-error');
-      return false;
-    }
   }
 
   // ── Auth endpoints ──────────────────────────────────────
