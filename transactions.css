@@ -1306,6 +1306,30 @@ tr:hover {
   opacity: 1;
 }
 
+/* Unreviewed-dot reason tooltip. No transition: it should appear the
+   moment the pointer reaches the dot. */
+.review-reason-tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  max-width: 320px;
+  padding: 5px 10px;
+  background: var(--bg-surface-elevated, #2a2a2e);
+  color: var(--text-primary, #e0e0e0);
+  border: 1px solid var(--border-primary, #444);
+  border-radius: 5px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-line;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 9999;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+.review-reason-tooltip.visible {
+  opacity: 1;
+}
+
 .transaction-scroll-pane table {
   margin-top: 0;
   table-layout: fixed;

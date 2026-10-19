@@ -209,6 +209,58 @@ function _showScrollDateBubble(scrollTop) {
   }, 1200);
 }
 
+// Unreviewed-dot reason tooltip. A page-level element because the date cell
+// clips its overflow, and shown on mouseover because a native title waits
+// about a second before appearing.
+let _reviewTooltipBound = false;
+const _REVIEW_TOOLTIP_GAP_PX = 6;
+
+function _getOrCreateReviewTooltip() {
+  let tooltip = document.getElementById('review-reason-tooltip');
+  if (!tooltip) {
+    tooltip = document.createElement('div');
+    tooltip.id = 'review-reason-tooltip';
+    tooltip.className = 'review-reason-tooltip';
+    document.body.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
+function _showReviewTooltip(dot) {
+  const tooltip = _getOrCreateReviewTooltip();
+  tooltip.textContent = dot.dataset.reviewTooltip || '';
+  const dotRect = dot.getBoundingClientRect();
+  const topIfAbove = dotRect.top - tooltip.offsetHeight - _REVIEW_TOOLTIP_GAP_PX;
+  // Flip below the dot when the top rows leave no room above.
+  const top = topIfAbove >= 0 ? topIfAbove : dotRect.bottom + _REVIEW_TOOLTIP_GAP_PX;
+  tooltip.style.left = `${dotRect.left}px`;
+  tooltip.style.top = `${top}px`;
+  tooltip.classList.add('visible');
+}
+
+function _hideReviewTooltip() {
+  const tooltip = document.getElementById('review-reason-tooltip');
+  if (tooltip) tooltip.classList.remove('visible');
+}
+
+function _bindReviewReasonTooltip() {
+  if (_reviewTooltipBound) return;
+  const pane = document.querySelector('.transaction-scroll-pane');
+  if (!pane) return;
+  pane.addEventListener('mouseover', (event) => {
+    const dot = event.target.closest('.unreviewed-dot');
+    if (dot) _showReviewTooltip(dot);
+  });
+  pane.addEventListener('mouseout', (event) => {
+    if (event.target.closest('.unreviewed-dot')) _hideReviewTooltip();
+  });
+  // Capture phase: the dot's own click handler stops propagation, and the
+  // dot is removed on click, so no mouseout would follow.
+  pane.addEventListener('click', _hideReviewTooltip, true);
+  pane.addEventListener('scroll', _hideReviewTooltip, { passive: true });
+  _reviewTooltipBound = true;
+}
+
 
 
 /**
@@ -1206,7 +1258,7 @@ function renderTransactionTable() {
     // before moving on. Approving a match auto-flips the flag, and the
     // context-menu "Mark visible as reviewed" action clears it in bulk.
     const unreviewedDot = (txn.reviewed === false && !isFutureBlockRow && !isOpeningBalanceRow)
-      ? `<span class="unreviewed-dot" title="${escapeHtml(unreviewedDotTitle(txn))}" onclick="event.stopPropagation(); _markSingleTransactionReviewed('${txnId}')"></span>`
+      ? `<span class="unreviewed-dot" data-review-tooltip="${escapeHtml(unreviewedDotTitle(txn))}" aria-label="${escapeHtml(unreviewedDotTitle(txn))}" onclick="event.stopPropagation(); _markSingleTransactionReviewed('${txnId}')"></span>`
       : '';
     rowHtml += `<td class="date-column${isDateInlineEditable ? ' inline-editable' : ''}"${isDateInlineEditable ? ' data-field="date"' : ''}>${!showLogoColumn ? hiddenCheckboxHtml : ''}${unreviewedDot}${dateStr}</td>`;
     if (showBankAccountColumn) {
@@ -1319,6 +1371,7 @@ function renderTransactionTable() {
     }
   }
   _bindMouseTracking();
+  _bindReviewReasonTooltip();
 
   document.getElementById('export-buttons').classList.remove('hidden');
   
