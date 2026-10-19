@@ -1382,7 +1382,7 @@ const IndexConnectionsList = (() => {
     // Load popular institutions as initial list
     try {
       const response = await fetch(
-        `${window.BACKEND_URL || 'http://localhost:8000'}/api/accounts/reference/popular-institutions`,
+        `${window.BACKEND_URL}/api/accounts/reference/popular-institutions`,
       );
       const data = await response.json();
       _renderInstitutionResults(data.institutions || []);
@@ -1398,7 +1398,7 @@ const IndexConnectionsList = (() => {
       // Too short — reload popular list
       try {
         const response = await fetch(
-          `${window.BACKEND_URL || 'http://localhost:8000'}/api/accounts/reference/popular-institutions`,
+          `${window.BACKEND_URL}/api/accounts/reference/popular-institutions`,
         );
         const data = await response.json();
         _renderInstitutionResults(data.institutions || []);
@@ -1412,7 +1412,7 @@ const IndexConnectionsList = (() => {
     resultsContainer.innerHTML = '<div class="institution-picker-empty">Searching...</div>';
     try {
       const response = await fetch(
-        `${window.BACKEND_URL || 'http://localhost:8000'}/api/accounts/reference/search-institutions?q=${encodeURIComponent(query)}`,
+        `${window.BACKEND_URL}/api/accounts/reference/search-institutions?q=${encodeURIComponent(query)}`,
       );
       const data = await response.json();
       const institutions = data.institutions || [];

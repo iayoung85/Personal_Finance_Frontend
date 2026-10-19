@@ -69,9 +69,7 @@ async function detectBackendUrl() {
 
   const hostname = window.location.hostname;
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    // Check 5501 first (Flask dev server), then fallback to 8000
-    if (await isPortHealthy(hostname, 5501)) return `http://${hostname}:5501`;
-    if (await isPortHealthy(hostname, 8000)) return `http://${hostname}:8000`;
+    if (await isPortHealthy(hostname, DEV_SERVER_PORT)) return `http://${hostname}:${DEV_SERVER_PORT}`;
   }
 
   return 'https://api.isaacyoung.com';

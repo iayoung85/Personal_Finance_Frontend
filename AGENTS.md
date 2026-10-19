@@ -39,7 +39,7 @@ Things that are not obvious:
 | Task | Read first |
 | --- | --- |
 | What a page is supposed to do | `../my_personal_finance/docs/page-blueprints/<page>.md` |
-| What an endpoint takes and returns | `../my_personal_finance/docs/routes/README.md`, then the one page file |
+| What an endpoint takes and returns | `../my_personal_finance/docs/api-conventions.md` for the shared rules, then the route and the service it calls in `../my_personal_finance/src/modules/` |
 | Colors, spacing, dark and light themes | `theme.css` — use its variables, do not hardcode colors |
 
 Many files here are over a thousand lines. Search for the function, then read around it.
