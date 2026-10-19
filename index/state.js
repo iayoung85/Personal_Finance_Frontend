@@ -27,9 +27,9 @@ function _trackPageOpen(storedOpens, nowMs) {
   return { opens: recentOpens, tooOften: recentOpens.length > PAGE_OPEN_LIMIT };
 }
 
-// Why: something outside this page's code reopens it several times a second
-// right after a token refresh. These entries survive the reopens so the user
-// can read them afterwards with:
+// Why: Safari's Reading List fetcher once reopened this page in hidden views
+// several times a second. These entries survive the reopens so the user can
+// read them afterwards with:
 //   console.table(JSON.parse(localStorage.index_open_diagnostics))
 const OPEN_DIAGNOSTICS_KEY = 'index_open_diagnostics';
 const OPEN_DIAGNOSTICS_MAX = 60;

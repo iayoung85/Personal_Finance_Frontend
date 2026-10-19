@@ -8,8 +8,26 @@ window.addEventListener('pagehide', (event) => {
   IndexState.recordOpenDiagnostic(event.persisted ? 'leave-to-cache' : 'leave');
 });
 
-document.addEventListener('DOMContentLoaded', async () => {
-  IndexState.recordOpenDiagnostic('open');
+/**
+ * Run startPage now if the page is visible, otherwise the first time it becomes visible.
+ * @param {Document} doc - The page's document; tests pass a stand-in.
+ * @param {Function} startPage - Called exactly once.
+ */
+function _startWhenVisible(doc, startPage) {
+  if (doc.visibilityState === 'visible') {
+    startPage();
+    return;
+  }
+  const startOnFirstShow = () => {
+    if (doc.visibilityState !== 'visible') return;
+    doc.removeEventListener('visibilitychange', startOnFirstShow);
+    startPage();
+  };
+  doc.addEventListener('visibilitychange', startOnFirstShow);
+}
+
+/** Bind the forms, then route to the login or dashboard view. */
+async function _startPage() {
   try {
     await window.BACKEND_URL_PROMISE;
 
@@ -34,4 +52,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.error('Initialization error:', initError);
     showLogin();
   }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  IndexState.recordOpenDiagnostic('open');
+  // Why: Safari's Reading List fetcher loaded this page in hidden views about
+  // eleven times a second, and every copy signed in and fetched banks. A page
+  // nobody can see, such as a background tab, starts when it is first shown.
+  _startWhenVisible(document, _startPage);
 });
