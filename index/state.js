@@ -27,6 +27,40 @@ function _trackPageOpen(storedOpens, nowMs) {
   return { opens: recentOpens, tooOften: recentOpens.length > PAGE_OPEN_LIMIT };
 }
 
+// Why: something outside this page's code reopens it several times a second
+// right after a token refresh. These entries survive the reopens so the user
+// can read them afterwards with:
+//   console.table(JSON.parse(localStorage.index_open_diagnostics))
+const OPEN_DIAGNOSTICS_KEY = 'index_open_diagnostics';
+const OPEN_DIAGNOSTICS_MAX = 60;
+const TAB_ID_KEY = 'index_tab_id';
+
+/**
+ * Append one diagnostic entry, keeping only the newest OPEN_DIAGNOSTICS_MAX.
+ * @param {Array<Object>|*} storedEntries - Earlier entries; anything that is not an array is dropped.
+ * @param {Object} entry - The entry to add.
+ * @returns {Array<Object>} The entries to store back.
+ */
+function _appendOpenDiagnostic(storedEntries, entry) {
+  const entries = Array.isArray(storedEntries) ? storedEntries : [];
+  entries.push(entry);
+  return entries.slice(-OPEN_DIAGNOSTICS_MAX);
+}
+
+/**
+ * An id for this browser tab. sessionStorage lasts across reloads of one tab
+ * but is separate per tab, so a changing id means a different copy of the page.
+ * @returns {string}
+ */
+function _currentTabId() {
+  let tabId = sessionStorage.getItem(TAB_ID_KEY);
+  if (!tabId) {
+    tabId = Math.random().toString(36).slice(2, 8);
+    sessionStorage.setItem(TAB_ID_KEY, tabId);
+  }
+  return tabId;
+}
+
 const IndexState = (() => {
   let authToken = localStorage.getItem('authToken');
   let refreshToken = localStorage.getItem('refreshToken');
@@ -118,6 +152,31 @@ const IndexState = (() => {
       } catch (err) {
         console.warn('Failed to record page open', err);
         return false;
+      }
+    },
+
+    /**
+     * Log one page event (an open, a token refresh) with how the page was
+     * reached, which tab it is in, and whether it is visible.
+     * @param {string} event - Short event name, e.g. 'open' or 'refresh-ok'.
+     */
+    recordOpenDiagnostic(event) {
+      try {
+        const navigation = performance.getEntriesByType('navigation')[0];
+        const entry = {
+          at: new Date().toISOString(),
+          event,
+          tab: _currentTabId(),
+          navType: navigation ? navigation.type : 'unknown',
+          referrer: document.referrer || '',
+          visibility: document.visibilityState,
+          focused: document.hasFocus(),
+          url: location.pathname + location.search + location.hash,
+        };
+        const storedEntries = JSON.parse(localStorage.getItem(OPEN_DIAGNOSTICS_KEY) || '[]');
+        localStorage.setItem(OPEN_DIAGNOSTICS_KEY, JSON.stringify(_appendOpenDiagnostic(storedEntries, entry)));
+      } catch (err) {
+        console.warn('Failed to record open diagnostic', err);
       }
     },
     /**

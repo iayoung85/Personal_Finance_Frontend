@@ -21,14 +21,14 @@ function loadState(storedValues = {}) {
     },
   };
   vm.runInNewContext(
-    `${stateSource}\nmodule.exports = { _trackPageOpen, IndexState, PAGE_OPEN_LIMIT, PAGE_OPEN_WINDOW_MS };`,
+    `${stateSource}\nmodule.exports = { _trackPageOpen, _appendOpenDiagnostic, IndexState, PAGE_OPEN_LIMIT, PAGE_OPEN_WINDOW_MS, OPEN_DIAGNOSTICS_MAX };`,
     sandbox,
     { filename: statePath },
   );
   return { ...sandbox.module.exports, storage };
 }
 
-const { _trackPageOpen, PAGE_OPEN_LIMIT, PAGE_OPEN_WINDOW_MS } = loadState();
+const { _trackPageOpen, _appendOpenDiagnostic, PAGE_OPEN_LIMIT, PAGE_OPEN_WINDOW_MS, OPEN_DIAGNOSTICS_MAX } = loadState();
 
 test('a first open is not too often', () => {
   const result = _trackPageOpen([], 1_000_000);
@@ -80,4 +80,16 @@ test('recordPageOpen survives unreadable storage and pauses a loop', () => {
   }
   assert.equal(paused, true);
   assert.ok(JSON.parse(looping.storage.get('index_page_opens')).length > PAGE_OPEN_LIMIT);
+});
+
+test('open diagnostics keep only the newest entries and drop malformed storage', () => {
+  assert.deepEqual([..._appendOpenDiagnostic('not a list', { event: 'open' })].map(e => e.event), ['open']);
+
+  let entries = [];
+  for (let i = 0; i < OPEN_DIAGNOSTICS_MAX + 5; i += 1) {
+    entries = _appendOpenDiagnostic(entries, { event: `open-${i}` });
+  }
+  assert.equal(entries.length, OPEN_DIAGNOSTICS_MAX);
+  assert.equal(entries[0].event, 'open-5');
+  assert.equal(entries[entries.length - 1].event, `open-${OPEN_DIAGNOSTICS_MAX + 4}`);
 });

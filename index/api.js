@@ -38,15 +38,20 @@ const IndexApi = (() => {
         body: JSON.stringify({ refresh_token: currentRefreshToken }),
         cache: 'no-cache',
       });
-      if (!response.ok) return false;
+      if (!response.ok) {
+        IndexState.recordOpenDiagnostic(`refresh-failed-${response.status}`);
+        return false;
+      }
 
       const data = await response.json();
       IndexState.setAccessToken(data.access_token);
       if (data.refresh_token) {
         IndexState.setRefreshToken(data.refresh_token);
       }
+      IndexState.recordOpenDiagnostic(data.refresh_token ? 'refresh-ok-rotated' : 'refresh-ok');
       return true;
     } catch (_networkError) {
+      IndexState.recordOpenDiagnostic('refresh-network-error');
       return false;
     }
   }

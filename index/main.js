@@ -4,7 +4,12 @@
  * This file should be the LAST script loaded (after all other index/* modules).
  */
 
+window.addEventListener('pagehide', (event) => {
+  IndexState.recordOpenDiagnostic(event.persisted ? 'leave-to-cache' : 'leave');
+});
+
 document.addEventListener('DOMContentLoaded', async () => {
+  IndexState.recordOpenDiagnostic('open');
   try {
     await window.BACKEND_URL_PROMISE;
 
