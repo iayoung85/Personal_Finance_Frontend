@@ -73,6 +73,31 @@ function _amountModifiedBadge(txn) {
 
 
 /**
+ * Unlink button for the category cell's button bar.
+ *
+ * @param {string} txnId - Either side of the transfer pair.
+ * @returns {string} HTML for the button.
+ */
+function _transferUnlinkButton(txnId) {
+  return `<button class="transfer-unlink-btn" data-txn-id="${escapeHtml(txnId)}" onclick="unlinkTransfer('${escapeHtml(txnId)}')" title="Break this transfer pair">Unlink</button>`;
+}
+
+
+/**
+ * Unlink button for renderers that win dispatch over the transfer renderer.
+ * A linked row refuses any category but its partner's, so without this the
+ * row has no way out of the pair.
+ *
+ * @param {RowRenderContext} ctx - Row context.
+ * @returns {string} HTML for the button, or '' when the row is not linked.
+ */
+function _unlinkButtonIfLinked(ctx) {
+  if (!ctx.txnId || !ctx.txn.transfer_pair_id) return '';
+  return _transferUnlinkButton(ctx.txnId);
+}
+
+
+/**
  * Shared autocomplete input + buttons template used by most category cells.
  * Avoids duplicating the same 8-line HTML block across every renderer.
  *
@@ -188,7 +213,7 @@ function _renderScheduledRow(ctx) {
   const splitBtn = ctx.txnId
     ? `<button class="category-split" data-txn-id="${ctx.txnId}" onclick="window.splitModalTxnId='${escapeHtml(ctx.txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(ctx.txnId)}')); return false;" title="Split this transaction">Split</button>`
     : '';
-  const buttons = splitBtn;
+  const buttons = _unlinkButtonIfLinked(ctx) + splitBtn;
 
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
@@ -264,7 +289,7 @@ function _renderMaterializedBillRow(ctx) {
   const splitBtn = ctx.txnId
     ? `<button class="category-split" data-txn-id="${ctx.txnId}" onclick="window.splitModalTxnId='${escapeHtml(ctx.txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(ctx.txnId)}')); return false;" title="Split this transaction">Split</button>`
     : '';
-  const buttons = splitBtn;
+  const buttons = _unlinkButtonIfLinked(ctx) + splitBtn;
 
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
@@ -294,7 +319,7 @@ function _renderMissingRow(ctx) {
   const splitBtn = ctx.txnId
     ? `<button class="category-split" data-txn-id="${ctx.txnId}" onclick="window.splitModalTxnId='${escapeHtml(ctx.txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(ctx.txnId)}')); return false;" title="Split this transaction">Split</button>`
     : '';
-  const buttons = splitBtn;
+  const buttons = _unlinkButtonIfLinked(ctx) + splitBtn;
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
     'Type to search categories…', buttons
@@ -342,7 +367,7 @@ function _renderMatchedRow(ctx) {
   // const matchInfo = ctx.txn.match_info; matchInfo.matched_user_category
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
-    'Type to search categories…', ''
+    'Type to search categories…', _unlinkButtonIfLinked(ctx)
   );
 
   const approveOnclick = `event.stopPropagation(); approveMatchedTransactionAndRefresh('${escapeHtml(ctx.txnId)}', '${escapeHtml(ctx.accountId)}').catch(err => showStatus(err.message, 'error'));`;
@@ -475,7 +500,8 @@ function _renderPlaidConvertedRow(ctx) {
     ? `<button class='clear-override' data-txn-id='${ctx.txnId}' onclick='clearOverride(event)' title='Overridden category — click to restore default'>🔒</button>`
     : '';
 
-  const buttons = clearOverrideBtn
+  const buttons = _unlinkButtonIfLinked(ctx)
+    + clearOverrideBtn
     + `<button class="category-rule" data-txn-id="${ctx.txnId}" data-account-id="${ctx.accountId}">Rule</button>`
     + `<button class="category-split" data-txn-id="${ctx.txnId}" onclick="window.splitModalTxnId='${escapeHtml(ctx.txnId)}'; openSplitModal(transactions.find(t => t.transaction_id === '${escapeHtml(ctx.txnId)}')); return false;" title="Split this transaction">Split</button>`;
 
@@ -502,7 +528,7 @@ function _renderPlaidConvertedRow(ctx) {
 
 
 function _renderTransferRow(ctx) {
-  const buttons = `<button class="transfer-unlink-btn" data-txn-id="${escapeHtml(ctx.txnId)}" onclick="unlinkTransfer('${escapeHtml(ctx.txnId)}')" title="Break this transfer pair">Unlink</button>`;
+  const buttons = _transferUnlinkButton(ctx.txnId);
   const categoryCell = _buildCategoryAutocomplete(
     ctx.txnId, ctx.accountId, ctx.currentFullCategory,
     'Type [ to reassign transfer…', buttons
