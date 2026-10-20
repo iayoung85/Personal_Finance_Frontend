@@ -59,15 +59,8 @@ function _billModalEnsureDOM() {
   const overlay = document.createElement('div');
   overlay.id = 'bill-modal-overlay';
   overlay.className = 'modal-overlay hidden';
-  // A drag that starts inside the modal and ends on the backdrop (e.g. selecting
-  // text) still fires a click on the overlay, so require the press to start there too.
-  let pressStartedOnOverlay = false;
-  overlay.addEventListener('mousedown', (event) => {
-    pressStartedOnOverlay = event.target === overlay;
-  });
   overlay.addEventListener('click', (event) => {
-    if (event.target === overlay && pressStartedOnOverlay) closeBillModal();
-    pressStartedOnOverlay = false;
+    if (event.target === overlay) closeBillModal();
   });
 
   overlay.innerHTML = `
