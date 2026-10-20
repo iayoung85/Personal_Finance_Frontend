@@ -58,6 +58,9 @@ function _describeReviewChange(change) {
       return `replaced your date ${_reviewShortDate(from)} with ${_reviewShortDate(to)}`;
     }
   }
+  if (change.field === 'amount' && change.kept_user_value != null) {
+    return `changed amount from ${_reviewMoney(from)} to ${_reviewMoney(to)} (your ${_reviewMoney(change.kept_user_value)} kept)`;
+  }
   switch (change.field) {
     case 'amount':
       return `changed amount from ${_reviewMoney(from)} to ${_reviewMoney(to)}`;
