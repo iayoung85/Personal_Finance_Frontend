@@ -721,6 +721,55 @@ async function refreshAccountTransactions(accountId) {
   }
 }
 
+// ── Analytics class freshness ───────────────────────────
+// A category change can change a row's analytics_class, and only the server
+// knows the new value. These helpers carry the server's value into the cached
+// row, or re-fetch the account when the response did not include it.
+
+/**
+ * Patch a top-level cached row with the analytics_class the server returned.
+ * Returns false when there is nothing to apply it to (no value in the
+ * response, or the row is a split child nested inside a parent), so the
+ * caller can fall back to refreshing the account.
+ */
+function _patchAnalyticsClassFromServer(txnId, analyticsClass) {
+  if (!analyticsClass) return false;
+  var exists = transactions.some(function(t) { return t.transaction_id === txnId; });
+  if (!exists) return false;
+  _patchCachedTransaction(txnId, { analytics_class: analyticsClass });
+  return true;
+}
+
+/**
+ * Re-fetch the given accounts from the server so cached rows carry a
+ * server-computed analytics_class. Null/undefined ids trigger one full fetch.
+ */
+async function _refreshAccountsForStaleAnalyticsClass(accountIds) {
+  var unique = Array.from(new Set(accountIds || []));
+  if (unique.length === 0) return;
+  if (unique.some(function(id) { return !id; })) {
+    await fetchAllTransactions(true);
+    return;
+  }
+  for (var i = 0; i < unique.length; i++) {
+    await refreshAccountTransactions(unique[i]);
+  }
+}
+
+async function ensureTransactionCacheSchema() {
+  if (!window.txnDB) return;
+  try {
+    var stored = await window.txnDB.getMeta('cache_schema');
+    if (isTransactionCacheSchemaCurrent(stored)) return;
+    // clear() drops the etag and cached_at too, so the next fetch is a cold full load.
+    await window.txnDB.clear();
+    await window.txnDB.setMeta('cache_schema', TRANSACTION_CACHE_SCHEMA);
+    _fetchTransactionsFromServer._cachedEtag = null;
+  } catch (schemaError) {
+    console.warn('Transaction cache schema check failed (non-fatal):', schemaError);
+  }
+}
+
 // ── Granular cache helpers ──────────────────────────────
 // Patch in-memory transactions array AND IndexedDB without a full refetch.
 // Used by single-field mutations (hide, description, delete) to avoid

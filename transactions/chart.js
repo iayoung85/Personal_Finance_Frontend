@@ -59,18 +59,9 @@ function _getFilteredTransactionsForChart() {
     // Hidden transactions are excluded from chart aggregations
     if (txn.is_hidden) return false;
 
-    // Exclude system-generated bookkeeping entries (opening balances, reconciliation, etc.)
-    if (isSystemType(getTransactionType(txn))) return false;
+    // The API's analytics_class decides what counts as spending.
+    if (txn.analytics_class !== 'spending') return false;
 
-    // Transfers are always excluded from the expense chart — they aren't expenses
-    const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
-    if (/transfer/i.test(primaryCat)) return false;
-
-    if (txn.personal_finance_category && txn.personal_finance_category.primary) {
-      const primaryCat = txn.personal_finance_category.primary;
-      if (/income/i.test(primaryCat)) return false;
-    }
-    
     return true;
   });
 }

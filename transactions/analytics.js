@@ -4,7 +4,6 @@
 // slice so insights, category summary, and exports stay aligned.
 // ============================================================
 
-const ANALYTICS_EXCLUSION_REGEX = /(transfer|adjust(?:ment)?)/i;
 const ANALYTICS_INVESTMENT_TRENDING_LABEL = 'Investments: Trending Performance';
 const ANALYTICS_DISPLAY_MODE = Object.freeze({
   SPENDING: 'spending',
@@ -19,8 +18,66 @@ function formatAnalyticsCurrency(amount) {
   }).format(amount || 0);
 }
 
-function getAnalyticsCategoryLabel(txn, txnType = null) {
-  if (txnType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING) {
+// The API's analytics_class is the only definition of how a row counts.
+// Any value not listed here (a class added later) maps to null: not counted.
+const ANALYTICS_CLASS_TO_MODE = Object.freeze({
+  spending: ANALYTICS_DISPLAY_MODE.SPENDING,
+  income: ANALYTICS_DISPLAY_MODE.INCOME,
+  investment_trend: ANALYTICS_DISPLAY_MODE.SIGNED,
+});
+
+// Tie-break order when a category's rows carry mixed counted classes.
+const ANALYTICS_MODE_TIE_ORDER = [
+  ANALYTICS_DISPLAY_MODE.SPENDING,
+  ANALYTICS_DISPLAY_MODE.INCOME,
+  ANALYTICS_DISPLAY_MODE.SIGNED,
+];
+
+/**
+ * Maps an analytics_class to a display mode. Returns null for classes that
+ * do not count in totals (transfer, adjustment, excluded, unknown, missing).
+ */
+function getAnalyticsModeForClass(analyticsClass) {
+  if (typeof analyticsClass !== 'string') {
+    return null;
+  }
+  return Object.prototype.hasOwnProperty.call(ANALYTICS_CLASS_TO_MODE, analyticsClass)
+    ? ANALYTICS_CLASS_TO_MODE[analyticsClass]
+    : null;
+}
+
+function isAnalyticsCountedClass(analyticsClass) {
+  return getAnalyticsModeForClass(analyticsClass) !== null;
+}
+
+/**
+ * Display mode for a group of entries (a category). Mixed classes: the mode
+ * whose rows carry the largest absolute amount wins; ties go spending, income,
+ * investment trend. No counted entries falls back to spending.
+ */
+function getAnalyticsDisplayModeForEntries(entries) {
+  const weights = {};
+  (entries || []).forEach(entry => {
+    const mode = entry && getAnalyticsModeForClass(entry.analytics_class);
+    if (mode) {
+      weights[mode] = (weights[mode] || 0) + Math.abs(Number(entry.amount) || 0);
+    }
+  });
+
+  let bestMode = ANALYTICS_DISPLAY_MODE.SPENDING;
+  let bestWeight = -1;
+  ANALYTICS_MODE_TIE_ORDER.forEach(mode => {
+    const weight = weights[mode];
+    if (weight !== undefined && weight > bestWeight) {
+      bestMode = mode;
+      bestWeight = weight;
+    }
+  });
+  return bestMode;
+}
+
+function getAnalyticsCategoryLabel(txn, analyticsClass = null) {
+  if (analyticsClass === 'investment_trend') {
     return ANALYTICS_INVESTMENT_TRENDING_LABEL;
   }
 
@@ -41,46 +98,21 @@ function getAnalyticsCategoryLabel(txn, txnType = null) {
   return 'Uncategorized';
 }
 
-function isAnalyticsExcludedCategory(categoryLabel) {
-  if (!categoryLabel || typeof categoryLabel !== 'string') {
-    return false;
-  }
-
-  const trimmed = categoryLabel.trim();
-  if (trimmed.startsWith('[')) {
-    return true;
-  }
-
-  return ANALYTICS_EXCLUSION_REGEX.test(trimmed);
-}
-
-function isIncomeCategoryName(categoryName) {
-  return /income/i.test(categoryName || '');
-}
-
-function getAnalyticsDisplayMode(categoryName, txnType = null) {
-  if (txnType === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING) {
-    return ANALYTICS_DISPLAY_MODE.SIGNED;
-  }
-
-  return isIncomeCategoryName(categoryName)
-    ? ANALYTICS_DISPLAY_MODE.INCOME
-    : ANALYTICS_DISPLAY_MODE.SPENDING;
-}
-
 function getAnalyticsDisplayAmount(rawTotal, displayMode) {
   return displayMode === ANALYTICS_DISPLAY_MODE.SPENDING ? -rawTotal : rawTotal;
 }
 
-function getAnalyticsDisplayTotal(rawTotal, categoryName) {
-  return getAnalyticsDisplayAmount(rawTotal, getAnalyticsDisplayMode(categoryName));
+function getAnalyticsDisplayTotal(rawTotal, entries) {
+  return getAnalyticsDisplayAmount(rawTotal, getAnalyticsDisplayModeForEntries(entries));
 }
 
-function getAnalyticsAverageDisplayAmount(entries, categoryName) {
-  const isIncomeCategory = isIncomeCategoryName(categoryName);
-  const matchingDirectionEntries = entries.filter(entry => (
-    isIncomeCategory ? entry.amount > 0 : entry.amount < 0
-  ));
+function getAnalyticsAverageDisplayAmount(entries) {
+  const mode = getAnalyticsDisplayModeForEntries(entries);
+  const matchingDirectionEntries = entries.filter(entry => {
+    if (mode === ANALYTICS_DISPLAY_MODE.INCOME) return entry.amount > 0;
+    if (mode === ANALYTICS_DISPLAY_MODE.SPENDING) return entry.amount < 0;
+    return entry.amount !== 0;
+  });
 
   if (matchingDirectionEntries.length === 0) {
     return null;
@@ -170,11 +202,11 @@ function _hasSplitAmountMismatch(txn) {
 
 function _buildAnalyticsEntry(txn, parentTxn = null) {
   const txnType = parentTxn ? TXN_TYPE.SPLIT_CHILD : getTransactionType(txn);
-  const categoryLabel = getAnalyticsCategoryLabel(txn, txnType);
+  const analyticsClass = txn.analytics_class || null;
+  const categoryLabel = getAnalyticsCategoryLabel(txn, analyticsClass);
   const parsedCategory = parseCategoryString(categoryLabel);
   const primaryCategory = parsedCategory.primary || categoryLabel || 'Uncategorized';
   const detailedCategory = parsedCategory.detailed || '';
-  const displayMode = getAnalyticsDisplayMode(primaryCategory, txnType);
 
   return {
     transaction_id: txn.transaction_id || parentTxn?.transaction_id || '',
@@ -182,23 +214,10 @@ function _buildAnalyticsEntry(txn, parentTxn = null) {
     category_label: categoryLabel,
     primary_category: primaryCategory,
     detailed_category: detailedCategory,
-    display_mode: displayMode,
-    is_income: displayMode === ANALYTICS_DISPLAY_MODE.INCOME,
-    is_system: !!txnType && isSystemType(txnType),
+    analytics_class: analyticsClass,
+    display_mode: getAnalyticsModeForClass(analyticsClass),
     txn_type: txnType,
   };
-}
-
-function _isCategorySummaryEligibleEntry(entry) {
-  if (!entry) {
-    return false;
-  }
-
-  if (entry.txn_type === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING) {
-    return true;
-  }
-
-  return !entry.is_system && !isAnalyticsExcludedCategory(entry.category_label);
 }
 
 function _collectVisibleLedgerAnalyticsEntries() {
@@ -238,11 +257,9 @@ function _collectVisibleLedgerAnalyticsEntries() {
 
 function buildNormalizedAnalyticsSlice() {
   const ledgerEntries = _collectVisibleLedgerAnalyticsEntries();
-  const trackableEntries = ledgerEntries.filter(entry => (
-    !entry.is_system && !isAnalyticsExcludedCategory(entry.category_label)
-  ));
-  const spendingEntries = trackableEntries.filter(entry => !entry.is_income);
-  const summaryEntries = ledgerEntries.filter(_isCategorySummaryEligibleEntry);
+  const summaryEntries = ledgerEntries.filter(entry => isAnalyticsCountedClass(entry.analytics_class));
+  const trackableEntries = summaryEntries.filter(entry => entry.analytics_class !== 'investment_trend');
+  const spendingEntries = summaryEntries.filter(entry => entry.analytics_class === 'spending');
 
   return {
     ledgerEntries,
@@ -268,17 +285,18 @@ function buildVisibleCategorySummaryData() {
       groupedCategories[primaryKey] = {
         total: 0,
         count: 0,
-        display_mode: entry.display_mode,
+        entries: [],
         detailed: {},
       };
     }
 
     groupedCategories[primaryKey].total += entry.amount;
     groupedCategories[primaryKey].count += 1;
+    groupedCategories[primaryKey].entries.push(entry);
 
-    if (entry.txn_type === TXN_TYPE.SYSTEM_INVESTMENT_TRENDING) {
+    if (entry.analytics_class === 'investment_trend') {
       investmentTrendingTotal += entry.amount;
-    } else if (entry.display_mode === ANALYTICS_DISPLAY_MODE.INCOME) {
+    } else if (entry.analytics_class === 'income') {
       incomeTotal += entry.amount;
     } else {
       spendingTotal += entry.amount;
@@ -289,12 +307,13 @@ function buildVisibleCategorySummaryData() {
         groupedCategories[primaryKey].detailed[detailedKey] = {
           total: 0,
           count: 0,
-          display_mode: entry.display_mode,
+          entries: [],
         };
       }
 
       groupedCategories[primaryKey].detailed[detailedKey].total += entry.amount;
       groupedCategories[primaryKey].detailed[detailedKey].count += 1;
+      groupedCategories[primaryKey].detailed[detailedKey].entries.push(entry);
     }
   });
 
@@ -303,13 +322,13 @@ function buildVisibleCategorySummaryData() {
       category: categoryName,
       total: Math.round(categoryData.total * 100) / 100,
       count: categoryData.count,
-      display_mode: categoryData.display_mode,
+      display_mode: getAnalyticsDisplayModeForEntries(categoryData.entries),
       detailed: Object.entries(categoryData.detailed)
         .map(([detailName, detailData]) => ({
           category: detailName,
           total: Math.round(detailData.total * 100) / 100,
           count: detailData.count,
-          display_mode: detailData.display_mode,
+          display_mode: getAnalyticsDisplayModeForEntries(detailData.entries),
         }))
         .sort((entryA, entryB) => Math.abs(entryB.total) - Math.abs(entryA.total)),
     }))

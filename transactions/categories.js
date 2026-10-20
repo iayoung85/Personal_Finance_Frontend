@@ -793,6 +793,9 @@ async function _updateManualTransactionCategory(txnId, categoryString) {
     const txn = transactions.find(t => t.transaction_id === txnId);
     if (txn) {
       txn.user_category = data.transaction?.user_category || categoryString;
+      if (data.transaction?.analytics_class) {
+        txn.analytics_class = data.transaction.analytics_class;
+      }
       // is_override intentionally NOT set — manual txns don't use overrides
       _cacheTransactions(transactions);
     }
@@ -917,6 +920,12 @@ function _patchCategorizationCache(requestedTxnId, responseData, fallbackCategor
 
   txn.user_category = responseData.user_category || fallbackCategory;
   txn.is_override = fallbackIsOverride;
+  if (responseData.analytics_class) {
+    txn.analytics_class = responseData.analytics_class;
+  } else {
+    // The class may have changed with the category and only the server knows it.
+    _refreshAccountsForStaleAnalyticsClass([txn.account_id]);
+  }
   _cacheTransactions(transactions);
 }
 
@@ -1110,6 +1119,11 @@ async function clearOverride(event) {
       txn.is_override = false;
       if (data.updated_category) {
         txn.user_category = data.updated_category;
+      }
+      if (data.analytics_class) {
+        txn.analytics_class = data.analytics_class;
+      } else if (data.updated_category) {
+        _refreshAccountsForStaleAnalyticsClass([txn.account_id]);
       }
       _cacheTransactions(transactions);
     }

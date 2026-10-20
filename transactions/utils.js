@@ -246,3 +246,14 @@ function showConfirmationDialog(title, message, onConfirm) {
   backdrop.appendChild(dialog);
   document.body.appendChild(backdrop);
 }
+
+/**
+ * Bump when cached rows must be rebuilt from the server once (a new field the
+ * cache lacks). A browser whose stored value differs drops its cached
+ * transactions and does a cold full load on the next fetch.
+ */
+const TRANSACTION_CACHE_SCHEMA = 2;
+
+function isTransactionCacheSchemaCurrent(storedSchema) {
+  return storedSchema === TRANSACTION_CACHE_SCHEMA;
+}

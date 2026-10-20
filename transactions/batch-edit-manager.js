@@ -100,6 +100,7 @@ async function flushBatchEdits() {
     // and the DOM so subsequent edits target the persisted row, not the
     // now-defunct virtual ID.
     _remapMaterializedIds(results);
+    await _applyBatchAnalyticsClasses(results);
 
     if (summary.errors > 0) {
       showStatus(`Bulk save: ${totalApplied} applied, ${summary.errors} failed`, 'warning');
@@ -290,6 +291,24 @@ function _removeUnreviewedDotDom(transactionId) {
     if (dot) {
       dot.remove(); // Deletes the span element from the DOM entirely
     }
+  }
+}
+
+/**
+ * Carry the server's analytics_class for each category-changed row into the
+ * in-memory and cached copy. Rows whose result lacks it (or that are split
+ * children) get their account re-fetched so no optimistic row keeps a stale class.
+ */
+async function _applyBatchAnalyticsClasses(results) {
+  const staleAccounts = [];
+  for (const result of results) {
+    if (!result.ok || !(result.applied || []).includes('category')) continue;
+    if (_patchAnalyticsClassFromServer(result.transaction_id, result.analytics_class)) continue;
+    const txn = _findTransactionOrSplitChild(result.transaction_id);
+    staleAccounts.push(txn ? txn.account_id : null);
+  }
+  if (staleAccounts.length > 0) {
+    await _refreshAccountsForStaleAnalyticsClass(staleAccounts);
   }
 }
 

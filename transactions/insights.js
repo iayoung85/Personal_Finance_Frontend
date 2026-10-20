@@ -10,7 +10,7 @@ function _buildTotalSpendingInsight(analyticsView) {
   return {
     icon: '💰',
     label: 'Total Spending',
-    value: formatAnalyticsCurrency(getAnalyticsDisplayTotal(rawTotal, 'Spending')),
+    value: formatAnalyticsCurrency(getAnalyticsDisplayTotal(rawTotal, analyticsView.spendingEntries)),
     meta: `${analyticsView.spendingEntries.length} spending transactions`,
     subtext: 'Transfers, adjustments, income, and system rows excluded',
   };
@@ -19,13 +19,13 @@ function _buildTotalSpendingInsight(analyticsView) {
 function _buildTrackedCategoryInsight(primaryCategory, analyticsView) {
   const matchingEntries = analyticsView.trackableEntries.filter(entry => entry.primary_category === primaryCategory);
   const rawTotal = matchingEntries.reduce((sum, entry) => sum + entry.amount, 0);
-  const averageDisplayAmount = getAnalyticsAverageDisplayAmount(matchingEntries, primaryCategory);
-  const averageLabel = isIncomeCategoryName(primaryCategory) ? 'Average credit' : 'Average debit';
+  const averageDisplayAmount = getAnalyticsAverageDisplayAmount(matchingEntries);
+  const averageLabel = getAnalyticsDisplayModeForEntries(matchingEntries) === ANALYTICS_DISPLAY_MODE.INCOME ? 'Average credit' : 'Average debit';
 
   return {
     icon: '🏷️',
     label: primaryCategory,
-    value: formatAnalyticsCurrency(getAnalyticsDisplayTotal(rawTotal, primaryCategory)),
+    value: formatAnalyticsCurrency(getAnalyticsDisplayTotal(rawTotal, matchingEntries)),
     meta: `${matchingEntries.length} transactions`,
     subtext: averageDisplayAmount === null
       ? `${averageLabel} —`

@@ -515,7 +515,10 @@ async function _onBulkEditApplyClick() {
       return;
     }
 
-    _patchCacheFromApplyResults(result.body, changes);
+    const staleClassAccounts = _patchCacheFromApplyResults(result.body, changes);
+    if (staleClassAccounts.length > 0) {
+      await _refreshAccountsForStaleAnalyticsClass(staleClassAccounts);
+    }
     const summary = result.body.summary || {};
     const succeeded = summary.succeeded || 0;
     const failed    = summary.failed || 0;
@@ -600,6 +603,7 @@ function _readFieldValue(fieldKey) {
  */
 function _patchCacheFromApplyResults(applyBody, changes) {
   const results = applyBody.results || [];
+  const staleClassAccounts = [];
   for (let idx = 0; idx < results.length; idx++) {
     const result = results[idx];
     if (!result.ok) continue;
@@ -608,10 +612,18 @@ function _patchCacheFromApplyResults(applyBody, changes) {
 
     const applied = result.applied || [];
     const patch = _buildPerRowPatch(txn, applied, changes);
+    if (applied.includes('user_category') && result.analytics_class) {
+      patch.analytics_class = result.analytics_class;
+    }
     if (Object.keys(patch).length > 0) {
       _patchCachedTransaction(result.transaction_id, patch);
     }
+    if (applied.includes('user_category') && !result.analytics_class) {
+      // The category change may have changed the class; refetch for the server value.
+      staleClassAccounts.push(txn.account_id);
+    }
   }
+  return staleClassAccounts;
 }
 
 function _buildPerRowPatch(txn, appliedFields, changes) {

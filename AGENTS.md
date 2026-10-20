@@ -4,6 +4,8 @@ The full web app for IAY Financial, served as static files at `bank.isaacyoung.c
 
 The API is a separate repo. This client holds no business rules; it renders what the API returns. If a fix seems to need logic the phone app would also need, it belongs in the API — say so instead of writing it here.
 
+Math over what is on screen is fine here. Summing, grouping, sorting, and formatting the rows the user is looking at is display work: it depends on filters and a local cache only this client has, and it saves nothing. Deciding what a transaction is, or whether it counts as spending, income, or a transfer, is a definition, and definitions belong to the API. The test: if two screens or the phone app show this number, must they agree? If yes, the API defines the rule and this client applies it to its own rows.
+
 ## Working alone or inside the workspace
 
 This repo works by itself. It is also one of four that make up IAY Financial, normally checked out side by side inside a `Finance/` folder.
@@ -23,7 +25,9 @@ There is nothing to install. To see a page, serve this folder on port 5500 (5501
 
 Each page is `<page>.html` + `<page>.css` + a `<page>/` folder of scripts: `index`, `accounts`, `transactions`, `bills`, `categories`, `investments`, `user-settings`, `spending-alerts`. Within a page folder the files follow one pattern: `state.js` (page state), `api.js` (every call to the backend), `utils.js`, `main.js` (startup), then one file per feature.
 
-Shared by every page, at the root: `config.js` (which backend to use), `config-helpers.js`, `date-helpers.js`, `nav-sidebar.js`, `theme.css`, `theme-loader.js`.
+Shared by every page, at the root: `config.js` (which backend to use), `config-helpers.js`, `date-helpers.js`, `nav-sidebar.js`, `theme.css`, `theme-loader.js`. Shared helpers and behavior used by more than one page go in `shared/`, for example `auth-session.js` and `modal-backdrop-guard.js`. Put new ones there, not at the root.
+
+Much of the code is repeated across pages and features where one helper would do. Do not go looking to fold it up. But when a change would mean editing every copy of the same pattern anyway, write one helper in `shared/` and point the copies at it, instead of patching each one.
 
 Things that are not obvious:
 

@@ -73,6 +73,9 @@ $(document).ready(async function() {
       console.warn('localStorage → IndexedDB migration failed (non-fatal):', migrationErr);
     }
 
+    // Rebuild the cache once when its schema is older than this build.
+    await ensureTransactionCacheSchema();
+
     // Load persisted ETag into the fetch function for 304 support
     try {
       var savedEtag = await window.txnDB.getMeta('etag');
