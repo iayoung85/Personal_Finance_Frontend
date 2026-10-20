@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const box = { module: { exports: {} }, console, formatCurrency: () => '', document: { addEventListener() {} } };
 vm.runInNewContext(
   `${fs.readFileSync(path.join(__dirname, '..', 'bills/modal.js'), 'utf8')}\n`
-    + 'module.exports = { _synthesizeStartDate, _bmShouldSendStartDate, _bmIsLatestPreview, _bmSkippedNoteText, _bmBuildPreviewRequest, _bmEarlierMonthDay, _bmScheduleChanges, _buildBillUpdatePayload };',
+    + 'module.exports = { _synthesizeStartDate, _bmShouldSendStartDate, _bmEarlierMonthDay, _bmScheduleChanges, _buildBillUpdatePayload };',
   box,
   { filename: 'modal.js' },
 );
@@ -59,24 +59,6 @@ test('full-date frequencies compare the whole date', () => {
   assert.equal(m._bmShouldSendStartDate({ ...base, rawFormStart: '2026-07-21' }), true);
 });
 
-test('only the latest preview request may render', () => {
-  assert.equal(m._bmIsLatestPreview(3, 3), true);
-  assert.equal(m._bmIsLatestPreview(2, 3), false);
-});
-
-test('skipped note text', () => {
-  assert.equal(m._bmSkippedNoteText([]), '');
-  assert.equal(m._bmSkippedNoteText(['2026-10-25']), 'Oct 25 skipped — a payment for that period is already on the books.');
-  assert.equal(m._bmSkippedNoteText(['2026-10-25', '2026-11-25']), 'Oct 25, Nov 25 skipped — payments for those periods are already on the books.');
-});
-
-test('preview request carries bill_id only when editing', () => {
-  const form = { frequency: 'monthly', interval: 1, start_date: '2026-07-01', day_of_month: 25, amount: 5 };
-  assert.equal('bill_id' in m._bmBuildPreviewRequest(form, null), false);
-  assert.equal(m._bmBuildPreviewRequest(form, 7).bill_id, 7);
-  assert.equal(m._bmBuildPreviewRequest(form, 7).count, 10);
-});
-
 const storedBill = {
   frequency: 'monthly', interval: 1, start_date: '2026-07-25', second_date: null,
   day_of_month: 25, second_day_of_month: null, day_of_week: null,
@@ -84,30 +66,25 @@ const storedBill = {
 };
 const untouchedForm = { ...storedBill, start_date: '2026-07-01', amount: 5 };
 
-test('untouched edit form previews with no start_date and no schedule fields', () => {
-  const req = m._bmBuildPreviewRequest(untouchedForm, 7, storedBill);
-  assert.deepEqual(JSON.parse(JSON.stringify(req)), { count: 10, bill_id: 7 });
-});
-
-test('day change previews with the synthesized start', () => {
-  const form = { ...untouchedForm, day_of_month: 10 };
-  const req = m._bmBuildPreviewRequest(form, 7, storedBill);
-  assert.equal(req.day_of_month, 10);
-  assert.equal(req.start_date, '2026-07-10');
-  assert.equal('frequency' in req, false);
-});
-
-test('new bill previews with the synthesized start and every schedule field', () => {
-  const form = { ...untouchedForm, day_of_month: 10 };
-  const req = m._bmBuildPreviewRequest(form, null, null);
-  assert.equal(req.start_date, '2026-07-10');
-  assert.equal(req.frequency, 'monthly');
-  assert.equal('bill_id' in req, false);
-});
-
-test('preview and save agree on the schedule part of an edit', () => {
+test('schedule field changes always carry the synthesized start', () => {
   const form = { ...untouchedForm, day_of_month: 10, interval: 2 };
   const changes = m._bmScheduleChanges(form, storedBill);
   assert.deepEqual(JSON.parse(JSON.stringify(changes)),
     { interval: 2, day_of_month: 10, start_date: '2026-07-10' });
+});
+
+test('a change to which dates the bill falls on carries start_date; an untouched form carries nothing', () => {
+  const weekly = { ...storedBill, frequency: 'weekly', start_date: '2026-07-14', day_of_week: 1, day_of_month: null };
+  const same = { ...weekly };
+  assert.deepEqual(JSON.parse(JSON.stringify(m._bmScheduleChanges(same, weekly))), {});
+  for (const change of [{ interval: 2 }, { day_of_week: 3 }, { second_date: '2026-07-20' }]) {
+    const out = m._bmScheduleChanges({ ...same, ...change }, weekly);
+    assert.equal(out.start_date, '2026-07-14', JSON.stringify(change));
+  }
+});
+
+test('changing only the end conditions keeps the stored start', () => {
+  const form = { ...untouchedForm, end_type: 'on_date', end_date: '2027-01-01' };
+  const changes = JSON.parse(JSON.stringify(m._bmScheduleChanges(form, storedBill)));
+  assert.deepEqual(changes, { end_type: 'on_date', end_date: '2027-01-01' });
 });

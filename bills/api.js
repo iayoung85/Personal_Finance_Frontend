@@ -82,25 +82,6 @@ async function apiUpdateBill(billId, billData) {
   return response.json();
 }
 
-/**
- * Ask the API which dates a schedule produces. A rejected schedule throws an
- * error carrying `status`; a network failure throws without one.
- */
-async function apiPreviewBill(request) {
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/bills/preview`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request)
-  });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    const error = new Error(errorData.error || 'Failed to preview schedule');
-    error.status = response.status;
-    throw error;
-  }
-  return response.json();
-}
-
 async function apiDeleteBill(billId) {
   const response = await authenticatedFetch(`${BACKEND_URL}/api/bills/${billId}`, {
     method: 'DELETE'
