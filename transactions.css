@@ -1206,6 +1206,31 @@ tr:hover {
 .action-row-left {
   flex: 1;
   min-width: 0;
+  position: relative;
+}
+
+/* Warnings and errors lie over the status bar and stack down over the page
+   until each one's timer removes it; clicks pass through to what is below. */
+.status-toasts {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+.status-toast {
+  box-shadow: var(--shadow-sm);
+}
+/* The status tints are translucent; over table text they need a solid base. */
+.status-toast.warning {
+  background: linear-gradient(var(--color-warning-bg), var(--color-warning-bg)), var(--bg-surface);
+}
+.status-toast.error {
+  background: linear-gradient(var(--color-danger-bg), var(--color-danger-bg)), var(--bg-surface);
 }
 
 .action-row-right {

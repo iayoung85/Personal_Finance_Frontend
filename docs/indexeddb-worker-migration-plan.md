@@ -64,12 +64,12 @@ db.version(1).stores({
 8. Main thread: re-query if needed, re-render
 ```
 
-### Data flow: user edit (category/memo via batch-edit)
+### Data flow: user edit (Tab-flow category/memo)
 ```
-1. stageBatchEdit() → mutate transactions[] in memory (optimistic)
+1. saveInlineCategory() / saveInlineMemo() → mutate transactions[] in memory (optimistic)
 2. DOM patch (cell-only, no full re-render)
-3. flushBatchEdits() → POST /api/transactions/bulk-update
-4. On success → Worker: { type: 'bulk-write', data: [updatedTxns] }
+3. POST .../categorize or /api/transactions/add-memo for that one row
+4. On success → Worker: { type: 'bulk-write', data: [updatedTxns] }; on refusal → put the row back
 5. Worker: db.transactions.bulkPut(updatedTxns)
 ```
 
@@ -131,7 +131,7 @@ db.version(1).stores({
    - Table renderer receives pre-filtered, pre-paginated data.
    - This naturally limits DOM nodes — no need to render 100k rows.
 3. **Incremental writes on edits.**
-   - `stageBatchEdit` / `flushBatchEdits`: after API success, `workerClient.bulkWrite([updatedTxn])` — single-row upsert, not full-array rewrite.
+   - `saveInlineCategory` / `saveInlineMemo`: after API success, `workerClient.bulkWrite([updatedTxn])` — single-row upsert, not full-array rewrite.
    - Category overrides, memo saves, manual transaction adds: same pattern.
 5. **Balance history in IndexedDB (optional).**
    - Add `balance_history` store: `[account_id+transaction_id]`.
@@ -163,7 +163,7 @@ db.version(1).stores({
 |------|---------|
 | `transactions.html` | Add `<script>` for Dexie + new modules |
 | `transactions/api.js` | Replace localStorage cache with worker-client calls |
-| `transactions/batch-edit-manager.js` | `_persistTransactionCache()` → `workerClient.bulkWrite()` |
+| `transactions/inline-save.js` | Cache writes → `workerClient.bulkWrite()` |
 | `transactions/categories.js` | Cache writes → `workerClient.bulkWrite()` |
 | `transactions/manual-transactions.js` | Cache writes → `workerClient.bulkWrite()` |
 | `transactions/table-renderer.js` | Cache writes → `workerClient.bulkWrite()`; Phase 3: accept async data source |

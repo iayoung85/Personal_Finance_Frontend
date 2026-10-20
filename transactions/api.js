@@ -723,22 +723,8 @@ async function refreshAccountTransactions(accountId) {
 
 // ── Analytics class freshness ───────────────────────────
 // A category change can change a row's analytics_class, and only the server
-// knows the new value. These helpers carry the server's value into the cached
-// row, or re-fetch the account when the response did not include it.
-
-/**
- * Patch a top-level cached row with the analytics_class the server returned.
- * Returns false when there is nothing to apply it to (no value in the
- * response, or the row is a split child nested inside a parent), so the
- * caller can fall back to refreshing the account.
- */
-function _patchAnalyticsClassFromServer(txnId, analyticsClass) {
-  if (!analyticsClass) return false;
-  var exists = transactions.some(function(t) { return t.transaction_id === txnId; });
-  if (!exists) return false;
-  _patchCachedTransaction(txnId, { analytics_class: analyticsClass });
-  return true;
-}
+// knows the new value. When a response does not include it, re-fetch the
+// account so the cached rows carry it.
 
 /**
  * Re-fetch the given accounts from the server so cached rows carry a

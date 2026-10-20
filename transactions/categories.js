@@ -428,19 +428,19 @@ function attachCategoryDropdownListeners() {
         if (currentValue) {
           const resolved = _resolveAutocompleteCategory(currentValue);
           if (!resolved.error) {
-            // Valid category — stage via batch manager for deferred
-            // bulk submission instead of firing an immediate API call.
-            // This prevents rapid Tab-cycling from overwhelming the backend.
+            // Valid category: save this row now and move on without waiting
+            // for the answer; a refusal puts the cell back.
             e.preventDefault();
             const resolvedValue = resolved.value || currentValue;
-            const batchTxnId = $(input).data('txn-id');
+            const editedTxnId = $(input).data('txn-id');
 
             if (resolved.isTransfer && resolved.account) {
               // Transfer assignments still need the full interactive flow
               const accountId = $(input).data('account-id') || $(input).closest('tr').data('account-id');
-              _applyTransferAssignment(batchTxnId, accountId, resolved.account);
-            } else if (batchTxnId && typeof stageBatchEdit === 'function') {
-              stageBatchEdit(batchTxnId, { user_category: resolvedValue });
+              _applyTransferAssignment(editedTxnId, accountId, resolved.account);
+            } else if (editedTxnId) {
+              saveInlineCategory(editedTxnId, resolvedValue);
+              // The cell shows the resolved name, not the partial text typed.
               $(input).data('committedCategoryValue', resolvedValue);
               input.value = resolvedValue;
             }
@@ -501,11 +501,14 @@ function attachCategoryDropdownListeners() {
   $(document).on('blur', '.category-autocomplete', function() {
     const input = this;
     const txnId = $(input).data('txn-id');
-    const committedValue = $(input).data('committedCategoryValue');
     // Small delay so click-on-item can fire first
     setTimeout(() => {
       $(`.category-ac-list[data-txn-id="${txnId}"]`).empty().hide();
-      if (committedValue !== undefined && (input.value || '') !== committedValue) {
+      // Read the committed value now, not at blur: a refused save may have
+      // reset it in the meantime, and the old value would undo that reset.
+      const committedValue = $(input).data('committedCategoryValue');
+      const userCameBack = document.activeElement === input;
+      if (!userCameBack && committedValue !== undefined && (input.value || '') !== committedValue) {
         input.value = committedValue;
       }
     }, 200);

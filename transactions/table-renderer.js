@@ -1400,43 +1400,6 @@ function _updateHiddenTransactionCount() {
     : 'No hidden transactions';
 }
 
-async function saveTransactionMemo(transactionId, userMemo) {
-  if (!transactionId) {
-    showStatus('Unable to save memo: missing transaction id', 'error');
-    return;
-  }
-
-  const trimmedMemo = (userMemo || '').toString().slice(0, 256);
-
-  try {
-    const txn = transactions.find(t => t.transaction_id === transactionId);
-    
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/add-memo`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        transaction_id: transactionId,
-        user_memo: trimmedMemo
-      })
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to save memo');
-    }
-
-    if (txn) {
-      txn.user_memo = trimmedMemo;
-      _cacheTransactions(transactions);
-    }
-
-    showStatus('Memo saved', 'success');
-  } catch (error) {
-    showStatus(`Failed to save memo: ${error.message}`, 'error');
-  }
-}
-
-
 /**
  * Convert a .txn-memo-text span into an editable input. If an inline
  * memo editor is already open on a different row, commit that one first.
@@ -1491,7 +1454,7 @@ function _openInlineMemoEditor(memoSpan) {
 
 
 /**
- * Stage the memo edit via batch manager, then restore the span display.
+ * Close the inline memo editor showing the new text, then save it.
  */
 function _commitInlineMemo(inputEl) {
   const input = inputEl instanceof HTMLElement ? inputEl : inputEl[0];
@@ -1501,16 +1464,15 @@ function _commitInlineMemo(inputEl) {
   const newMemo = (input.value || '').trim();
   const originalMemo = input.dataset.originalMemo || '';
 
-  // Close the inline editor BEFORE staging the batch edit. stageBatchEdit
-  // applies an optimistic DOM update that rewrites the memo span's contents
-  // via textContent, which detaches this input element. If close runs after
-  // that, input.closest('.txn-memo-text') returns null and the
+  // Close the inline editor BEFORE saving. The save rewrites the memo span's
+  // contents via textContent, which detaches this input element. If close
+  // runs after that, input.closest('.txn-memo-text') returns null and the
   // inline-memo-active marker class never gets cleared, blocking any
   // subsequent click-to-edit on that span until a re-render.
   _closeInlineMemoEditor($(input), false);
 
-  if (txnId && newMemo !== originalMemo && typeof stageBatchEdit === 'function') {
-    stageBatchEdit(String(txnId), { user_memo: newMemo });
+  if (txnId && newMemo !== originalMemo) {
+    saveInlineMemo(String(txnId), newMemo);
   }
 }
 

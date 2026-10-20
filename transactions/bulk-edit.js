@@ -2,9 +2,7 @@
 // transactions/bulk-edit.js — TXN-018 Bulk Edit
 //
 // Owns the bulk-edit modal, preflight + apply API calls, and the
-// per-row Dexie patch after a successful apply. Mirrors the modular
-// shape of `batch-edit-manager.js` (which handles the tab-cycle
-// inline edit flow and is intentionally left alone here).
+// per-row Dexie patch after a successful apply.
 //
 // Source of truth for selection: `bulkEditState` in state.js. Other
 // modules read/clear it but should not maintain parallel selection

@@ -110,9 +110,6 @@ $(document).ready(async function() {
   // Initialize click-to-edit on date, description, and amount cells
   initInlineEditing();
 
-  // Initialize batch edit manager for deferred category/memo submissions
-  initBatchEditListeners();
-
   // Check for pending reconciliation proposals and show banner if needed
   await checkAndRenderReconciliationBanner();
 
@@ -168,16 +165,18 @@ $(document).ready(async function() {
     }
   });
 
-  // Tab handler for inline memo input — stage memo and advance to same row's category
+  // Tab handler for inline memo input — save memo and advance to same row's category
   $(document).on('keydown', '.inline-memo-input', function(e) {
     if (e.key === 'Tab') {
       e.preventDefault();
       const memoInputEl = $(this);
+      // Find the row first: committing removes the input from the page, and
+      // a detached input has no row to move focus within.
+      const currentRow = memoInputEl.closest('tr');
       _commitInlineMemo(memoInputEl);
 
       if (e.shiftKey) {
         // Shift+Tab from memo → previous row's category
-        const currentRow = memoInputEl.closest('tr');
         const prevRow = currentRow.prev('tr');
         if (prevRow.length) {
           const prevCategoryInput = prevRow.find('.category-autocomplete');
@@ -187,7 +186,6 @@ $(document).ready(async function() {
         }
       } else {
         // Tab from memo → same row's category input
-        const currentRow = memoInputEl.closest('tr');
         const categoryInput = currentRow.find('.category-autocomplete');
         if (categoryInput.length) {
           categoryInput.focus();

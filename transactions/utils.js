@@ -146,12 +146,40 @@ function formatCategoryDisplay(value) {
   return (value || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
 }
 
+/** How long a warning or error stays up, each on its own timer. */
+const STICKY_STATUS_MS = 10000;
+const _STICKY_STATUS_TYPES = new Set(['warning', 'error']);
+
+/**
+ * Show a message in the status bar. Success and info messages replace the
+ * bar's text. A warning or error is laid over the bar as its own toast for
+ * STICKY_STATUS_MS, so a later message cannot hide it before it can be
+ * read. Toasts that pile up stack downward over the page.
+ *
+ * @param {string} message
+ * @param {'success'|'info'|'warning'|'error'} type
+ */
 function showStatus(message, type) {
   const statusDiv = document.getElementById('status-message');
-  statusDiv.className = `status-message ${type}`;
-  statusDiv.textContent = message;
-  // Do NOT toggle display — space is always reserved by CSS min-height.
-  // Visibility is controlled by the type class in transactions.css.
+
+  if (!_STICKY_STATUS_TYPES.has(type)) {
+    statusDiv.className = `status-message ${type}`;
+    statusDiv.textContent = message;
+    // Do NOT toggle display — space is always reserved by CSS min-height.
+    // Visibility is controlled by the type class in transactions.css.
+    return;
+  }
+
+  // Older text under the toast is stale once a warning arrives; leave the
+  // bar empty so it does not reappear when the toast goes.
+  statusDiv.className = 'status-message';
+  statusDiv.textContent = '';
+
+  const toast = document.createElement('div');
+  toast.className = `status-message status-toast ${type}`;
+  toast.textContent = message;
+  document.getElementById('status-toasts').appendChild(toast);
+  setTimeout(() => toast.remove(), STICKY_STATUS_MS);
 }
 
 function clearStatus() {
