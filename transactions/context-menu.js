@@ -710,6 +710,7 @@ function _openInlineBillModal(billId, extraOptions) {
       display_name: acct.bank_name
         ? `${acct.bank_name} - ${acct.custom_name || acct.account_name || 'Account'} (${acct.mask || '****'})`
         : `${acct.custom_name || acct.account_name || 'Account'} (${acct.mask || '****'})`,
+      transfer_label: acct.transfer_label || null,
     }));
 
   openBillModal(billId, Object.assign({

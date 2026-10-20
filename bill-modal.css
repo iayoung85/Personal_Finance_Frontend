@@ -377,3 +377,13 @@
   color: var(--text-primary);
   font-size: 12px;
 }
+
+.bill-category-problem {
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: var(--color-warning-bg);
+  border-left: 3px solid var(--color-warning);
+  color: var(--text-primary);
+  font-size: 12px;
+}

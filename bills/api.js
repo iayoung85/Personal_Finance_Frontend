@@ -47,7 +47,8 @@ async function fetchAccounts() {
       flatAccounts.push({
         account_id: account.account_id,
         display_name: `${bankName} - ${namePart}`,
-        bank_name: bankName
+        bank_name: bankName,
+        transfer_label: account.transfer_label || null
       });
     });
   });

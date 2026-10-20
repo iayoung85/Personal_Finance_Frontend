@@ -192,6 +192,8 @@ async function loadAccounts() {
       // Backend-authoritative boundary for manual txn date guard (Problem 5 alignment)
       earliest_plaid_transaction_date: a.earliest_plaid_transaction_date || null,
       plaid_balance: a.plaid_balance != null ? parseFloat(a.plaid_balance) : null,
+      // Exact bracket string the API stores for transfers to this account.
+      transfer_label: a.transfer_label || null,
     }))
     .filter(a => a.account_id); // Filter out any without account_id
 

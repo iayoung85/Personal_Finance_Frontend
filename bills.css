@@ -387,3 +387,9 @@
 .bill-action-btn.toggle-active:hover { background: rgba(206, 145, 120, 0.12); }
 
 /* Bill modal styles moved to bill-modal.css (shared with transactions page) */
+
+.bill-category-warning {
+  color: var(--color-warning);
+  cursor: help;
+  font-weight: 600;
+}

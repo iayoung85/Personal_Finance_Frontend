@@ -92,6 +92,79 @@ function _filterCategories(categories, query) {
   return categories.filter(cat => cat.toLowerCase().includes(queryLower));
 }
 
+// ── Transfer-account mode (pure helpers) ─────────────────────
+
+/**
+ * The bracket string stored as a transfer category. The API serves the exact
+ * spelling as `transfer_label`; the display-name fallback only covers an API
+ * that has not shipped the field yet.
+ */
+function transferLabelForAccount(account) {
+  if (account.transfer_label) return account.transfer_label;
+  return `[${account.display_name}]`;
+}
+
+/**
+ * Accounts matching a "[..." query, minus the bill's own account.
+ * Matches the friendly display name case-insensitively; a trailing "]"
+ * the user typed is ignored.
+ */
+function filterTransferAccounts(accounts, rawQuery, excludeAccountId) {
+  const needle = String(rawQuery || '').replace(/^\[/, '').replace(/\]$/, '').trim().toLowerCase();
+  return (accounts || []).filter(acct => {
+    if (excludeAccountId && acct.account_id === excludeAccountId) return false;
+    if (!needle) return true;
+    return String(acct.display_name || '').toLowerCase().includes(needle);
+  });
+}
+
+/**
+ * Whether a recorded account pick is still valid for the text now in the
+ * input. Any edit that changes the text away from the picked label drops it.
+ */
+function isTransferPickCurrent(currentText, pickedLabel) {
+  return !!pickedLabel && String(currentText || '').trim() === pickedLabel;
+}
+
+/** Record (or clear, with null) the picked transfer account on the input. */
+function setTransferPick(input, account) {
+  if (account) {
+    input.dataset.transferAccountId = account.account_id;
+    input.dataset.transferLabel = transferLabelForAccount(account);
+  } else {
+    delete input.dataset.transferAccountId;
+    delete input.dataset.transferLabel;
+  }
+}
+
+/** The account id currently recorded on the input, or null. */
+function getTransferPickId(input) {
+  if (!input || !input.dataset.transferAccountId) return null;
+  if (!isTransferPickCurrent(input.value, input.dataset.transferLabel)) return null;
+  return input.dataset.transferAccountId;
+}
+
+function _renderTransferAccountDropdown(list, query, opts) {
+  const cfg = opts.transferAccounts;
+  const excludeId = cfg.excludeAccountId ? cfg.excludeAccountId() : null;
+  const matches = filterTransferAccounts(cfg.accounts, query, excludeId);
+  const shown = matches.slice(0, opts.maxVisible);
+
+  if (shown.length === 0) {
+    list.innerHTML = `<div class="${opts.emptyClass}">No matching accounts for transfer</div>`;
+    list.style.display = 'block';
+    return;
+  }
+
+  const needle = query.replace(/^\[/, '').replace(/\]$/, '');
+  list.innerHTML = shown.map((acct, i) => {
+    const name = acct.display_name || '';
+    const label = needle ? highlightCategoryMatch(name, needle) : _escCatHtml(name);
+    return `<div class="${opts.itemClass}${i === 0 ? ' active' : ''}" data-value="${_escCatHtml(transferLabelForAccount(acct))}" data-account-id="${_escCatHtml(acct.account_id)}">${label}</div>`;
+  }).join('');
+  list.style.display = 'block';
+}
+
 // ── Internal: Render Dropdown ────────────────────────────────
 
 function _renderCategoryDropdown(input, list, opts) {
@@ -106,6 +179,12 @@ function _renderCategoryDropdown(input, list, opts) {
   // Optional hook — return true to suppress default filtering.
   // Used by bills.js to handle the "[" transfer-account mode.
   if (opts.onCustomQuery && opts.onCustomQuery(query, list)) return;
+
+  // Account mode: "[" lists accounts instead of categories.
+  if (opts.transferAccounts && query.startsWith('[')) {
+    _renderTransferAccountDropdown(list, query, opts);
+    return;
+  }
 
   const matches = _filterCategories(opts.categories, query);
   const maxVisible = opts.maxVisible;
@@ -143,7 +222,14 @@ function _renderCategoryDropdown(input, list, opts) {
  *   maxVisible    {number}     Max items shown before the overflow hint (default 10).
  *   onCustomQuery {function(query:string, listEl:HTMLElement) → boolean}
  *                              Called before default filtering. Return true to
- *                              suppress default behaviour (e.g. bills "[" mode).
+ *                              suppress default behaviour.
+ *   transferAccounts {{accounts: object[], excludeAccountId: function():string|null}}
+ *                              Turns on account mode: a query starting with "["
+ *                              lists accounts (friendly name) and a pick inserts
+ *                              the account's transfer label and records its id in
+ *                              input.dataset.transferAccountId (read it with
+ *                              getTransferPickId). Editing the text away from the
+ *                              picked label clears the record.
  *
  * @returns {HTMLInputElement}  The cloned (live) input element, in case the
  *                              caller needs to reference it after wiring.
@@ -156,13 +242,34 @@ function wireUpCategoryAutocomplete(inputEl, listEl, options) {
     moreClass:     'cat-ac-more',
     maxVisible:    10,
     onCustomQuery: null,
+    transferAccounts: null,
   }, options);
 
   // Clone to drop old listeners (safe for modal reuse)
   const input = inputEl.cloneNode(true);
   inputEl.parentNode.replaceChild(input, inputEl);
 
-  input.addEventListener('input', () => _renderCategoryDropdown(input, listEl, opts));
+  // Applies a dropdown pick; account picks also record the account id.
+  function applyPick(item) {
+    input.value = item.dataset.value;
+    if (opts.transferAccounts && item.dataset.accountId) {
+      const picked = (opts.transferAccounts.accounts || [])
+        .find(acct => acct.account_id === item.dataset.accountId);
+      setTransferPick(input, picked || null);
+    } else {
+      setTransferPick(input, null);
+    }
+    listEl.innerHTML = '';
+    listEl.style.display = 'none';
+  }
+
+  input.addEventListener('input', () => {
+    if (input.dataset.transferAccountId &&
+        !isTransferPickCurrent(input.value, input.dataset.transferLabel)) {
+      setTransferPick(input, null);
+    }
+    _renderCategoryDropdown(input, listEl, opts);
+  });
 
   input.addEventListener('focus', () => {
     input.select();
@@ -188,9 +295,7 @@ function wireUpCategoryAutocomplete(inputEl, listEl, options) {
       const target = activeItem || items[0];
       if (target) {
         e.preventDefault();
-        input.value = target.dataset.value;
-        listEl.innerHTML = '';
-        listEl.style.display = 'none';
+        applyPick(target);
       }
     } else if (e.key === 'Escape') {
       listEl.innerHTML = '';
@@ -206,9 +311,7 @@ function wireUpCategoryAutocomplete(inputEl, listEl, options) {
     const item = e.target.closest(`.${opts.itemClass}`);
     if (item) {
       e.preventDefault();
-      input.value = item.dataset.value;
-      listEl.innerHTML = '';
-      listEl.style.display = 'none';
+      applyPick(item);
     }
   });
 

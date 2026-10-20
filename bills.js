@@ -521,6 +521,11 @@ function _renderBillRow(bill) {
   const accountName = escapeHtml(bill.account_name || bill.account_id);
   const bankName = escapeHtml(bill.bank_name || '');
   const category = escapeHtml(bill.user_category || '');
+  const problemMessage = bill.category_problem && bill.category_problem.message
+    ? escapeHtml(bill.category_problem.message) : '';
+  const categoryProblemMarker = problemMessage
+    ? ` <span class="bill-category-warning" title="${problemMessage}" role="img" aria-label="${problemMessage}">&#9888;</span>`
+    : '';
   const destBank = escapeHtml(bill.transfer_bank_name || '');
   const destAccount = bill.transfer_account_name ? escapeHtml(bill.transfer_account_name) : '';
   const rowClass = bill.is_active ? '' : 'bill-inactive';
@@ -539,7 +544,7 @@ function _renderBillRow(bill) {
     <td>${freqLabel}${intervalNote}</td>
     <td style="font-size:12px;">${accountName}</td>
     <td style="font-size:12px;">${bankName}</td>
-    <td style="font-size:12px;">${category}</td>
+    <td style="font-size:12px;">${category}${categoryProblemMarker}</td>
     <td style="font-size:12px;">${destAccount}</td>
     <td style="font-size:12px;">${destBank}</td>
     <td style="white-space:nowrap;">

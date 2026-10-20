@@ -161,6 +161,7 @@ function _billModalEnsureDOM() {
 
             <div class="bill-field">
               <label for="bill-category">Category</label>
+              <div id="bill-category-problem" class="bill-category-problem" role="alert" style="display:none;"></div>
               <div style="position: relative;">
                 <input type="text" id="bill-category" placeholder="Type to search, or [ for transfers" autocomplete="off">
                 <div id="bill-category-ac-list" class="bill-category-ac-list"></div>
@@ -505,7 +506,11 @@ function _billModalResetForm() {
   document.getElementById('bill-type').value = 'debit';
   document.getElementById('bill-auto-pay').checked = false;
   document.getElementById('bill-is-important').checked = false;
-  document.getElementById('bill-category').value = '';
+  const resetCategoryInput = document.getElementById('bill-category');
+  resetCategoryInput.value = '';
+  delete resetCategoryInput.dataset.transferAccountId;
+  delete resetCategoryInput.dataset.transferLabel;
+  _billModalShowCategoryProblem(null);
   document.getElementById('bill-memo').value = '';
   document.getElementById('bill-end-date').value = '';
   document.getElementById('bill-end-date').dataset.isoValue = '';
@@ -533,6 +538,14 @@ function _billModalResetCriteriaForm() {
   _billModalUpdateCriteriaBadge();
 }
 
+/** Shows the API's category warning above the category field, or hides it. */
+function _billModalShowCategoryProblem(problem) {
+  const note = document.getElementById('bill-category-problem');
+  if (!note) return;
+  note.textContent = problem && problem.message ? problem.message : '';
+  note.style.display = problem && problem.message ? 'block' : 'none';
+}
+
 function _billModalPopulateFromBill(bill) {
   document.getElementById('bill-frequency').value = bill.frequency;
   document.getElementById('bill-account').value = bill.account_id;
@@ -542,7 +555,16 @@ function _billModalPopulateFromBill(bill) {
   document.getElementById('bill-amount').value = Math.abs(bill.amount).toFixed(2);
   document.getElementById('bill-auto-pay').checked = !!bill.auto_pay;
   document.getElementById('bill-is-important').checked = !!bill.is_important;
-  document.getElementById('bill-category').value = bill.user_category || '';
+  const categoryInput = document.getElementById('bill-category');
+  categoryInput.value = bill.user_category || '';
+  delete categoryInput.dataset.transferAccountId;
+  delete categoryInput.dataset.transferLabel;
+  if (bill.transfer_account_id && bill.user_category) {
+    // The stored category is the link's label until the user changes it.
+    categoryInput.dataset.transferAccountId = bill.transfer_account_id;
+    categoryInput.dataset.transferLabel = bill.user_category.trim();
+  }
+  _billModalShowCategoryProblem(bill.category_problem);
   document.getElementById('bill-memo').value = bill.memo || '';
   document.getElementById('bill-end-type').value = bill.end_type || 'never';
   _billModalOnEndTypeChange();
@@ -1256,6 +1278,27 @@ function _normalizeBillEditComparable(value) {
   return value;
 }
 
+/**
+ * Canonical form of a splits template for change detection. Form rows carry
+ * `user_memo: null` and `description: null` where stored entries omit the
+ * keys, so empty values are dropped and amounts rounded before comparing.
+ */
+function _normalizeSplitsTemplateForCompare(template) {
+  if (!Array.isArray(template) || template.length === 0) return [];
+  return template.map(entry => {
+    const normalized = {
+      amount: Number.isFinite(Number(entry.amount)) && entry.amount !== null
+        ? Number(Number(entry.amount).toFixed(2)) : null,
+      category: String(entry.category || '').trim(),
+    };
+    const memo = String(entry.user_memo || '').trim();
+    const description = String(entry.description || '').trim();
+    if (memo) normalized.user_memo = memo;
+    if (description) normalized.description = description;
+    return normalized;
+  });
+}
+
 function _setBillEditPayloadField(payload, fieldName, nextValue, originalValue) {
   const normalizedNext = _normalizeBillEditComparable(nextValue);
   const normalizedOriginal = _normalizeBillEditComparable(originalValue);
@@ -1321,7 +1364,12 @@ function _buildBillUpdatePayload(billId, formData, signedAmount, transferAccount
   }
 
   _setBillEditPayloadField(payload, 'account_id', formData.account_id, originalBill.account_id);
-  _setBillEditPayloadField(payload, 'transfer_account_id', transferAccountId, originalBill.transfer_account_id);
+  // Only a real pick that differs from the stored link is sent. A missing
+  // id means "unchanged" or "category is no longer a transfer"; the API
+  // handles both from the category, and null here would unlink the bill.
+  if (transferAccountId && transferAccountId !== originalBill.transfer_account_id) {
+    payload.transfer_account_id = transferAccountId;
+  }
   _setBillEditPayloadField(payload, 'description', formData.description, originalBill.description);
   _setBillEditPayloadField(payload, 'user_category', formData.user_category, originalBill.user_category);
   _setBillEditPayloadField(payload, 'memo', formData.memo, originalBill.memo);
@@ -1337,7 +1385,10 @@ function _buildBillUpdatePayload(billId, formData, signedAmount, transferAccount
   _setBillEditPayloadField(payload, 'end_type', formData.end_type, originalBill.end_type);
   _setBillEditPayloadField(payload, 'end_date', formData.end_date, originalBill.end_date);
   _setBillEditPayloadField(payload, 'max_occurrences', formData.max_occurrences, originalBill.max_occurrences);
-  _setBillEditPayloadField(payload, 'splits_template', formData.splits_template, originalBill.splits_template);
+  if (JSON.stringify(_normalizeSplitsTemplateForCompare(formData.splits_template))
+      !== JSON.stringify(_normalizeSplitsTemplateForCompare(originalBill.splits_template))) {
+    payload.splits_template = formData.splits_template;
+  }
   _setBillEditPayloadField(payload, 'match_amount_mode', formData.match_amount_mode, originalBill.match_amount_mode);
   _setBillEditPayloadField(payload, 'match_amount_min', formData.match_amount_min, originalBill.match_amount_min);
   _setBillEditPayloadField(payload, 'match_amount_max', formData.match_amount_max, originalBill.match_amount_max);
@@ -1435,14 +1486,9 @@ async function _billModalSave() {
 
   const signedAmount = formData.isCredit ? formData.amount : -(formData.amount);
 
-  let transferAccountId = null;
-  if (formData.user_category && formData.user_category.startsWith('[') && formData.user_category.endsWith(']') && formData.user_category.length > 2) {
-    const transferName = formData.user_category.slice(1, -1);
-    const matchedAccount = _billModalAccounts.find(acct =>
-      acct.display_name.toLowerCase() === transferName.toLowerCase()
-    );
-    if (matchedAccount) transferAccountId = matchedAccount.account_id;
-  }
+  // The id comes from an actual account pick (or the stored link in edit
+  // mode), never from guessing at the typed label.
+  const transferAccountId = getTransferPickId(document.getElementById('bill-category'));
 
   let payload;
   if (_billModalEditingId) {
@@ -1701,11 +1747,7 @@ function _billModalAddSplitRow(initial) {
     itemClass: 'bill-category-ac-item',
     emptyClass: 'bill-category-ac-empty',
     moreClass: 'bill-category-ac-more',
-    onCustomQuery: (query, dropdownList) => {
-      if (!query.startsWith('[')) return false;
-      _bmShowTransferAccountDropdown(dropdownList, query);
-      return true;
-    },
+    transferAccounts: _billModalTransferAccountsConfig(),
   });
   liveInput.addEventListener('change', _billModalUpdateSplitsValidation);
   liveInput.addEventListener('input', _billModalUpdateSplitsValidation);
@@ -1849,42 +1891,16 @@ function _billModalWireCategoryAutocomplete() {
     itemClass:  'bill-category-ac-item',
     emptyClass: 'bill-category-ac-empty',
     moreClass:  'bill-category-ac-more',
-    onCustomQuery: (query, dropdownList) => {
-      if (!query.startsWith('[')) return false;
-      _bmShowTransferAccountDropdown(dropdownList, query);
-      return true;
-    },
+    transferAccounts: _billModalTransferAccountsConfig(),
   });
 }
 
-function _bmShowTransferAccountDropdown(list, rawQuery) {
-  const accountQuery = rawQuery.slice(1).replace(/]$/, '').toLowerCase();
-  const currentAccountId = document.getElementById('bill-account')?.value || null;
-
-  const matchingAccounts = _billModalAccounts.filter(acct => {
-    if (acct.account_id === currentAccountId) return false;
-    if (!accountQuery) return true;
-    return acct.display_name.toLowerCase().includes(accountQuery);
-  });
-
-  const maxVisible = 10;
-  const shown = matchingAccounts.slice(0, maxVisible);
-
-  if (shown.length === 0) {
-    list.innerHTML = '<div class="bill-category-ac-empty">No matching accounts for transfer</div>';
-    list.style.display = 'block';
-    return;
-  }
-
-  const html = shown.map((acct, index) => {
-    const displayName = acct.display_name;
-    const transferValue = `[${displayName}]`;
-    const highlighted = accountQuery ? highlightCategoryMatch(displayName, accountQuery) : escapeHtml(displayName);
-    return `<div class="bill-category-ac-item${index === 0 ? ' active' : ''}" data-value="${escapeHtml(transferValue)}">${highlighted}</div>`;
-  }).join('');
-
-  list.innerHTML = html;
-  list.style.display = 'block';
+// Account mode for the "[" picker; the bill's own account is never offered.
+function _billModalTransferAccountsConfig() {
+  return {
+    accounts: _billModalAccounts,
+    excludeAccountId: () => document.getElementById('bill-account')?.value || null,
+  };
 }
 
 // ── Event Delegation (DOW buttons, day-of-month, etc.) ───────
