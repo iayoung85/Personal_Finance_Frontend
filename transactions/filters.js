@@ -102,15 +102,23 @@ function _applyAllTimeDates() {
 }
 
 /**
- * Set start-date/end-date to the last 12 months from today,
- * plus the forecast horizon into the future so projected rows
+ * Set start-date/end-date to the trailing year (365 or 366 days ending
+ * today), plus the forecast horizon into the future so projected rows
  * are visible by default.
  */
 function _applyLast12Months() {
-  const start = new Date();
-  start.setFullYear(start.getFullYear() - 1);
+  const start = trailingYearStartDate(new Date());
   document.getElementById('start-date').value = _formatDateLocal(start);
   document.getElementById('end-date').value = _futureEndDateStr();
+}
+
+/**
+ * Keep the trailing-year button's day count accurate.
+ * Called once from main.js init.
+ */
+function refreshTrailingYearButtonLabel() {
+  const button = document.getElementById('btn-date-last-12-months');
+  if (button) button.textContent = trailingYearLabel(new Date());
 }
 
 /**

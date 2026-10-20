@@ -286,7 +286,7 @@ function _renderNumberDisplayCard(config) {
  */
 function _renderViewDefaultsCard(config) {
   const rangeOptions = [
-    { value: 'last_12_months', label: 'Last 12 Months' },
+    { value: 'last_12_months', label: trailingYearLabel(new Date()) },
     { value: 'mtd',            label: 'Month to Date' },
     { value: 'ytd',            label: 'Year to Date' },
     { value: 'last_month',     label: 'Last Month' },

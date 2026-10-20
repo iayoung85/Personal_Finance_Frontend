@@ -93,6 +93,7 @@ $(document).ready(async function() {
   // Render dynamic period buttons after transactions are loaded
   renderDynamicPeriodButtons();
   initCustomDateListeners();
+  refreshTrailingYearButtonLabel();
 
   // Load available categories for manual categorization dropdown
   await loadAvailableCategories();

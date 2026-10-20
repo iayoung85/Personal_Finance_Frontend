@@ -104,6 +104,40 @@ function todayISO() {
 }
 
 /**
+ * First day of the trailing-year window that ends on `today`.
+ *
+ * Starts the day after today's date one year back, so every day of the
+ * month lands in the window exactly twelve times and today's date is never
+ * counted twice. A leap day in the range makes the window 366 days rather
+ * than dropping a date from the start. When today is Feb 29, the prior year's
+ * Feb 28 stands in for the missing date.
+ *
+ * @param {Date} today
+ * @returns {Date}
+ */
+function trailingYearStartDate(today) {
+  const priorYear = today.getFullYear() - 1;
+  const month = today.getMonth();
+  const anchorDay = _clampDay(today.getDate(), month + 1, priorYear);
+  return new Date(priorYear, month, anchorDay + 1);
+}
+
+/**
+ * Button label for the trailing-year window, e.g. "Last 365 Days".
+ * Reads 366 when the window holds a Feb 29.
+ *
+ * @param {Date} today
+ * @returns {string}
+ */
+function trailingYearLabel(today) {
+  const start = trailingYearStartDate(today);
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  // Rounding absorbs the hour a daylight-saving change adds or removes.
+  const dayCount = Math.round((end - start) / 86400000) + 1;
+  return `Last ${dayCount} Days`;
+}
+
+/**
  * Parse a user-typed date string in multiple formats into a Date.
  *
  * Compact 8-digit input (no separators) is interpreted according
