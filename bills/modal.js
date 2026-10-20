@@ -915,6 +915,86 @@ function _bmDowFromDateStr(dateStr) {
 // Preview updates are driven by delegated change/input listeners in
 // _billModalWireEventDelegation() and direct calls from _billModalOnFrequencyChange.
 
+const _BM_PREVIEW_DEBOUNCE_MS = 300;
+const _BM_SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+let _bmPreviewTimer = null;
+let _bmPreviewRequestSeq = 0;
+
+/**
+ * Only the newest preview request may paint; older answers arrive late and
+ * would overwrite what the form now says.
+ * @param {number} requestId
+ * @param {number} latestId
+ * @returns {boolean}
+ */
+function _bmIsLatestPreview(requestId, latestId) {
+  return requestId === latestId;
+}
+
+/**
+ * Muted note for dates the API left out because a payment already covers them.
+ * @param {string[]} skippedDates ISO dates
+ * @returns {string} empty when nothing was skipped
+ */
+function _bmSkippedNoteText(skippedDates) {
+  if (!Array.isArray(skippedDates) || skippedDates.length === 0) return '';
+  const labels = skippedDates.map((iso) => {
+    const [, month, day] = String(iso).split('-');
+    return `${_BM_SHORT_MONTHS[parseInt(month, 10) - 1]} ${parseInt(day, 10)}`;
+  });
+  const verb = labels.length === 1 ? 'a payment for that period is' : 'payments for those periods are';
+  return `${labels.join(', ')} skipped — ${verb} already on the books.`;
+}
+
+/**
+ * Body for POST /api/bills/preview: the schedule fields only.
+ * @param {object} formData
+ * @param {number|string|null} billId
+ * @returns {object}
+ */
+function _bmBuildPreviewRequest(formData, billId) {
+  const request = {
+    frequency: formData.frequency,
+    interval: formData.interval,
+    start_date: formData.start_date,
+    second_date: formData.second_date,
+    day_of_month: formData.day_of_month,
+    second_day_of_month: formData.second_day_of_month,
+    day_of_week: formData.day_of_week,
+    end_type: formData.end_type,
+    end_date: formData.end_date,
+    max_occurrences: formData.max_occurrences,
+    count: 10
+  };
+  if (billId) request.bill_id = billId;
+  return request;
+}
+
+function _bmRenderPreviewDates(datesEl, formData, dates, noteText) {
+  if (dates.length === 0) {
+    datesEl.innerHTML = '<div style="color: var(--text-muted); font-size: 12px;">No upcoming dates to display.</div>';
+    return;
+  }
+  const amountStr = formData.amount ? formatCurrency(formData.amount) : '—';
+  const amountPrefix = formData.isCredit ? '+' : '−';
+  const rows = dates.map((dateStr, idx) => `<div class="preview-date-item">
+      <span class="date-label">#${idx + 1} — ${formatDate(dateStr)}</span>
+      <span class="date-amount">${amountPrefix}${amountStr}</span>
+    </div>`).join('');
+  const note = noteText
+    ? `<div class="preview-skipped-note" style="color: var(--text-muted); font-size: 12px; margin-top: 6px;">${noteText}</div>`
+    : '';
+  datesEl.innerHTML = rows + note;
+}
+
+function _bmRenderPreviewError(datesEl, message) {
+  const safe = document.createElement('div');
+  safe.style.cssText = 'color: var(--text-muted); font-size: 12px;';
+  safe.textContent = message;
+  datesEl.innerHTML = '';
+  datesEl.appendChild(safe);
+}
+
 function _billModalUpdatePreview() {
   const summaryEl = document.getElementById('bill-preview-summary');
   const datesEl = document.getElementById('bill-preview-dates');
@@ -929,22 +1009,40 @@ function _billModalUpdatePreview() {
 
   summaryEl.innerHTML = _bmGenerateDescription(formData);
 
-  const dates = _bmGeneratePreviewDates(formData, 10);
-  if (dates.length === 0) {
-    datesEl.innerHTML = '<div style="color: #999; font-size: 12px;">No upcoming dates to display.</div>';
-    return;
+  // Paint the local dates once so the area is never empty before the first answer.
+  if (!datesEl.firstElementChild) {
+    _bmRenderPreviewDates(datesEl, formData, _bmGeneratePreviewDates(formData, 10), '');
   }
 
-  const amountStr = formData.amount ? formatCurrency(formData.amount) : '—';
-  const amountPrefix = formData.isCredit ? '+' : '−';
+  const requestId = ++_bmPreviewRequestSeq;
+  clearTimeout(_bmPreviewTimer);
+  _bmPreviewTimer = setTimeout(() => _bmFetchPreview(requestId, formData), _BM_PREVIEW_DEBOUNCE_MS);
+}
 
-  datesEl.innerHTML = dates.map((dateStr, idx) => {
-    const displayDate = formatDate(dateStr);
-    return `<div class="preview-date-item">
-      <span class="date-label">#${idx + 1} — ${displayDate}</span>
-      <span class="date-amount">${amountPrefix}${amountStr}</span>
-    </div>`;
-  }).join('');
+async function _bmFetchPreview(requestId, formData) {
+  const request = _bmBuildPreviewRequest(formData, _billModalEditingId);
+  let result = null;
+  let failure = null;
+  try {
+    result = await apiPreviewBill(request);
+  } catch (error) {
+    failure = error;
+  }
+  if (!_bmIsLatestPreview(requestId, _bmPreviewRequestSeq)) return;
+
+  const datesEl = document.getElementById('bill-preview-dates');
+  if (!datesEl) return;
+
+  if (failure && failure.status === 400) {
+    _bmRenderPreviewError(datesEl, failure.message);
+    return;
+  }
+  if (failure || !result || !Array.isArray(result.occurrences)) {
+    // The API is unreachable or misbehaving; the local engine keeps the preview useful.
+    _bmRenderPreviewDates(datesEl, formData, _bmGeneratePreviewDates(formData, 10), '');
+    return;
+  }
+  _bmRenderPreviewDates(datesEl, formData, result.occurrences, _bmSkippedNoteText(result.skipped_for_paid_period));
 }
 
 function _bmGenerateDescription(formData) {
@@ -1307,6 +1405,37 @@ function _setBillEditPayloadField(payload, fieldName, nextValue, originalValue) 
   }
 }
 
+/**
+ * Earlier of two day-of-month picks, where -1 means "last day" and sorts last.
+ * @param {number|null} first
+ * @param {number|null} second
+ * @returns {number|null}
+ */
+function _bmEarlierMonthDay(first, second) {
+  if (first == null) return second;
+  if (second == null) return first;
+  const rank = (day) => (day === -1 ? 32 : day);
+  return rank(first) <= rank(second) ? first : second;
+}
+
+/**
+ * Decide whether an edit should send start_date at all. An untouched start
+ * must not be sent: the stored date is the schedule's anchor and re-sending a
+ * re-derived one would move it.
+ * @param {{frequency: string, storedStart: string|null, rawFormStart: string,
+ *   synthesizedStart: string, dayFieldsChanged: boolean}} args
+ * @returns {boolean}
+ */
+function _bmShouldSendStartDate({ frequency, storedStart, rawFormStart, synthesizedStart, dayFieldsChanged }) {
+  if (!storedStart) return true;
+  const monthly = frequency === 'monthly' || frequency === 'twice_monthly';
+  // The month picker only carries year and month, so compare at that grain.
+  const grain = monthly ? 7 : 10;
+  const startFieldChanged = String(rawFormStart || '').slice(0, grain) !== String(storedStart).slice(0, grain);
+  if (startFieldChanged) return true;
+  return monthly && dayFieldsChanged && synthesizedStart !== storedStart;
+}
+
 function _synthesizeStartDate(formData) {
   // If we aren't dealing with a monthly bill, or missing data, return as-is
   if ((formData.frequency !== 'monthly' && formData.frequency !== 'twice_monthly') || !formData.start_date) {
@@ -1325,12 +1454,10 @@ function _synthesizeStartDate(formData) {
   let day = formData.day_of_month;
   let secondDay = formData.second_day_of_month;
 
+  // The earlier of the two days, so the result never depends on today's
+  // date and an unchanged form always yields the same start.
   if (formData.frequency === 'twice_monthly' && secondDay != null) {
-    const today = new Date();
-    const todayDay = today.getDate();
-    const candidateDays = [day, secondDay].sort((first, second) => first - second);
-    const nextDay = candidateDays.find(candidateDay => candidateDay > todayDay);
-    day = nextDay ?? candidateDays[0];
+    day = _bmEarlierMonthDay(day, secondDay);
   }
 
   // Handle "Last day of month" (-1)
@@ -1350,7 +1477,6 @@ function _buildBillUpdatePayload(billId, formData, signedAmount, transferAccount
 
   const payload = {};
 
-  // 1. Synthesize the true start date right away
   const effectiveStartDate = _synthesizeStartDate(formData);
 
   const nextAmount = Number.isFinite(signedAmount)
@@ -1377,7 +1503,6 @@ function _buildBillUpdatePayload(billId, formData, signedAmount, transferAccount
   _setBillEditPayloadField(payload, 'is_important', formData.is_important, originalBill.is_important);
   _setBillEditPayloadField(payload, 'frequency', formData.frequency, originalBill.frequency);
   _setBillEditPayloadField(payload, 'interval', formData.interval, originalBill.interval);
-  _setBillEditPayloadField(payload, 'start_date', effectiveStartDate, originalBill.start_date);
   _setBillEditPayloadField(payload, 'second_date', formData.second_date, originalBill.second_date);
   _setBillEditPayloadField(payload, 'day_of_month', formData.day_of_month, originalBill.day_of_month);
   _setBillEditPayloadField(payload, 'second_day_of_month', formData.second_day_of_month, originalBill.second_day_of_month);
@@ -1400,18 +1525,15 @@ function _buildBillUpdatePayload(billId, formData, signedAmount, transferAccount
   _setBillEditPayloadField(payload, 'match_account_scope', formData.match_account_scope, originalBill.match_account_scope);
   _setBillEditPayloadField(payload, 'match_sign_enforced', formData.match_sign_enforced, originalBill.match_sign_enforced);
 
-  // 1. Define the fields that constitute a "recurrence rule change"
-  const recurrenceFields = [
-    'frequency', 'interval', 'day_of_month', 'second_day_of_month', 
-    'day_of_week', 'second_date', 'end_type', 'end_date', 'max_occurrences'
-  ];
-
-  // 2. Check if any of these fields were added to the payload
-  const recurrenceChanged = recurrenceFields.some(field => payload.hasOwnProperty(field));
-
-  // 3. If recurrence changed, ensure start_date is present in the payload
-  // (We use formData to get the most recent value from the user's input)
-  if (recurrenceChanged && !payload.hasOwnProperty('start_date')) {
+  const dayFieldsChanged = ['day_of_month', 'second_day_of_month', 'frequency']
+    .some(field => payload.hasOwnProperty(field));
+  if (_bmShouldSendStartDate({
+    frequency: formData.frequency,
+    storedStart: originalBill.start_date,
+    rawFormStart: formData.start_date,
+    synthesizedStart: effectiveStartDate,
+    dayFieldsChanged
+  })) {
     payload.start_date = effectiveStartDate;
   }
 
