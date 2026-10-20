@@ -415,17 +415,6 @@ function _renderCategoryReport(data, interval) {
   }
   html += `<td class="reports-num-col">${_formatCurrency(data.total_expenses_grand)}</td></tr>`;
 
-  // Transfers section (optional)
-  if (data.transfers) {
-    html += `<tr class="reports-section-header"><td colspan="${periodCount + 2}">Transfers</td></tr>`;
-    html += _renderCategoryRows(data.transfers, periodCount);
-    html += '<tr class="reports-subtotal-row"><td>Total Transfers</td>';
-    for (const val of data.total_transfers_row) {
-      html += `<td class="reports-num-col">${_formatCurrency(val)}</td>`;
-    }
-    html += `<td class="reports-num-col">${_formatCurrency(data.total_transfers_grand)}</td></tr>`;
-  }
-
   // Grand total row
   html += '<tr class="reports-net-worth-row"><td><strong>Total</strong></td>';
   for (const val of data.total_row) {
@@ -449,11 +438,12 @@ function _renderCategoryReport(data, interval) {
 }
 
 /**
- * Adjustment and investment-trend sections of a category report, in display
- * order. A section with no categories is left out.
+ * Transfer, adjustment, and investment-trend sections of a category report, in
+ * display order. A section with no categories (or transfers not requested) is left out.
  */
 function _getReportSeparateSections(data) {
   const candidates = [
+    { label: 'Transfers', categories: data.transfers, totalRow: data.total_transfers_row, grandTotal: data.total_transfers_grand },
     { label: 'Adjustments', categories: data.adjustments, totalRow: data.total_adjustments_row, grandTotal: data.total_adjustments_grand },
     { label: 'Investment Trend', categories: data.investment_trends, totalRow: data.total_investment_trends_row, grandTotal: data.total_investment_trends_grand },
   ];
@@ -648,18 +638,6 @@ function _generateCategoryCSV(data) {
   csv += ',,"Total Expenses"';
   for (const val of data.total_expenses_row) { csv += `,${val}`; }
   csv += `,${data.total_expenses_grand}\n`;
-
-  if (data.transfers) {
-    csv += '"Transfers"\n';
-    for (const [category, catData] of Object.entries(data.transfers)) {
-      csv += _splitCategoryColumns(category);
-      for (const amount of catData.amounts) { csv += `,${amount}`; }
-      csv += `,${catData.total}\n`;
-    }
-    csv += ',,"Total Transfers"';
-    for (const val of data.total_transfers_row) { csv += `,${val}`; }
-    csv += `,${data.total_transfers_grand}\n`;
-  }
 
   csv += ',,"Total"';
   for (const val of data.total_row) { csv += `,${val}`; }

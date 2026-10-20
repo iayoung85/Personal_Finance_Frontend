@@ -128,4 +128,11 @@ test('report separate sections hide when empty', () => {
   assert.equal(some[0].label, 'Investment Trend');
   assert.equal(some[0].grandTotal, 3);
   assert.equal(_getReportSeparateSections({}).length, 0);
+  const withTransfers = _getReportSeparateSections({
+    transfers: { 'Transfer: Out': { amounts: [-5], total: -5 } },
+    total_transfers_row: [-5],
+    total_transfers_grand: -5,
+    adjustments: { 'Adjustments: Fix': { amounts: [2], total: 2 } },
+  });
+  assert.equal(withTransfers.map(section => section.label).join(','), 'Transfers,Adjustments');
 });
