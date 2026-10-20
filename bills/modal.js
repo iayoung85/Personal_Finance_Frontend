@@ -947,25 +947,20 @@ function _bmSkippedNoteText(skippedDates) {
 }
 
 /**
- * Body for POST /api/bills/preview: the schedule fields only.
+ * Body for POST /api/bills/preview: the schedule fields only. Editing sends
+ * exactly what the save would (changed fields, and start_date only when the
+ * save would send it) so the API sees the same schedule change either way;
+ * a new bill sends every field with the synthesized start.
  * @param {object} formData
  * @param {number|string|null} billId
+ * @param {object|null} [originalBill] stored bill being edited
  * @returns {object}
  */
-function _bmBuildPreviewRequest(formData, billId) {
-  const request = {
-    frequency: formData.frequency,
-    interval: formData.interval,
-    start_date: formData.start_date,
-    second_date: formData.second_date,
-    day_of_month: formData.day_of_month,
-    second_day_of_month: formData.second_day_of_month,
-    day_of_week: formData.day_of_week,
-    end_type: formData.end_type,
-    end_date: formData.end_date,
-    max_occurrences: formData.max_occurrences,
-    count: 10
-  };
+function _bmBuildPreviewRequest(formData, billId, originalBill) {
+  const request = (billId && originalBill)
+    ? _bmScheduleChanges(formData, originalBill)
+    : _bmScheduleFields(formData, _synthesizeStartDate(formData));
+  request.count = 10;
   if (billId) request.bill_id = billId;
   return request;
 }
@@ -1020,7 +1015,7 @@ function _billModalUpdatePreview() {
 }
 
 async function _bmFetchPreview(requestId, formData) {
-  const request = _bmBuildPreviewRequest(formData, _billModalEditingId);
+  const request = _bmBuildPreviewRequest(formData, _billModalEditingId, _billModalEditData);
   let result = null;
   let failure = null;
   try {
@@ -1471,13 +1466,51 @@ function _synthesizeStartDate(formData) {
   return `${year}-${month}-${paddedDay}`;
 }
 
+const _BM_SCHEDULE_FIELDS = [
+  'frequency', 'interval', 'second_date', 'day_of_month', 'second_day_of_month',
+  'day_of_week', 'end_type', 'end_date', 'max_occurrences'
+];
+
+/** Every schedule field of the form plus the given start, as a create sends them. */
+function _bmScheduleFields(formData, startDate) {
+  const fields = { start_date: startDate };
+  _BM_SCHEDULE_FIELDS.forEach((field) => { fields[field] = formData[field]; });
+  return fields;
+}
+
+/**
+ * The schedule part of an edit: fields that differ from the stored bill, and
+ * start_date only when the save should send it (then the synthesized value).
+ * Shared by the save payload and the schedule preview so they cannot drift.
+ * @param {object} formData
+ * @param {object} originalBill
+ * @returns {object}
+ */
+function _bmScheduleChanges(formData, originalBill) {
+  const changes = {};
+  _BM_SCHEDULE_FIELDS.forEach((field) => {
+    _setBillEditPayloadField(changes, field, formData[field], originalBill[field]);
+  });
+  const synthesizedStart = _synthesizeStartDate(formData);
+  const dayFieldsChanged = ['day_of_month', 'second_day_of_month', 'frequency']
+    .some(field => changes.hasOwnProperty(field));
+  if (_bmShouldSendStartDate({
+    frequency: formData.frequency,
+    storedStart: originalBill.start_date,
+    rawFormStart: formData.start_date,
+    synthesizedStart,
+    dayFieldsChanged
+  })) {
+    changes.start_date = synthesizedStart;
+  }
+  return changes;
+}
+
 function _buildBillUpdatePayload(billId, formData, signedAmount, transferAccountId) {
   const originalBill = _billModalEditData || null;
   if (!originalBill || !billId) return {};
 
   const payload = {};
-
-  const effectiveStartDate = _synthesizeStartDate(formData);
 
   const nextAmount = Number.isFinite(signedAmount)
     ? Number(Number(signedAmount).toFixed(2))
@@ -1501,15 +1534,6 @@ function _buildBillUpdatePayload(billId, formData, signedAmount, transferAccount
   _setBillEditPayloadField(payload, 'memo', formData.memo, originalBill.memo);
   _setBillEditPayloadField(payload, 'auto_pay', formData.auto_pay, originalBill.auto_pay);
   _setBillEditPayloadField(payload, 'is_important', formData.is_important, originalBill.is_important);
-  _setBillEditPayloadField(payload, 'frequency', formData.frequency, originalBill.frequency);
-  _setBillEditPayloadField(payload, 'interval', formData.interval, originalBill.interval);
-  _setBillEditPayloadField(payload, 'second_date', formData.second_date, originalBill.second_date);
-  _setBillEditPayloadField(payload, 'day_of_month', formData.day_of_month, originalBill.day_of_month);
-  _setBillEditPayloadField(payload, 'second_day_of_month', formData.second_day_of_month, originalBill.second_day_of_month);
-  _setBillEditPayloadField(payload, 'day_of_week', formData.day_of_week, originalBill.day_of_week);
-  _setBillEditPayloadField(payload, 'end_type', formData.end_type, originalBill.end_type);
-  _setBillEditPayloadField(payload, 'end_date', formData.end_date, originalBill.end_date);
-  _setBillEditPayloadField(payload, 'max_occurrences', formData.max_occurrences, originalBill.max_occurrences);
   if (JSON.stringify(_normalizeSplitsTemplateForCompare(formData.splits_template))
       !== JSON.stringify(_normalizeSplitsTemplateForCompare(originalBill.splits_template))) {
     payload.splits_template = formData.splits_template;
@@ -1525,17 +1549,7 @@ function _buildBillUpdatePayload(billId, formData, signedAmount, transferAccount
   _setBillEditPayloadField(payload, 'match_account_scope', formData.match_account_scope, originalBill.match_account_scope);
   _setBillEditPayloadField(payload, 'match_sign_enforced', formData.match_sign_enforced, originalBill.match_sign_enforced);
 
-  const dayFieldsChanged = ['day_of_month', 'second_day_of_month', 'frequency']
-    .some(field => payload.hasOwnProperty(field));
-  if (_bmShouldSendStartDate({
-    frequency: formData.frequency,
-    storedStart: originalBill.start_date,
-    rawFormStart: formData.start_date,
-    synthesizedStart: effectiveStartDate,
-    dayFieldsChanged
-  })) {
-    payload.start_date = effectiveStartDate;
-  }
+  Object.assign(payload, _bmScheduleChanges(formData, originalBill));
 
   return payload;
 }
