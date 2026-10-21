@@ -929,7 +929,7 @@ function _billModalUpdatePreview() {
 
   summaryEl.innerHTML = _bmGenerateDescription(formData);
 
-  const dates = _bmGeneratePreviewDates(formData, 10);
+  const dates = _bmUpcomingPreviewDates(formData, _billModalEditData, _bmTodayStr(), 10);
   if (dates.length === 0) {
     datesEl.innerHTML = '<div style="color: var(--text-muted); font-size: 12px;">No upcoming dates to display.</div>';
     return;
@@ -984,8 +984,9 @@ function _bmGenerateDescription(formData) {
       break;
     }
     case 'twice_monthly': {
-      const dom1Label = formData.day_of_month === 31 ? 'last day' : _bmOrdinal(formData.day_of_month || 1);
-      const dom2Label = formData.second_day_of_month === 31 ? 'last day' : _bmOrdinal(formData.second_day_of_month || 15);
+      const isLastDay = (day) => day === -1 || day === 31;
+      const dom1Label = isLastDay(formData.day_of_month) ? 'last day' : _bmOrdinal(formData.day_of_month || 1);
+      const dom2Label = isLastDay(formData.second_day_of_month) ? 'last day' : _bmOrdinal(formData.second_day_of_month || 15);
       freqDesc = `Twice monthly on the ${dom1Label} and ${dom2Label}`;
       if (formData.interval > 1) freqDesc += ` (every ${formData.interval} months)`;
       break;
@@ -1011,12 +1012,55 @@ function _bmGenerateDescription(formData) {
   return `<strong>${desc}</strong> — ${direction} ${amountStr}${variable}<br>${freqDesc}${endDesc}`;
 }
 
-function _bmGeneratePreviewDates(formData, count) {
+/**
+ * Resolve a day-of-month pick (-1 means the last day) to a date in that month,
+ * clamping days past the month's end.
+ * @param {number} year
+ * @param {number} monthIndex 0-based month
+ * @param {number} day
+ * @returns {Date}
+ */
+function _bmResolveMonthDay(year, monthIndex, day) {
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  const resolvedDay = day === -1 ? lastDay : Math.min(day, lastDay);
+  return new Date(year, monthIndex, resolvedDay);
+}
+
+/**
+ * The dates the preview lists: the schedule from the start the save would
+ * leave in place, without the dates already past.
+ * @param {object} formData
+ * @param {object|null} originalBill the bill being edited, or null on create
+ * @param {string} todayStr YYYY-MM-DD
+ * @param {number} count
+ * @returns {string[]}
+ */
+function _bmUpcomingPreviewDates(formData, originalBill, todayStr, count) {
+  let effectiveStart;
+  if (originalBill && originalBill.start_date) {
+    effectiveStart = _bmScheduleChanges(formData, originalBill, todayStr).start_date || originalBill.start_date;
+  } else {
+    effectiveStart = _synthesizeStartDate(formData, todayStr);
+  }
+  const fromDateStr = effectiveStart > todayStr ? effectiveStart : todayStr;
+  return _bmGeneratePreviewDates({ ...formData, start_date: effectiveStart }, count, fromDateStr);
+}
+
+/**
+ * @param {object} formData
+ * @param {number} count
+ * @param {string} [fromDateStr] YYYY-MM-DD; earlier dates still count toward an
+ *   occurrence limit but are not listed
+ * @returns {string[]}
+ */
+function _bmGeneratePreviewDates(formData, count, fromDateStr) {
   const dates = [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const startDate = formData.start_date ? new Date(formData.start_date + 'T00:00:00') : today;
-  const maxIterations = 500;
+  const fromDate = fromDateStr ? new Date(fromDateStr + 'T00:00:00') : startDate;
+  // High enough to walk a daily bill's stored start forward to today.
+  const maxIterations = 5000;
   let iterations = 0;
 
   if (formData.frequency === 'once') {
@@ -1029,14 +1073,17 @@ function _bmGeneratePreviewDates(formData, count) {
     ? new Date(formData.end_date + 'T00:00:00') : null;
   const maxOcc = formData.end_type === 'after_occurrences' ? (formData.max_occurrences || 999) : 999;
   let occurrenceCount = 0;
+  const addOccurrence = (occurrenceDate) => {
+    occurrenceCount++;
+    if (occurrenceDate >= fromDate) dates.push(toISODateStr(occurrenceDate));
+  };
 
   switch (formData.frequency) {
     case 'daily': {
       let cursor = new Date(startDate);
       while (dates.length < count && occurrenceCount < maxOcc && iterations < maxIterations) {
         if (endDate && cursor > endDate) break;
-        dates.push(toISODateStr(cursor));
-        occurrenceCount++;
+        addOccurrence(cursor);
         cursor.setDate(cursor.getDate() + interval);
         iterations++;
       }
@@ -1046,8 +1093,7 @@ function _bmGeneratePreviewDates(formData, count) {
       let cursor = new Date(startDate);
       while (dates.length < count && occurrenceCount < maxOcc && iterations < maxIterations) {
         if (endDate && cursor > endDate) break;
-        dates.push(toISODateStr(cursor));
-        occurrenceCount++;
+        addOccurrence(cursor);
         cursor.setDate(cursor.getDate() + 7 * interval);
         iterations++;
       }
@@ -1071,8 +1117,7 @@ function _bmGeneratePreviewDates(formData, count) {
           occDate = new Date(yearCursor, monthCursor, clampedDay);
         }
         if (endDate && occDate > endDate) break;
-        dates.push(toISODateStr(occDate));
-        occurrenceCount++;
+        addOccurrence(occDate);
         monthCursor += interval;
         while (monthCursor > 11) { monthCursor -= 12; yearCursor++; }
         iterations++;
@@ -1085,17 +1130,13 @@ function _bmGeneratePreviewDates(formData, count) {
       const dom1 = formData.day_of_month || 1;
       const dom2 = formData.second_day_of_month || 15;
       while (dates.length < count && occurrenceCount < maxOcc && iterations < maxIterations) {
-        const lastDay = new Date(yearCursor, monthCursor + 1, 0).getDate();
-        const d1 = Math.min(dom1, lastDay);
-        const d2 = Math.min(dom2, lastDay);
-        const date1 = new Date(yearCursor, monthCursor, d1);
-        const date2 = new Date(yearCursor, monthCursor, d2);
+        const date1 = _bmResolveMonthDay(yearCursor, monthCursor, dom1);
+        const date2 = _bmResolveMonthDay(yearCursor, monthCursor, dom2);
         const pair = [date1, date2].sort((a, b) => a - b);
         for (const pairDate of pair) {
           if (dates.length >= count || occurrenceCount >= maxOcc) break;
           if (endDate && pairDate > endDate) break;
-          dates.push(toISODateStr(pairDate));
-          occurrenceCount++;
+          addOccurrence(pairDate);
         }
         monthCursor += interval;
         while (monthCursor > 11) { monthCursor -= 12; yearCursor++; }
@@ -1107,8 +1148,7 @@ function _bmGeneratePreviewDates(formData, count) {
       let cursor = new Date(startDate);
       while (dates.length < count && occurrenceCount < maxOcc && iterations < maxIterations) {
         if (endDate && cursor > endDate) break;
-        dates.push(toISODateStr(cursor));
-        occurrenceCount++;
+        addOccurrence(cursor);
         cursor.setFullYear(cursor.getFullYear() + interval);
         iterations++;
       }
@@ -1121,15 +1161,13 @@ function _bmGeneratePreviewDates(formData, count) {
         const date1 = new Date(startDate);
         date1.setFullYear(date1.getFullYear() + yearOffset * interval);
         if (endDate && date1 > endDate) break;
-        dates.push(toISODateStr(date1));
-        occurrenceCount++;
+        addOccurrence(date1);
 
         if (secondDate && dates.length < count && occurrenceCount < maxOcc) {
           const date2 = new Date(secondDate);
           date2.setFullYear(date2.getFullYear() + yearOffset * interval);
           if (!endDate || date2 <= endDate) {
-            dates.push(toISODateStr(date2));
-            occurrenceCount++;
+            addOccurrence(date2);
           }
         }
         yearOffset++;
@@ -1338,7 +1376,14 @@ function _bmShouldSendStartDate({ frequency, storedStart, rawFormStart, synthesi
   return monthly && dayFieldsChanged && synthesizedStart !== storedStart;
 }
 
-function _synthesizeStartDate(formData) {
+/**
+ * The start date a monthly or twice-monthly save sends, built from the picked
+ * month and the day picks. Other frequencies send the picked date as is.
+ * @param {object} formData
+ * @param {string} [todayStr] YYYY-MM-DD
+ * @returns {string}
+ */
+function _synthesizeStartDate(formData, todayStr = _bmTodayStr()) {
   // If we aren't dealing with a monthly bill, or missing data, return as-is
   if ((formData.frequency !== 'monthly' && formData.frequency !== 'twice_monthly') || !formData.start_date) {
     return formData.start_date;
@@ -1356,21 +1401,29 @@ function _synthesizeStartDate(formData) {
   let day = formData.day_of_month;
   let secondDay = formData.second_day_of_month;
 
-  // The earlier of the two days, so the result never depends on today's
-  // date and an unchanged form always yields the same start.
+  // Picking the current month means the first payment still ahead in it, so
+  // the later day wins once the earlier one has passed. A month wholly past
+  // keeps its earlier day and the API's refusal asks for a later month.
   if (formData.frequency === 'twice_monthly' && secondDay != null) {
-    day = _bmEarlierMonthDay(day, secondDay);
+    const earlierDay = _bmEarlierMonthDay(day, secondDay);
+    const laterDay = earlierDay === day ? secondDay : day;
+    const earlierDate = _bmMonthDayStr(year, month, earlierDay);
+    const laterDate = _bmMonthDayStr(year, month, laterDay);
+    return earlierDate < todayStr && laterDate >= todayStr ? laterDate : earlierDate;
   }
 
-  // Handle "Last day of month" (-1)
-  if (day === -1) {
-    // JS Date trick: day 0 of the *next* month gives the last day of the *current* month
-    day = new Date(year, month, 0).getDate();
-  }
+  return _bmMonthDayStr(year, month, day);
+}
 
-  // Pad the day with a leading zero if necessary and stitch it together
-  const paddedDay = String(day).padStart(2, '0');
-  return `${year}-${month}-${paddedDay}`;
+/**
+ * @param {string} year YYYY
+ * @param {string} month MM, 1-based
+ * @param {number} day day of month, -1 for the last day
+ * @returns {string} YYYY-MM-DD
+ */
+function _bmMonthDayStr(year, month, day) {
+  const resolved = _bmResolveMonthDay(Number(year), Number(month) - 1, day);
+  return `${year}-${month}-${String(resolved.getDate()).padStart(2, '0')}`;
 }
 
 const _BM_SCHEDULE_FIELDS = [
@@ -1397,14 +1450,15 @@ function _bmScheduleFields(formData, startDate) {
  * Shared by the save payload and the schedule preview so they cannot drift.
  * @param {object} formData
  * @param {object} originalBill
+ * @param {string} [todayStr] YYYY-MM-DD
  * @returns {object}
  */
-function _bmScheduleChanges(formData, originalBill) {
+function _bmScheduleChanges(formData, originalBill, todayStr = _bmTodayStr()) {
   const changes = {};
   _BM_SCHEDULE_FIELDS.forEach((field) => {
     _setBillEditPayloadField(changes, field, formData[field], originalBill[field]);
   });
-  const synthesizedStart = _synthesizeStartDate(formData);
+  const synthesizedStart = _synthesizeStartDate(formData, todayStr);
   const dayFieldsChanged = ['day_of_month', 'second_day_of_month', 'frequency']
     .some(field => changes.hasOwnProperty(field));
   // A change to which dates the bill falls on is checked against its start,
