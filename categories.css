@@ -1184,8 +1184,30 @@ tr:hover {
   font-size: 0.9em;
 }
 
-.csv-guide .csv-warning {
-  color: var(--color-danger);
+.csv-guide .csv-note {
+  color: var(--text-primary);
+}
+
+.csv-error-total {
+  margin-bottom: 10px;
+  font-weight: bold;
+}
+
+.csv-error-item {
+  margin: 5px 0;
+}
+
+.csv-error-lines {
+  margin: 4px 0 4px 18px;
+  padding: 0;
+  list-style: disc;
+}
+
+.csv-error-lines code {
+  background: var(--bg-inset);
+  padding: 2px 6px;
+  border-radius: 3px;
+  user-select: all;
 }
 
 /* ── CSV Cards Grid ────────────────────────────────────────── */

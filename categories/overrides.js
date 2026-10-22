@@ -66,6 +66,7 @@ async function clearOverridesForCategory(categoryName) {
     const data = await response.json();
 
     if (response.ok) {
+      markTransactionCacheStale();
       showStatus(`Cleared ${data.deleted_count} override${data.deleted_count !== 1 ? 's' : ''} for "${categoryName}"`, 'success');
       await loadCategorizationData(true);
       setTimeout(() => clearStatus(), 3000);
@@ -126,6 +127,7 @@ async function _confirmReassignOverrides(oldCategory) {
     }
 
     closeModal();
+    markTransactionCacheStale();
     showStatus(`Successfully reassigned ${data.updated_count} override${data.updated_count !== 1 ? 's' : ''} to "${newCategory}"`, 'success');
     await loadCategorizationData(true);
     setTimeout(() => clearStatus(), 3000);

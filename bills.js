@@ -49,7 +49,7 @@ function _updateTransactionCacheForBill(purgedVirtualIds, affectedVirtualTransac
 
   if (!hasPurge && !hasNew) {
     // No granular data — fall back to full invalidation
-    _invalidateTransactionCache();
+    markTransactionCacheStale();
     return;
   }
 
@@ -60,7 +60,7 @@ function _updateTransactionCacheForBill(purgedVirtualIds, affectedVirtualTransac
       if (!db.objectStoreNames.contains('transactions') || !db.objectStoreNames.contains('meta')) {
         // DB schema doesn't have the expected stores — fall back
         db.close();
-        _invalidateTransactionCache();
+        markTransactionCacheStale();
         return;
       }
 
@@ -89,30 +89,11 @@ function _updateTransactionCacheForBill(purgedVirtualIds, affectedVirtualTransac
       db.close();
     };
     req.onerror = function() {
-      _invalidateTransactionCache();
+      markTransactionCacheStale();
     };
   } catch (e) {
-    _invalidateTransactionCache();
+    markTransactionCacheStale();
   }
-}
-
-function _invalidateTransactionCache() {
-  try {
-    var req = indexedDB.open('PersonalFinanceDB');
-    req.onsuccess = function(e) {
-      var db = e.target.result;
-      // Mark cache as stale instead of nuking 100k+ rows.
-      // The transactions page will force a network refetch and
-      // atomically replace the data via replaceAll.
-      if (db.objectStoreNames.contains('meta')) {
-        var txn = db.transaction(['meta'], 'readwrite');
-        var store = txn.objectStore('meta');
-        store.put({ key: 'etag', value: null });
-        store.put({ key: 'cached_at', value: 0 });
-      }
-      db.close();
-    };
-  } catch (e) { /* non-fatal */ }
 }
 
 // ── Auth helpers (same pattern as other pages) ──────────────

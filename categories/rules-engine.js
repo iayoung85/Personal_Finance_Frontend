@@ -398,6 +398,7 @@ async function saveRule() {
       return;
     }
 
+    markTransactionCacheStale();
     showStatus(isEditing ? 'Rule updated' : 'Rule created', 'success');
     cancelRuleEdit();
     await loadCategorizationData(true);
@@ -465,6 +466,7 @@ async function adjustRulePriority(ruleId, direction) {
       showStatus(data.error || 'Failed to update priority', 'error');
       return;
     }
+    markTransactionCacheStale();
     await loadCategorizationData(true);
   } catch (networkError) {
     showStatus(`Failed to update priority: ${networkError.message}`, 'error');
@@ -493,6 +495,7 @@ async function _deleteRule(ruleId) {
       return;
     }
     closeModal();
+    markTransactionCacheStale();
     showStatus('Rule deleted', 'success');
 
     await loadCategorizationData(true);
@@ -770,6 +773,7 @@ async function _fixAllBrokenRules(brokenRules) {
   }
 
   closeModal();
+  markTransactionCacheStale();
   showStatus(`✓ Fixed ${fixes.length} rule${fixes.length > 1 ? 's' : ''}`, 'success');
   await loadCategorizationData(true);
   setTimeout(() => clearStatus(), 2000);

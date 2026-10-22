@@ -179,6 +179,7 @@ async function saveCategoryMappings() {
       return;
     }
 
+    markTransactionCacheStale();
     showStatus('Mappings saved', 'success');
     await _reconcileCustomCategoriesForPrimaryMappings(previousMappings, primaryCategoryMappings);
     await loadCategorizationData(true);
@@ -369,6 +370,7 @@ async function _deleteCustomDetailedCategoriesForPrimaryMapping(plaidPrimaryDisp
         console.warn('Failed to delete custom category:', data.error || categoryName);
         continue;
       }
+      markTransactionCacheStale();
       customCategories = customCategories.filter(cat => cat !== categoryName);
       availableCategories = availableCategories.filter(cat => cat !== categoryName);
     } catch (networkError) {

@@ -286,16 +286,22 @@
                   Example: <code>SET_CUSTOM,,Pet Expenses: Dog Food</code>
                 </p>
                 <p>
-                  <strong>EXISTING_RULES_RETARGET:</strong> Migrate rules to new category<br>
-                  Example: <code>EXISTING_RULES_RETARGET,Old: Category,New: Category</code>
+                  <strong>RETARGET:</strong> Move everything on the old label (transactions, rules, overrides, bills and their split templates, spending alerts) to a new label in your uploaded list<br>
+                  Example: <code>RETARGET,Old: Label,New: Label</code>
                 </p>
                 <p>
-                  <strong>EXISTING_OVERRIDES_RETARGET:</strong> Migrate overrides to new category<br>
-                  Example: <code>EXISTING_OVERRIDES_RETARGET,Old: Category,New: Category</code>
+                  <strong>KEEP:</strong> Keep a label you dropped from the mappings as a custom category with no Plaid category. Each of its Plaid transactions without an override gets one, so it keeps the label instead of following its Plaid category. Rules, bills and alerts on it are untouched.<br>
+                  Example: <code>KEEP,Old: Label</code>
                 </p>
-                <p class="csv-warning">
-                  <strong>Important:</strong> All target values must follow format <code>Primary: Detailed</code><br>
-                  <strong>Migration:</strong> When changing categories, you MUST retarget existing rules/overrides!
+                <p>
+                  <strong>EXISTING_RULES_RETARGET / EXISTING_OVERRIDES_RETARGET:</strong> Older forms that move only rules, or only overrides; still accepted<br>
+                  Example: <code>EXISTING_RULES_RETARGET,Old: Label,New: Label</code>
+                </p>
+                <p>
+                  <strong>Format:</strong> All target values must follow format <code>Primary: Detailed</code>. Lines starting with <code>#</code> are ignored.
+                </p>
+                <p class="csv-note">
+                  <strong>When a label leaves your list:</strong> if a label you drop is still used (the download's <code># In use:</code> block lists the counts), the upload needs to know where its records go. If every Plaid category that pointed at it now points at one label that wasn't in your list before (a rename), the upload moves everything for you. Otherwise, including a move into a label you already have (a merge), the upload is refused and the error gives the exact <code>RETARGET</code> and <code>KEEP</code> lines to add. Add one and upload again.
                 </p>
               </div>
 
@@ -368,6 +374,7 @@
   <script src="date-helpers.js"></script>
   <script src="nav-sidebar.js"></script>
   <script src="shared/modal-backdrop-guard.js"></script>
+  <script src="shared/transaction-cache-stale.js"></script>
 
   <!-- Categories modules — load order matters -->
   <script src="shared/categories-autocomplete.js"></script>

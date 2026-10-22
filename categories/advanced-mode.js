@@ -109,6 +109,7 @@ async function uploadCategoriesCSV() {
       return;
     }
 
+    markTransactionCacheStale();
     _displayCSVSuccess(data);
     showStatus('CSV uploaded successfully', 'success');
     setTimeout(() => clearStatus(), 3000);
@@ -126,6 +127,30 @@ async function uploadCategoriesCSV() {
 
 // ── Feedback Display ───────────────────────────────────────
 
+/**
+ * Split one API validation error into its explanation and the CSV lines the
+ * user should add. The API joins them with newlines: first line is the
+ * explanation, every following non-blank line is exact file text.
+ * @param {string} error
+ * @returns {{ text: string, linesToAdd: string[] }}
+ */
+function splitCSVError(error) {
+  const parts = String(error).split('\n');
+  const linesToAdd = parts.slice(1).filter(line => line.trim() !== '');
+  return { text: parts[0], linesToAdd };
+}
+
+function _csvErrorItemHTML(error) {
+  const { text, linesToAdd } = splitCSVError(error);
+  let html = `<div class="csv-error-item">• ${escapeHtml(text)}`;
+  if (linesToAdd.length > 0) {
+    html += '<ul class="csv-error-lines">'
+      + linesToAdd.map(line => `<li><code>${escapeHtml(line)}</code></li>`).join('')
+      + '</ul>';
+  }
+  return html + '</div>';
+}
+
 function _displayCSVErrors(data) {
   const errorsContainer = document.getElementById('csv-errors-container');
   const errorsList = document.getElementById('csv-errors-list');
@@ -134,14 +159,14 @@ function _displayCSVErrors(data) {
 
   if (data.validation_errors && Array.isArray(data.validation_errors)) {
     errorHTML = data.validation_errors
-      .map(err => `<div style="margin: 5px 0;">• ${escapeHtml(err)}</div>`)
+      .map(_csvErrorItemHTML)
       .join('');
   } else if (data.error) {
     errorHTML = `<div>${escapeHtml(data.error)}</div>`;
   }
 
   if (data.errors_count) {
-    errorHTML = `<div style="margin-bottom: 10px; font-weight: bold;">Total errors: ${data.errors_count}</div>` + errorHTML;
+    errorHTML = `<div class="csv-error-total">Total errors: ${data.errors_count}</div>` + errorHTML;
   }
 
   errorsList.innerHTML = errorHTML;

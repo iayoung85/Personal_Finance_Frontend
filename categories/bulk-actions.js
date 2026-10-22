@@ -67,6 +67,7 @@ async function renameCategory(oldName, newName) {
       return;
     }
     closeModal();
+    markTransactionCacheStale();
     showStatus('Category renamed successfully', 'success');
     await loadCategorizationData(true);
     setTimeout(() => clearStatus(), 2000);
@@ -135,6 +136,7 @@ async function mergeCategories(sourceCategories, targetCategory) {
       return;
     }
     closeModal();
+    markTransactionCacheStale();
     await loadCategorizationData(true);
   } catch (error) {
     showStatus(`Failed to merge categories: ${error.message}`, 'error');
@@ -266,6 +268,7 @@ async function _confirmReassignPrimary(primaryName) {
       successMsg += ` (${data.overrides_affected} override${data.overrides_affected !== 1 ? 's' : ''} updated)`;
     }
 
+    markTransactionCacheStale();
     showStatus(successMsg, 'success');
     await loadCategorizationData(true);
     setTimeout(() => clearStatus(), 3000);
@@ -506,6 +509,7 @@ async function _confirmReassignDetailed(categoryName) {
     if (data.rules_affected > 0) successMsg += ` (${data.rules_affected} rule${data.rules_affected !== 1 ? 's' : ''} updated)`;
     if (data.overrides_affected > 0) successMsg += ` (${data.overrides_affected} override${data.overrides_affected !== 1 ? 's' : ''} updated)`;
 
+    markTransactionCacheStale();
     showStatus(successMsg, 'success');
     await loadCategorizationData(true);
     setTimeout(() => clearStatus(), 3000);
@@ -543,6 +547,7 @@ async function deleteCategory(categoryName, actionOverride = null, reassignTarge
 
     closeModal();
 
+    markTransactionCacheStale();
     const actionLabel = action === 'archive' ? 'archived' : action === 'reassign' ? 'reassigned' : 'deleted';
     showStatus(
       `Category ${actionLabel}` +
@@ -696,6 +701,7 @@ async function recategorizeAllTransactions() {
       return;
     }
 
+    markTransactionCacheStale();
     showStatus(
       `Recategorization complete: ${data.transactions_updated} transaction${data.transactions_updated !== 1 ? 's' : ''} updated` +
       (data.decryption_errors > 0 ? ` (${data.decryption_errors} errors)` : ''),
@@ -726,6 +732,7 @@ async function deleteOverridesForCategory(categoryName) {
     const data = await response.json();
 
     if (response.ok) {
+      markTransactionCacheStale();
       showStatus(`${data.deleted_count} override${data.deleted_count !== 1 ? 's' : ''} deleted`, 'success');
       await loadCategorizationData(true);
       setTimeout(() => clearStatus(), 3000);
@@ -753,6 +760,7 @@ async function deleteAllOverrides() {
     const data = await response.json();
 
     if (response.ok) {
+      markTransactionCacheStale();
       showStatus(`Deleted all ${data.deleted_count} override${data.deleted_count !== 1 ? 's' : ''}`, 'success');
       await loadCategorizationData(true);
       setTimeout(() => clearStatus(), 3000);
