@@ -945,6 +945,51 @@ function _patchCategorizationCache(requestedTxnId, responseData, fallbackCategor
  * 3. If no candidate exists, create a counterpart transaction in the target
  *    account and link them.
  */
+/**
+ * True for a bill occurrence that exists only as a schedule entry, not yet a
+ * saved row. The API names these "bill_<id>_occ_<date>" (an older form ends in
+ * a number; a transfer's other side adds "_cpt") and saves one when it
+ * receives an update for it.
+ *
+ * @param {string} transactionId
+ * @returns {boolean}
+ */
+function _isVirtualBillOccurrenceId(transactionId) {
+  return /^bill_.+?_occ_(\d{4}-\d{2}-\d{2}|\d+)(_cpt)?$/.test(String(transactionId || ''));
+}
+
+/**
+ * Save a bill occurrence that exists only as a schedule entry, so it has a
+ * row to link. An update with no fields saves it, as Mark Paid does. The
+ * cache swaps the schedule entry for the saved row.
+ *
+ * @param {string} virtualTxnId - "bill_<id>_occ_<date>"
+ * @returns {Promise<string|null>} The saved row's ID, or null after showing the error.
+ */
+async function _materializeBillOccurrenceForLinking(virtualTxnId) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/transactions/${encodeURIComponent(virtualTxnId)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    }
+  );
+  const data = await response.json();
+
+  if (!response.ok || !data.transaction || !data.transaction.transaction_id) {
+    showStatus(data.error || 'Failed to save the bill occurrence before linking', 'error');
+    return null;
+  }
+
+  _removeCachedTransaction(virtualTxnId);
+  _replaceCachedTransaction(data.transaction.transaction_id, data.transaction);
+  if (data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
+    _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
+  }
+  return data.transaction.transaction_id;
+}
+
 async function _applyTransferAssignment(txnId, sourceAccountId, targetAccount) {
   const targetAccountId = targetAccount.account_id;
   const targetDisplayName = _buildAccountDisplayName(targetAccount);
@@ -952,6 +997,14 @@ async function _applyTransferAssignment(txnId, sourceAccountId, targetAccount) {
   showStatus(`Assigning transfer to ${targetDisplayName}…`, 'info');
 
   try {
+    // A bill occurrence not yet saved has no row for the link to find.
+    if (_isVirtualBillOccurrenceId(txnId)) {
+      txnId = await _materializeBillOccurrenceForLinking(txnId);
+      if (!txnId) {
+        return;
+      }
+    }
+
     // Step 1: Look for candidate match in the target account
     const candidatesResponse = await authenticatedFetch(
       `${BACKEND_URL}/api/transactions/transfers/candidates/${encodeURIComponent(txnId)}?target_account_id=${encodeURIComponent(targetAccountId)}`

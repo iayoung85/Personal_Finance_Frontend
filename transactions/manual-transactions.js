@@ -61,7 +61,9 @@ function _buildManualTransactionEditPayload(transaction, formValues) {
 
   const currentCategory = _normalizeManualTransactionEditValue(currentTxn.user_category);
   const categoryValue = _normalizeManualTransactionEditValue(formValues.category);
-  if (categoryValue !== currentCategory) {
+  // A bracket category is written by the transfer link flow onto both rows;
+  // the API refuses it on an unlinked row, so it is never sent here.
+  if (categoryValue !== currentCategory && !isTransferCategory(categoryValue)) {
     payload.user_category = categoryValue;
   }
 
@@ -72,6 +74,27 @@ function _buildManualTransactionEditPayload(transaction, formValues) {
   }
 
   return payload;
+}
+
+/**
+ * Build the POST body for a new manual transaction. A bracket category
+ * ("[Checking]") is left out: the transfer link flow sets it on both rows
+ * after the row exists, and the API refuses it on an unlinked row.
+ *
+ * @param {Object} values - amount, type, date, accountId, merchant, category, memo
+ * @returns {Object}
+ */
+function _buildManualTransactionCreatePayload(values) {
+  const category = values.category || '';
+  return {
+    amount: values.amount,
+    type: values.type,
+    date: values.date,
+    account_id: values.accountId,
+    merchant_name: values.merchant || null,
+    user_category: category && !isTransferCategory(category) ? category : null,
+    memo: values.memo || null,
+  };
 }
 
 /**
@@ -402,8 +425,20 @@ async function _updateManualTransaction(transactionId, accountId) {
     }
   }
 
+  // A bracket is applied by linking, not by saving it on the row. Resolve the
+  // target first so an unknown account stops before anything is saved.
+  const currentTxn = transactions.find(findTxn => findTxn.transaction_id === transactionId) || {};
+  let transferTarget = null;
+  if (category && isTransferCategory(category)
+      && category.trim() !== String(currentTxn.user_category || '').trim()) {
+    transferTarget = _findAccountByTransferName(parseTransferAccountName(category));
+    if (!transferTarget) {
+      _showManualTxnError(`No account named "${parseTransferAccountName(category)}" found. Type [ to see available accounts.`);
+      return;
+    }
+  }
+
   try {
-    const currentTxn = transactions.find(findTxn => findTxn.transaction_id === transactionId) || {};
     const payload = _buildManualTransactionEditPayload(currentTxn, {
       amountRaw: rawAmountStr,
       type: txnType,
@@ -415,7 +450,11 @@ async function _updateManualTransaction(transactionId, accountId) {
 
     if (Object.keys(payload).length === 0) {
       closeModal();
-      showStatus('No changes were made', 'success');
+      if (transferTarget) {
+        await _applyTransferAssignment(transactionId, accountId, transferTarget);
+      } else {
+        showStatus('No changes were made', 'success');
+      }
       return;
     }
 
@@ -479,6 +518,12 @@ async function _updateManualTransaction(transactionId, accountId) {
     // projections use the updated current_balance.
     await loadAccounts();
     renderTransactionTable();
+
+    if (transferTarget) {
+      // Saving a bill occurrence gives it a new ID; link that row.
+      const savedTransactionId = (data.transaction && data.transaction.transaction_id) || transactionId;
+      await _applyTransferAssignment(savedTransactionId, accountId, transferTarget);
+    }
 
   } catch (error) {
     _showManualTxnError(`Failed to update: ${error.message}`);
@@ -612,16 +657,16 @@ async function _submitPendingManualTransaction() {
           memo: pending.memo || '',
         }
       )
-    : {
+    : _buildManualTransactionCreatePayload({
         amount: parseFloat(pending.amount),
         type: pending.type,
         date: pending.date,
-        merchant_name: pending.merchant || null,
-        user_category: pending.category || null,
-        memo: pending.memo || null,
-      };
+        merchant: pending.merchant,
+        category: pending.category,
+        memo: pending.memo,
+      });
 
-  const pendingDateError = _getLinkedAccountDateWindowError(pendingAccountId, pending.date);
+  const pendingDateError = _getLinkedAccountDateWindowError(pending.accountId, pending.date);
   if (pendingDateError) {
     showStatus(pendingDateError, 'error');
     return;
@@ -808,16 +853,27 @@ async function saveManualTransaction() {
     return;
   }
 
+  // Resolve the transfer target before creating anything, so an unknown
+  // account does not leave a stray unlinked row behind.
+  let transferTarget = null;
+  if (category && isTransferCategory(category)) {
+    transferTarget = _findAccountByTransferName(parseTransferAccountName(category));
+    if (!transferTarget) {
+      _showManualTxnError(`No account named "${parseTransferAccountName(category)}" found. Type [ to see available accounts.`);
+      return;
+    }
+  }
+
   try {
-    const payload = {
+    const payload = _buildManualTransactionCreatePayload({
       amount,
       type: txnType,
       date,
-      account_id: accountId,
-      merchant_name: merchant || null,
-      user_category: category || null,
-      memo: memo || null
-    };
+      accountId,
+      merchant,
+      category,
+      memo,
+    });
 
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/manual`, {
       method: 'POST',
@@ -885,13 +941,9 @@ async function saveManualTransaction() {
     // trigger the transfer assignment flow to link/create a counterpart.
     // This runs after the modal is closed so status messages are visible.
     const newTxnId = data.transaction_id || newTxn.transaction_id;
-    if (category && isTransferCategory(category)) {
-      const transferAccountName = parseTransferAccountName(category);
-      const targetAccount = _findAccountByTransferName(transferAccountName);
-      if (targetAccount && newTxnId) {
-        await _applyTransferAssignment(newTxnId, accountId, targetAccount);
-        return; // _applyTransferAssignment already refreshes transactions
-      }
+    if (transferTarget && newTxnId) {
+      await _applyTransferAssignment(newTxnId, accountId, transferTarget);
+      return; // _applyTransferAssignment already refreshes transactions
     }
     
     // Lightweight follow-ups: balance history for ledger column + sidebar balances.
