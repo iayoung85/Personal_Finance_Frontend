@@ -192,6 +192,22 @@ function showStatus(message, type = 'info') {
   }, 20000);
 }
 
+/**
+ * Show a result that stays until the user closes it, apart from the toast
+ * that page reloads overwrite.
+ */
+function showResultBanner(message) {
+  const banner = document.getElementById('result-banner');
+  if (!banner) return;
+  document.getElementById('result-banner-text').textContent = message;
+  banner.style.display = 'flex';
+}
+
+function dismissResultBanner() {
+  const banner = document.getElementById('result-banner');
+  if (banner) banner.style.display = 'none';
+}
+
 function clearStatus() {
   const statusElement = document.getElementById('status-message');
   if (statusElement) {

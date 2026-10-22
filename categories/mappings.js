@@ -154,6 +154,30 @@ function clearPrimaryMapping(plaidPrimary) {
   renderMappingsList(document.getElementById('mapping-filter').value);
 }
 
+async function _putCategoryMappings(body) {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/mappings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await response.json();
+  return { response, data };
+}
+
+async function _finishMappingsSave(previousMappings, message) {
+  markTransactionCacheStale();
+  if (message === 'Mappings saved') {
+    showStatus(message, 'success');
+  } else {
+    // The reload below posts its own status messages, which would replace a
+    // toast before the user reads what moved.
+    showResultBanner(message);
+  }
+  await _reconcileCustomCategoriesForPrimaryMappings(previousMappings, primaryCategoryMappings);
+  await loadCategorizationData(true);
+  setTimeout(() => clearStatus(), 2000);
+}
+
 async function saveCategoryMappings() {
   try {
     const previousMappings = await _fetchServerPrimaryMappings();
@@ -167,25 +191,154 @@ async function saveCategoryMappings() {
       }
     });
 
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/mappings`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category_mappings: newMappings })
-    });
-
-    const data = await response.json();
+    const { response, data } = await _putCategoryMappings({ category_mappings: newMappings });
     if (!response.ok) {
+      const questions = readMappingQuestions(data);
+      if (response.status === 400 && (questions.labels.length > 0 || questions.keys.length > 0)) {
+        openMappingAnswersModal(newMappings, questions, previousMappings);
+        return;
+      }
       showStatus(data.error || 'Failed to save mappings', 'error');
       return;
     }
 
-    markTransactionCacheStale();
-    showStatus('Mappings saved', 'success');
-    await _reconcileCustomCategoriesForPrimaryMappings(previousMappings, primaryCategoryMappings);
-    await loadCategorizationData(true);
-    setTimeout(() => clearStatus(), 2000);
+    await _finishMappingsSave(previousMappings, 'Mappings saved');
   } catch (networkError) {
     showStatus(`Failed to save mappings: ${networkError.message}`, 'error');
+  }
+}
+
+// ── Needs-an-answer dialog ──────────────────────────────────
+
+/**
+ * Labels the edited list still offers, used as merge targets.
+ * @param {Object} newMappings
+ * @param {Array} questions
+ * @returns {string[]}
+ */
+function _mergeTargetLabels(newMappings, questions) {
+  const leaving = new Set(questions.labels.map(item => item.label));
+  const listed = new Set([...Object.values(newMappings), ...(customCategories || [])]);
+  return Array.from(listed)
+    .filter(label => label && !leaving.has(label))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function _inspectLinkHTML(query, count) {
+  if (!(Number(count) > 0)) return '';
+  const link = buildInspectLink(query, count);
+  return `<a class="inspect-link" href="${escapeHtml(link.href)}" target="_blank" rel="noopener">${escapeHtml(link.text)}</a>`;
+}
+
+function _labelQuestionHTML(item, index, targets) {
+  const options = ['<option value="">Choose a category…</option>']
+    .concat(targets.map(label => (
+      `<option value="${escapeHtml(label)}" ${label === item.suggested_target ? 'selected' : ''}>${escapeHtml(label)}</option>`
+    ))).join('');
+  return `
+    <div class="answer-item" data-label-index="${index}">
+      <div class="answer-title"><strong>${escapeHtml(item.label)}</strong> is leaving your list.
+        It is used by ${escapeHtml(describeUsageCounts(item))}.
+        ${_inspectLinkHTML(buildInspectQuery(item.label), item.transactions)}</div>
+      <label class="answer-choice">
+        <input type="radio" name="label-answer-${index}" value="merge">
+        Merge into
+        <select class="modal-input answer-target">${options}</select>
+      </label>
+      <label class="answer-choice">
+        <input type="radio" name="label-answer-${index}" value="keep">
+        Keep as a custom category (its Plaid transactions get an override so they keep it)
+      </label>
+    </div>`;
+}
+
+function _pastRowsQuestionHTML(item, index) {
+  const count = Number(item.transactions) || 0;
+  return `
+    <div class="answer-item" data-key-index="${index}">
+      <div class="answer-title">${count} past ${count === 1 ? 'transaction' : 'transactions'} from
+        <strong>${escapeHtml(item.key)}</strong> ${count === 1 ? 'is' : 'are'} labeled
+        <strong>${escapeHtml(item.from)}</strong>; the mapping now gives <strong>${escapeHtml(item.to)}</strong>.
+        ${_inspectLinkHTML(buildInspectQuery(item.from, item.key), item.transactions)}</div>
+      <label class="answer-choice">
+        <input type="radio" name="key-answer-${index}" value="move">
+        Move them to ${escapeHtml(item.to)}
+      </label>
+      <label class="answer-choice">
+        <input type="radio" name="key-answer-${index}" value="keep">
+        Keep them on ${escapeHtml(item.from)} (each gets an override)
+      </label>
+    </div>`;
+}
+
+/**
+ * Ask what to do with the labels and past rows the edit would strand, then
+ * resend the same mappings with the answers.
+ */
+function openMappingAnswersModal(newMappings, questions, previousMappings) {
+  const targets = _mergeTargetLabels(newMappings, questions);
+  const body = `<p>${escapeHtml(describeMappingQuestions(questions))} Choose what happens to each.</p>`
+    + '<div id="mapping-answers-error" class="answer-error"></div>'
+    + '<div class="answer-list">'
+    + questions.labels.map((item, i) => _labelQuestionHTML(item, i, targets)).join('')
+    + questions.keys.map((item, i) => _pastRowsQuestionHTML(item, i)).join('')
+    + '</div>';
+
+  openModal({
+    title: 'Where should these go?',
+    body,
+    actions: [
+      { label: 'Cancel', onClick: closeModal },
+      { label: 'Save', className: 'answer-save-btn', onClick: () => submitMappingAnswers(newMappings, questions, previousMappings) },
+    ],
+  });
+
+  const bodyElement = document.getElementById('modal-body');
+  const saveButton = document.querySelector('#modal-actions .answer-save-btn');
+  saveButton.disabled = true;
+  bodyElement.addEventListener('change', () => {
+    const { labelAnswers, pastRowAnswers } = _readMappingAnswers(questions);
+    saveButton.disabled = !allQuestionsAnswered(questions, labelAnswers, pastRowAnswers);
+  });
+}
+
+function _readMappingAnswers(questions) {
+  const labelAnswers = {};
+  questions.labels.forEach((item, i) => {
+    const checked = document.querySelector(`input[name="label-answer-${i}"]:checked`);
+    if (!checked) return;
+    const select = document.querySelector(`[data-label-index="${i}"] .answer-target`);
+    labelAnswers[item.label] = { choice: checked.value, target: select ? select.value : '' };
+  });
+  const pastRowAnswers = {};
+  questions.keys.forEach((item, i) => {
+    const checked = document.querySelector(`input[name="key-answer-${i}"]:checked`);
+    if (checked) pastRowAnswers[item.key] = checked.value;
+  });
+  return { labelAnswers, pastRowAnswers };
+}
+
+async function submitMappingAnswers(newMappings, questions, previousMappings) {
+  const { labelAnswers, pastRowAnswers } = _readMappingAnswers(questions);
+  if (!allQuestionsAnswered(questions, labelAnswers, pastRowAnswers)) return;
+
+  const errorBox = document.getElementById('mapping-answers-error');
+  const saveButton = document.querySelector('#modal-actions .answer-save-btn');
+  errorBox.textContent = '';
+  saveButton.disabled = true;
+  try {
+    const payload = buildMappingAnswersPayload(newMappings, questions, labelAnswers, pastRowAnswers);
+    const { response, data } = await _putCategoryMappings(payload);
+    if (!response.ok) {
+      errorBox.textContent = data.error || 'Failed to save mappings';
+      saveButton.disabled = false;
+      return;
+    }
+    closeModal();
+    await _finishMappingsSave(previousMappings, summarizeAnswerResult(data));
+  } catch (networkError) {
+    errorBox.textContent = `Failed to save mappings: ${networkError.message}`;
+    saveButton.disabled = false;
   }
 }
 

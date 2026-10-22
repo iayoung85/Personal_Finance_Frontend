@@ -26,6 +26,9 @@
  *   amount                → transaction amount (supports >, <, >=, <=, ..)
  *   date                  → transaction date (supports ..)
  *   bank, account         → bank_account display name
+ *   label                 → user_category, exact match (case-insensitive)
+ *   pfc                   → Plaid detailed category key, exact match
+ *   confidence            → Plaid category confidence level, exact match
  *   is                    → boolean flags: pending, hidden, transfer, split, override
  *
  * Returns an array of token objects:
@@ -134,6 +137,9 @@ function _normalizeFieldName(name) {
     bank: 'bank',
     account: 'bank',
     is: 'is',
+    label: 'label',
+    pfc: 'pfc',
+    confidence: 'confidence',
   };
   return FIELD_ALIASES[name] || null;
 }
@@ -255,6 +261,20 @@ function _matchFieldToken(txn, token) {
       // does not leak back into category-based search results.
       const userCat = (txn.user_category || '').toLowerCase();
       return userCat.includes(valueLower);
+    }
+
+    case 'label': {
+      return (txn.user_category || '').toLowerCase() === valueLower;
+    }
+
+    case 'pfc': {
+      const pfc = txn.personal_finance_category;
+      return !!pfc && (pfc.detailed || '').toLowerCase() === valueLower;
+    }
+
+    case 'confidence': {
+      const pfc = txn.personal_finance_category;
+      return !!pfc && (pfc.confidence_level || '').toLowerCase() === valueLower;
     }
 
     case 'memo': {

@@ -27,6 +27,10 @@
 
       <!-- Status message (shared across all panels) -->
       <div id="status-message"></div>
+      <div id="result-banner" class="status-message success result-banner">
+        <span id="result-banner-text"></span>
+        <button type="button" class="result-banner-close" onclick="dismissResultBanner()" aria-label="Dismiss">&times;</button>
+      </div>
 
       <!-- Panel Container -->
       <div class="categories-wrapper">
@@ -294,6 +298,14 @@
                   Example: <code>KEEP,Old: Label</code>
                 </p>
                 <p>
+                  <strong>RETARGET_KEY:</strong> Move a Plaid category's past transactions to its new label<br>
+                  Example: <code>RETARGET_KEY,FOOD_AND_DRINK_COFFEE</code>
+                </p>
+                <p>
+                  <strong>KEEP_KEY:</strong> Keep a Plaid category's past transactions on the old label; each gets an override<br>
+                  Example: <code>KEEP_KEY,FOOD_AND_DRINK_COFFEE</code>
+                </p>
+                <p>
                   <strong>EXISTING_RULES_RETARGET / EXISTING_OVERRIDES_RETARGET:</strong> Older forms that move only rules, or only overrides; still accepted<br>
                   Example: <code>EXISTING_RULES_RETARGET,Old: Label,New: Label</code>
                 </p>
@@ -301,7 +313,7 @@
                   <strong>Format:</strong> All target values must follow format <code>Primary: Detailed</code>. Lines starting with <code>#</code> are ignored.
                 </p>
                 <p class="csv-note">
-                  <strong>When a label leaves your list:</strong> if a label you drop is still used (the download's <code># In use:</code> block lists the counts), the upload needs to know where its records go. If every Plaid category that pointed at it now points at one label that wasn't in your list before (a rename), the upload moves everything for you. Otherwise, including a move into a label you already have (a merge), the upload is refused and the error gives the exact <code>RETARGET</code> and <code>KEEP</code> lines to add. Add one and upload again.
+                  <strong>When a label leaves your list:</strong> if a label you drop is still used (the download's <code># In use:</code> block lists the counts), the upload needs to know where its records go. If every Plaid category that pointed at it now points at one label that wasn't in your list before (a rename), the upload moves everything for you. Otherwise, including a move into a label you already have (a merge), the upload is refused and the error gives the exact <code>RETARGET</code> and <code>KEEP</code> lines to add. Add one and upload again. Remapping a Plaid category whose past transactions carry the old label also needs a <code>RETARGET_KEY</code> or <code>KEEP_KEY</code> line. Choosing a file shows a preview of what the upload would do; nothing changes until you press Apply.
                 </p>
               </div>
 
@@ -318,17 +330,14 @@
                 </div>
                 <div class="csv-action-card">
                   <h4>Upload Updated CSV</h4>
-                  <p>Upload your edited CSV to apply new mappings and custom categories.</p>
+                  <p>Choose your edited CSV to preview what it would change, then apply it.</p>
                   <div style="margin-bottom: 10px;">
                     <input type="file" id="csv-file-input" accept=".csv" class="hidden">
                     <button onclick="document.getElementById('csv-file-input').click()" class="btn-full btn-upload-csv">
-                      📤 Choose CSV File
+                      📤 Choose file / choose again
                     </button>
                     <span id="csv-file-name" class="csv-file-name">No file selected</span>
                   </div>
-                  <button id="csv-upload-btn" onclick="uploadCategoriesCSV()" disabled class="btn-full">
-                    Upload CSV
-                  </button>
                 </div>
               </div>
 
@@ -337,13 +346,24 @@
                 <div id="csv-preview-content" class="csv-preview-content"></div>
               </div>
 
+              <div id="csv-plan-container" class="csv-plan-box">
+                <h4>Upload Preview</h4>
+                <div id="csv-plan-content"></div>
+                <div class="csv-plan-actions">
+                  <button id="csv-apply-btn" onclick="applyCategoriesCSV()" disabled>Apply</button>
+                  <button id="csv-cancel-btn" onclick="clearCSVDisplay()">Cancel</button>
+                </div>
+              </div>
+
               <div id="csv-errors-container" class="csv-errors-box">
                 <h4>Validation Errors</h4>
                 <div id="csv-errors-list" class="csv-errors-list"></div>
               </div>
 
               <div id="csv-success-container" class="csv-success-box">
-                <h4>✓ Upload Successful</h4>
+                <h4>✓ Upload Successful
+                  <button type="button" class="result-banner-close" onclick="clearCSVSuccess()" aria-label="Dismiss">&times;</button>
+                </h4>
                 <div id="csv-success-content" class="csv-success-content"></div>
               </div>
             </div>
@@ -382,6 +402,7 @@
   <script src="categories/api.js"></script>
   <script src="categories/utils.js"></script>
   <script src="categories/preview-panel.js"></script>
+  <script src="categories/label-answers.js"></script>
   <script src="categories/mappings.js"></script>
   <script src="categories/rules-engine.js"></script>
   <script src="categories/overrides.js"></script>

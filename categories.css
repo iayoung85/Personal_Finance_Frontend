@@ -1352,13 +1352,119 @@ tr:hover {
 }
 
 /* ── Disabled Upload Button ────────────────────────────────── */
-#csv-upload-btn:disabled {
+#csv-apply-btn:disabled {
   background: var(--bg-input);
   color: var(--text-muted);
   cursor: not-allowed;
 }
 
-#csv-upload-btn:not(:disabled) {
+#csv-apply-btn:not(:disabled) {
   background: var(--color-success-muted);
+  cursor: pointer;
+}
+
+/* ── Needs-an-answer dialog ────────────────────────────────── */
+.answer-list {
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+.answer-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.answer-title {
+  margin-bottom: 6px;
+}
+
+.answer-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.answer-choice .answer-target {
+  flex: 1;
+  width: auto;
+}
+
+.answer-error {
+  color: var(--color-danger);
+  margin-bottom: 8px;
+}
+
+/* ── CSV upload preview ────────────────────────────────────── */
+.csv-plan-box {
+  display: none;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: var(--bg-inset);
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+}
+
+.csv-plan-box h4,
+.csv-plan-box h5 {
+  margin: 0 0 8px;
+  color: var(--text-heading);
+}
+
+.csv-plan-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+  font-size: 0.9em;
+}
+
+.csv-plan-table th,
+.csv-plan-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.csv-plan-table .csv-plan-needs {
+  color: var(--color-danger);
+  font-weight: bold;
+}
+
+.csv-plan-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.csv-copy-line {
+  margin-left: 6px;
+  padding: 1px 8px;
+  font-size: 0.85em;
+}
+
+.answer-save-btn:disabled {
+  background: var(--bg-input);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.inspect-link {
+  margin-left: 6px;
+  font-size: 0.9em;
+  color: var(--accent-link);
+}
+
+.result-banner {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.result-banner-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.3em;
+  line-height: 1;
   cursor: pointer;
 }

@@ -12,12 +12,29 @@ function toggleAdvancedMode() {
   // No-op: panel switching is handled by nav-sidebar.js
 }
 
+// The chosen file is kept here, not read back from the input, because the
+// input is emptied after each pick so choosing the same file again fires
+// `change` and re-runs the preview.
+let csvChosenFile = null;
+
+function clearCSVSuccess() {
+  document.getElementById('csv-success-container').style.display = 'none';
+}
+
 function clearCSVDisplay() {
+  clearCSVSuccess();
+  resetCSVInputs();
+}
+
+// Clears the file and preview but leaves the success box, which stays until
+// the user dismisses it.
+function resetCSVInputs() {
+  csvChosenFile = null;
   document.getElementById('csv-preview-container').style.display = 'none';
   document.getElementById('csv-errors-container').style.display = 'none';
-  document.getElementById('csv-success-container').style.display = 'none';
   document.getElementById('csv-file-name').textContent = 'No file selected';
-  document.getElementById('csv-upload-btn').disabled = true;
+  document.getElementById('csv-plan-container').style.display = 'none';
+  document.getElementById('csv-apply-btn').disabled = true;
   document.getElementById('csv-file-input').value = '';
 }
 
@@ -73,18 +90,58 @@ async function downloadCategoriesCSV() {
 
 // ── Upload ─────────────────────────────────────────────────
 
-async function uploadCategoriesCSV() {
-  const fileInput = document.getElementById('csv-file-input');
-  const file = fileInput.files[0];
+/**
+ * Ask the API what the chosen file would do, without applying it, and show
+ * the plan. Apply stays disabled until the file is valid.
+ */
+async function previewCategoriesCSV() {
+  const file = csvChosenFile;
+  if (!file) return;
+
+  document.getElementById('csv-errors-container').style.display = 'none';
+  document.getElementById('csv-success-container').style.display = 'none';
+  document.getElementById('csv-plan-container').style.display = 'none';
+  document.getElementById('csv-apply-btn').disabled = true;
+
+  try {
+    showStatus('Checking CSV...', 'info');
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/categorization/categories/csv?dry_run=1`,
+      { method: 'POST', body: formData }
+    );
+    const data = await response.json();
+
+    if (!response.ok) {
+      _displayCSVErrors(data);
+      showStatus('CSV could not be checked', 'error');
+      return;
+    }
+
+    _displayCSVPlan(data);
+    if (Array.isArray(data.errors) && data.errors.length > 0) {
+      _displayCSVErrors({ validation_errors: data.errors, errors_count: data.errors.length });
+    }
+    document.getElementById('csv-apply-btn').disabled = !data.valid;
+    showStatus(data.valid ? 'Review the preview, then apply' : 'CSV needs changes before it can be applied', data.valid ? 'info' : 'error');
+  } catch (error) {
+    showStatus(`Preview error: ${error.message}`, 'error');
+    console.error('CSV preview error:', error);
+  }
+}
+
+async function applyCategoriesCSV() {
+  const file = csvChosenFile;
 
   if (!file) {
     showStatus('Please select a CSV file first', 'error');
     return;
   }
 
-  // Clear previous feedback
   document.getElementById('csv-errors-container').style.display = 'none';
   document.getElementById('csv-success-container').style.display = 'none';
+  document.getElementById('csv-apply-btn').disabled = true;
 
   try {
     showStatus('Uploading CSV...', 'info');
@@ -110,6 +167,7 @@ async function uploadCategoriesCSV() {
     }
 
     markTransactionCacheStale();
+    document.getElementById('csv-plan-container').style.display = 'none';
     _displayCSVSuccess(data);
     showStatus('CSV uploaded successfully', 'success');
     setTimeout(() => clearStatus(), 3000);
@@ -117,12 +175,66 @@ async function uploadCategoriesCSV() {
     // Reload data after a brief delay so success message is visible
     setTimeout(() => {
       loadCategorizationData(true);
-      clearCSVDisplay();
+      resetCSVInputs();
     }, 1500);
   } catch (error) {
+    document.getElementById('csv-apply-btn').disabled = false;
     showStatus(`Upload error: ${error.message}`, 'error');
     console.error('CSV upload error:', error);
   }
+}
+
+function _csvCellHTML(cell) {
+  if (!cell.href) return escapeHtml(cell.text);
+  return `<a href="${escapeHtml(cell.href)}" target="_blank" rel="noopener">${escapeHtml(cell.text)}</a>`;
+}
+
+function _inspectCell(row) {
+  return row.inspectable ? { text: row.inspect.text, href: row.inspect.href } : { text: '' };
+}
+
+function _csvTableHTML(headers, rows) {
+  const head = headers.map(h => `<th>${escapeHtml(h)}</th>`).join('');
+  const body = rows.map(cells => `<tr>${cells.map(c => (
+    `<td class="${c.warn ? 'csv-plan-needs' : ''}">${_csvCellHTML(c)}</td>`
+  )).join('')}</tr>`).join('');
+  return `<table class="csv-plan-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function _displayCSVPlan(data) {
+  const { labelRows, keyRows, movesNothing } = buildCsvPreviewRows(data);
+  let html = '';
+
+  if (movesNothing) {
+    html = '<p>This upload moves no transactions.</p>';
+  }
+  if (labelRows.length > 0) {
+    html += '<h5>Labels leaving your list</h5>' + _csvTableHTML(
+      ['Label', 'Used by', 'Goes to', 'Decided by', ''],
+      labelRows.map(row => [
+        { text: row.label },
+        { text: row.counts },
+        { text: row.where, warn: row.needsLine },
+        { text: row.how },
+        _inspectCell(row),
+      ])
+    );
+  }
+  if (keyRows.length > 0) {
+    html += '<h5>Plaid categories with past transactions on the old label</h5>' + _csvTableHTML(
+      ['Plaid category', 'Label change', 'Transactions', 'Answer', ''],
+      keyRows.map(row => [
+        { text: row.key },
+        { text: row.change },
+        { text: String(row.transactions) },
+        { text: row.answer, warn: row.needsLine },
+        _inspectCell(row),
+      ])
+    );
+  }
+
+  document.getElementById('csv-plan-content').innerHTML = html;
+  document.getElementById('csv-plan-container').style.display = 'block';
 }
 
 // ── Feedback Display ───────────────────────────────────────
@@ -145,7 +257,7 @@ function _csvErrorItemHTML(error) {
   let html = `<div class="csv-error-item">• ${escapeHtml(text)}`;
   if (linesToAdd.length > 0) {
     html += '<ul class="csv-error-lines">'
-      + linesToAdd.map(line => `<li><code>${escapeHtml(line)}</code></li>`).join('')
+      + linesToAdd.map(line => `<li><code>${escapeHtml(line)}</code> <button type="button" class="csv-copy-line" data-line="${escapeHtml(line)}">Copy</button></li>`).join('')
       + '</ul>';
   }
   return html + '</div>';
@@ -190,6 +302,10 @@ function _displayCSVSuccess(data) {
     successHTML += `<div style="margin: 5px 0;">Overrides migrated: <strong>${data.overrides_migrated}</strong> overrides retargeted</div>`;
   }
 
+  describeCsvMoves(data).forEach(line => {
+    successHTML += `<div style="margin: 5px 0;">${escapeHtml(line)}</div>`;
+  });
+
   if (data.custom_categories && data.custom_categories.length > 0) {
     successHTML += `
       <div style="margin: 10px 0; padding: 8px; background: rgba(0,0,0,0.1); border-radius: 3px;">
@@ -212,9 +328,11 @@ function _initCSVFileInput() {
   fileInput.addEventListener('change', function handleFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
+    csvChosenFile = file;
+    event.target.value = '';
 
     document.getElementById('csv-file-name').textContent = `Selected: ${file.name}`;
-    document.getElementById('csv-upload-btn').disabled = false;
+    previewCategoriesCSV();
 
     // Show first few lines as a preview
     const reader = new FileReader();
@@ -227,5 +345,23 @@ function _initCSVFileInput() {
       document.getElementById('csv-preview-container').style.display = 'block';
     };
     reader.readAsText(file);
+  });
+}
+
+// Copy buttons sit inside the errors list, which is rebuilt on every check,
+// so one listener on the container handles them all.
+function _initCSVCopyButtons() {
+  const list = document.getElementById('csv-errors-list');
+  if (!list) return;
+  list.addEventListener('click', async (event) => {
+    const button = event.target.closest('.csv-copy-line');
+    if (!button) return;
+    try {
+      await navigator.clipboard.writeText(button.dataset.line);
+      button.textContent = 'Copied';
+    } catch (copyError) {
+      button.textContent = 'Copy failed';
+    }
+    setTimeout(() => { button.textContent = 'Copy'; }, 1500);
   });
 }

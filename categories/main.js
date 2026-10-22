@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', async function initCategoriesPage(
 
   // Wire up CSV file-input listener (advanced mode)
   _initCSVFileInput();
+  _initCSVCopyButtons();
 
   // Live-filter the mappings list as the user types
   document.addEventListener('input', function onMappingFilter(event) {
