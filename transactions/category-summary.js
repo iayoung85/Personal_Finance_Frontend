@@ -74,12 +74,24 @@ function renderCategorySummaryModal() {
       <span class="category-summary-stat-value">${escapeHtml(_formatCategorySummaryAmount(summaryData.spending_total, 'spending'))}</span>
     </div>
     <div class="category-summary-stat">
-      <span class="category-summary-stat-label">Income</span>
-      <span class="category-summary-stat-value">${escapeHtml(_formatCategorySummaryAmount(summaryData.income_total, 'income'))}</span>
+      <span class="category-summary-stat-label">Total Income</span>
+      <span class="category-summary-stat-value">${escapeHtml(_formatCategorySummaryAmount(summaryData.all_income_total, 'income'))}</span>
+      <div class="category-summary-stat-part">
+        <span>Earned income</span>
+        <span>${escapeHtml(_formatCategorySummaryAmount(summaryData.income_total, 'income'))}</span>
+      </div>
+      <div class="category-summary-stat-part">
+        <span>Other inflow</span>
+        <span>${escapeHtml(_formatCategorySummaryAmount(summaryData.other_inflow_total, 'income'))}</span>
+      </div>
     </div>
     <div class="category-summary-stat">
       <span class="category-summary-stat-label">Investment Trend</span>
       <span class="category-summary-stat-value">${escapeHtml(_formatCategorySummaryAmount(summaryData.investment_trending_total, 'signed'))}</span>
+    </div>
+    <div class="category-summary-stat">
+      <span class="category-summary-stat-label">Retirement Income</span>
+      <span class="category-summary-stat-value">${escapeHtml(_formatCategorySummaryAmount(summaryData.retirement_income_total, 'signed'))}</span>
     </div>
     <div class="category-summary-stat">
       <span class="category-summary-stat-label">Transactions</span>

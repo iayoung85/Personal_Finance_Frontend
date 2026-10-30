@@ -12,7 +12,7 @@ function _buildTotalSpendingInsight(analyticsView) {
     label: 'Total Spending',
     value: formatAnalyticsCurrency(getAnalyticsDisplayTotal(rawTotal, analyticsView.spendingEntries)),
     meta: `${analyticsView.spendingEntries.length} spending transactions`,
-    subtext: 'Transfers, adjustments, income, and system rows excluded',
+    subtext: 'Transfers, adjustments, income, other inflow, retirement income, and system rows excluded',
   };
 }
 
@@ -50,7 +50,7 @@ function _buildCategorySummaryInsight() {
     icon: '📋',
     label: 'Category Summary',
     value: 'Open category table',
-    meta: 'Income, spending, and investment trend',
+    meta: 'Spending, total income, investment trend, and retirement income',
     subtext: 'Transfers, adjustments, and balance anchors excluded',
     cardClass: ' insight-summary-card',
     title: 'Open category summary table',

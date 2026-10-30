@@ -1523,6 +1523,14 @@ tr:hover {
   color: var(--text-primary);
 }
 
+.category-summary-stat-part {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 .category-summary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(280px, 340px));

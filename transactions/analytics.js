@@ -23,6 +23,8 @@ function formatAnalyticsCurrency(amount) {
 const ANALYTICS_CLASS_TO_MODE = Object.freeze({
   spending: ANALYTICS_DISPLAY_MODE.SPENDING,
   income: ANALYTICS_DISPLAY_MODE.INCOME,
+  other_inflow: ANALYTICS_DISPLAY_MODE.INCOME,
+  retirement_income: ANALYTICS_DISPLAY_MODE.SIGNED,
   investment_trend: ANALYTICS_DISPLAY_MODE.SIGNED,
 });
 
@@ -53,7 +55,7 @@ function isAnalyticsCountedClass(analyticsClass) {
 /**
  * Display mode for a group of entries (a category). Mixed classes: the mode
  * whose rows carry the largest absolute amount wins; ties go spending, income,
- * investment trend. No counted entries falls back to spending.
+ * signed (investment trend, retirement income). No counted entries falls back to spending.
  */
 function getAnalyticsDisplayModeForEntries(entries) {
   const weights = {};
@@ -275,6 +277,8 @@ function buildVisibleCategorySummaryData() {
   const groupedCategories = {};
   let spendingTotal = 0;
   let incomeTotal = 0;
+  let otherInflowTotal = 0;
+  let retirementIncomeTotal = 0;
   let investmentTrendingTotal = 0;
 
   analyticsView.summaryEntries.forEach(entry => {
@@ -296,6 +300,10 @@ function buildVisibleCategorySummaryData() {
 
     if (entry.analytics_class === 'investment_trend') {
       investmentTrendingTotal += entry.amount;
+    } else if (entry.analytics_class === 'retirement_income') {
+      retirementIncomeTotal += entry.amount;
+    } else if (entry.analytics_class === 'other_inflow') {
+      otherInflowTotal += entry.amount;
     } else if (entry.analytics_class === 'income') {
       incomeTotal += entry.amount;
     } else {
@@ -338,6 +346,9 @@ function buildVisibleCategorySummaryData() {
     grand_total: Math.round(categories.reduce((sum, category) => sum + category.total, 0) * 100) / 100,
     spending_total: Math.round(spendingTotal * 100) / 100,
     income_total: Math.round(incomeTotal * 100) / 100,
+    other_inflow_total: Math.round(otherInflowTotal * 100) / 100,
+    all_income_total: Math.round((incomeTotal + otherInflowTotal) * 100) / 100,
+    retirement_income_total: Math.round(retirementIncomeTotal * 100) / 100,
     investment_trending_total: Math.round(investmentTrendingTotal * 100) / 100,
     transaction_count: analyticsView.summaryEntries.length,
     categories,

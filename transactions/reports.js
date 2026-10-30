@@ -397,10 +397,10 @@ function _renderCategoryReport(data, interval) {
   html += '<th class="reports-num-col">Total</th>';
   html += '</tr></thead><tbody>';
 
-  // Income section
-  html += `<tr class="reports-section-header"><td colspan="${periodCount + 2}">Income</td></tr>`;
+  // Earned income section
+  html += `<tr class="reports-section-header"><td colspan="${periodCount + 2}">Earned Income</td></tr>`;
   html += _renderCategoryRows(data.income, periodCount);
-  html += '<tr class="reports-subtotal-row"><td>Total Income</td>';
+  html += '<tr class="reports-subtotal-row"><td>Total Earned Income</td>';
   for (const val of data.total_income_row) {
     html += `<td class="reports-num-col">${_formatCurrency(val)}</td>`;
   }
@@ -414,6 +414,25 @@ function _renderCategoryReport(data, interval) {
     html += `<td class="reports-num-col">${_formatCurrency(val)}</td>`;
   }
   html += `<td class="reports-num-col">${_formatCurrency(data.total_expenses_grand)}</td></tr>`;
+
+  // Other inflow section, hidden when empty like the separate sections
+  const otherInflow = _getReportOtherInflowSection(data);
+  if (otherInflow) {
+    html += `<tr class="reports-section-header"><td colspan="${periodCount + 2}">Other Inflow</td></tr>`;
+    html += _renderCategoryRows(otherInflow.categories, periodCount);
+    html += '<tr class="reports-subtotal-row"><td>Total Other Inflow</td>';
+    for (const val of otherInflow.totalRow) {
+      html += `<td class="reports-num-col">${_formatCurrency(val)}</td>`;
+    }
+    html += `<td class="reports-num-col">${_formatCurrency(otherInflow.grandTotal)}</td></tr>`;
+  }
+
+  // Earned income plus other inflow
+  html += '<tr class="reports-subtotal-row"><td>Total Income</td>';
+  for (const val of (data.total_all_income_row || [])) {
+    html += `<td class="reports-num-col">${_formatCurrency(val)}</td>`;
+  }
+  html += `<td class="reports-num-col">${_formatCurrency(data.total_all_income_grand || 0)}</td></tr>`;
 
   // Grand total row
   html += '<tr class="reports-net-worth-row"><td><strong>Total</strong></td>';
@@ -438,18 +457,39 @@ function _renderCategoryReport(data, interval) {
 }
 
 /**
- * Transfer, adjustment, and investment-trend sections of a category report, in
- * display order. A section with no categories (or transfers not requested) is left out.
+ * Keeps a report section only when it has categories, and fills a missing
+ * subtotal so the renderers never read undefined.
  */
-function _getReportSeparateSections(data) {
-  const candidates = [
-    { label: 'Transfers', categories: data.transfers, totalRow: data.total_transfers_row, grandTotal: data.total_transfers_grand },
-    { label: 'Adjustments', categories: data.adjustments, totalRow: data.total_adjustments_row, grandTotal: data.total_adjustments_grand },
-    { label: 'Investment Trend', categories: data.investment_trends, totalRow: data.total_investment_trends_row, grandTotal: data.total_investment_trends_grand },
-  ];
+function _keepReportSectionsWithCategories(candidates) {
   return candidates
     .filter(section => section.categories && Object.keys(section.categories).length > 0)
     .map(section => ({ ...section, totalRow: section.totalRow || [], grandTotal: section.grandTotal || 0 }));
+}
+
+/**
+ * The Other Inflow section of a category report, or null when it is empty.
+ * It sits between Expenses and the Total rows because it counts in Total.
+ */
+function _getReportOtherInflowSection(data) {
+  const sections = _keepReportSectionsWithCategories([
+    { label: 'Other Inflow', categories: data.other_inflows, totalRow: data.total_other_inflows_row, grandTotal: data.total_other_inflows_grand },
+  ]);
+  return sections.length ? sections[0] : null;
+}
+
+/**
+ * The sections of a category report that are counted in no total, in display
+ * order: transfers, adjustments, retirement income, investment trend, excluded.
+ * A section with no categories (or transfers not requested) is left out.
+ */
+function _getReportSeparateSections(data) {
+  return _keepReportSectionsWithCategories([
+    { label: 'Transfers', categories: data.transfers, totalRow: data.total_transfers_row, grandTotal: data.total_transfers_grand },
+    { label: 'Adjustments', categories: data.adjustments, totalRow: data.total_adjustments_row, grandTotal: data.total_adjustments_grand },
+    { label: 'Retirement Income', categories: data.retirement_income, totalRow: data.total_retirement_income_row, grandTotal: data.total_retirement_income_grand },
+    { label: 'Investment Trend', categories: data.investment_trends, totalRow: data.total_investment_trends_row, grandTotal: data.total_investment_trends_grand },
+    { label: 'Excluded', categories: data.excluded, totalRow: data.total_excluded_row, grandTotal: data.total_excluded_grand },
+  ]);
 }
 
 function _renderCategoryRows(categoryMap, periodCount) {
@@ -619,13 +659,13 @@ function _generateCategoryCSV(data) {
 
   let csv = ',"Primary Category","Detailed Category",' + data.periods.map(period => `"${_csvEscape(period)}"`).join(',') + ',"Total"\n';
 
-  csv += '"Income",,,' + periodMonths.map(m => `"${m}"`).join(',') + '\n';
+  csv += '"Earned Income",,,' + periodMonths.map(m => `"${m}"`).join(',') + '\n';
   for (const [category, catData] of Object.entries(data.income)) {
     csv += _splitCategoryColumns(category);
     for (const amount of catData.amounts) { csv += `,${amount}`; }
     csv += `,${catData.total}\n`;
   }
-  csv += ',,"Total Income"';
+  csv += ',,"Total Earned Income"';
   for (const val of data.total_income_row) { csv += `,${val}`; }
   csv += `,${data.total_income_grand}\n`;
 
@@ -638,6 +678,23 @@ function _generateCategoryCSV(data) {
   csv += ',,"Total Expenses"';
   for (const val of data.total_expenses_row) { csv += `,${val}`; }
   csv += `,${data.total_expenses_grand}\n`;
+
+  const otherInflow = _getReportOtherInflowSection(data);
+  if (otherInflow) {
+    csv += '"Other Inflow"\n';
+    for (const [category, catData] of Object.entries(otherInflow.categories)) {
+      csv += _splitCategoryColumns(category);
+      for (const amount of catData.amounts) { csv += `,${amount}`; }
+      csv += `,${catData.total}\n`;
+    }
+    csv += ',,"Total Other Inflow"';
+    for (const val of otherInflow.totalRow) { csv += `,${val}`; }
+    csv += `,${otherInflow.grandTotal}\n`;
+  }
+
+  csv += ',,"Total Income"';
+  for (const val of (data.total_all_income_row || [])) { csv += `,${val}`; }
+  csv += `,${data.total_all_income_grand || 0}\n`;
 
   csv += ',,"Total"';
   for (const val of data.total_row) { csv += `,${val}`; }
