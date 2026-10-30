@@ -25,6 +25,8 @@ function _initReportsDefaults() {
   _populateCategoryYearSelects();
   _applyBalanceDateDefaults();
   _onReportTypeChange();
+  document.getElementById('report-show-inactive').checked = true;
+  _onShowInactiveChange();
 }
 
 function _formatDateInput(dateObj) {
@@ -107,6 +109,7 @@ function _onReportTypeChange() {
   // Toggle visibility of type-specific options
   document.getElementById('report-option-zero-label').style.display = isBalance ? '' : 'none';
   document.getElementById('report-option-transfers-label').style.display = isBalance ? 'none' : '';
+  document.getElementById('report-option-inactive-label').style.display = isBalance ? 'none' : '';
 
   // Balance mode uses month pickers; category mode uses year selects
   document.getElementById('report-balance-dates').style.display = isBalance ? '' : 'none';
@@ -193,6 +196,18 @@ function _fiscalYearRange(startFY, endFY, fiscalMonth) {
 // Cached report data for CSV export
 let _lastReportData = null;
 let _lastReportType = null;
+let _lastReportInterval = null;
+
+/** Whether the category report should keep categories with no activity. */
+function _shouldShowInactiveCategories() {
+  return document.getElementById('report-show-inactive').checked;
+}
+
+/** Re-render the current category report when the checkbox flips; no refetch. */
+function _onShowInactiveChange() {
+  if (_lastReportType !== 'category' || !_lastReportData) return;
+  _renderCategoryReport(_lastReportData, _lastReportInterval);
+}
 
 async function generateReport() {
   const reportType = document.getElementById('report-type').value;
@@ -245,6 +260,7 @@ async function generateReport() {
 
     _lastReportData = data;
     _lastReportType = reportType;
+    _lastReportInterval = interval;
 
     if (reportType === 'balance') {
       _renderBalanceReport(data, interval);
@@ -377,6 +393,7 @@ function _renderBalanceReport(data, interval) {
 // ── Category Report Renderer ────────────────────────────────
 
 function _renderCategoryReport(data, interval) {
+  const showInactive = _shouldShowInactiveCategories();
   const container = document.getElementById('reports-table-container');
   const titleEl = document.getElementById('reports-output-title');
 
@@ -399,24 +416,15 @@ function _renderCategoryReport(data, interval) {
 
   // Earned income section
   html += `<tr class="reports-section-header"><td colspan="${periodCount + 2}">Earned Income</td></tr>`;
-  html += _renderCategoryRows(data.income, periodCount);
+  html += _renderCategoryRows(_filterReportCategories(data.income, showInactive), periodCount);
   html += '<tr class="reports-subtotal-row"><td>Total Earned Income</td>';
   for (const val of data.total_income_row) {
     html += `<td class="reports-num-col">${_formatCurrency(val)}</td>`;
   }
   html += `<td class="reports-num-col">${_formatCurrency(data.total_income_grand)}</td></tr>`;
 
-  // Expenses section
-  html += `<tr class="reports-section-header"><td colspan="${periodCount + 2}">Expenses</td></tr>`;
-  html += _renderCategoryRows(data.expenses, periodCount);
-  html += '<tr class="reports-subtotal-row"><td>Total Expenses</td>';
-  for (const val of data.total_expenses_row) {
-    html += `<td class="reports-num-col">${_formatCurrency(val)}</td>`;
-  }
-  html += `<td class="reports-num-col">${_formatCurrency(data.total_expenses_grand)}</td></tr>`;
-
   // Other inflow section, hidden when empty like the separate sections
-  const otherInflow = _getReportOtherInflowSection(data);
+  const otherInflow = _getReportOtherInflowSection(data, showInactive);
   if (otherInflow) {
     html += `<tr class="reports-section-header"><td colspan="${periodCount + 2}">Other Inflow</td></tr>`;
     html += _renderCategoryRows(otherInflow.categories, periodCount);
@@ -434,6 +442,15 @@ function _renderCategoryReport(data, interval) {
   }
   html += `<td class="reports-num-col">${_formatCurrency(data.total_all_income_grand || 0)}</td></tr>`;
 
+  // Expenses section
+  html += `<tr class="reports-section-header"><td colspan="${periodCount + 2}">Expenses</td></tr>`;
+  html += _renderCategoryRows(_filterReportCategories(data.expenses, showInactive), periodCount);
+  html += '<tr class="reports-subtotal-row"><td>Total Expenses</td>';
+  for (const val of data.total_expenses_row) {
+    html += `<td class="reports-num-col">${_formatCurrency(val)}</td>`;
+  }
+  html += `<td class="reports-num-col">${_formatCurrency(data.total_expenses_grand)}</td></tr>`;
+
   // Grand total row
   html += '<tr class="reports-net-worth-row"><td><strong>Total</strong></td>';
   for (const val of data.total_row) {
@@ -442,7 +459,7 @@ function _renderCategoryReport(data, interval) {
   html += `<td class="reports-num-col"><strong>${_formatCurrency(data.total_grand)}</strong></td></tr>`;
 
   // Sections the API keeps out of the totals above, shown after them.
-  for (const section of _getReportSeparateSections(data)) {
+  for (const section of _getReportSeparateSections(data, showInactive)) {
     html += `<tr class="reports-section-header"><td colspan="${periodCount + 2}">${_escapeHtml(section.label)}</td></tr>`;
     html += _renderCategoryRows(section.categories, periodCount);
     html += `<tr class="reports-subtotal-row"><td>Total ${_escapeHtml(section.label)}</td>`;
@@ -457,39 +474,64 @@ function _renderCategoryReport(data, interval) {
 }
 
 /**
- * Keeps a report section only when it has categories, and fills a missing
- * subtotal so the renderers never read undefined.
+ * True when any period amount of a category row is non-zero. The report has no
+ * per-category transaction count, so a row that nets to zero in every period
+ * counts as no activity.
  */
-function _keepReportSectionsWithCategories(candidates) {
+function _reportCategoryHasActivity(catData) {
+  return (catData.amounts || []).some(amount => Number(amount) !== 0);
+}
+
+/**
+ * The category rows to display. With showInactive true the map is returned
+ * as is; otherwise rows with no activity in any period are dropped. Subtotals
+ * are not recomputed because dropped rows contribute nothing to them.
+ */
+function _filterReportCategories(categoryMap, showInactive) {
+  if (showInactive || !categoryMap) return categoryMap || {};
+  const kept = {};
+  for (const [category, catData] of Object.entries(categoryMap)) {
+    if (_reportCategoryHasActivity(catData)) kept[category] = catData;
+  }
+  return kept;
+}
+
+/**
+ * Keeps a report section only when it has categories left to show, and fills
+ * a missing subtotal so the renderers never read undefined. Rows are filtered
+ * by showInactive (default true: keep every row).
+ */
+function _keepReportSectionsWithCategories(candidates, showInactive = true) {
   return candidates
-    .filter(section => section.categories && Object.keys(section.categories).length > 0)
+    .map(section => ({ ...section, categories: _filterReportCategories(section.categories, showInactive) }))
+    .filter(section => Object.keys(section.categories).length > 0)
     .map(section => ({ ...section, totalRow: section.totalRow || [], grandTotal: section.grandTotal || 0 }));
 }
 
 /**
  * The Other Inflow section of a category report, or null when it is empty.
- * It sits between Expenses and the Total rows because it counts in Total.
+ * It sits with Earned Income, above Total Income, because it counts in it.
  */
-function _getReportOtherInflowSection(data) {
+function _getReportOtherInflowSection(data, showInactive = true) {
   const sections = _keepReportSectionsWithCategories([
     { label: 'Other Inflow', categories: data.other_inflows, totalRow: data.total_other_inflows_row, grandTotal: data.total_other_inflows_grand },
-  ]);
+  ], showInactive);
   return sections.length ? sections[0] : null;
 }
 
 /**
  * The sections of a category report that are counted in no total, in display
- * order: transfers, adjustments, retirement income, investment trend, excluded.
+ * order: adjustments, retirement income, investment trend, excluded, transfers.
  * A section with no categories (or transfers not requested) is left out.
  */
-function _getReportSeparateSections(data) {
+function _getReportSeparateSections(data, showInactive = true) {
   return _keepReportSectionsWithCategories([
-    { label: 'Transfers', categories: data.transfers, totalRow: data.total_transfers_row, grandTotal: data.total_transfers_grand },
     { label: 'Adjustments', categories: data.adjustments, totalRow: data.total_adjustments_row, grandTotal: data.total_adjustments_grand },
     { label: 'Retirement Income', categories: data.retirement_income, totalRow: data.total_retirement_income_row, grandTotal: data.total_retirement_income_grand },
     { label: 'Investment Trend', categories: data.investment_trends, totalRow: data.total_investment_trends_row, grandTotal: data.total_investment_trends_grand },
     { label: 'Excluded', categories: data.excluded, totalRow: data.total_excluded_row, grandTotal: data.total_excluded_grand },
-  ]);
+    { label: 'Transfers', categories: data.transfers, totalRow: data.total_transfers_row, grandTotal: data.total_transfers_grand },
+  ], showInactive);
 }
 
 function _renderCategoryRows(categoryMap, periodCount) {
@@ -593,7 +635,7 @@ function _generateReportCSV() {
   if (_lastReportType === 'balance') {
     return _generateBalanceCSV(_lastReportData);
   }
-  return _generateCategoryCSV(_lastReportData);
+  return _generateCategoryCSV(_lastReportData, _shouldShowInactiveCategories());
 }
 
 function _generateBalanceCSV(data) {
@@ -647,7 +689,7 @@ function _generateBalanceCSV(data) {
   return csv;
 }
 
-function _generateCategoryCSV(data) {
+function _generateCategoryCSV(data, showInactive = true) {
   const monthNames = ['January','February','March','April','May','June',
                       'July','August','September','October','November','December'];
 
@@ -660,7 +702,7 @@ function _generateCategoryCSV(data) {
   let csv = ',"Primary Category","Detailed Category",' + data.periods.map(period => `"${_csvEscape(period)}"`).join(',') + ',"Total"\n';
 
   csv += '"Earned Income",,,' + periodMonths.map(m => `"${m}"`).join(',') + '\n';
-  for (const [category, catData] of Object.entries(data.income)) {
+  for (const [category, catData] of Object.entries(_filterReportCategories(data.income, showInactive))) {
     csv += _splitCategoryColumns(category);
     for (const amount of catData.amounts) { csv += `,${amount}`; }
     csv += `,${catData.total}\n`;
@@ -669,17 +711,7 @@ function _generateCategoryCSV(data) {
   for (const val of data.total_income_row) { csv += `,${val}`; }
   csv += `,${data.total_income_grand}\n`;
 
-  csv += '"Expenses"\n';
-  for (const [category, catData] of Object.entries(data.expenses)) {
-    csv += _splitCategoryColumns(category);
-    for (const amount of catData.amounts) { csv += `,${amount}`; }
-    csv += `,${catData.total}\n`;
-  }
-  csv += ',,"Total Expenses"';
-  for (const val of data.total_expenses_row) { csv += `,${val}`; }
-  csv += `,${data.total_expenses_grand}\n`;
-
-  const otherInflow = _getReportOtherInflowSection(data);
+  const otherInflow = _getReportOtherInflowSection(data, showInactive);
   if (otherInflow) {
     csv += '"Other Inflow"\n';
     for (const [category, catData] of Object.entries(otherInflow.categories)) {
@@ -696,11 +728,21 @@ function _generateCategoryCSV(data) {
   for (const val of (data.total_all_income_row || [])) { csv += `,${val}`; }
   csv += `,${data.total_all_income_grand || 0}\n`;
 
+  csv += '"Expenses"\n';
+  for (const [category, catData] of Object.entries(_filterReportCategories(data.expenses, showInactive))) {
+    csv += _splitCategoryColumns(category);
+    for (const amount of catData.amounts) { csv += `,${amount}`; }
+    csv += `,${catData.total}\n`;
+  }
+  csv += ',,"Total Expenses"';
+  for (const val of data.total_expenses_row) { csv += `,${val}`; }
+  csv += `,${data.total_expenses_grand}\n`;
+
   csv += ',,"Total"';
   for (const val of data.total_row) { csv += `,${val}`; }
   csv += `,${data.total_grand}\n`;
 
-  for (const section of _getReportSeparateSections(data)) {
+  for (const section of _getReportSeparateSections(data, showInactive)) {
     csv += `"${section.label}"\n`;
     for (const [category, catData] of Object.entries(section.categories)) {
       csv += _splitCategoryColumns(category);
