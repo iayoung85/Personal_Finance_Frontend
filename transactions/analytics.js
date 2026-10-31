@@ -153,33 +153,199 @@ function getAnalyticsAverageDisplayAmount(entries) {
   return absoluteTotal / matchingDirectionEntries.length;
 }
 
-function _normalizeTrackedInsightCategories(categoryList) {
-  if (!Array.isArray(categoryList)) {
+const INSIGHT_CARD_LIMIT = 3;
+
+/**
+ * Normalizes a list of category names: strings only, trimmed, blanks and
+ * repeats dropped, order kept.
+ * @param {*} names
+ * @returns {string[]}
+ */
+function _normalizeInsightCardNameList(names) {
+  if (!Array.isArray(names)) {
     return [];
   }
 
-  const seen = new Set();
   const normalized = [];
-
-  categoryList.forEach(categoryName => {
-    if (typeof categoryName !== 'string') {
+  names.forEach(name => {
+    if (typeof name !== 'string') {
       return;
     }
-
-    const trimmed = categoryName.trim();
-    if (!trimmed || seen.has(trimmed)) {
-      return;
+    const trimmed = name.trim();
+    if (trimmed && !normalized.includes(trimmed)) {
+      normalized.push(trimmed);
     }
-
-    seen.add(trimmed);
-    normalized.push(trimmed);
   });
-
-  return normalized.slice(0, 3);
+  return normalized;
 }
 
-function getTrackedInsightPrimaryCategories() {
-  return _normalizeTrackedInsightCategories(getAppConfig().trackedInsightCategories);
+/**
+ * Puts a "Primary: Detailed" member into the spacing the ledger rows use, so
+ * "Food:Groceries" and "Food: Groceries" match the same rows.
+ * @param {string} label
+ * @returns {string} The normalized label, or '' when it has no detailed part.
+ */
+function normalizeInsightCardDetailLabel(label) {
+  if (typeof label !== 'string') {
+    return '';
+  }
+
+  const separatorIndex = label.indexOf(':');
+  if (separatorIndex === -1) {
+    return '';
+  }
+
+  const primary = label.slice(0, separatorIndex).trim();
+  const detailed = label.slice(separatorIndex + 1).trim();
+  if (!primary || !detailed) {
+    return '';
+  }
+  return `${primary}: ${detailed}`;
+}
+
+/**
+ * Cleans the stored insightCards preference into cards the insights bar can
+ * use. A card without a name or without any member is dropped; at most
+ * INSIGHT_CARD_LIMIT cards are kept, in stored order.
+ * @param {*} rawCards The insightCards value from the app config.
+ * @returns {Array<{name: string, primaries: string[], details: string[]}>}
+ */
+function normalizeInsightCards(rawCards) {
+  if (!Array.isArray(rawCards)) {
+    return [];
+  }
+
+  const cards = [];
+  rawCards.forEach(rawCard => {
+    if (!rawCard || typeof rawCard !== 'object' || cards.length >= INSIGHT_CARD_LIMIT) {
+      return;
+    }
+
+    const name = typeof rawCard.name === 'string' ? rawCard.name.trim() : '';
+    const primaries = _normalizeInsightCardNameList(rawCard.primaries);
+    const details = _normalizeInsightCardNameList(
+      _normalizeInsightCardNameList(rawCard.details).map(normalizeInsightCardDetailLabel)
+    );
+
+    if (!name || (primaries.length === 0 && details.length === 0)) {
+      return;
+    }
+    cards.push({ name, primaries, details });
+  });
+
+  return cards;
+}
+
+function getInsightCards() {
+  return normalizeInsightCards(getAppConfig().insightCards);
+}
+
+/**
+ * Rows that belong to an insight card: the row's primary is a whole-primary
+ * member, or its "Primary: Detailed" label is a detail member. Filtering (not
+ * concatenating per member) means a row matching both counts once.
+ * @param {Array<{primary_category: string, detailed_category: string}>} entries
+ * @param {{primaries: string[], details: string[]}} card
+ * @returns {Array} The matching entries, in their original order.
+ */
+function filterEntriesForInsightCard(entries, card) {
+  const primaries = new Set(card.primaries || []);
+  const details = new Set(card.details || []);
+
+  return (entries || []).filter(entry => {
+    if (primaries.has(entry.primary_category)) {
+      return true;
+    }
+    if (!entry.detailed_category) {
+      return false;
+    }
+    return details.has(`${entry.primary_category}: ${entry.detailed_category}`);
+  });
+}
+
+function _meanAbsoluteAmount(entries) {
+  if (entries.length === 0) {
+    return null;
+  }
+  const absoluteTotal = entries.reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
+  return absoluteTotal / entries.length;
+}
+
+// Classes whose rows bring money in, for a card's credit side. Retirement
+// income joins earned income and other inflow here even though the category
+// summary keeps it out of Total income.
+const INSIGHT_CARD_CREDIT_CLASSES = Object.freeze(['income', 'other_inflow', 'retirement_income']);
+
+function _isInsightCardCreditRow(entry) {
+  return INSIGHT_CARD_CREDIT_CLASSES.includes(entry.analytics_class);
+}
+
+function _isInsightCardSpendingRow(entry) {
+  return entry.analytics_class === 'spending';
+}
+
+/**
+ * The average lines an insight card shows. Credit-side rows (income, other
+ * inflow, retirement income) give "Average credit" from their credits only;
+ * spending rows give "Average debit" from their debits only, so refunds and
+ * clawbacks move neither. A card with both sides shows both lines. A card
+ * with no income, other-inflow or spending rows (only retirement income, or
+ * no rows) keeps the single average chosen by the group's display mode.
+ * @param {Array<{analytics_class: string|null, amount: number}>} entries
+ * @returns {Array<{label: string, amount: number|null}>} amount is null when no row qualifies.
+ */
+function getInsightCardAverageLines(entries) {
+  const hasIncomeOrSpending = entries.some(entry => {
+    const mode = getAnalyticsModeForClass(entry.analytics_class);
+    return mode === ANALYTICS_DISPLAY_MODE.INCOME || mode === ANALYTICS_DISPLAY_MODE.SPENDING;
+  });
+
+  if (!hasIncomeOrSpending) {
+    const mode = getAnalyticsDisplayModeForEntries(entries);
+    return [{
+      label: mode === ANALYTICS_DISPLAY_MODE.INCOME ? 'Average credit' : 'Average debit',
+      amount: getAnalyticsAverageDisplayAmount(entries),
+    }];
+  }
+
+  const creditSideEntries = entries.filter(_isInsightCardCreditRow);
+  const spendingEntries = entries.filter(_isInsightCardSpendingRow);
+
+  const lines = [];
+  if (creditSideEntries.length > 0) {
+    lines.push({
+      label: 'Average credit',
+      amount: _meanAbsoluteAmount(creditSideEntries.filter(entry => entry.amount > 0)),
+    });
+  }
+  if (spendingEntries.length > 0) {
+    lines.push({
+      label: 'Average debit',
+      amount: _meanAbsoluteAmount(spendingEntries.filter(entry => entry.amount < 0)),
+    });
+  }
+  return lines;
+}
+
+/**
+ * Money in and money out for a card that holds both credit-side and spending
+ * rows. A one-sided card returns isMixed false and keeps its unsigned total.
+ * inTotal is the net of the credit-side rows and outTotal the net outflow of
+ * the spending rows, so inTotal - outTotal equals the card's net total.
+ * @param {Array<{analytics_class: string|null, amount: number}>} entries
+ * @returns {{isMixed: boolean, inTotal: number, outTotal: number}}
+ */
+function getInsightCardFlowSummary(entries) {
+  const creditSideEntries = entries.filter(_isInsightCardCreditRow);
+  const spendingEntries = entries.filter(_isInsightCardSpendingRow);
+  const inTotal = creditSideEntries.reduce((sum, entry) => sum + entry.amount, 0);
+  const spendingNet = spendingEntries.reduce((sum, entry) => sum + entry.amount, 0);
+
+  return {
+    isMixed: creditSideEntries.length > 0 && spendingEntries.length > 0,
+    inTotal,
+    outTotal: -spendingNet,
+  };
 }
 
 function _shouldSkipLedgerParentForAnalytics(txn) {
@@ -294,7 +460,7 @@ function buildNormalizedAnalyticsSlice() {
     trackableEntries,
     spendingEntries,
     summaryEntries,
-    trackedPrimaryCategories: getTrackedInsightPrimaryCategories(),
+    insightCards: getInsightCards(),
   };
 }
 

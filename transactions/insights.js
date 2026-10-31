@@ -16,20 +16,45 @@ function _buildTotalSpendingInsight(analyticsView) {
   };
 }
 
-function _buildTrackedCategoryInsight(primaryCategory, analyticsView) {
-  const matchingEntries = analyticsView.trackableEntries.filter(entry => entry.primary_category === primaryCategory);
+/**
+ * One insights-bar card for a user-named group of categories.
+ * @param {{name: string, primaries: string[], details: string[]}} card
+ * @param {Object} analyticsView The slice from buildNormalizedAnalyticsSlice().
+ * @returns {Object} Insight card view model.
+ */
+function _buildInsightCardInsight(card, analyticsView) {
+  const matchingEntries = filterEntriesForInsightCard(analyticsView.trackableEntries, card);
   const rawTotal = matchingEntries.reduce((sum, entry) => sum + entry.amount, 0);
-  const averageDisplayAmount = getAnalyticsAverageDisplayAmount(matchingEntries);
-  const averageLabel = getAnalyticsDisplayModeForEntries(matchingEntries) === ANALYTICS_DISPLAY_MODE.INCOME ? 'Average credit' : 'Average debit';
+  const averageLines = getInsightCardAverageLines(matchingEntries).map(line => (
+    line.amount === null
+      ? `${line.label} —`
+      : `${line.label} ${formatAnalyticsCurrency(line.amount)}`
+  ));
+  const flow = getInsightCardFlowSummary(matchingEntries);
+
+  if (flow.isMixed) {
+    // Why: an unsigned total on a card holding both sides cannot say which
+    // side is bigger, so it shows a signed net and both sides beneath it.
+    const signedNet = getAnalyticsSignedDisplay(rawTotal, ANALYTICS_DISPLAY_MODE.INCOME);
+    return {
+      icon: '🏷️',
+      label: card.name,
+      value: signedNet.text,
+      valueTone: signedNet.tone,
+      meta: `${matchingEntries.length} transactions`,
+      subtext: [
+        `In ${formatAnalyticsCurrency(flow.inTotal)} · Out ${formatAnalyticsCurrency(flow.outTotal)}`,
+        ...averageLines,
+      ],
+    };
+  }
 
   return {
     icon: '🏷️',
-    label: primaryCategory,
+    label: card.name,
     value: formatAnalyticsCurrency(getAnalyticsDisplayTotal(rawTotal, matchingEntries)),
     meta: `${matchingEntries.length} transactions`,
-    subtext: averageDisplayAmount === null
-      ? `${averageLabel} —`
-      : `${averageLabel} ${formatAnalyticsCurrency(averageDisplayAmount)}`,
+    subtext: averageLines,
   };
 }
 
@@ -67,8 +92,8 @@ function generateSpendingInsights() {
 
   const insights = [_buildTotalSpendingInsight(analyticsView)];
 
-  analyticsView.trackedPrimaryCategories.forEach(primaryCategory => {
-    insights.push(_buildTrackedCategoryInsight(primaryCategory, analyticsView));
+  analyticsView.insightCards.forEach(card => {
+    insights.push(_buildInsightCardInsight(card, analyticsView));
   });
 
   insights.push(_buildLiveLedgerInsight(analyticsView));
@@ -82,15 +107,20 @@ function _renderInsightCard(insight) {
     ? ` onclick="${insight.onClick}" role="button" tabindex="0"`
     : '';
   const cardTitle = insight.title ? ` title="${escapeHtml(insight.title)}"` : '';
+  const subtextLines = Array.isArray(insight.subtext) ? insight.subtext : [insight.subtext];
+  const subtextHtml = subtextLines
+    .filter(Boolean)
+    .map(line => `<div class="insight-subtext">${escapeHtml(line)}</div>`)
+    .join('');
 
   return `
     <div class="insight-card${insight.cardClass || ''}"${clickAttrs}${cardTitle}>
       <div class="insight-icon">${insight.icon}</div>
       <div class="insight-content">
         <div class="insight-label">${escapeHtml(insight.label)}</div>
-        <div class="insight-value">${escapeHtml(insight.value)}</div>
+        <div class="insight-value${insight.valueTone ? ` tone-${insight.valueTone}` : ''}">${escapeHtml(insight.value)}</div>
         ${insight.meta ? `<div class="insight-meta">${escapeHtml(insight.meta)}</div>` : ''}
-        ${insight.subtext ? `<div class="insight-subtext">${escapeHtml(insight.subtext)}</div>` : ''}
+        ${subtextHtml}
       </div>
     </div>
   `;

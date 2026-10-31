@@ -116,7 +116,7 @@ function _buildNavLink(item, currentPage) {
         _getActiveSection(currentPage) === child.section;
       html += `<li>`;
       html += `<a class="nav-sidebar-link${isChildActive ? ' active' : ''}" `;
-      html += `data-nav-id="${child.id}" data-section="${child.section}" `;
+      html += `data-nav-id="${child.id}" data-section="${child.section}" data-parent-page="${item.id}" `;
       html += `href="${item.href}#${child.section}">`;
       html += `<span>${child.label}</span>`;
       html += `</a></li>`;
@@ -267,7 +267,10 @@ function _attachNavSidebarEvents() {
 
     // Sub-nav item on a page with panels — switch panel without navigation
     const currentPageId = _detectCurrentPage();
-    if (link.dataset.section && _PANEL_PAGE_DEFAULTS[currentPageId]) {
+    // Why: a sub-link owned by another page must navigate there, not open
+    // a same-named panel that this page does not have.
+    const isOwnPageSection = link.dataset.parentPage === currentPageId;
+    if (link.dataset.section && isOwnPageSection && _PANEL_PAGE_DEFAULTS[currentPageId]) {
       event.preventDefault();
       _switchPanel(link.dataset.section, currentPageId);
       _closeNavSidebar();

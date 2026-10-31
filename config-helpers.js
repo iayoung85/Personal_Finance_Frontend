@@ -31,6 +31,7 @@ const APP_CONFIG_DEFAULTS = {
   billReminderDaysBefore: 3,
   showMaskWithName: true,
   trackedInsightCategories: [],
+  insightCards: [],
 };
 
 /**

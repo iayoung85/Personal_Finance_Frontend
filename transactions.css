@@ -1599,12 +1599,14 @@ tr:hover {
   outline-offset: 2px;
 }
 
+.insight-value.tone-positive,
 .category-summary-stat-value.tone-positive,
 .category-summary-stat-part-value.tone-positive,
 .category-summary-value.tone-positive {
   color: var(--color-positive);
 }
 
+.insight-value.tone-negative,
 .category-summary-stat-value.tone-negative,
 .category-summary-stat-part-value.tone-negative,
 .category-summary-value.tone-negative {
@@ -1774,6 +1776,10 @@ tr:hover {
   color: var(--text-muted);
   margin-top: 2px;
   line-height: 1.35;
+}
+
+.insight-subtext + .insight-subtext {
+  margin-top: 0;
 }
 
 .insights-empty {
