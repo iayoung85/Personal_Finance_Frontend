@@ -31,6 +31,8 @@ test('simple codes', () => {
   assert.equal(describeReviewReason(make('plaid_redelivered')), 'Plaid sent this back after removing it' + WHEN);
   assert.equal(describeReviewReason(make('plaid_removed_kept')),
     'Plaid removed this from the bank feed; kept in your ledger' + WHEN);
+  assert.equal(describeReviewReason(make('plaid_removed_bank_dropped')),
+    "Plaid removed this and your bank's balance no longer counts it; delete it if it's gone" + WHEN);
 });
 
 test('transfer_unlinked with and without partner', () => {

@@ -112,6 +112,9 @@ function describeReviewReason(txn) {
     case 'plaid_removed_kept':
       text = 'Plaid removed this from the bank feed; kept in your ledger';
       break;
+    case 'plaid_removed_bank_dropped':
+      text = "Plaid removed this and your bank's balance no longer counts it; delete it if it's gone";
+      break;
     case 'transfer_unlinked':
       text = detail.partner_account_name
         ? `Its transfer pair with ${detail.partner_account_name} was unlinked`
