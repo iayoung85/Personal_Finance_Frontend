@@ -309,7 +309,10 @@
   <div id="category-summary-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeCategorySummaryModal()">
     <div class="modal modal-category-summary">
       <div class="modal-header">
-        <h2>Category Summary</h2>
+        <div class="category-summary-title">
+          <h2>Category Summary</h2>
+          <span id="category-summary-count" class="category-summary-count"></span>
+        </div>
         <button class="modal-close" onclick="closeCategorySummaryModal()">✕</button>
       </div>
       <div class="modal-body">
@@ -563,6 +566,7 @@
   <script src="date-helpers.js"></script>
   <script src="nav-sidebar.js"></script>
   <script src="shared/modal-backdrop-guard.js"></script>
+  <script src="shared/api-notices.js"></script>
 
   <!-- Modularised transactions scripts -->
   <!-- state.js MUST load first (shared variable declarations) -->

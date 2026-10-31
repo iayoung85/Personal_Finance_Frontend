@@ -26,6 +26,18 @@ function closeImportReportModal() {
 function _renderImportReport(report) {
   let html = '';
 
+  // ── API notices ───────────────────────────────────────────
+  // First, so they are read before the counts; the modal stays until closed.
+  const importNotices = extractNotices(report);
+  if (importNotices.length > 0) {
+    html += '<div class="import-report-section">';
+    html += '<h3>Notices</h3>';
+    for (const notice of importNotices) {
+      html += `<div class="import-report-notice">${escapeHtml(notice)}</div>`;
+    }
+    html += '</div>';
+  }
+
   // ── Created Transactions ──────────────────────────────────
   html += '<div class="import-report-section">';
   html += '<h3>Transactions Created</h3>';

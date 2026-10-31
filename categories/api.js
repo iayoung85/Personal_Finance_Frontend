@@ -96,7 +96,8 @@ function _saveCatPageCache() {
       availableCategories,
       categoryListHash,
       rules,
-      migrationLog
+      migrationLog,
+      primaryCategories
     };
     localStorage.setItem(CAT_PAGE_CACHE_KEY, JSON.stringify(cacheData));
     localStorage.setItem(CAT_PAGE_CACHE_TS_KEY, String(Date.now()));
@@ -142,13 +143,15 @@ async function loadCategorizationData(forceNetwork = false) {
         try {
           const cached = JSON.parse(localStorage.getItem(CAT_PAGE_CACHE_KEY) || 'null');
           const cachedTax = _loadCachedTaxonomy();
-          if (cached && cached.categoryMappings && cachedTax) {
+          // A copy saved before primary_categories existed counts as a miss.
+          if (cached && cached.categoryMappings && cachedTax && 'primaryCategories' in cached) {
             categoryMappings = cached.categoryMappings;
             customCategories = cached.customCategories || [];
             availableCategories = cached.availableCategories || [];
             categoryListHash = cached.categoryListHash || null;
             rules = cached.rules || [];
             migrationLog = cached.migrationLog || [];
+            primaryCategories = cached.primaryCategories;
             plaidTaxonomy = cachedTax;
 
             console.log(`Loaded categories page from cache (age: ${Math.round(cacheAge / 1000)}s)`);
@@ -190,6 +193,9 @@ async function loadCategorizationData(forceNetwork = false) {
     categoryMappings = responses[0].ok ? (categoriesData.category_mappings || {}) : {};
     customCategories = responses[0].ok ? (categoriesData.custom_categories || []) : [];
     categoryListHash = responses[0].ok ? (categoriesData.category_list_hash || null) : null;
+    primaryCategories = responses[0].ok && Array.isArray(categoriesData.primary_categories)
+      ? categoriesData.primary_categories
+      : null;
     rules = responses[1].ok ? (rulesData.rules || []) : [];
     migrationLog = responses[2].ok ? (logData.migrations || []) : [];
     overrides = responses[4].ok ? (overridesData.overrides_by_category || []) : [];
@@ -252,6 +258,27 @@ async function loadCategorizationData(forceNetwork = false) {
     console.error('loadCategorizationData error:', loadError);
     showStatus(`Failed to load categorization data: ${loadError.message}`, 'error');
   }
+}
+
+/**
+ * Set how a primary category counts.
+ * @param {string} primary The primary's name.
+ * @param {string} kind One of the seven kinds (income, other_inflow, retirement_income, spending, transfer, adjustment, excluded).
+ * @returns {Promise<{ok: boolean, data: Object|null}>} data is the parsed body
+ *   ({primary_category} on success, {error} on a refusal).
+ */
+async function setPrimaryKind(primary, kind) {
+  await window.BACKEND_URL_PROMISE;
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/primary-kind`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ primary, kind })
+  });
+  let data = null;
+  try {
+    data = await response.json();
+  } catch (parseError) { /* body was not JSON */ }
+  return { ok: response.ok, data };
 }
 
 function refreshCategorizationData() {

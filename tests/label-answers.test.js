@@ -9,7 +9,7 @@ const source = fs.readFileSync(sourcePath, 'utf8');
 
 const sandbox = { module: { exports: {} }, console };
 vm.runInNewContext(
-  `${source}\nmodule.exports = { describeUsageCounts, readMappingQuestions, allQuestionsAnswered, buildMappingAnswersPayload, summarizeAnswerResult, buildCsvPreviewRows, describeMappingQuestions, describeCsvMoves, buildInspectQuery, buildInspectLink };`,
+  `${source}\nmodule.exports = { describeUsageCounts, readMappingQuestions, allQuestionsAnswered, buildMappingAnswersPayload, summarizeAnswerResult, buildCsvPreviewRows, describeMappingQuestions, describeCsvMoves, buildInspectQuery, buildInspectLink, seedKeepOnlyAnswers, isLabelAnswered };`,
   sandbox,
   { filename: sourcePath }
 );
@@ -17,6 +17,7 @@ const {
   describeUsageCounts, readMappingQuestions, allQuestionsAnswered,
   buildMappingAnswersPayload, summarizeAnswerResult, buildCsvPreviewRows,
   describeMappingQuestions, describeCsvMoves, buildInspectQuery, buildInspectLink,
+  seedKeepOnlyAnswers, isLabelAnswered,
 } = sandbox.module.exports;
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -163,4 +164,25 @@ test('preview rows carry inspect links, hidden for zero transactions', () => {
   assert.equal(rows.labelRows[0].inspectable, true);
   assert.equal(rows.labelRows[1].inspectable, false);
   assert.match(decodeURIComponent(rows.keyRows[0].inspect.href), /label:"A" pfc:K is:plaid/);
+});
+
+test('a keep_only label starts answered as keep, so save is enabled from the start', () => {
+  const asked = {
+    labels: [{ label: 'Adjustments: Investment Gain/Loss', keep_only: true, keep_only_reason: 'r', suggested_target: null }],
+    keys: [],
+  };
+  const seeded = plain(seedKeepOnlyAnswers(asked));
+  assert.deepEqual(seeded, { 'Adjustments: Investment Gain/Loss': { choice: 'keep' } });
+  assert.equal(isLabelAnswered(seeded['Adjustments: Investment Gain/Loss']), true);
+  assert.equal(allQuestionsAnswered(asked, seeded, {}), true);
+});
+
+test('only keep_only labels are seeded; others and older-API items stay unanswered', () => {
+  const asked = {
+    labels: [{ label: 'A', keep_only: false }, { label: 'B' }, { label: 'C', keep_only: true }],
+    keys: [],
+  };
+  const seeded = plain(seedKeepOnlyAnswers(asked));
+  assert.deepEqual(seeded, { C: { choice: 'keep' } });
+  assert.equal(allQuestionsAnswered(asked, seeded, {}), false);
 });

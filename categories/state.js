@@ -14,6 +14,14 @@ let plaidTaxonomy = [];
 let migrationLog = [];
 let overrides = []; // Overrides summary: [{category_name, transaction_count}]
 
+// How each primary counts: the GET's primary_categories, or null when the API sends none
+let primaryCategories = null;
+// Primaries whose kind is being saved; their picker stays disabled meanwhile
+const primaryKindsSaving = new Set();
+
+// Normalized names of pinned primaries whose explanation is open, so a redraw keeps it open.
+const pinnedNotesOpen = new Set();
+
 // Account list for account-scoped rules — [{account_id, display_name}]
 let ruleAccountOptions = [];
 

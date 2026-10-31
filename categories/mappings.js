@@ -230,7 +230,25 @@ function _inspectLinkHTML(query, count) {
   return `<a class="inspect-link" href="${escapeHtml(link.href)}" target="_blank" rel="noopener">${escapeHtml(link.text)}</a>`;
 }
 
+function _keepOnlyQuestionHTML(item, index) {
+  const reason = item.keep_only_reason
+    ? `<div class="answer-reason">${escapeHtml(item.keep_only_reason)}</div>`
+    : '';
+  return `
+    <div class="answer-item" data-label-index="${index}">
+      <div class="answer-title"><strong>${escapeHtml(item.label)}</strong> is leaving your list.
+        It is used by ${escapeHtml(describeUsageCounts(item))}.
+        ${_inspectLinkHTML(buildInspectQuery(item.label), item.transactions)}</div>
+      ${reason}
+      <label class="answer-choice">
+        <input type="radio" name="label-answer-${index}" value="keep" checked>
+        Keep as a custom category (its Plaid transactions get an override so they keep it)
+      </label>
+    </div>`;
+}
+
 function _labelQuestionHTML(item, index, targets) {
+  if (item.keep_only === true) return _keepOnlyQuestionHTML(item, index);
   const options = ['<option value="">Choose a category…</option>']
     .concat(targets.map(label => (
       `<option value="${escapeHtml(label)}" ${label === item.suggested_target ? 'selected' : ''}>${escapeHtml(label)}</option>`
@@ -295,15 +313,16 @@ function openMappingAnswersModal(newMappings, questions, previousMappings) {
 
   const bodyElement = document.getElementById('modal-body');
   const saveButton = document.querySelector('#modal-actions .answer-save-btn');
-  saveButton.disabled = true;
-  bodyElement.addEventListener('change', () => {
+  const refreshSaveButton = () => {
     const { labelAnswers, pastRowAnswers } = _readMappingAnswers(questions);
     saveButton.disabled = !allQuestionsAnswered(questions, labelAnswers, pastRowAnswers);
-  });
+  };
+  refreshSaveButton();
+  bodyElement.addEventListener('change', refreshSaveButton);
 }
 
 function _readMappingAnswers(questions) {
-  const labelAnswers = {};
+  const labelAnswers = seedKeepOnlyAnswers(questions);
   questions.labels.forEach((item, i) => {
     const checked = document.querySelector(`input[name="label-answer-${i}"]:checked`);
     if (!checked) return;

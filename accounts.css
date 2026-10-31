@@ -1011,6 +1011,13 @@ details[open] > .collapsible-trigger::before {
   color: var(--color-danger);
   border: 1px solid var(--color-danger-border);
 }
+/* Notices stay until clicked; they wrap, and need a solid base over page text. */
+.status-toast.sticky {
+  white-space: pre-line;
+  cursor: pointer;
+  background: linear-gradient(var(--bg-selected), var(--bg-selected)), var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+}
 
 /* ── Bank Detail: Account Count Breakdown ─────────────────── */
 .account-count-breakdown {

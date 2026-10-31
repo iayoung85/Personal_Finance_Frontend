@@ -139,11 +139,31 @@ function showToast(message, type = 'info') {
   const toast = document.getElementById('status-toast');
   toast.textContent = message;
   toast.className = `status-toast ${type}`;
+  toast.onclick = null;
   // Auto-hide after delay
   clearTimeout(toast._hideTimer);
   toast._hideTimer = setTimeout(() => {
     toast.classList.add('hidden');
   }, type === 'error' ? 5000 : 3000);
+}
+
+/**
+ * Show API notices in the status toast and keep them up until the user
+ * clicks the toast, since they explain something the user has to act on or
+ * know about and the normal toast would be gone in seconds.
+ *
+ * @param {string[]} notices - Messages from the API response; nothing is shown when empty.
+ */
+function showNoticesToast(notices) {
+  if (!notices || notices.length === 0) return;
+  const toast = document.getElementById('status-toast');
+  clearTimeout(toast._hideTimer);
+  toast.textContent = notices.join('\n\n') + '\n\n(Click to dismiss)';
+  toast.className = 'status-toast info sticky';
+  toast.onclick = () => {
+    toast.classList.add('hidden');
+    toast.onclick = null;
+  };
 }
 
 /**

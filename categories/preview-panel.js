@@ -39,23 +39,52 @@ function renderAvailableCategoriesPreview() {
     ...primaryOptions.map(primary => ({ key: primary, label: primary }))
   ];
 
+  const kindIndex = indexPrimaryKinds(primaryCategories);
+
   const rows = primaryItems
     .map((item, index) => {
       const isSelected = selectedPrimaryCategories.has(item.key);
+      const kindControl = item.key === '__all__'
+        ? ''
+        : _buildPrimaryKindControl(item.key, kindIndex[normalizePrimaryKey(item.key)]);
+      const pinnedNote = item.key === '__all__'
+        ? ''
+        : _buildPinnedNote(item.key, kindIndex[normalizePrimaryKey(item.key)]);
       return `
         <div class="preview-item ${isSelected ? 'selected' : ''}" data-primary="${escapeHtml(item.key)}" data-index="${index}">
           <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
             <span>${escapeHtml(item.label)}</span>
             <div style="display: flex; gap: 6px; align-items: center;">
+              ${kindControl}
               ${item.key === '__all__' ? '<span class="pill">All</span>' : `<button class="secondary" style="padding: 3px 8px; font-size: 11px; white-space: nowrap;" onclick="startAddDetailsForPrimary('${escapeHtml(item.key)}'); event.stopPropagation();">+ Add Custom Detailed Cat</button>`}
             </div>
           </div>
+          ${pinnedNote}
         </div>
       `;
     })
     .join('');
 
   primaryList.innerHTML = rows;
+
+  primaryList.querySelectorAll('.primary-kind-info').forEach(button => {
+    // Opening the note must not also select the row.
+    button.addEventListener('click', event => {
+      event.stopPropagation();
+      const willOpen = button.getAttribute('aria-expanded') !== 'true';
+      _closePinnedNotes(button);
+      _setPinnedNoteOpen(button, willOpen);
+    });
+  });
+  primaryList.querySelectorAll('.primary-kind-note').forEach(note => {
+    note.addEventListener('click', event => event.stopPropagation());
+  });
+
+  primaryList.querySelectorAll('.primary-kind-select').forEach(select => {
+    // Picking a kind must not also select the row.
+    select.addEventListener('click', event => event.stopPropagation());
+    select.addEventListener('change', () => onPrimaryKindChange(select));
+  });
 
   primaryList.querySelectorAll('.preview-item').forEach(item => {
     item.addEventListener('click', event => {
@@ -120,6 +149,130 @@ function renderAvailableCategoriesPreview() {
   const detailedRows = _buildDetailedPreviewRows();
   detailedList.innerHTML = detailedRows.html;
   if (detailedCount) detailedCount.textContent = `${detailedRows.count} total`;
+}
+
+/**
+ * HTML for one primary's kind: a picker, or
+ * nothing when the API gave no entry (an older API, or a primary it does not list).
+ */
+function _buildPrimaryKindControl(primaryName, entry) {
+  const view = describePrimaryKind(entry);
+  if (view.mode === 'none') return '';
+  if (view.mode === 'pinned') return _buildPinnedKindControl(primaryName, view);
+  if (view.mode === 'legacy') return `<span class="primary-kind-fixed">${escapeHtml(view.label)}</span>`;
+
+  // Until a kind is picked, "By name: ..." is the current state. It is not
+  // offered again afterwards, because a set kind cannot go back to by-name.
+  const byNameOption = view.isSet
+    ? ''
+    : `<option value="" selected disabled>${escapeHtml(view.label)}</option>`;
+  const options = PRIMARY_KIND_OPTIONS
+    .map(option => {
+      const isCurrent = view.isSet && option.value === view.kind;
+      return `<option value="${option.value}" ${isCurrent ? 'selected' : ''}>${escapeHtml(option.label)}</option>`;
+    })
+    .join('');
+  const isSaving = primaryKindsSaving.has(normalizePrimaryKey(primaryName));
+
+  return `<select class="primary-kind-select" data-primary-name="${escapeHtml(primaryName)}" aria-label="How ${escapeHtml(primaryName)} counts" ${isSaving ? 'disabled' : ''}>${byNameOption}${options}</select>`;
+}
+
+/**
+ * HTML for a pinned primary: its kind as text and an ⓘ button that opens the
+ * reason. The note is a sibling of the row's content, outside the control, so
+ * the row can lay it out on its own line.
+ */
+function _buildPinnedKindControl(primaryName, view) {
+  const noteId = `pinned-note-${normalizePrimaryKey(primaryName).replace(/[^a-z0-9]+/g, '-')}`;
+  const isOpen = pinnedNotesOpen.has(normalizePrimaryKey(primaryName));
+  const name = escapeHtml(primaryName);
+  return `<span class="primary-kind-fixed">${escapeHtml(view.label)}</span>`
+    + `<button type="button" class="primary-kind-info" data-primary-name="${name}" data-note-id="${noteId}" aria-label="Why ${name} always counts as ${escapeHtml(view.label)}" aria-expanded="${isOpen}" aria-controls="${noteId}">ⓘ</button>`;
+}
+
+/** Escaped HTML for note text, with its asterisk-marked runs in <em>. */
+function _renderNoteText(text) {
+  return splitEmphasis(text)
+    .map(run => (run.emphasis ? `<em>${escapeHtml(run.text)}</em>` : escapeHtml(run.text)))
+    .join('');
+}
+
+/** The expanding note under a pinned primary's row; '' for any other primary. */
+function _buildPinnedNote(primaryName, entry) {
+  const view = describePrimaryKind(entry);
+  if (view.mode !== 'pinned') return '';
+  const key = normalizePrimaryKey(primaryName);
+  const noteId = `pinned-note-${key.replace(/[^a-z0-9]+/g, '-')}`;
+  const paragraphs = view.explanations.map(text => `<p>${_renderNoteText(text)}</p>`).join('');
+  return `<div class="primary-kind-note" id="${noteId}" role="note" ${pinnedNotesOpen.has(key) ? '' : 'hidden'}>${paragraphs}</div>`;
+}
+
+/** Show or hide one pinned note and keep the button and the open set in step. */
+function _setPinnedNoteOpen(button, open) {
+  const key = normalizePrimaryKey(button.getAttribute('data-primary-name'));
+  const note = document.getElementById(button.getAttribute('data-note-id'));
+  button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (note) note.hidden = !open;
+  if (open) pinnedNotesOpen.add(key);
+  else pinnedNotesOpen.delete(key);
+}
+
+/** Close every open pinned note except the one belonging to `keepButton`. */
+function _closePinnedNotes(keepButton) {
+  document.querySelectorAll('.primary-kind-info[aria-expanded="true"]').forEach(button => {
+    if (button !== keepButton) _setPinnedNoteOpen(button, false);
+  });
+}
+
+// One listener for the page, in the capture phase so a control that stops
+// propagation (the pickers) still closes the notes: a click outside the ⓘ and its note, or Escape, closes the notes.
+document.addEventListener('click', event => {
+  if (event.target.closest('.primary-kind-info, .primary-kind-note')) return;
+  _closePinnedNotes(null);
+}, true);
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  const openButton = document.querySelector('.primary-kind-info[aria-expanded="true"]');
+  if (!openButton) return;
+  const focusWasInNote = document.activeElement && document.activeElement.closest('.primary-kind-note');
+  _closePinnedNotes(null);
+  if (focusWasInNote) openButton.focus();
+});
+
+/**
+ * Save a picked kind, reload the page's data, and mark the transactions
+ * cache stale. On a refusal, show the API's message and redraw the picker
+ * at the stored kind.
+ */
+async function onPrimaryKindChange(select) {
+  const primaryName = select.getAttribute('data-primary-name');
+  const kind = select.value;
+  if (!primaryName || !kind) return;
+
+  const savingKey = normalizePrimaryKey(primaryName);
+  if (primaryKindsSaving.has(savingKey)) return;
+  primaryKindsSaving.add(savingKey);
+  select.disabled = true;
+
+  try {
+    const result = await setPrimaryKind(primaryName, kind);
+    if (!result.ok) {
+      showStatus(primaryKindErrorMessage(result.data), 'error');
+      return;
+    }
+    await loadCategorizationData(true);
+    markTransactionCacheStale();
+    // After the reload, which writes its own rule-validation status.
+    showStatus(`${primaryName} now counts as ${primaryKindLabel(kind)}.`, 'success');
+    setTimeout(() => clearStatus(), 2500);
+  } catch (networkError) {
+    showStatus(primaryKindErrorMessage(null), 'error');
+  } finally {
+    primaryKindsSaving.delete(savingKey);
+    // Redraw from stored data: after a refusal this puts the picker back at
+    // the stored kind and re-enables it.
+    renderAvailableCategoriesPreview();
+  }
 }
 
 function _buildDetailedPreviewRows() {

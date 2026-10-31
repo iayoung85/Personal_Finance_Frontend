@@ -57,6 +57,20 @@ function readMappingQuestions(data) {
 }
 
 /**
+ * Answers already fixed by the API: a keep_only label can only be kept, so it
+ * starts answered. An older API omits the flag and seeds nothing.
+ * @param {{labels: Array}} questions
+ * @returns {Object} {label: {choice: 'keep'}}
+ */
+function seedKeepOnlyAnswers(questions) {
+  const seeded = {};
+  questions.labels.forEach(item => {
+    if (item && item.keep_only === true) seeded[item.label] = { choice: 'keep' };
+  });
+  return seeded;
+}
+
+/**
  * Whether a label question has a complete answer.
  * @param {{choice?: string, target?: string}|undefined} answer
  */

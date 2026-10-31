@@ -547,9 +547,10 @@ function _promptTransitionToInvestment(accountId, subcategory) {
     async () => {
       try {
         showToast('Transitioning to investment…', 'info');
-        await apiTransitionToInvestment(accountId, subcategory || 'brokerage');
+        const transitionResult = await apiTransitionToInvestment(accountId, subcategory || 'brokerage');
         showToast('Account transitioned to investment', 'success');
         await reloadAndReselect();
+        showNoticesToast(extractNotices(transitionResult));
       } catch (transitionError) {
         showToast(`Failed to transition: ${transitionError.message}`, 'error');
       }
@@ -622,9 +623,10 @@ async function submitTransitionToDepository() {
 
   try {
     showToast('Transitioning from investment…', 'info');
-    await apiTransitionToDepository(accountId, parseFloat(balanceInput), dateInput, subcategory || 'savings');
+    const transitionResult = await apiTransitionToDepository(accountId, parseFloat(balanceInput), dateInput, subcategory || 'savings');
     showToast('Account transitioned successfully', 'success');
     await reloadAndReselect();
+    showNoticesToast(extractNotices(transitionResult));
   } catch (transitionError) {
     showToast(`Failed to transition: ${transitionError.message}`, 'error');
   }

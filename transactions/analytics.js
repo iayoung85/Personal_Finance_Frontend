@@ -104,6 +104,32 @@ function getAnalyticsDisplayAmount(rawTotal, displayMode) {
   return displayMode === ANALYTICS_DISPLAY_MODE.SPENDING ? -rawTotal : rawTotal;
 }
 
+/**
+ * Sign and tone for an amount in the category summary. rawTotal is the ledger
+ * sign (positive = money in, negative = money out) in every mode; displayMode
+ * only decides whether an outflow is the expected direction. A spending
+ * outflow stays unsigned. An outflow anywhere else is an unexpected loss and
+ * gets an explicit minus. Any inflow gets an explicit plus.
+ * @param {number} rawTotal Net ledger amount.
+ * @param {string} displayMode One of ANALYTICS_DISPLAY_MODE.
+ * @returns {{text: string, tone: 'positive'|'negative'|'neutral'}}
+ */
+function getAnalyticsSignedDisplay(rawTotal, displayMode) {
+  const cents = Math.round((Number(rawTotal) || 0) * 100);
+  const magnitude = formatAnalyticsCurrency(Math.abs(cents) / 100);
+
+  if (cents === 0) {
+    return { text: magnitude, tone: 'neutral' };
+  }
+  if (cents > 0) {
+    return { text: `+${magnitude}`, tone: 'positive' };
+  }
+  if (displayMode === ANALYTICS_DISPLAY_MODE.SPENDING) {
+    return { text: magnitude, tone: 'neutral' };
+  }
+  return { text: `\u2212${magnitude}`, tone: 'negative' };
+}
+
 function getAnalyticsDisplayTotal(rawTotal, entries) {
   return getAnalyticsDisplayAmount(rawTotal, getAnalyticsDisplayModeForEntries(entries));
 }
@@ -272,6 +298,106 @@ function buildNormalizedAnalyticsSlice() {
   };
 }
 
+// Classes that have their own stat card in the category summary, so a
+// primary group made only of them adds nothing to the grid.
+const CATEGORY_SUMMARY_STAT_CARD_CLASSES = Object.freeze(['investment_trend', 'retirement_income']);
+
+// Retirement lines shown before "+N more" folds the rest away.
+const RETIREMENT_INCOME_COLLAPSED_LINE_LIMIT = 3;
+
+/**
+ * True when every row in a primary group is counted by a stat card (investment
+ * trend or retirement income) rather than by spending or income. Decided from
+ * the rows' classes, never from a category name.
+ * @param {Array<{analytics_class: string|null}>} entries
+ * @returns {boolean}
+ */
+function isStatCardOnlyEntries(entries) {
+  return entries.length > 0
+    && entries.every(entry => CATEGORY_SUMMARY_STAT_CARD_CLASSES.includes(entry.analytics_class));
+}
+
+/**
+ * One line per detailed category holding retirement income rows, largest
+ * absolute amount first. A line is named by its detailed part; when two lines
+ * from different primaries share that name, both use "Primary: Detailed".
+ * @param {Array<{analytics_class: string|null, amount: number, primary_category: string, detailed_category: string}>} entries
+ * @returns {Array<{name: string, total: number}>}
+ */
+function buildRetirementIncomeLines(entries) {
+  const linesByKey = new Map();
+
+  entries.forEach(entry => {
+    if (entry.analytics_class !== 'retirement_income') {
+      return;
+    }
+
+    const detailed = entry.detailed_category || '';
+    const key = `${entry.primary_category}\u0000${detailed}`;
+    if (!linesByKey.has(key)) {
+      linesByKey.set(key, {
+        primary: entry.primary_category,
+        detailed,
+        shortName: detailed || entry.primary_category,
+        total: 0,
+      });
+    }
+    linesByKey.get(key).total += entry.amount;
+  });
+
+  const lines = Array.from(linesByKey.values());
+  const shortNameCounts = new Map();
+  lines.forEach(line => {
+    shortNameCounts.set(line.shortName, (shortNameCounts.get(line.shortName) || 0) + 1);
+  });
+
+  return lines
+    .map(line => ({
+      name: shortNameCounts.get(line.shortName) > 1 && line.detailed
+        ? `${line.primary}: ${line.detailed}`
+        : line.shortName,
+      total: Math.round(line.total * 100) / 100,
+    }))
+    .sort((lineA, lineB) => Math.abs(lineB.total) - Math.abs(lineA.total));
+}
+
+/**
+ * Split lines into those shown now and the count folded behind "+N more".
+ * @param {Array} lines
+ * @param {boolean} expanded
+ * @returns {{visible: Array, hiddenCount: number}}
+ */
+function splitRetirementIncomeLines(lines, expanded) {
+  if (expanded || lines.length <= RETIREMENT_INCOME_COLLAPSED_LINE_LIMIT) {
+    return { visible: lines, hiddenCount: 0 };
+  }
+  return {
+    visible: lines.slice(0, RETIREMENT_INCOME_COLLAPSED_LINE_LIMIT),
+    hiddenCount: lines.length - RETIREMENT_INCOME_COLLAPSED_LINE_LIMIT,
+  };
+}
+
+// Primary groups read income first, then the signed groups counted in no
+// spending total, then spending, so inflows never sit among expenses.
+const CATEGORY_SUMMARY_MODE_ORDER = Object.freeze([
+  ANALYTICS_DISPLAY_MODE.INCOME,
+  ANALYTICS_DISPLAY_MODE.SIGNED,
+  ANALYTICS_DISPLAY_MODE.SPENDING,
+]);
+
+/**
+ * Order two category summary groups: by display mode band, then largest first.
+ * @param {{display_mode: string, total: number}} groupA
+ * @param {{display_mode: string, total: number}} groupB
+ * @returns {number}
+ */
+function compareCategorySummaryGroups(groupA, groupB) {
+  const bandDifference = CATEGORY_SUMMARY_MODE_ORDER.indexOf(groupA.display_mode)
+    - CATEGORY_SUMMARY_MODE_ORDER.indexOf(groupB.display_mode);
+  if (bandDifference !== 0) return bandDifference;
+  return Math.abs(groupB.total) - Math.abs(groupA.total);
+}
+
 function buildVisibleCategorySummaryData() {
   const analyticsView = buildNormalizedAnalyticsSlice();
   const groupedCategories = {};
@@ -340,7 +466,7 @@ function buildVisibleCategorySummaryData() {
         }))
         .sort((entryA, entryB) => Math.abs(entryB.total) - Math.abs(entryA.total)),
     }))
-    .sort((entryA, entryB) => Math.abs(entryB.total) - Math.abs(entryA.total));
+    .sort(compareCategorySummaryGroups);
 
   return {
     grand_total: Math.round(categories.reduce((sum, category) => sum + category.total, 0) * 100) / 100,
@@ -352,5 +478,10 @@ function buildVisibleCategorySummaryData() {
     investment_trending_total: Math.round(investmentTrendingTotal * 100) / 100,
     transaction_count: analyticsView.summaryEntries.length,
     categories,
+    // Display-only extras: the JSON export names its fields, so these stay out of it.
+    retirement_income_lines: buildRetirementIncomeLines(analyticsView.summaryEntries),
+    stat_card_only_categories: Object.entries(groupedCategories)
+      .filter(([, categoryData]) => isStatCardOnlyEntries(categoryData.entries))
+      .map(([categoryName]) => categoryName),
   };
 }
