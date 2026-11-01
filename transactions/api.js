@@ -519,6 +519,9 @@ async function fetchAllTransactions(forceNetwork = false) {
       autoExtendEndDateForScheduled();
       renderTransactionTable();
       renderDynamicPeriodButtons();
+      // The sidebar's unreviewed badges count from this list, so redraw them
+      // now that rows older than the recent window are here.
+      if (typeof renderAccountsSidebar === 'function') renderAccountsSidebar();
       showStatus(`Loaded ${transactions.length} total transactions (filters applied on frontend)`, 'success');
       setTimeout(() => clearStatus(), 2000);
 

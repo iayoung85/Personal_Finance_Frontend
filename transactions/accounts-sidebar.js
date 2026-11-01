@@ -423,9 +423,15 @@ function renderAccountsSidebar() {
     const hiddenTotalStr = formatSidebarCurrency(hiddenTotal);
     const hiddenTotalClass = hiddenTotal < 0 ? 'sidebar-account-balance-negative' : 'sidebar-account-balance';
     const toggleClass = _showHiddenAccounts ? 'expanded' : '';
+    // Hidden accounts are collapsed by default, so their unreviewed rows need
+    // a count on the header or they sit unseen.
+    const hiddenUnreviewedCount = hiddenAccounts.reduce(
+      (total, acc) => total + _getUnreviewedCountForAccount(acc.account_id), 0);
+    const hiddenUnreviewedBadge = _unreviewedBadgeHtml(
+      hiddenUnreviewedCount, 'margin-left: 6px; vertical-align: middle;');
     html += `
       <div class="sidebar-hidden-toggle ${toggleClass}" onclick="_toggleHiddenAccountsView()">
-        <span>${_showHiddenAccounts ? '▾' : '▸'} Hidden Accounts (${hiddenAccounts.length})</span>
+        <span>${_showHiddenAccounts ? '▾' : '▸'} Hidden Accounts (${hiddenAccounts.length})</span>${hiddenUnreviewedBadge}
         <span class="${hiddenTotalClass}" style="margin-left: auto; font-size: 12px;">${hiddenTotalStr}</span>
       </div>
     `;
@@ -441,6 +447,7 @@ function renderAccountsSidebar() {
           <div class="sidebar-hidden-account-item"
                oncontextmenu="event.preventDefault(); _showAccountContextMenu(event, '${acc.account_id}', true)">
             <span class="sidebar-hidden-account-name" title="${displayName}">${displayName}</span>
+            ${_unreviewedBadgeHtml(_getUnreviewedCountForAccount(acc.account_id), 'margin-left: 6px;')}
             ${accBalanceStr ? `<span class="${accBalanceClass}" style="font-size: 12px; white-space: nowrap; margin-left: 8px;">${accBalanceStr}</span>` : ''}
             <button class="sidebar-unhide-btn" title="Unhide account"
                     onclick="event.stopPropagation(); _unhideAccount('${acc.account_id}')">
@@ -508,6 +515,19 @@ function _getUnreviewedCountForAccount(accountId) {
   return count;
 }
 
+/**
+ * Badge markup for an unreviewed count, or '' when there is nothing to review.
+ * @param {number} unreviewedCount
+ * @param {string} [extraStyle] - inline style for spots outside a flex row
+ * @returns {string}
+ */
+function _unreviewedBadgeHtml(unreviewedCount, extraStyle = '') {
+  if (unreviewedCount <= 0) return '';
+  const plural = unreviewedCount > 1 ? 's' : '';
+  const styleAttr = extraStyle ? ` style="${extraStyle}"` : '';
+  return `<span class="sidebar-unreviewed-badge"${styleAttr} title="${unreviewedCount} unreviewed transaction${plural}">${unreviewedCount}</span>`;
+}
+
 function _renderSidebarAccountItem(acc, formatSidebarCurrency) {
   const displayName = _buildAccountDisplayName(acc);
   const maskMatch = displayName.match(/^(.*?)(\s*\(\d{3,6}\))$/);
@@ -522,10 +542,7 @@ function _renderSidebarAccountItem(acc, formatSidebarCurrency) {
   const syncDot = _getSyncDotHtml(acc);
   const mismatchDot = _getPlaidMismatchDotHtml(acc);
 
-  const unreviewedCount = _getUnreviewedCountForAccount(acc.account_id);
-  const unreviewedBadge = unreviewedCount > 0
-    ? `<span class="sidebar-unreviewed-badge" title="${unreviewedCount} unreviewed transaction${unreviewedCount > 1 ? 's' : ''}">${unreviewedCount}</span>`
-    : '';
+  const unreviewedBadge = _unreviewedBadgeHtml(_getUnreviewedCountForAccount(acc.account_id));
 
   return `
     <div class="sidebar-account-item ${selectedClass}" tabindex="0"
