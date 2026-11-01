@@ -1034,7 +1034,15 @@ async function _handleContextApproveAllMatches() {
 
   try {
     const result = await approveAllMatches(matchedIds);
-    showStatus(`Approved ${result.approved_count} match(es)`, 'success');
+    const skippedBothSplit = result.skipped_both_split || 0;
+    if (skippedBothSplit > 0) {
+      showStatus(
+        `Approved ${result.approved_count} match(es); ${skippedBothSplit} left waiting because both rows are split. Delete one split first.`,
+        'warning'
+      );
+    } else {
+      showStatus(`Approved ${result.approved_count} match(es)`, 'success');
+    }
     _invalidateTransactionCache();
     await fetchAllTransactions(true);
   } catch (approveError) {

@@ -684,7 +684,14 @@ async function _submitReconciliationDecisions() {
     if (result.rejected > 0) parts.push(`${result.rejected} rejected`);
     if (result.deleted > 0) parts.push(`${result.deleted} deleted`);
 
-    showStatus(`Reconciliation complete: ${parts.join(', ')}`, 'success');
+    // A proposal whose two rows are both split stays pending: approving it
+    // would put two sets of pieces on one row.
+    const skippedBothSplit = result.skipped_both_split || 0;
+    if (skippedBothSplit > 0) {
+      parts.push(`${skippedBothSplit} left pending because both rows are split; delete one split first`);
+    }
+
+    showStatus(`Reconciliation complete: ${parts.join(', ')}`, skippedBothSplit > 0 ? 'warning' : 'success');
     closeModal();
 
     _proposalDecisions.clear();
