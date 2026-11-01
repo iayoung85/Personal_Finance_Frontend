@@ -941,8 +941,10 @@ function _patchCategorizationCache(requestedTxnId, responseData, fallbackCategor
 
   txn.user_category = responseData.user_category || fallbackCategory;
   txn.is_override = fallbackIsOverride;
-  if (responseData.analytics_class) {
-    txn.analytics_class = responseData.analytics_class;
+  // The categorize route sends the class on the edited row, not at the top level.
+  const answeredClass = responseData.transaction?.analytics_class || responseData.analytics_class;
+  if (answeredClass) {
+    txn.analytics_class = answeredClass;
   } else {
     // The class may have changed with the category and only the server knows it.
     _refreshAccountsForStaleAnalyticsClass([txn.account_id]);

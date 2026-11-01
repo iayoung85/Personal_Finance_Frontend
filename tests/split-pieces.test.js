@@ -266,3 +266,27 @@ test('a split is broken only when pieces differ from the parent by more than a c
   assert.equal(rendered.api._isSplitBroken(parentOf('plaid', 'cleared', { amount: -100.005 })), false);
   assert.equal(rendered.api._isSplitBroken(parentOf('plaid', 'cleared', { amount: -120 })), true);
 });
+
+test('a waiting piece names the hidden manual row as its parent until approval', () => {
+  const inspect = load(
+    ['transactions/transaction-types.js', 'transactions/inspect-data.js'],
+    '_inspectParentId',
+    { transactions: [], isTransferCategory: () => false },
+  );
+  const matchedPlaidRow = {
+    transaction_id: 'plaid_1',
+    splits_awaiting_match: true,
+    match_info: { matched_txn_id: 'manual_1' },
+  };
+  const suggestedPlaidRow = {
+    transaction_id: 'plaid_2',
+    splits_awaiting_match: true,
+    suggestion_info: { suggested_txn_id: 'manual_2' },
+  };
+  const approvedPlaidRow = { transaction_id: 'plaid_3', match_info: { matched_txn_id: 'manual_3' } };
+
+  assert.equal(inspect.api._inspectParentId(matchedPlaidRow), 'manual_1');
+  assert.equal(inspect.api._inspectParentId(suggestedPlaidRow), 'manual_2');
+  assert.equal(inspect.api._inspectParentId(approvedPlaidRow), 'plaid_3');
+  assert.equal(inspect.api._inspectParentId(null), null);
+});

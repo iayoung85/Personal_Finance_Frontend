@@ -189,10 +189,26 @@ function _buildInspectWorkingData(localTransaction, inspectContext) {
       row_type: rowType,
       is_split_row: !!inspectContext.isSplitChild,
       is_transfer: !!(localTransaction.transfer_pair_id || isTransferCategory(localTransaction.user_category)),
-      parent_transaction_id: inspectContext.parentTransaction?.transaction_id || null,
+      parent_transaction_id: _inspectParentId(inspectContext.parentTransaction),
       data_source: inspectContext.shouldFetchPlaidRaw ? 'frontend cache + optional plaid raw fetch' : 'frontend cache',
     },
   };
+}
+
+/**
+ * The id of a piece's parent as the database holds it. A waiting match's
+ * pieces are drawn under the Plaid row but still belong to the hidden manual
+ * row until the match is approved.
+ * @param {Object|null} parentTxn - The row the piece is drawn under.
+ * @returns {string|null}
+ */
+function _inspectParentId(parentTxn) {
+  if (!parentTxn) return null;
+  if (parentTxn.splits_awaiting_match) {
+    const owningRowId = parentTxn.suggestion_info?.suggested_txn_id || parentTxn.match_info?.matched_txn_id;
+    if (owningRowId) return owningRowId;
+  }
+  return parentTxn.transaction_id || null;
 }
 
 function _isPlaidInspectable(txn) {
