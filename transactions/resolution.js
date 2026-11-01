@@ -709,6 +709,41 @@ async function _refreshAfterReconciliation() {
 // in the day-to-day inline handling flow.
 
 /**
+ * Rows the match picker may offer as targets for a source transaction.
+ *
+ * When the source is MANUAL_CLEARED (user-entered txn waiting for Plaid
+ * delivery) or PLAID_CONVERTED, only PLAID_CLEARED targets are offered —
+ * matching manual-to-manual doesn't make sense in this flow. Split rows are
+ * left out because the API refuses a match between two split rows, and rows
+ * already carrying a match or a suggestion are left out because they are
+ * waiting on their own resolution.
+ *
+ * @param {Object} sourceTxn - The transaction being matched (a split's parent, never a piece).
+ * @param {Array<Object>} allTransactions - Every cached transaction.
+ * @returns {Array<Object>} Candidate target rows, in input order.
+ */
+function _filterMatchPickerCandidates(sourceTxn, allTransactions) {
+  const sourceType = getTransactionType(sourceTxn);
+  const isSourceManualCleared =
+    sourceType === TXN_TYPE.MANUAL_CLEARED ||
+    sourceType === TXN_TYPE.PLAID_CONVERTED;
+  const matchableTargetTypes = isSourceManualCleared
+    ? new Set([TXN_TYPE.PLAID_CLEARED])
+    : new Set([TXN_TYPE.PLAID_CLEARED, TXN_TYPE.MANUAL_CLEARED, TXN_TYPE.PLAID_CONVERTED]);
+  const sourceAccountId = sourceTxn.account_id || sourceTxn.plaid_account_id;
+
+  return allTransactions.filter(txn => {
+    if (txn.transaction_id === sourceTxn.transaction_id) return false;
+    if (!matchableTargetTypes.has(getTransactionType(txn))) return false;
+    if ((txn.account_id || txn.plaid_account_id) !== sourceAccountId) return false;
+    if (txn.matched_transaction_id) return false;
+    if (txn.is_split && Array.isArray(txn.splits) && txn.splits.length > 0) return false;
+    if (txn.match_info || txn.suggestion_info) return false;
+    return true;
+  });
+}
+
+/**
  * Opens a small picker modal showing cleared plaid transactions in the same
  * account so the user can manually match a missing/orphaned txn.
  */
@@ -719,23 +754,7 @@ function openInlineMatchPicker(missingTxnId) {
     return;
   }
 
-  // Gather cleared transactions in the same account that are unmatched.
-  // When the source is MANUAL_CLEARED (user-entered txn waiting for Plaid
-  // delivery), only show PLAID_CLEARED targets — matching manual-to-manual
-  // doesn't make sense in this flow.
-  const sourceType = getTransactionType(missingTxn);
-  const isSourceManualCleared = 
-    sourceType === TXN_TYPE.MANUAL_CLEARED ||
-    sourceType === TXN_TYPE.PLAID_CONVERTED;
-  const MATCHABLE_TARGET_TYPES = isSourceManualCleared
-    ? new Set([TXN_TYPE.PLAID_CLEARED])
-    : new Set([TXN_TYPE.PLAID_CLEARED, TXN_TYPE.MANUAL_CLEARED, TXN_TYPE.PLAID_CONVERTED]);
-  const candidates = transactions.filter(txn =>
-    txn.transaction_id !== missingTxnId
-    && MATCHABLE_TARGET_TYPES.has(getTransactionType(txn))
-    && (txn.account_id || txn.plaid_account_id) === (missingTxn.account_id || missingTxn.plaid_account_id)
-    && !txn.matched_transaction_id
-  );
+  const candidates = _filterMatchPickerCandidates(missingTxn, transactions);
 
   // Sort by date proximity to the missing transaction
   const missingDate = new Date(missingTxn.date).getTime();

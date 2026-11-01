@@ -177,6 +177,35 @@ function _appendInspectMenuItem(items, txnData) {
   return items;
 }
 
+/**
+ * Whether a split piece's menu may offer "Match to Transaction". The piece
+ * row itself says source "split", so the decision follows the parent's type
+ * and account: the same parents the unsplit menu offers Match for.
+ *
+ * Parents that already carry a match or a suggestion offer nothing here.
+ *
+ * @param {Object|null} parentTxn - The split's parent as the API returned it.
+ * @param {Array<Object>} accountList - Accounts, for the linked/investment check.
+ * @returns {boolean}
+ */
+function _canMatchSplitParent(parentTxn, accountList) {
+  if (!parentTxn || parentTxn.match_info || parentTxn.suggestion_info) return false;
+
+  const parentType = getTransactionType(parentTxn);
+  if (parentType === TXN_TYPE.BILL_MISSING || parentType === TXN_TYPE.MANUAL_MISSING) return true;
+  if (parentType === TXN_TYPE.PLAID_CONVERTED) return true;
+
+  if (parentType === TXN_TYPE.MANUAL_CLEARED) {
+    const parentAccountId = parentTxn.account_id || parentTxn.plaid_account_id || '';
+    const parentAccount = (accountList || []).find(acct => acct.account_id === parentAccountId);
+    return !!parentAccount
+      && parentAccount.connection_status === 'linked'
+      && parentAccount.plaid_type !== 'investment';
+  }
+
+  return false;
+}
+
 // ─── Build menu items based on transaction type ───────────────
 // Visibility matrix from the implementation plan in transactions.md
 
@@ -184,7 +213,15 @@ function _buildMenuItems(txnData) {
   const { isBill, isSplit } = txnData;
 
   if (isSplit) {
-    return _appendInspectMenuItem([], txnData);
+    const splitItems = [];
+    if (txnData.isSplitChild && _canMatchSplitParent(txnData.parentTransaction, accounts)) {
+      splitItems.push({
+        label: '🔗 Match to Transaction',
+        action: 'match-to-adjacent',
+        separator: false,
+      });
+    }
+    return _appendInspectMenuItem(splitItems, txnData);
   }
 
   // Classify once via the centralized type classifier

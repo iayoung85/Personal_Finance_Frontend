@@ -45,7 +45,8 @@ async function openInspectDataModal(inspectRequest) {
         sourceTitle = 'Plaid Raw Data';
         sourceData = plaidRaw;
         sourceEmptyMessage = 'No raw Plaid blob stored for this transaction. This transaction was synced before the raw-blob column was added, or no Plaid source payload is available.';
-        if (fetchedAppData) {
+        // For a piece the fetched record is the parent's, not the piece's.
+        if (fetchedAppData && !inspectContext.isSplitChild) {
           appData = _buildInspectWorkingData(fetchedAppData, inspectContext);
         }
       }
@@ -122,7 +123,7 @@ function _normalizeInspectRequest(inspectRequest) {
       workingTitle: 'Ledger Transaction Data',
       shouldFetchPlaidRaw: localTransaction ? _isPlaidInspectable(localTransaction) : true,
       inspectKind: 'transaction',
-      isSplitRow: false,
+      isSplitChild: false,
     };
   }
 
@@ -130,10 +131,13 @@ function _normalizeInspectRequest(inspectRequest) {
   const localTransaction = request.localTransaction
     || transactions.find(txn => txn.transaction_id === request.txnId || txn.transaction_id === request.transactionId)
     || null;
-  const parentTransaction = request.parentTransaction || null;
-  const isSplitRow = !!request.isSplit;
+  // Context-menu data names the row itself as its "parent" when it is not a
+  // split piece, so only a piece keeps a parent here.
   const isSplitChild = !!request.isSplitChild;
-  const shouldFetchPlaidRaw = !isSplitRow && !request.forceLocal && _isPlaidInspectable(parentTransaction || localTransaction);
+  const parentTransaction = isSplitChild ? (request.parentTransaction || null) : null;
+  // A piece inspects its parent's Plaid record: the pieces have none of their own.
+  const shouldFetchPlaidRaw = !request.forceLocal && _isPlaidInspectable(parentTransaction || localTransaction);
+  const parentTransactionId = parentTransaction?.transaction_id || request.txnId || request.transactionId || '';
 
   let sourceTitle = 'Source Data';
   let sourceData = request.relatedData || null;
@@ -149,7 +153,9 @@ function _normalizeInspectRequest(inspectRequest) {
   }
 
   return {
-    transactionId: request.txnId || request.transactionId || localTransaction?.transaction_id || '',
+    transactionId: isSplitChild
+      ? parentTransactionId
+      : (request.txnId || request.transactionId || localTransaction?.transaction_id || ''),
     localTransaction,
     parentTransaction,
     sourceTitle,
@@ -158,7 +164,7 @@ function _normalizeInspectRequest(inspectRequest) {
     workingTitle: isSplitChild ? 'Split Entry Data' : 'Ledger Transaction Data',
     shouldFetchPlaidRaw,
     inspectKind: isSplitChild ? 'split-child' : 'transaction',
-    isSplitRow,
+    isSplitChild,
   };
 }
 
@@ -167,7 +173,7 @@ function _buildInspectWorkingData(localTransaction, inspectContext) {
 
   let rowType = null;
   try {
-    if (inspectContext.isSplitRow) {
+    if (inspectContext.isSplitChild) {
       rowType = TXN_TYPE.SPLIT_CHILD;
     } else {
       rowType = getTransactionType(localTransaction);
@@ -181,7 +187,7 @@ function _buildInspectWorkingData(localTransaction, inspectContext) {
     _inspect_meta: {
       inspect_kind: inspectContext.inspectKind,
       row_type: rowType,
-      is_split_row: !!inspectContext.isSplitRow,
+      is_split_row: !!inspectContext.isSplitChild,
       is_transfer: !!(localTransaction.transfer_pair_id || isTransferCategory(localTransaction.user_category)),
       parent_transaction_id: inspectContext.parentTransaction?.transaction_id || null,
       data_source: inspectContext.shouldFetchPlaidRaw ? 'frontend cache + optional plaid raw fetch' : 'frontend cache',

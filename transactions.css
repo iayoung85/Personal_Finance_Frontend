@@ -3719,18 +3719,7 @@ tr:hover {
   background: var(--color-danger-bg);
 }
 
-/* Split mismatch: parent shown instead of children when amounts diverge */
-.split-mismatch-row {
-  background: var(--bg-surface);
-}
-
-.split-mismatch-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
+/* Broken split: each piece is flagged and the first carries Repair */
 .split-mismatch-badge {
   display: inline-flex;
   align-items: center;
@@ -3742,6 +3731,8 @@ tr:hover {
   background: var(--color-warning-bg, #fff8e1);
   border: 1px solid var(--color-warning-border, #ffe0b2);
   border-radius: 3px;
+  margin-right: 4px;
+  white-space: nowrap;
   cursor: default;
 }
 

@@ -99,6 +99,16 @@ function setUnreviewedOnlyView(enabled) {
 }
 
 /**
+ * True when a split's pieces no longer add up to the parent amount.
+ * @param {Object} parentTxn - Parent transaction carrying a `splits` array.
+ * @returns {boolean}
+ */
+function _isSplitBroken(parentTxn) {
+  const pieceSum = (parentTxn.splits || []).reduce((sum, piece) => sum + (piece.amount || 0), 0);
+  return Math.abs(pieceSum - (parentTxn.amount || 0)) > 0.01;
+}
+
+/**
  * Build a child transaction object suitable for existing search helpers.
  * Child values override parent values while inheriting missing fields.
  */
@@ -879,90 +889,11 @@ function renderTransactionTable() {
       // Use parent's unified transaction_id for split API calls (modify/delete)
       const parentTxnId = txn.transaction_id || '';
 
-      // Detect split-amount mismatch: children no longer sum to parent.
-      // Happens when a future/missing split parent gets matched to a plaid
-      // transaction with a different amount, and the children are re-parented.
-      const splitChildSum = txn.splits.reduce((sum, splitChild) => sum + (splitChild.amount || 0), 0);
-      const parentAmount = txn.amount || 0;
-      const splitAmountMismatch = Math.abs(splitChildSum - parentAmount) > 0.01;
+      // A broken split (pieces no longer sum to the parent, e.g. after a match
+      // to a Plaid row with a different amount) still draws its pieces. Each
+      // piece is flagged and the first one carries Repair.
+      const splitIsBroken = _isSplitBroken(txn);
 
-      if (splitAmountMismatch) {
-        const _rowParity = _virtualRows.length % 2 === 0;
-        _virtualRowDates.push(txn.date);
-        _virtualRows.push({ even: _rowParity, html: null, fn: () => {
-        let rowHtml = '';
-        const dateStr = formatDate(txn.date);
-        const formattedAmount = _fmtCurrency(parentAmount, txn.iso_currency_code);
-        const parentAmountCellClass = parentAmount < 0
-          ? 'ledger-amount-cell ledger-negative'
-          : 'ledger-amount-cell';
-        const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
-        const rowClass = `split-mismatch-row${isPendingRow ? ' pending-row' : ''}`;
-
-        // ── Two-line description cell for mismatch row ──
-        const mismatchDisplayName = txn.merchant_name || txn.description || txn.name || '';
-        let mismatchTopText = mismatchDisplayName || '[merchant empty]';
-        const mismatchTopClass = mismatchDisplayName ? 'txn-description-text' : 'txn-description-text txn-description-placeholder';
-        const mismatchMemoText = txn.user_memo || '';
-        const mismatchMemoHtml = `<span class="txn-memo-text" data-txn-id="${escapeHtml(parentTxnId)}" title="${escapeHtml(mismatchMemoText)}">${mismatchMemoText ? escapeHtml(mismatchMemoText) : '<em class="memo-placeholder">add memo…</em>'}</span>`;
-
-        rowHtml += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-account-id="${escapeHtml(txn.account_id || txn.plaid_account_id || '')}" data-amount="${parentAmount || 0}" data-is-split="true" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(txn.date || '')}">
-          ${bulkEditActive ? renderBulkCheckboxCell(txn) : ''}
-          ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
-          <td>${escapeHtml(dateStr)}</td>
-          ${showBankAccountColumn ? `<td>${escapeHtml(txn.bank_account || '')}</td>` : ''}
-          <td class="description-column">
-            <div class="desc-two-line">
-              <div class="desc-top-line">${pendingBadge}<span class="${mismatchTopClass}" title="${escapeHtml(mismatchDisplayName)}">${escapeHtml(mismatchTopText)}</span></div>
-              <div class="desc-memo-line">${mismatchMemoHtml}</div>
-            </div>
-          </td>`;
-
-        // Category cell with split-mismatch repair UI (matches header: Description → Category → Type)
-        rowHtml += `<td class="split-mismatch-cell">
-          <span class="split-mismatch-badge" title="Split amounts no longer add up to the transaction total. This can happen when a matched transaction has a different amount than the original.">⚠ Split broken</span>
-          <button class="split-badge-btn split-repair-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Repair splits — amounts no longer match parent total">Repair</button>
-          <button class="split-badge-btn split-delete-badge" onclick="handleDeleteSplit('${escapeHtml(parentTxnId)}')" title="Delete all splits and revert to unsplit">🗑</button>
-        </td>`;
-
-        // Type/source column after category (matching normal row order)
-        if (optionalFields.includes('source')) {
-          const isConverted = txn.source === 'plaid' && txn.status === 'converted';
-          const sourceLabel = txn.source === 'manual' ? 'Manual' : isConverted ? 'Prior Download' : 'Downloaded';
-          const sourceCssClass = txn.source === 'manual' ? 'manual' : isConverted ? 'plaid-converted' : 'plaid';
-          rowHtml += `<td><span class="source-badge ${sourceCssClass}">${sourceLabel}</span></td>`;
-        }
-
-        // Fill remaining optional columns
-        if (optionalFields.includes('payment_channel')) rowHtml += `<td>${escapeHtml(txn.payment_channel || '')}</td>`;
-        if (optionalFields.includes('original_description')) {
-          const preOverrideText = txn.user_description_override ? escapeHtml(txn.description || txn.name || '') : 'no override';
-          rowHtml += `<td class="pre-override-cell">${preOverrideText}</td>`;
-        }
-        if (optionalFields.includes('authorized_datetime')) rowHtml += '<td></td>';
-        if (optionalFields.includes('personal_finance_category')) rowHtml += '<td></td>';
-
-        rowHtml += `<td class="${parentAmountCellClass}">${formattedAmount}</td>`;
-        if (showLedgerColumn) {
-          const lookupKey = txn.transaction_id;
-          const runningBal = isFutureBlockRow
-            ? scheduledLedgerLookup[lookupKey]
-            : isPendingRow ? pendingLedgerLookup[lookupKey] : balanceHistoryLookup[lookupKey];
-          if (runningBal !== undefined) {
-            const fmtBal = _fmtCurrency(runningBal, txn.iso_currency_code);
-            rowHtml += `<td class="ledger-cell${runningBal < 0 ? ' ledger-negative' : ''}">${fmtBal}</td>`;
-          } else {
-            rowHtml += '<td class="ledger-cell ledger-unavailable">—</td>';
-          }
-        }
-
-        rowHtml += '<td></td></tr>';
-        return rowHtml;
-        }});
-        renderedTxnIds.add(txn.transaction_id);
-        return;
-      }
-      
       // Render only split children that match active search/category filters.
       const visibleSplits = txn.splits.filter(split => (
         _splitMatchesSearch(txn, split) && _splitMatchesCategoryFilter(split)
@@ -1000,6 +931,9 @@ function renderTransactionTable() {
         const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}${isSoloSplit ? ' split-solo' : ''}${isPendingRow ? ' pending-row' : ''}${scheduledClass}`;
         
         const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
+        const splitBrokenBadge = splitIsBroken
+          ? '<span class="split-mismatch-badge" title="Split amounts no longer add up to the transaction total. This can happen when a matched transaction has a different amount than the original.">⚠ Split broken</span>'
+          : '';
 
         // ── Two-line description cell matching normal rows ──
         const splitDisplayName = split.description || split.name || txn.merchant_name || txn.description || txn.name || '';
@@ -1016,7 +950,7 @@ function renderTransactionTable() {
           ${showBankAccountColumn ? `<td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>` : ''}
           <td class="description-column" data-field="description">
             <div class="desc-two-line">
-              <div class="desc-top-line"><span class="split-badge" title="Split transaction">✂</span> ${pendingBadge}<span class="${splitTopLineClass}" title="${escapeHtml(splitDisplayName)}">${escapeHtml(splitTopLineText)}</span></div>
+              <div class="desc-top-line"><span class="split-badge" title="Split transaction">✂</span> ${splitBrokenBadge}${pendingBadge}<span class="${splitTopLineClass}" title="${escapeHtml(splitDisplayName)}">${escapeHtml(splitTopLineText)}</span></div>
               <div class="desc-memo-line">${splitMemoLineHtml}</div>
             </div>
           </td>`;
@@ -1030,9 +964,12 @@ function renderTransactionTable() {
         }
         
         // Category cell with autocomplete input (same as normal rows) + edit-splits button (first split only)
-        const splitEditBtn = isFirstSplit
-          ? `<button class="split-badge-btn split-modify-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Modify splits">✎</button>`
-          : '';
+        let splitEditBtn = '';
+        if (isFirstSplit) {
+          splitEditBtn = splitIsBroken
+            ? `<button class="split-badge-btn split-repair-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Repair splits — amounts no longer match parent total">Repair</button>`
+            : `<button class="split-badge-btn split-modify-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Modify splits">✎</button>`;
+        }
         const splitCategoryAutocomplete = _buildCategoryAutocomplete(
           split.transaction_id,
           txn.account_id || txn.plaid_account_id || '',

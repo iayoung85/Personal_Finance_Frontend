@@ -382,18 +382,6 @@ function _shouldSkipLedgerParentForAnalytics(txn) {
   return txnType === TXN_TYPE.MANUAL_ORPHANED;
 }
 
-function _hasSplitAmountMismatch(txn) {
-  if (!txn || !Array.isArray(txn.splits) || txn.splits.length === 0) {
-    return false;
-  }
-
-  const splitChildSum = txn.splits.reduce((sum, splitChild) => (
-    sum + (splitChild.amount || 0)
-  ), 0);
-
-  return Math.abs(splitChildSum - (txn.amount || 0)) > 0.01;
-}
-
 function _buildAnalyticsEntry(txn, parentTxn = null) {
   const txnType = parentTxn ? TXN_TYPE.SPLIT_CHILD : getTransactionType(txn);
   const analyticsClass = txn.analytics_class || null;
@@ -428,11 +416,6 @@ function _collectVisibleLedgerAnalyticsEntries() {
     }
 
     if (txn.is_split && Array.isArray(txn.splits) && txn.splits.length > 0) {
-      if (_hasSplitAmountMismatch(txn)) {
-        ledgerEntries.push(_buildAnalyticsEntry(txn));
-        return;
-      }
-
       const visibleSplitRows = txn.splits.filter(split => (
         _splitMatchesSearch(txn, split) && _splitMatchesCategoryFilter(split)
       ));
