@@ -72,6 +72,33 @@ async function _markSingleTransactionReviewed(transactionId) {
 }
 
 /**
+ * Whether a row belongs in the unreviewed-only view. Matches the sidebar
+ * badge count, which counts only an explicit reviewed === false.
+ * @param {Object} txn - Transaction row.
+ * @returns {boolean}
+ */
+function isRowInUnreviewedQueue(txn) {
+  return !!txn && txn.reviewed === false;
+}
+
+/**
+ * Turn the unreviewed-only view on or off. Turning it on widens the account
+ * choice to All Accounts, since a single-account ledger would hide most of
+ * the queue and its running-balance column cannot mix accounts.
+ * @param {boolean} enabled
+ */
+function setUnreviewedOnlyView(enabled) {
+  const dateGroup = document.querySelector('.filter-group-dates');
+  if (dateGroup) dateGroup.classList.toggle('filter-group-overridden', enabled);
+
+  if (enabled && selectedAccountMode === 'single') {
+    selectAllAccountsMode();
+    return;
+  }
+  renderTransactionTable();
+}
+
+/**
  * Build a child transaction object suitable for existing search helpers.
  * Child values override parent values while inheriting missing fields.
  */
@@ -417,6 +444,7 @@ function renderTransactionTable() {
   const hideTransfers = document.getElementById('hide-transfers').checked;
   const showHiddenEnabled = document.getElementById('show-hidden-toggle').checked;
   const showUnmatchedOnlyEnabled = document.getElementById('show-unmatched-toggle')?.checked;
+  const unreviewedOnlyEnabled = !!document.getElementById('unreviewed-only-toggle')?.checked;
   const todayDateStr = _formatDateLocal(new Date());
   const forecastEndDateStr = _futureEndDateStr();
   
@@ -434,8 +462,12 @@ function renderTransactionTable() {
       return false;
     }
 
-    // Filter by date range
-    if (txn.date < startDate || txn.date > endDate) {
+    // The unreviewed queue spans every date and skips the pending, hidden,
+    // and hide-transfers toggles, so it lists every row the sidebar badges
+    // count. Account choice, search, and category filters still narrow it.
+    if (unreviewedOnlyEnabled) {
+      if (!isRowInUnreviewedQueue(txn)) return false;
+    } else if (txn.date < startDate || txn.date > endDate) {
       return false;
     }
     
@@ -446,18 +478,18 @@ function renderTransactionTable() {
     
     // Filter pending transactions — always exclude pending from main filter
     // pass. Pending txns are handled separately below when showPending is on.
-    if (txn.pending && !showPendingEnabled) {
+    if (txn.pending && !showPendingEnabled && !unreviewedOnlyEnabled) {
       return false;
     }
 
     // Filter hidden transactions — excluded by default, visible when toggle is on
-    if (txn.is_hidden && !showHiddenEnabled) {
+    if (txn.is_hidden && !showHiddenEnabled && !unreviewedOnlyEnabled) {
       return false;
     }
 
     // Hide transfers if requested based only on user-assigned transfer
     // category notation: [AccountName]
-    if (hideTransfers) {
+    if (hideTransfers && !unreviewedOnlyEnabled) {
       if (isTransferCategory(txn.user_category)) {
         return false;
       }

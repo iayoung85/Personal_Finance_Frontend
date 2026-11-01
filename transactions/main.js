@@ -248,6 +248,25 @@ $(document).ready(async function() {
     renderTransactionTable();
   });
 
+  $(document).on('change', '#unreviewed-only-toggle', function() {
+    setUnreviewedOnlyView(this.checked);
+  });
+
+  // Choosing a date range means the user is done with the all-dates queue.
+  // Capture phase, so the toggle is off before the date control re-renders.
+  const dateFilterGroup = document.querySelector('.filter-group-dates');
+  if (dateFilterGroup) {
+    dateFilterGroup.addEventListener('click', function(event) {
+      const unreviewedToggle = document.getElementById('unreviewed-only-toggle');
+      const dateControl = event.target.closest('button, input');
+      if (!unreviewedToggle || !unreviewedToggle.checked || !dateControl) return;
+      unreviewedToggle.checked = false;
+      dateFilterGroup.classList.remove('filter-group-overridden');
+      // Buttons re-render on their own; the custom-range inputs wait for a change.
+      if (dateControl.tagName === 'INPUT') renderTransactionTable();
+    }, true);
+  }
+
   // Re-render when show-overrides-only toggle changes
   $(document).on('change', '#show-overrides-only', function() {
     renderTransactionTable();

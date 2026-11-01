@@ -945,6 +945,11 @@ tr:hover {
   margin-left: auto;
 }
 
+/* The unreviewed-only view ignores dates; clicking one exits that view. */
+.filter-group-overridden {
+  opacity: 0.45;
+}
+
 .toggle-label {
   display: inline-flex !important;
   align-items: center;
