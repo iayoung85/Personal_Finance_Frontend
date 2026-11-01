@@ -872,6 +872,20 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
   }
 }
 
+/**
+ * True when an id names a split piece held inside a parent row, not a row of
+ * its own in the cached list.
+ *
+ * @param {string} transactionId
+ * @returns {boolean}
+ */
+function _isNestedSplitPieceId(transactionId) {
+  if (transactions.some(row => row.transaction_id === transactionId)) return false;
+  return transactions.some(row => (
+    Array.isArray(row.splits) && row.splits.some(piece => piece.transaction_id === transactionId)
+  ));
+}
+
 function _patchCategorizationCache(requestedTxnId, responseData, fallbackCategory, fallbackIsOverride) {
   const purgedVirtualIds = Array.isArray(responseData.purged_virtual_ids)
     ? responseData.purged_virtual_ids
@@ -879,7 +893,11 @@ function _patchCategorizationCache(requestedTxnId, responseData, fallbackCategor
 
   purgedVirtualIds.forEach(virtualId => _removeCachedTransaction(virtualId));
 
-  const resolvedTxn = responseData.transaction;
+  // A split piece lives inside its parent's `splits`. The server's answer for
+  // it describes the piece alone, so caching it as a row would add a stray
+  // top-level row and leave the parent's piece unchanged; patch the piece
+  // in place instead.
+  const resolvedTxn = _isNestedSplitPieceId(requestedTxnId) ? null : responseData.transaction;
   if (resolvedTxn && resolvedTxn.transaction_id) {
     if (
       requestedTxnId !== resolvedTxn.transaction_id

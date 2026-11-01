@@ -894,6 +894,11 @@ function renderTransactionTable() {
       // piece is flagged and the first one carries Repair.
       const splitIsBroken = _isSplitBroken(txn);
 
+      // Pieces of a waiting match show only what the match allows: its
+      // approve and reject buttons, no modify, delete, repair or date edit.
+      const pieceTreatment = getSplitPieceTreatment(txn, splitIsBroken);
+      const waitingBadgesHtml = renderWaitingPieceBadges(pieceTreatment);
+
       // Render only split children that match active search/category filters.
       const visibleSplits = txn.splits.filter(split => (
         _splitMatchesSearch(txn, split) && _splitMatchesCategoryFilter(split)
@@ -928,10 +933,11 @@ function renderTransactionTable() {
         // Future-block splits inherit the parent's future text color via
         // the scheduled-row class, keeping all future rows visually unified.
         const scheduledClass = isFutureBlockRow ? ' scheduled-row' : '';
-        const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}${isSoloSplit ? ' split-solo' : ''}${isPendingRow ? ' pending-row' : ''}${scheduledClass}`;
+        const waitingClass = pieceTreatment.rowCssClass ? ` ${pieceTreatment.rowCssClass}` : '';
+        const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}${isSoloSplit ? ' split-solo' : ''}${isPendingRow ? ' pending-row' : ''}${scheduledClass}${waitingClass}`;
         
         const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
-        const splitBrokenBadge = splitIsBroken
+        const splitBrokenBadge = pieceTreatment.showBrokenBadge
           ? '<span class="split-mismatch-badge" title="Split amounts no longer add up to the transaction total. This can happen when a matched transaction has a different amount than the original.">⚠ Split broken</span>'
           : '';
 
@@ -946,11 +952,13 @@ function renderTransactionTable() {
         rowHtml += `<tr class="${rowClass}" data-txn-id="${escapeHtml(parentTxnId)}" data-parent-txn-id="${escapeHtml(parentTxnId)}" data-split-txn-id="${escapeHtml(split.transaction_id)}" data-split-index="${idx}" data-source="split" data-status="cleared" data-account-id="${escapeHtml(txn.account_id || txn.plaid_account_id || '')}" data-amount="${displayAmount || 0}" data-is-split="true" data-txn-description="${escapeHtml(split.description || split.name || txn.description || txn.name || '')}" data-user-category="${escapeHtml(split.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(split.date || txn.date || '')}">
           ${bulkEditActive ? '<td class="bulk-cell bulk-cell-disabled" title="Not bulk-editable"><input type="checkbox" class="bulk-row-checkbox" disabled></td>' : ''}
           ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
-          <td class="date-column inline-editable" data-field="date" title="Editing the date here updates all splits and the parent transaction">${escapeHtml(dateStr)}</td>
+          ${pieceTreatment.dateEditable
+            ? `<td class="date-column inline-editable" data-field="date" title="Editing the date here updates all splits and the parent transaction">${escapeHtml(dateStr)}</td>`
+            : `<td class="date-column">${escapeHtml(dateStr)}</td>`}
           ${showBankAccountColumn ? `<td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>` : ''}
           <td class="description-column" data-field="description">
             <div class="desc-two-line">
-              <div class="desc-top-line"><span class="split-badge" title="Split transaction">✂</span> ${splitBrokenBadge}${pendingBadge}<span class="${splitTopLineClass}" title="${escapeHtml(splitDisplayName)}">${escapeHtml(splitTopLineText)}</span></div>
+              <div class="desc-top-line">${waitingBadgesHtml}<span class="split-badge" title="Split transaction">✂</span> ${splitBrokenBadge}${pendingBadge}<span class="${splitTopLineClass}" title="${escapeHtml(splitDisplayName)}">${escapeHtml(splitTopLineText)}</span></div>
               <div class="desc-memo-line">${splitMemoLineHtml}</div>
             </div>
           </td>`;
@@ -965,8 +973,8 @@ function renderTransactionTable() {
         
         // Category cell with autocomplete input (same as normal rows) + edit-splits button (first split only)
         let splitEditBtn = '';
-        if (isFirstSplit) {
-          splitEditBtn = splitIsBroken
+        if (isFirstSplit && pieceTreatment.firstPieceButton !== 'none') {
+          splitEditBtn = pieceTreatment.firstPieceButton === 'repair'
             ? `<button class="split-badge-btn split-repair-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Repair splits — amounts no longer match parent total">Repair</button>`
             : `<button class="split-badge-btn split-modify-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Modify splits">✎</button>`;
         }
@@ -984,7 +992,10 @@ function renderTransactionTable() {
           const isConverted = txn.source === 'plaid' && txn.status === 'converted';
           const sourceLabel = txn.source === 'manual' ? 'Manual' : isConverted ? 'Prior Download' : 'Downloaded';
           const sourceCssClass = txn.source === 'manual' ? 'manual' : isConverted ? 'plaid-converted' : 'plaid';
-          const sourceBadge = `<span class="source-badge ${sourceCssClass}">${sourceLabel}</span>`;
+          const waitingSource = pieceTreatment.sourceBadge;
+          const sourceBadge = waitingSource
+            ? `<span class="source-badge ${waitingSource.cssClass}" data-tooltip="${waitingSource.title}">${waitingSource.label}</span>`
+            : `<span class="source-badge ${sourceCssClass}">${sourceLabel}</span>`;
           rowHtml += `<td>${sourceBadge}</td>`;
         }
         
@@ -1041,9 +1052,11 @@ function renderTransactionTable() {
               rowHtml += '<td class="ledger-cell ledger-unavailable">—</td>';
             }
           }
-          rowHtml += `<td class="split-actions-cell">
+          rowHtml += pieceTreatment.showDelete
+            ? `<td class="split-actions-cell">
             <button class="split-badge-btn split-delete-badge" onclick="handleDeleteSplit('${escapeHtml(parentTxnId)}')" title="Delete splits">🗑</button>
-          </td>`;
+          </td>`
+            : '<td></td>';
         } else {
           // Non-top split children: show amount but dash for ledger
           rowHtml += `<td class="${splitAmountCellClass}">${amount}</td>`;

@@ -399,6 +399,22 @@ function _renderMatchedRow(ctx) {
 }
 
 
+/**
+ * The 📋 badge a matched pair shows when the manual side came from a bill.
+ *
+ * @param {Object} matchInfo - The Plaid row's match_info.
+ * @returns {string} HTML fragment with a trailing space, or '' for a non-bill match.
+ */
+function _matchedPairBillBadge(matchInfo) {
+  if (!matchInfo || !matchInfo.matched_bill_id) return '';
+  const occNum = matchInfo.matched_occurrence_number || '?';
+  const billName = escapeHtml(matchInfo.matched_name || 'Bill');
+  const scheduleSummary = escapeHtml(matchInfo.matched_schedule_summary || '');
+  const hoverTitle = `Matched bill #${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
+  return `<span class="source-badge bill-provenance" data-tooltip="${hoverTitle}" title="${hoverTitle}">📋</span> `;
+}
+
+
 function _renderMatchedPairRow(ctx) {
   const matchInfo = ctx.txn.match_info;
   const unmatchId = escapeHtml(matchInfo.matched_txn_id);
@@ -411,14 +427,7 @@ function _renderMatchedPairRow(ctx) {
   const unmatchOnclick = `event.stopPropagation(); unmatchScheduledTransaction('${unmatchId}')`;
 
   // Bill badge when the matched counterpart originated from a bill template
-  let billBadge = '';
-  if (matchInfo.matched_bill_id) {
-    const occNum = matchInfo.matched_occurrence_number || '?';
-    const billName = escapeHtml(matchInfo.matched_name || 'Bill');
-    const scheduleSummary = escapeHtml(matchInfo.matched_schedule_summary || '');
-    const hoverTitle = `Matched bill #${occNum} of ${billName}` + (scheduleSummary ? ` — ${scheduleSummary}` : '');
-    billBadge = `<span class="source-badge bill-provenance" data-tooltip="${hoverTitle}" title="${hoverTitle}">📋</span> `;
-  }
+  const billBadge = _matchedPairBillBadge(matchInfo);
 
   const actionGroup = `<span class="match-action-group">`
     + `<button class="approve-match-badge" data-txn-id="${unmatchId}" onclick="${approveOnclick}" title="Approve this match — removes the manual counterpart">✓</button>`
@@ -463,6 +472,149 @@ function _renderSuggestedPairRow(ctx) {
     sourceBadge: { label: 'Suggested', cssClass: 'suggested', title: `System-suggested match (${confidencePct}% confidence)` },
     displayName: suggestionInfo.suggested_description || _txnDescription(ctx.txn),
   };
+}
+
+
+// ── Split pieces ───────────────────────────────────────────────
+
+/**
+ * What a split piece shows and offers, decided from its parent as the API
+ * returned it.
+ *
+ * A piece of a waiting match (`splits_awaiting_match`) sits under the Plaid
+ * row but is still owned by the hidden manual row until approval, so it
+ * carries the match's approve and reject buttons and the green or yellow
+ * treatment, and offers no modify, delete, repair or date edit: those go to
+ * the parent id, which the API refuses while the match waits. A waiting
+ * split that no longer sums to the Plaid amount still shows the warning.
+ *
+ * @param {Object} parentTxn - The row carrying the `splits` array.
+ * @param {boolean} splitIsBroken - Whether the pieces differ from the parent amount.
+ * @returns {{
+ *   waitingKind: ('matched'|'suggested'|null),
+ *   showBrokenBadge: boolean,
+ *   firstPieceButton: ('modify'|'repair'|'none'),
+ *   showDelete: boolean,
+ *   dateEditable: boolean,
+ *   rowCssClass: string,
+ *   sourceBadge: ({label: string, cssClass: string, title: string}|null),
+ *   billBadgeHtml: string,
+ *   approve: ({call: string, args: Array, catchErrors: boolean, title: string}|null),
+ *   reject: ({call: string, args: Array, title: string}|null),
+ * }}
+ */
+function getSplitPieceTreatment(parentTxn, splitIsBroken) {
+  const treatment = {
+    waitingKind: null,
+    showBrokenBadge: !!splitIsBroken,
+    firstPieceButton: splitIsBroken ? 'repair' : 'modify',
+    showDelete: true,
+    dateEditable: true,
+    rowCssClass: '',
+    sourceBadge: null,
+    billBadgeHtml: '',
+    approve: null,
+    reject: null,
+  };
+
+  if (!parentTxn || !parentTxn.splits_awaiting_match) return treatment;
+
+  treatment.firstPieceButton = 'none';
+  treatment.showDelete = false;
+  treatment.dateEditable = false;
+
+  const accountId = parentTxn.account_id || parentTxn.plaid_account_id || '';
+
+  // The unsplit row checks the suggestion first, so a piece does too.
+  const suggestionInfo = parentTxn.suggestion_info;
+  if (suggestionInfo) {
+    const confidencePct = Math.round((suggestionInfo.confidence || 0) * 100);
+    treatment.waitingKind = 'suggested';
+    treatment.rowCssClass = 'suggested-row';
+    treatment.sourceBadge = {
+      label: 'Suggested',
+      cssClass: 'suggested',
+      title: `System-suggested match (${confidencePct}% confidence)`,
+    };
+    treatment.approve = {
+      call: 'approveSuggestion',
+      args: [suggestionInfo.suggested_txn_id, parentTxn.transaction_id, accountId],
+      catchErrors: false,
+      title: `Approve suggested match (${confidencePct}% confidence)`,
+    };
+    treatment.reject = {
+      call: 'dismissSuggestion',
+      args: [suggestionInfo.proposal_id, accountId],
+      title: 'Dismiss suggestion — the manual row will reappear as missing',
+    };
+    return treatment;
+  }
+
+  const matchInfo = parentTxn.match_info;
+  if (matchInfo) {
+    treatment.waitingKind = 'matched';
+    treatment.rowCssClass = 'matched-row';
+    treatment.sourceBadge = {
+      label: 'Matched',
+      cssClass: 'matched',
+      title: matchInfo.matched_bill_id
+        ? 'Bill-matched plaid transaction'
+        : 'Plaid transaction merged with user-entered counterpart',
+    };
+    treatment.billBadgeHtml = _matchedPairBillBadge(matchInfo);
+    treatment.approve = {
+      call: 'approveMatchedTransactionAndRefresh',
+      args: [matchInfo.matched_txn_id, accountId],
+      catchErrors: true,
+      title: 'Approve this match — removes the manual counterpart',
+    };
+    treatment.reject = {
+      call: 'unmatchScheduledTransaction',
+      args: [matchInfo.matched_txn_id],
+      title: 'Unmatch — revert manual to missing + detach from plaid',
+    };
+  }
+  return treatment;
+}
+
+
+/**
+ * Inline-handler call text for a button: string arguments quoted and
+ * escaped, numbers left bare.
+ *
+ * @param {string} call - Global function name.
+ * @param {Array<string|number>} args
+ * @returns {string}
+ */
+function _inlineCallText(call, args) {
+  const argText = args
+    .map(arg => (typeof arg === 'number' ? String(arg) : `'${escapeHtml(arg)}'`))
+    .join(', ');
+  return `${call}(${argText})`;
+}
+
+
+/**
+ * The bill badge and ✓ ✗ buttons a waiting split piece carries in its
+ * description cell; the same controls the unsplit waiting row has.
+ *
+ * @param {ReturnType<typeof getSplitPieceTreatment>} treatment
+ * @returns {string} HTML fragment, empty for a piece that is not waiting.
+ */
+function renderWaitingPieceBadges(treatment) {
+  if (!treatment || !treatment.approve || !treatment.reject) return '';
+
+  const approveCall = _inlineCallText(treatment.approve.call, treatment.approve.args)
+    + (treatment.approve.catchErrors ? ".catch(err => showStatus(err.message, 'error'))" : '');
+  const rejectCall = _inlineCallText(treatment.reject.call, treatment.reject.args);
+  const approveClass = treatment.waitingKind === 'suggested' ? 'approve-suggestion-badge' : 'approve-match-badge';
+  const rejectClass = treatment.waitingKind === 'suggested' ? 'reject-suggestion-badge' : 'reject-match-badge';
+
+  return treatment.billBadgeHtml
+    + `<span class="match-action-group">`
+    + `<button class="${approveClass}" data-txn-id="${escapeHtml(String(treatment.approve.args[0]))}" onclick="event.stopPropagation(); ${approveCall};" title="${escapeHtml(treatment.approve.title)}">✓</button>`
+    + `<button class="${rejectClass}" onclick="event.stopPropagation(); ${rejectCall}" title="${escapeHtml(treatment.reject.title)}">✗</button>`
+    + `</span> `;
 }
 
 

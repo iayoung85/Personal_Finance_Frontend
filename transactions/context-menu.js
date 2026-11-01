@@ -206,6 +206,39 @@ function _canMatchSplitParent(parentTxn, accountList) {
   return false;
 }
 
+/**
+ * Menu items for a piece of a waiting match, decided by its parent: the
+ * actions the unsplit waiting row offers, without Modify, Match or Delete,
+ * which the API refuses while the match waits. The caller adds Inspect Data.
+ *
+ * @param {Object} txnData - Context data for the right-clicked row.
+ * @returns {Array<Object>|null} Items, or null when the row is not such a piece.
+ */
+function _buildWaitingPieceMenuItems(txnData) {
+  const parentTxn = txnData && txnData.parentTransaction;
+  if (!txnData.isSplitChild || !parentTxn || !parentTxn.splits_awaiting_match) return null;
+
+  // The unsplit waiting row checks the suggestion first, so a piece does too.
+  if (parentTxn.suggestion_info) {
+    return [
+      { label: '✓ Approve Suggestion', action: 'approve-suggestion', separator: false },
+      { label: '✗ Dismiss Suggestion', action: 'dismiss-suggestion', separator: true },
+      { label: '🔍 Inspect Match', action: 'inspect-suggestion', separator: false },
+    ];
+  }
+
+  if (parentTxn.match_info) {
+    return [
+      { label: '✓ Approve Match', action: 'approve-match', separator: false },
+      { label: '✓ Approve All Matches', action: 'approve-all-matches', separator: false },
+      { label: '✗ Unmatch', action: 'unmatch', separator: true },
+      { label: '🔍 Inspect Match', action: 'inspect-match', separator: false },
+    ];
+  }
+
+  return null;
+}
+
 // ─── Build menu items based on transaction type ───────────────
 // Visibility matrix from the implementation plan in transactions.md
 
@@ -213,6 +246,11 @@ function _buildMenuItems(txnData) {
   const { isBill, isSplit } = txnData;
 
   if (isSplit) {
+    const waitingPieceItems = _buildWaitingPieceMenuItems(txnData);
+    if (waitingPieceItems) {
+      return _appendInspectMenuItem(waitingPieceItems, txnData);
+    }
+
     const splitItems = [];
     if (txnData.isSplitChild && _canMatchSplitParent(txnData.parentTransaction, accounts)) {
       splitItems.push({
@@ -617,6 +655,9 @@ function _dispatchContextAction(action, txnData) {
     case 'approve-all-matches':
       _handleContextApproveAllMatches(txnData);
       break;
+    case 'unmatch':
+      _handleContextUnmatch(txnData);
+      break;
     case 'mark-visible-reviewed':
       _handleContextMarkVisibleReviewed();
       break;
@@ -912,10 +953,64 @@ async function _handleContextApproveMatch(txnData) {
   try {
     const result = await approveMatch(approveId);
     _applyReconciliationMutationToCache(result, approveId);
+    if (txnData.isSplitChild) {
+      // The pieces move onto the Plaid row with the approval; the single-row
+      // answer is not trusted to carry them.
+      await refreshAccountTransactions(txnData.accountId);
+    }
     showStatus('Match approved — manual transaction removed', 'success');
   } catch (approveError) {
     showStatus(`Failed to approve match: ${approveError.message}`, 'error');
   }
+}
+
+/**
+ * Undo a waiting match from the menu of one of its split pieces. The
+ * counterpart to unmatch is the hidden manual row, not the displayed one.
+ */
+function _handleContextUnmatch(txnData) {
+  const manualTxnId = txnData.matchManualTxnId;
+  if (!manualTxnId) {
+    showStatus('No matched counterpart found for this transaction', 'error');
+    return;
+  }
+  unmatchScheduledTransaction(manualTxnId);
+}
+
+/**
+ * The ids Approve All Matches sends for the rows in view.
+ *
+ * A matched pair is found through its hidden manual row. A waiting match
+ * whose manual side is split is also found through the Plaid row that
+ * shows its pieces: the hidden row has no pieces of its own, so a search or
+ * category filter that the pieces satisfy would otherwise leave it out.
+ *
+ * @param {Array<Object>} visibleRows - Rows that passed the ledger filters.
+ * @returns {Array<string>} Manual-side ids, each once.
+ */
+function _collectApproveAllMatchIds(visibleRows) {
+  const approveIds = new Set();
+
+  (visibleRows || []).forEach(txn => {
+    if (!txn) return;
+
+    // A "matched" row in the ledger is anything with status === 'matched'
+    // (plaid side) or 'bill_matched' (bill side). The backend handles the
+    // plaid/manual reparenting, so sending either id from a merged pair
+    // resolves the same match.
+    if (txn.status === 'matched' || txn.status === 'bill_matched') {
+      approveIds.add(txn.matchManualTxnId || txn.transaction_id);
+      return;
+    }
+
+    if (txn.splits_awaiting_match && txn.match_info && txn.match_info.matched_txn_id) {
+      approveIds.add(txn.match_info.matched_txn_id);
+    }
+  });
+
+  approveIds.delete(undefined);
+  approveIds.delete('');
+  return Array.from(approveIds);
 }
 
 /**
@@ -926,14 +1021,7 @@ async function _handleContextApproveMatch(txnData) {
  */
 async function _handleContextApproveAllMatches() {
   const visibleRows = Array.isArray(visibleTransactions) ? visibleTransactions : [];
-  // A "matched" row in the ledger is anything with status === 'matched'
-  // (plaid side) or 'bill_matched' (bill side). The backend handles the
-  // plaid/manual reparenting, so sending either id from a merged pair
-  // resolves the same match.
-  const matchedIds = visibleRows
-    .filter(txn => txn && (txn.status === 'matched' || txn.status === 'bill_matched'))
-    .map(txn => txn.matchManualTxnId || txn.transaction_id)
-    .filter(Boolean);
+  const matchedIds = _collectApproveAllMatchIds(visibleRows);
 
   if (matchedIds.length === 0) {
     showStatus('No matched transactions in the current view.', 'info');
