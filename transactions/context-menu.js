@@ -1014,6 +1014,36 @@ function _collectApproveAllMatchIds(visibleRows) {
 }
 
 /**
+ * Reasons the API left matches waiting during a bulk approval, one phrase
+ * per non-zero skip count. Each phrase carries its own remedy so the user
+ * knows what to change before approving again.
+ * @param {Object} result - Response from the approve-all-matches call.
+ * @returns {string[]}
+ */
+function _approveAllSkipReasons(result) {
+  const reasons = [];
+  const skippedBothSplit = (result && result.skipped_both_split) || 0;
+  const skippedTransferBankRow = (result && result.skipped_transfer_bank_row) || 0;
+  if (skippedBothSplit > 0) {
+    reasons.push(`${skippedBothSplit} left waiting because both rows are split (delete one split first)`);
+  }
+  if (skippedTransferBankRow > 0) {
+    reasons.push(`${skippedTransferBankRow} left waiting because the bank row is a transfer (unmatch first)`);
+  }
+  return reasons;
+}
+
+/**
+ * Warning toast text for a bulk approval that skipped some matches.
+ * @param {number} approvedCount
+ * @param {string[]} skipReasons - From _approveAllSkipReasons.
+ * @returns {string}
+ */
+function _buildApproveAllWarning(approvedCount, skipReasons) {
+  return `Approved ${approvedCount} match(es); ${skipReasons.join('; ')}.`;
+}
+
+/**
  * Approve every matched transaction in the current filtered view.
  * Collects the IDs visible in the ledger (honoring search, date filter,
  * hide-transfers, etc.) and asks the backend to approve only those —
@@ -1034,12 +1064,9 @@ async function _handleContextApproveAllMatches() {
 
   try {
     const result = await approveAllMatches(matchedIds);
-    const skippedBothSplit = result.skipped_both_split || 0;
-    if (skippedBothSplit > 0) {
-      showStatus(
-        `Approved ${result.approved_count} match(es); ${skippedBothSplit} left waiting because both rows are split. Delete one split first.`,
-        'warning'
-      );
+    const skipReasons = _approveAllSkipReasons(result);
+    if (skipReasons.length > 0) {
+      showStatus(_buildApproveAllWarning(result.approved_count, skipReasons), 'warning');
     } else {
       showStatus(`Approved ${result.approved_count} match(es)`, 'success');
     }

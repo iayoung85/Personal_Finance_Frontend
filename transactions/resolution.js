@@ -691,7 +691,15 @@ async function _submitReconciliationDecisions() {
       parts.push(`${skippedBothSplit} left pending because both rows are split; delete one split first`);
     }
 
-    showStatus(`Reconciliation complete: ${parts.join(', ')}`, skippedBothSplit > 0 ? 'warning' : 'success');
+    // Approving onto a transfer bank row would touch its partner, which the
+    // user cannot see from here.
+    const skippedTransferBankRow = result.skipped_transfer_bank_row || 0;
+    if (skippedTransferBankRow > 0) {
+      parts.push(`${skippedTransferBankRow} left pending because the bank row is a transfer; reject it instead`);
+    }
+
+    const anySkipped = skippedBothSplit > 0 || skippedTransferBankRow > 0;
+    showStatus(`Reconciliation complete: ${parts.join(', ')}`, anySkipped ? 'warning' : 'success');
     closeModal();
 
     _proposalDecisions.clear();
