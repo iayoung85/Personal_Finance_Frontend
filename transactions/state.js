@@ -52,9 +52,6 @@ let isEditingSplit = false;
 let balanceHistoryLookup = {};
 let balanceHistoryLoading = false;
 
-// Reconciliation banner state — populated by checkAndRenderReconciliationBanner()
-let reconciliationStatus = null;
-
 // Scroll position cache — remembers where the user was scrolled to
 // per view so switching between accounts preserves position.
 // Key: accountId string or 'all'.  Value: scrollTop number.

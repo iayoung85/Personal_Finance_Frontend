@@ -599,10 +599,6 @@ function renderTransactionTable() {
     // counterpart by the backend — skip them entirely.
     if (txn.hidden_by_match) return;
 
-    // Suggested manual missing rows are hidden in favor of the plaid
-    // row which carries suggestion_info (yellow badge).
-    if (txn.hidden_by_suggestion) return;
-
     // All Accounts view: hide system rows always
     if (isAllAccounts) {
       const txnType = getTransactionType(txn);
@@ -1187,7 +1183,7 @@ function renderTransactionTable() {
     }
 
     // ── Data attributes for context menu ──
-    const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-suggestion-txn-id="${escapeHtml(txn.suggestion_info?.suggested_txn_id || '')}" data-suggestion-proposal-id="${txn.suggestion_info?.proposal_id || ''}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(txn.date || '')}"`;
+    const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(txn.date || '')}"`;
 
     // ── Inline-edit eligibility (date, description, amount) ──
     const isDateInlineEditable = canInlineEditDate(txnRowType);

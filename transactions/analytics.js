@@ -353,7 +353,7 @@ function _shouldSkipLedgerParentForAnalytics(txn) {
     return true;
   }
 
-  if (txn.hidden_by_match || txn.hidden_by_suggestion) {
+  if (txn.hidden_by_match) {
     return true;
   }
 

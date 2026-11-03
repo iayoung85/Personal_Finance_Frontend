@@ -70,7 +70,7 @@ test('piece menu offers Match for converted parents and cleared manual parents i
   );
 });
 
-test('piece menu offers no Match for Plaid parents or parents with match or suggestion info', () => {
+test('piece menu offers no Match for Plaid parents or parents with match info', () => {
   assert.equal(menu.api._canMatchSplitParent(parentOf('plaid', 'cleared'), linkedAccounts), false);
   assert.equal(menu.api._canMatchSplitParent(parentOf('plaid', 'pending'), linkedAccounts), false);
   assert.equal(
@@ -78,7 +78,7 @@ test('piece menu offers no Match for Plaid parents or parents with match or sugg
     false,
   );
   assert.equal(
-    menu.api._canMatchSplitParent(parentOf('manual', 'missing', { suggestion_info: { suggested_txn_id: 's1' } }), linkedAccounts),
+    menu.api._canMatchSplitParent(parentOf('manual', 'missing', { match_info: { matched_txn_id: 'm1' } }), linkedAccounts),
     false,
   );
   assert.equal(menu.api._canMatchSplitParent(null, linkedAccounts), false);
@@ -125,14 +125,13 @@ const plaidRow = (id, extra = {}) => ({
   transaction_id: id, source: 'plaid', status: 'cleared', account_id: 'acct-1', amount: -50, ...extra,
 });
 
-test('picker candidates skip split rows and rows with match or suggestion info', () => {
+test('picker candidates skip split rows and rows with match info', () => {
   const source = parentOf('manual', 'missing');
   const all = [
     source,
     plaidRow('ok'),
     plaidRow('split', { is_split: true, splits: [piece('split_split_0', -50)] }),
     plaidRow('matched', { match_info: { matched_txn_id: 'm' } }),
-    plaidRow('suggested', { suggestion_info: { suggested_txn_id: 's' } }),
     plaidRow('other-account', { account_id: 'acct-2' }),
     plaidRow('linked', { matched_transaction_id: 'x' }),
   ];
@@ -278,15 +277,9 @@ test('a waiting piece names the hidden manual row as its parent until approval',
     splits_awaiting_match: true,
     match_info: { matched_txn_id: 'manual_1' },
   };
-  const suggestedPlaidRow = {
-    transaction_id: 'plaid_2',
-    splits_awaiting_match: true,
-    suggestion_info: { suggested_txn_id: 'manual_2' },
-  };
   const approvedPlaidRow = { transaction_id: 'plaid_3', match_info: { matched_txn_id: 'manual_3' } };
 
   assert.equal(inspect.api._inspectParentId(matchedPlaidRow), 'manual_1');
-  assert.equal(inspect.api._inspectParentId(suggestedPlaidRow), 'manual_2');
   assert.equal(inspect.api._inspectParentId(approvedPlaidRow), 'plaid_3');
   assert.equal(inspect.api._inspectParentId(null), null);
 });

@@ -378,7 +378,7 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
         await fetchAllTransactions(true);
       }
 
-      // Orphan detection may have created new orphans or proposals during
+      // Orphan detection may have created new orphans during
       // post-sync processing — refresh the banner so it reflects the
       // latest resolution state without requiring a full page reload.
       await checkAndRenderReconciliationBanner();

@@ -444,36 +444,6 @@ function _renderMatchedPairRow(ctx) {
   };
 }
 
-// is my deploy to github working?
-function _renderSuggestedPairRow(ctx) {
-  const suggestionInfo = ctx.txn.suggestion_info;
-  const suggestedTxnId = escapeHtml(suggestionInfo.suggested_txn_id);
-  const proposalId = suggestionInfo.proposal_id;
-  const confidencePct = Math.round((suggestionInfo.confidence || 0) * 100);
-
-  const categoryCell = _buildCategoryAutocomplete(
-    ctx.txnId, ctx.accountId, suggestionInfo.suggested_user_category,
-    'Type to search categories…', ''
-  );
-
-  const approveOnclick = `event.stopPropagation(); approveSuggestion('${suggestedTxnId}', '${escapeHtml(ctx.txnId)}', '${escapeHtml(ctx.accountId)}')`;
-  const dismissOnclick = `event.stopPropagation(); dismissSuggestion(${proposalId}, '${escapeHtml(ctx.accountId)}')`;
-
-  const actionGroup = `<span class="match-action-group">`
-    + `<button class="approve-suggestion-badge" data-txn-id="${suggestedTxnId}" onclick="${approveOnclick}" title="Approve suggested match (${confidencePct}% confidence)">✓</button>`
-    + `<button class="reject-suggestion-badge" onclick="${dismissOnclick}" title="Dismiss suggestion — the manual row will reappear as missing">✗</button>`
-    + `</span> `;
-
-  return {
-    typeBadge: actionGroup,
-    categoryCell,
-    actionCell: '<td></td>',
-    rowCssClass: 'suggested-row',
-    sourceBadge: { label: 'Suggested', cssClass: 'suggested', title: `System-suggested match (${confidencePct}% confidence)` },
-    displayName: suggestionInfo.suggested_description || _txnDescription(ctx.txn),
-  };
-}
-
 
 // ── Split pieces ───────────────────────────────────────────────
 
@@ -483,7 +453,7 @@ function _renderSuggestedPairRow(ctx) {
  *
  * A piece of a waiting match (`splits_awaiting_match`) sits under the Plaid
  * row but is still owned by the hidden manual row until approval, so it
- * carries the match's approve and reject buttons and the green or yellow
+ * carries the match's approve and reject buttons and the green
  * treatment, and offers no modify, delete, repair or date edit: those go to
  * the parent id, which the API refuses while the match waits. A waiting
  * split that no longer sums to the Plaid amount still shows the warning.
@@ -491,7 +461,6 @@ function _renderSuggestedPairRow(ctx) {
  * @param {Object} parentTxn - The row carrying the `splits` array.
  * @param {boolean} splitIsBroken - Whether the pieces differ from the parent amount.
  * @returns {{
- *   waitingKind: ('matched'|'suggested'|null),
  *   showBrokenBadge: boolean,
  *   firstPieceButton: ('modify'|'repair'|'none'),
  *   showDelete: boolean,
@@ -505,7 +474,6 @@ function _renderSuggestedPairRow(ctx) {
  */
 function getSplitPieceTreatment(parentTxn, splitIsBroken) {
   const treatment = {
-    waitingKind: null,
     showBrokenBadge: !!splitIsBroken,
     firstPieceButton: splitIsBroken ? 'repair' : 'modify',
     showDelete: true,
@@ -525,34 +493,8 @@ function getSplitPieceTreatment(parentTxn, splitIsBroken) {
 
   const accountId = parentTxn.account_id || parentTxn.plaid_account_id || '';
 
-  // The unsplit row checks the suggestion first, so a piece does too.
-  const suggestionInfo = parentTxn.suggestion_info;
-  if (suggestionInfo) {
-    const confidencePct = Math.round((suggestionInfo.confidence || 0) * 100);
-    treatment.waitingKind = 'suggested';
-    treatment.rowCssClass = 'suggested-row';
-    treatment.sourceBadge = {
-      label: 'Suggested',
-      cssClass: 'suggested',
-      title: `System-suggested match (${confidencePct}% confidence)`,
-    };
-    treatment.approve = {
-      call: 'approveSuggestion',
-      args: [suggestionInfo.suggested_txn_id, parentTxn.transaction_id, accountId],
-      catchErrors: false,
-      title: `Approve suggested match (${confidencePct}% confidence)`,
-    };
-    treatment.reject = {
-      call: 'dismissSuggestion',
-      args: [suggestionInfo.proposal_id, accountId],
-      title: 'Dismiss suggestion — the manual row will reappear as missing',
-    };
-    return treatment;
-  }
-
   const matchInfo = parentTxn.match_info;
   if (matchInfo) {
-    treatment.waitingKind = 'matched';
     treatment.rowCssClass = 'matched-row';
     treatment.sourceBadge = {
       label: 'Matched',
@@ -607,13 +549,11 @@ function renderWaitingPieceBadges(treatment) {
   const approveCall = _inlineCallText(treatment.approve.call, treatment.approve.args)
     + (treatment.approve.catchErrors ? ".catch(err => showStatus(err.message, 'error'))" : '');
   const rejectCall = _inlineCallText(treatment.reject.call, treatment.reject.args);
-  const approveClass = treatment.waitingKind === 'suggested' ? 'approve-suggestion-badge' : 'approve-match-badge';
-  const rejectClass = treatment.waitingKind === 'suggested' ? 'reject-suggestion-badge' : 'reject-match-badge';
 
   return treatment.billBadgeHtml
     + `<span class="match-action-group">`
-    + `<button class="${approveClass}" data-txn-id="${escapeHtml(String(treatment.approve.args[0]))}" onclick="event.stopPropagation(); ${approveCall};" title="${escapeHtml(treatment.approve.title)}">✓</button>`
-    + `<button class="${rejectClass}" onclick="event.stopPropagation(); ${rejectCall}" title="${escapeHtml(treatment.reject.title)}">✗</button>`
+    + `<button class="approve-match-badge" data-txn-id="${escapeHtml(String(treatment.approve.args[0]))}" onclick="event.stopPropagation(); ${approveCall};" title="${escapeHtml(treatment.approve.title)}">✓</button>`
+    + `<button class="reject-match-badge" onclick="event.stopPropagation(); ${rejectCall}" title="${escapeHtml(treatment.reject.title)}">✗</button>`
     + `</span> `;
 }
 
@@ -830,11 +770,6 @@ function renderRowByType(ctx) {
   // Matched rows (the manual/scheduled side) — approve + unmatch
   if (rowType === TXN_TYPE.BILL_MATCHED || rowType === TXN_TYPE.MANUAL_MATCH) {
     return _renderMatchedRow(ctx);
-  }
-
-  // Suggested pair (plaid side with a pending system proposal) — yellow badge
-  if (ctx.txn.suggestion_info) {
-    return _renderSuggestedPairRow(ctx);
   }
 
   // Matched pair (the plaid side, carrying match_info) — approve + unmatch

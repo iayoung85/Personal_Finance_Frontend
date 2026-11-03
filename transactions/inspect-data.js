@@ -205,7 +205,7 @@ function _buildInspectWorkingData(localTransaction, inspectContext) {
 function _inspectParentId(parentTxn) {
   if (!parentTxn) return null;
   if (parentTxn.splits_awaiting_match) {
-    const owningRowId = parentTxn.suggestion_info?.suggested_txn_id || parentTxn.match_info?.matched_txn_id;
+    const owningRowId = parentTxn.match_info?.matched_txn_id;
     if (owningRowId) return owningRowId;
   }
   return parentTxn.transaction_id || null;

@@ -520,9 +520,9 @@ async function _executeTurboImport() {
     renderTransactionTable();
 
     // Backend runs matching synchronously during import — the response
-    // includes a reconciliation object with proposal/orphan counts.
+    // includes a reconciliation object with an orphan count.
     var recon = data.reconciliation || {};
-    if ((recon.proposals_created || 0) > 0 || (recon.orphaned || 0) > 0) {
+    if ((recon.orphaned || 0) > 0) {
       await checkAndRenderReconciliationBanner();
     }
 

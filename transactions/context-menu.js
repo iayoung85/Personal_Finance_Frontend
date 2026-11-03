@@ -131,8 +131,6 @@ function _buildContextTxnData(row) {
     userCategory: row.dataset.userCategory || fallbackTxn.user_category || parentTxn?.user_category || '',
     merchantName: row.dataset.merchantName || fallbackTxn.merchant_name || parentTxn?.merchant_name || '',
     matchManualTxnId: row.dataset.matchManualTxnId || parentTxn?.match_info?.matched_txn_id || '',
-    suggestionTxnId: row.dataset.suggestionTxnId || parentTxn?.suggestion_info?.suggested_txn_id || '',
-    suggestionProposalId: row.dataset.suggestionProposalId || parentTxn?.suggestion_info?.proposal_id || '',
     isHidden: row.dataset.isHidden
       ? row.dataset.isHidden === 'true'
       : !!(fallbackTxn.is_hidden || parentTxn?.is_hidden),
@@ -182,14 +180,14 @@ function _appendInspectMenuItem(items, txnData) {
  * row itself says source "split", so the decision follows the parent's type
  * and account: the same parents the unsplit menu offers Match for.
  *
- * Parents that already carry a match or a suggestion offer nothing here.
+ * Parents that already carry a match offer nothing here.
  *
  * @param {Object|null} parentTxn - The split's parent as the API returned it.
  * @param {Array<Object>} accountList - Accounts, for the linked/investment check.
  * @returns {boolean}
  */
 function _canMatchSplitParent(parentTxn, accountList) {
-  if (!parentTxn || parentTxn.match_info || parentTxn.suggestion_info) return false;
+  if (!parentTxn || parentTxn.match_info) return false;
 
   const parentType = getTransactionType(parentTxn);
   if (parentType === TXN_TYPE.BILL_MISSING || parentType === TXN_TYPE.MANUAL_MISSING) return true;
@@ -217,15 +215,6 @@ function _canMatchSplitParent(parentTxn, accountList) {
 function _buildWaitingPieceMenuItems(txnData) {
   const parentTxn = txnData && txnData.parentTransaction;
   if (!txnData.isSplitChild || !parentTxn || !parentTxn.splits_awaiting_match) return null;
-
-  // The unsplit waiting row checks the suggestion first, so a piece does too.
-  if (parentTxn.suggestion_info) {
-    return [
-      { label: '✓ Approve Suggestion', action: 'approve-suggestion', separator: false },
-      { label: '✗ Dismiss Suggestion', action: 'dismiss-suggestion', separator: true },
-      { label: '🔍 Inspect Match', action: 'inspect-suggestion', separator: false },
-    ];
-  }
 
   if (parentTxn.match_info) {
     return [
@@ -275,7 +264,6 @@ function _buildMenuItems(txnData) {
   const isMissing = txnType === TXN_TYPE.BILL_MISSING || txnType === TXN_TYPE.MANUAL_MISSING;
   const isMatched = txnType === TXN_TYPE.BILL_MATCHED || txnType === TXN_TYPE.MANUAL_MATCH;
   const isMatchedPair = !!txnData.matchManualTxnId;
-  const isSuggestedPair = !!txnData.suggestionTxnId;
   const isOpeningBalance = txnType === TXN_TYPE.SYSTEM_OPENING_BALANCE || txnType === TXN_TYPE.SYSTEM_MANUAL_OPENING_BALANCE;
   const isOrphaned = txnType === TXN_TYPE.MANUAL_ORPHANED;
   const isReconciliation = txnType === TXN_TYPE.SYSTEM_RECONCILIATION;
@@ -371,26 +359,6 @@ function _buildMenuItems(txnData) {
       action: 'delete-missing',
       separator: false,
       destructive: true,
-    });
-    return _appendInspectMenuItem(items, txnData);
-  }
-
-  // Suggested match (system proposal — yellow badge row)
-  if (isSuggestedPair) {
-    items.push({
-      label: '✓ Approve Suggestion',
-      action: 'approve-suggestion',
-      separator: false,
-    });
-    items.push({
-      label: '✗ Dismiss Suggestion',
-      action: 'dismiss-suggestion',
-      separator: true,
-    });
-    items.push({
-      label: '🔍 Inspect Match',
-      action: 'inspect-suggestion',
-      separator: false,
     });
     return _appendInspectMenuItem(items, txnData);
   }
@@ -687,15 +655,6 @@ function _dispatchContextAction(action, txnData) {
       break;
     case 'inspect-match':
       _handleContextInspectMatch(txnData);
-      break;
-    case 'approve-suggestion':
-      _handleContextApproveSuggestion(txnData);
-      break;
-    case 'dismiss-suggestion':
-      _handleContextDismissSuggestion(txnData);
-      break;
-    case 'inspect-suggestion':
-      _handleContextInspectSuggestion(txnData);
       break;
     case 'edit-investment-balance':
       _handleContextEditInvestmentBalance(txnData);
@@ -1375,77 +1334,6 @@ function _handleContextInspectMatch(txnData) {
     ...txnData,
     relatedData: matchedTxn,
     relatedTitle: sourceLabel,
-    forceLocal: true,
-  });
-}
-
-// ─── Suggestion (system proposal) context menu handlers ──────
-
-async function _handleContextApproveSuggestion(txnData) {
-  const suggestedTxnId = txnData.suggestionTxnId;
-  const plaidTxnId = txnData.txnId;
-  if (!suggestedTxnId || !plaidTxnId) {
-    showStatus('Missing suggestion data', 'error');
-    return;
-  }
-  if (!confirm('Approve this suggested match? The manual transaction will be merged into the Plaid transaction.')) return;
-  try {
-    await manualReconciliationMatch(suggestedTxnId, plaidTxnId);
-    showStatus('Suggestion approved — manual transaction merged', 'success');
-    await refreshAccountTransactions(txnData.accountId);
-  } catch (approveError) {
-    showStatus(`Failed to approve suggestion: ${approveError.message}`, 'error');
-  }
-}
-
-async function _handleContextDismissSuggestion(txnData) {
-  const proposalId = txnData.suggestionProposalId;
-  if (!proposalId) {
-    showStatus('No proposal to dismiss', 'error');
-    return;
-  }
-  try {
-    const response = await authenticatedFetch(
-      `${BACKEND_URL}/api/transactions/resolution/dismiss_suggestion`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposal_id: Number(proposalId) }),
-      }
-    );
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.error || 'Failed to dismiss suggestion');
-    }
-    showStatus('Suggestion dismissed', 'success');
-    await refreshAccountTransactions(txnData.accountId);
-  } catch (dismissError) {
-    showStatus(`Failed to dismiss suggestion: ${dismissError.message}`, 'error');
-  }
-}
-
-function _handleContextInspectSuggestion(txnData) {
-  if (typeof openInspectDataModal !== 'function') {
-    showStatus('Inspect data modal not available', 'error');
-    return;
-  }
-
-  const suggestedTxnId = txnData.suggestionTxnId;
-  if (!suggestedTxnId) {
-    showStatus('No suggested counterpart found', 'error');
-    return;
-  }
-
-  const suggestedTxn = transactions.find(txn => txn.transaction_id === suggestedTxnId);
-  if (!suggestedTxn) {
-    showStatus('Suggested transaction not found in local data', 'error');
-    return;
-  }
-
-  openInspectDataModal({
-    ...txnData,
-    relatedData: suggestedTxn,
-    relatedTitle: 'System-Suggested Manual Transaction',
     forceLocal: true,
   });
 }

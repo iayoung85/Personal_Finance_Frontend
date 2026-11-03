@@ -192,12 +192,6 @@ function _renderImportReport(report) {
           <span class="stat-value">${recon.auto_matched}</span>
         </div>`;
       }
-      if (recon.proposals_created) {
-        html += `<div class="import-report-stat warning">
-          <span>Proposals for review</span>
-          <span class="stat-value">${recon.proposals_created}</span>
-        </div>`;
-      }
       if (recon.orphaned) {
         html += `<div class="import-report-stat warning">
           <span>Orphaned (needs review)</span>

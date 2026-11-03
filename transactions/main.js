@@ -110,7 +110,7 @@ $(document).ready(async function() {
   // Initialize click-to-edit on date, description, and amount cells
   initInlineEditing();
 
-  // Check for pending reconciliation proposals and show banner if needed
+  // Show the Resolution Center banner if there are orphaned manual rows
   await checkAndRenderReconciliationBanner();
 
   // If returning from categories.html after creating a category for a

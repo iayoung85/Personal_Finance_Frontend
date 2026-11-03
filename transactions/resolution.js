@@ -8,8 +8,7 @@
 
 /**
  * Fetch the reconciliation banner status from backend.
- * Returns {has_pending_proposals, pending_count, missing_count,
- *          orphaned_count, batch_id, accounts_affected}
+ * Returns {missing_count, orphaned_count, accounts_affected}
  */
 async function fetchReconciliationStatus() {
   const response = await authenticatedFetch(
@@ -23,26 +22,24 @@ async function fetchReconciliationStatus() {
 }
 
 /**
- * Fetch full proposal list with decrypted transaction details.
- * Optional batch_id narrows to a single re-link event.
+ * Fetch the orphaned manual transactions with decrypted details.
+ * Returns {orphaned_transactions, missing_transactions}, the second an
+ * alias of the first.
  */
-async function fetchReconciliationProposals(batchId) {
-  let url = `${BACKEND_URL}/api/transactions/resolution/proposals`;
-  if (batchId) {
-    url += `?batch_id=${encodeURIComponent(batchId)}`;
-  }
-  const response = await authenticatedFetch(url);
+async function fetchOrphanedTransactions() {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/transactions/resolution/proposals`
+  );
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Failed to fetch reconciliation proposals');
+    throw new Error(errorData.error || 'Failed to fetch orphaned transactions');
   }
   return response.json();
 }
 
 /**
- * Batch-resolve proposals and orphaned transactions.
- * payload: { approve: [id,...], reject: [id,...],
- *            delete_orphaned: [txn_id,...] }
+ * Batch-resolve orphaned transactions.
+ * payload: { delete_orphaned: [txn_id,...] }
  *
  * Note: force_keep is no longer supported. Orphans must be deleted
  * or force-matched via forceMatchOrphanToPlaid().
@@ -145,31 +142,18 @@ async function checkAndRenderReconciliationBanner() {
 
   try {
     const status = await fetchReconciliationStatus();
-    reconciliationStatus = status;
+    const orphanedCount = status.orphaned_count || 0;
 
-    if (!status.has_pending_proposals) {
+    if (orphanedCount <= 0) {
       bannerEl.classList.add('hidden');
       return;
     }
 
-    const totalCount = (status.pending_count || 0)
-             + (status.orphaned_count || 0);
-
-    const parts = [];
-    if (status.pending_count > 0) {
-      parts.push(`${status.pending_count} match proposal${status.pending_count !== 1 ? 's' : ''}`);
-    }
-    if (status.orphaned_count > 0) {
-      parts.push(`${status.orphaned_count} orphaned`);
-    }
-
-    const summary = parts.join(', ');
-
     bannerEl.innerHTML = `
       <span class="reconciliation-banner-icon">⚠️</span>
       <span class="reconciliation-banner-text">
-        <strong>${totalCount}</strong> relink conflict item${totalCount !== 1 ? 's' : ''}
-        need resolution (${summary}).
+        <strong>${orphanedCount}</strong> relink conflict item${orphanedCount !== 1 ? 's' : ''}
+        need resolution (orphaned manual transactions).
       </span>
       <span class="reconciliation-banner-actions">
         <button class="btn-banner btn-banner-primary" onclick="openReconciliationCenter()">Review &amp; Resolve</button>
@@ -189,24 +173,21 @@ function dismissReconciliationBanner() {
   if (bannerEl) bannerEl.classList.add('hidden');
 }
 
-/**
- * After a bulk import, the backend may run matching asynchronously.
 // ─── Resolution Center Modal ────────────────────────────────
 
 /**
- * Open the full Resolution Center overlay for batch review.
- * Fetches proposals, builds the UI, and displays inside the
+ * Open the Resolution Center overlay for orphaned manual transactions.
+ * Fetches the orphans, builds the UI, and displays inside the
  * generic modal system (openModal from utils.js).
  */
 async function openReconciliationCenter() {
   showStatus('Loading reconciliation data…', 'info');
 
   try {
-    const batchId = reconciliationStatus?.batch_id || null;
-    const data = await fetchReconciliationProposals(batchId);
+    const data = await fetchOrphanedTransactions();
 
     clearStatus();
-    _renderReconciliationModal(data.proposals || [], data.orphaned_transactions || data.missing_transactions || []);
+    _renderReconciliationModal(data.orphaned_transactions || data.missing_transactions || []);
   } catch (loadError) {
     showStatus(`Failed to load reconciliation data: ${loadError.message}`, 'error');
   }
@@ -214,85 +195,13 @@ async function openReconciliationCenter() {
 
 /**
  * Build and display the Resolution Center modal content.
- * Proposals are pre-sorted by confidence (descending) from the backend.
  */
-function _renderReconciliationModal(proposals, orphanedTransactions) {
-  const hasProposals = proposals.length > 0;
+function _renderReconciliationModal(orphanedTransactions) {
   const hasOrphaned = orphanedTransactions.length > 0;
 
   let bodyHtml = '<div class="recon-center">';
 
-  // ── Section 1: Auto-Match Proposals ──
-  if (hasProposals) {
-    bodyHtml += `
-      <div class="recon-section">
-        <div class="recon-section-header">
-          <h4>Match Proposals (${proposals.length})</h4>
-          <button class="btn-banner btn-banner-primary recon-approve-all-btn"
-                  onclick="_approveAllProposals()">
-            ✓ Approve All Matches
-          </button>
-        </div>
-        <p class="recon-section-desc">
-          The system found likely matches between your orphaned manual entries and
-          Plaid-downloaded transactions. Review each pair below.
-        </p>
-        <div class="recon-proposals-list">
-    `;
-
-    proposals.forEach(proposal => {
-      const confidencePct = Math.round((proposal.confidence || 0) * 100);
-      const confidenceClass = confidencePct >= 85 ? 'high' : confidencePct >= 50 ? 'medium' : 'low';
-      const reasons = (proposal.match_reasons || []).join(', ') || 'N/A';
-
-      const manualTxn = proposal.manual_transaction || {};
-      const plaidTxn = proposal.plaid_transaction || {};
-
-      bodyHtml += `
-        <div class="recon-proposal-card" data-proposal-id="${proposal.proposal_id}">
-          <div class="recon-proposal-header">
-            <span class="recon-confidence recon-confidence-${confidenceClass}">
-              ${confidencePct}% confidence
-            </span>
-            <span class="recon-reasons">${escapeHtml(reasons)}</span>
-            <div class="recon-proposal-actions">
-              <button class="btn-recon btn-recon-approve"
-                      onclick="_toggleProposalDecision(${proposal.proposal_id}, 'approve')"
-                      data-proposal-id="${proposal.proposal_id}">
-                ✓ Approve
-              </button>
-              <button class="btn-recon btn-recon-reject"
-                      onclick="_toggleProposalDecision(${proposal.proposal_id}, 'reject')"
-                      data-proposal-id="${proposal.proposal_id}">
-                ✗ Reject
-              </button>
-            </div>
-          </div>
-          <div class="recon-comparison">
-            <div class="recon-side recon-side-manual">
-              <div class="recon-side-label">Manual/Scheduled Entry</div>
-              <div class="recon-txn-detail"><strong>Date:</strong> ${escapeHtml(manualTxn.date || '—')}</div>
-              <div class="recon-txn-detail"><strong>Description:</strong> ${escapeHtml(manualTxn.description || manualTxn.name || '—')}</div>
-              <div class="recon-txn-detail"><strong>Amount:</strong> ${_formatCurrency(manualTxn.amount)}</div>
-              <div class="recon-txn-detail"><strong>Category:</strong> ${escapeHtml(manualTxn.user_category || '—')}</div>
-            </div>
-            <div class="recon-side-arrow">⟷</div>
-            <div class="recon-side recon-side-plaid">
-              <div class="recon-side-label">Plaid Transaction</div>
-              <div class="recon-txn-detail"><strong>Date:</strong> ${escapeHtml(plaidTxn.date || '—')}</div>
-              <div class="recon-txn-detail"><strong>Description:</strong> ${escapeHtml(plaidTxn.description || plaidTxn.name || '—')}</div>
-              <div class="recon-txn-detail"><strong>Amount:</strong> ${_formatCurrency(plaidTxn.amount)}</div>
-              <div class="recon-txn-detail"><strong>Category:</strong> ${escapeHtml(plaidTxn.user_category || plaidTxn.personal_finance_category_primary || '—')}</div>
-            </div>
-          </div>
-        </div>
-      `;
-    });
-
-    bodyHtml += '</div></div>';
-  }
-
-  // ── Section 2: Orphaned Transactions ──
+  // ── Orphaned Transactions ──
   if (hasOrphaned) {
     bodyHtml += `
       <div class="recon-section">
@@ -350,7 +259,7 @@ function _renderReconciliationModal(proposals, orphanedTransactions) {
     bodyHtml += '</div></div>';
   }
 
-  if (!hasProposals && !hasOrphaned) {
+  if (!hasOrphaned) {
     bodyHtml += '<p class="recon-empty">No pending resolution items. Everything is in sync.</p>';
   }
 
@@ -361,66 +270,20 @@ function _renderReconciliationModal(proposals, orphanedTransactions) {
     body: bodyHtml,
     actions: [
       {
-        label: 'Apply Decisions',
-        className: 'btn-banner btn-banner-primary',
-        onClick: _submitReconciliationDecisions,
-      },
-      {
-        label: 'Cancel',
+        label: 'Close',
         className: 'secondary',
         onClick: closeModal,
       },
     ],
   });
 
-  // Widen the modal for the resolution center — it needs more space for
-  // the side-by-side comparison layout.
+  // Widen the modal for the resolution center — the orphan rows are wide.
   const modalEl = document.querySelector('#modal-overlay .modal');
   if (modalEl) {
     modalEl.style.width = 'min(920px, 95vw)';
     modalEl.style.maxHeight = '85vh';
     modalEl.style.overflow = 'auto';
   }
-}
-
-// ─── Proposal decision tracking ─────────────────────────────
-// Stored in a module-level map: proposalId → 'approve' | 'reject' | null
-
-const _proposalDecisions = new Map();
-
-function _toggleProposalDecision(proposalId, decision) {
-  const current = _proposalDecisions.get(proposalId);
-  // Toggle off if same button clicked again
-  const newDecision = current === decision ? null : decision;
-  _proposalDecisions.set(proposalId, newDecision);
-
-  // Update button visual state
-  const card = document.querySelector(`.recon-proposal-card[data-proposal-id="${proposalId}"]`);
-  if (!card) return;
-
-  const approveBtn = card.querySelector('.btn-recon-approve');
-  const rejectBtn = card.querySelector('.btn-recon-reject');
-
-  approveBtn.classList.toggle('active', newDecision === 'approve');
-  rejectBtn.classList.toggle('active', newDecision === 'reject');
-  card.classList.toggle('recon-decided-approve', newDecision === 'approve');
-  card.classList.toggle('recon-decided-reject', newDecision === 'reject');
-}
-
-function _approveAllProposals() {
-  const cards = document.querySelectorAll('.recon-proposal-card');
-  cards.forEach(card => {
-    const proposalId = parseInt(card.dataset.proposalId, 10);
-    _proposalDecisions.set(proposalId, 'approve');
-
-    const approveBtn = card.querySelector('.btn-recon-approve');
-    const rejectBtn = card.querySelector('.btn-recon-reject');
-    if (approveBtn) approveBtn.classList.add('active');
-    if (rejectBtn) rejectBtn.classList.remove('active');
-    card.classList.add('recon-decided-approve');
-    card.classList.remove('recon-decided-reject');
-  });
-  showStatus(`Marked all ${cards.length} proposals for approval`, 'info');
 }
 
 // ─── Orphaned transaction checkbox/action helpers ───────────
@@ -491,8 +354,6 @@ async function _singleOrphanedAction(transactionId, action) {
     showStatus(`Action failed: ${resolveError.message}`, 'error');
   }
 }
-
-// ─── Submit all decisions from the modal ────────────────────
 
 // ─── Force Match Pick Mode ──────────────────────────────────
 // When the user clicks "Force Match" on an orphan (from the modal or
@@ -654,61 +515,6 @@ function _bulkForceMatchOrphaned() {
   enterForceMatchPickMode(selectedIds[0]);
 }
 
-// ─── Submit all decisions from the modal (continued) ────────
-
-async function _submitReconciliationDecisions() {
-  const payload = {
-    approve: [],
-    reject: [],
-    delete_orphaned: [],
-  };
-
-  // Gather proposal decisions
-  _proposalDecisions.forEach((decision, proposalId) => {
-    if (decision === 'approve') payload.approve.push(proposalId);
-    else if (decision === 'reject') payload.reject.push(proposalId);
-  });
-
-  // No-op check: nothing decided
-  const totalDecisions = payload.approve.length + payload.reject.length;
-  if (totalDecisions === 0) {
-    showStatus('No decisions to submit. Approve or reject proposals first.', 'warning');
-    return;
-  }
-
-  try {
-    const result = await resolveReconciliationBatch(payload);
-
-    const parts = [];
-    if (result.approved > 0) parts.push(`${result.approved} approved`);
-    if (result.rejected > 0) parts.push(`${result.rejected} rejected`);
-    if (result.deleted > 0) parts.push(`${result.deleted} deleted`);
-
-    // A proposal whose two rows are both split stays pending: approving it
-    // would put two sets of pieces on one row.
-    const skippedBothSplit = result.skipped_both_split || 0;
-    if (skippedBothSplit > 0) {
-      parts.push(`${skippedBothSplit} left pending because both rows are split; delete one split first`);
-    }
-
-    // Approving onto a transfer bank row would touch its partner, which the
-    // user cannot see from here.
-    const skippedTransferBankRow = result.skipped_transfer_bank_row || 0;
-    if (skippedTransferBankRow > 0) {
-      parts.push(`${skippedTransferBankRow} left pending because the bank row is a transfer; reject it instead`);
-    }
-
-    const anySkipped = skippedBothSplit > 0 || skippedTransferBankRow > 0;
-    showStatus(`Reconciliation complete: ${parts.join(', ')}`, anySkipped ? 'warning' : 'success');
-    closeModal();
-
-    _proposalDecisions.clear();
-    _refreshAfterReconciliation();
-  } catch (submitError) {
-    showStatus(`Reconciliation submit failed: ${submitError.message}`, 'error');
-  }
-}
-
 // ─── Post-resolution refresh ────────────────────────────────
 
 async function _refreshAfterReconciliation() {
@@ -730,8 +536,8 @@ async function _refreshAfterReconciliation() {
  * delivery) or PLAID_CONVERTED, only PLAID_CLEARED targets are offered —
  * matching manual-to-manual doesn't make sense in this flow. Split rows are
  * left out because the API refuses a match between two split rows, and rows
- * already carrying a match or a suggestion are left out because they are
- * waiting on their own resolution.
+ * already carrying a match are left out because they are waiting on their
+ * own resolution.
  *
  * @param {Object} sourceTxn - The transaction being matched (a split's parent, never a piece).
  * @param {Array<Object>} allTransactions - Every cached transaction.
@@ -753,7 +559,7 @@ function _filterMatchPickerCandidates(sourceTxn, allTransactions) {
     if ((txn.account_id || txn.plaid_account_id) !== sourceAccountId) return false;
     if (txn.matched_transaction_id) return false;
     if (txn.is_split && Array.isArray(txn.splits) && txn.splits.length > 0) return false;
-    if (txn.match_info || txn.suggestion_info) return false;
+    if (txn.match_info) return false;
     return true;
   });
 }
@@ -889,50 +695,6 @@ async function _selectMatchCandidate(missingTxnId, targetTxnId) {
     showStatus(`Match failed: ${matchError.message}`, 'error');
   }
 }
-
-// ─── Suggestion (system proposal) inline actions ────────────
-
-/**
- * Approve a system-suggested match by performing a manual ledger match.
- * Called from the yellow checkmark button in the suggested pair row.
- */
-async function approveSuggestion(suggestedTxnId, plaidTxnId, accountId) {
-  if (!confirm('Approve this suggested match? The manual transaction will be merged into the Plaid transaction.')) return;
-  try {
-    const result = await manualReconciliationMatch(suggestedTxnId, plaidTxnId);
-    _applyReconciliationMutationToCache(result, suggestedTxnId);
-    showStatus('Suggestion approved — manual transaction merged', 'success');
-    await refreshAccountTransactions(accountId);
-  } catch (approveError) {
-    showStatus(`Failed to approve suggestion: ${approveError.message}`, 'error');
-  }
-}
-
-/**
- * Dismiss a system-suggested match.  The proposal is marked dismissed and
- * the manual missing row reappears in the ledger on next refresh.
- */
-async function dismissSuggestion(proposalId, accountId) {
-  try {
-    const response = await authenticatedFetch(
-      `${BACKEND_URL}/api/transactions/resolution/dismiss_suggestion`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ proposal_id: proposalId }),
-      }
-    );
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.error || 'Failed to dismiss suggestion');
-    }
-    showStatus('Suggestion dismissed', 'success');
-    await refreshAccountTransactions(accountId);
-  } catch (dismissError) {
-    showStatus(`Failed to dismiss suggestion: ${dismissError.message}`, 'error');
-  }
-}
-
 
 // ─── Approve match API calls ────────────────────────────────
 
