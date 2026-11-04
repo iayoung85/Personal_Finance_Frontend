@@ -213,6 +213,10 @@ function _getFilteredExportRows(txnsSource) {
   for (const txn of txnsSource) {
     if (txn.source === 'split') continue;
 
+    // The Plaid row already shows a waiting match as approval will leave
+    // it, and holds its pieces; the hidden matched row would repeat it.
+    if (txn.hidden_by_match) continue;
+
     if (txn.source === 'opening_balance' || txn.source === 'manual_opening_balance') {
       continue;
     }
@@ -326,7 +330,9 @@ async function exportFilteredTransactionsJSON() {
         accounts: metadata.accounts,
       },
       transactions: visibleTransactions.filter(
-        txn => txn.source !== 'opening_balance' && txn.source !== 'manual_opening_balance'
+        txn => txn.source !== 'opening_balance'
+          && txn.source !== 'manual_opening_balance'
+          && !txn.hidden_by_match
       ),
     };
 

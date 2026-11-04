@@ -754,6 +754,11 @@ td {
 .txn-memo-text:hover {
   color: var(--text-secondary);
 }
+.txn-memo-text.txn-memo-locked,
+.txn-memo-text.txn-memo-locked:hover {
+  cursor: default;
+  color: var(--text-secondary);
+}
 .txn-memo-text.inline-memo-active {
   display: block;
   width: 100%;
@@ -3242,6 +3247,112 @@ tr:hover {
   color: var(--color-danger);
   border-color: var(--color-danger);
   transform: scale(1.15);
+}
+
+/* Compare button: same circle as ✓ and ✗, accent-colored when open. */
+.compare-match-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-muted);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.compare-match-badge:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  transform: scale(1.15);
+}
+
+.compare-match-badge.is-open {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+.compare-match-badge:focus-visible,
+.approve-match-badge:focus-visible,
+.reject-match-badge:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+/* Read-only compare popover, styled like the right-click menu. */
+.match-compare-popover {
+  position: fixed;
+  z-index: 10000;
+  min-width: 220px;
+  max-width: min(320px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.match-compare-popover.hidden {
+  display: none;
+}
+
+.match-compare-popover:focus {
+  outline: none;
+}
+
+.match-compare-section + .match-compare-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-primary);
+}
+
+.match-compare-heading {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.match-compare-grid {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 2px;
+  margin: 0;
+}
+
+.match-compare-grid dt {
+  text-align: right;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.match-compare-grid dd {
+  margin: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.match-compare-grid dd.match-compare-blank {
+  color: var(--text-muted);
 }
 
 .source-badge.orphaned {

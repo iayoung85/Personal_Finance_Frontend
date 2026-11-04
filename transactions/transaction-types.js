@@ -139,6 +139,62 @@ function getInlineEditableFields(txnType) {
   return fields;
 }
 
+
+// ── Waiting matches ────────────────────────────────────────────
+
+/** Tooltip for every edit a waiting match refuses. */
+const WAITING_MATCH_LOCK_REASON = 'Approve or unmatch this match first';
+
+/**
+ * Whether a row is either side of a waiting match: the Plaid row that
+ * carries `match_info`, or a matched manual or bill row pointing at it.
+ * The API refuses edits to both until the match is approved or unmatched;
+ * hide, unhide and mark reviewed stay allowed. A split piece is not a
+ * waiting row: the API lets its pieces be edited.
+ *
+ * @param {Object|null} txn - A row as the API returned it.
+ * @returns {boolean}
+ */
+function isWaitingMatchRow(txn) {
+  if (!txn) return false;
+  if (txn.match_info || txn.hidden_by_match) return true;
+  const txnType = _SOURCE_STATUS_MAP[`${txn.source}:${txn.status}`];
+  return txnType === TXN_TYPE.MANUAL_MATCH || txnType === TXN_TYPE.BILL_MATCHED;
+}
+
+/**
+ * Which inline edits a ledger row offers. A waiting match offers none, so
+ * the row never opens an editor the API would refuse.
+ *
+ * @param {Object} txn - The row as the API returned it.
+ * @param {string} txnType - Its TXN_TYPE.
+ * @returns {{date: boolean, description: boolean, amount: boolean, memo: boolean, category: boolean, lockReason: string}}
+ */
+function getRowEditAffordances(txn, txnType) {
+  if (isWaitingMatchRow(txn)) {
+    return {
+      date: false,
+      description: false,
+      amount: false,
+      memo: false,
+      category: false,
+      lockReason: WAITING_MATCH_LOCK_REASON,
+    };
+  }
+
+  // Plaid rows edit their name through the description-override editor.
+  const isPlaidRow = txnType === TXN_TYPE.PLAID_CLEARED || txnType === TXN_TYPE.PLAID_PENDING;
+  return {
+    date: canInlineEditDate(txnType),
+    description: canInlineEditDescription(txnType) || isPlaidRow,
+    // An auto-split bill keeps its parent equal to its pieces' sum.
+    amount: canInlineEditAmount(txnType) && !(txn && txn.has_splits_template),
+    memo: true,
+    category: true,
+    lockReason: '',
+  };
+}
+
 const MATCHABLE_TYPES = new Set([
   TXN_TYPE.BILL_MATCHED,
   TXN_TYPE.BILL_MISSING,

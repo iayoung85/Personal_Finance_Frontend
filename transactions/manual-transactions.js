@@ -1366,6 +1366,10 @@ async function unmatchScheduledTransaction(transactionId) {
     return;
   }
 
+  // Read from the cache before the request: afterwards the rows no longer
+  // say which transfer partner the waiting match was previewing.
+  const touchedAccountIds = accountsTouchedByMatch(transactionId, transactions);
+
   try {
     const response = await authenticatedFetch(
       `${BACKEND_URL}/api/transactions/unmatch_scheduled/${encodeURIComponent(transactionId)}`,
@@ -1379,7 +1383,17 @@ async function unmatchScheduledTransaction(transactionId) {
     }
 
     showStatus('Match undone — transaction reverted to missing', 'success');
-    await refreshAccountTransactions(selectedAccountId);
+    closeMatchCompare();
+    // The Plaid row goes back to the bank's own values, and a transfer
+    // partner in another account stops naming it, so every touched account
+    // is fetched again.
+    if (touchedAccountIds === null || touchedAccountIds.length === 0) {
+      await refreshAccountTransactions(null);
+    } else {
+      for (const accountId of touchedAccountIds) {
+        await refreshAccountTransactions(accountId);
+      }
+    }
 
   } catch (networkError) {
     showStatus(`Failed to unmatch: ${networkError.message}`, 'error');

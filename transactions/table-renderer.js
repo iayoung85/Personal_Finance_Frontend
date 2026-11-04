@@ -1185,17 +1185,14 @@ function renderTransactionTable() {
     // ── Data attributes for context menu ──
     const rowDataAttrs = ` data-txn-id="${escapeHtml(txnId)}" data-source="${escapeHtml(txn.source || '')}" data-status="${escapeHtml(txn.status || '')}" data-pending="${!!txn.pending}" data-is-bill="${!!txn.is_bill}" data-bill-id="${escapeHtml(txn.bill_id || '')}" data-account-id="${escapeHtml(accountId)}" data-amount="${txn.amount || 0}" data-is-split="${!!txn.is_split}" data-txn-description="${escapeHtml(txn.description || txn.name || '')}" data-user-category="${escapeHtml(txn.user_category || '')}" data-merchant-name="${escapeHtml(txn.merchant_name || '')}" data-match-manual-txn-id="${escapeHtml(txn.match_info?.matched_txn_id || '')}" data-is-hidden="${!!txn.is_hidden}" data-txn-date="${escapeHtml(txn.date || '')}"`;
 
-    // ── Inline-edit eligibility (date, description, amount) ──
-    const isDateInlineEditable = canInlineEditDate(txnRowType);
-    const isRowDescEditable = canInlineEditDescription(txnRowType);
-    // Auto-split BILL_FUTURE rows expose has_splits_template=true. Editing
-    // the parent amount here would desync the (parent == sum of children)
-    // invariant once the row materializes — the backend blocks it too,
-    // but we lock the click target so users don't see a confusing error.
-    const isAmountInlineEditable = canInlineEditAmount(txnRowType)
-      && !txn.has_splits_template;
-    const isPlaidDescEditable = (txnRowType === TXN_TYPE.PLAID_CLEARED || txnRowType === TXN_TYPE.PLAID_PENDING);
-    const isDescEditable = isRowDescEditable || isPlaidDescEditable;
+    // ── Inline-edit eligibility (date, description, amount, memo) ──
+    // Auto-split BILL_FUTURE rows and waiting matches lock their click
+    // targets: the backend refuses those edits, and a dead editor is
+    // clearer than a refusal after typing.
+    const editAffordances = getRowEditAffordances(txn, txnRowType);
+    const isDateInlineEditable = editAffordances.date;
+    const isAmountInlineEditable = editAffordances.amount;
+    const isDescEditable = editAffordances.description;
 
     // Prefer user_description_override for plaid rows (if the user set one)
     const effectiveDisplayName = txn.user_description_override || rendered.displayName;
@@ -1211,7 +1208,9 @@ function renderTransactionTable() {
 
     const memoText = txn.user_memo || '';
     const memoPlaceholder = 'add memo…';
-    const memoLineHtml = `<span class="txn-memo-text" data-txn-id="${escapeHtml(txnId)}" title="${escapeHtml(memoText)}">${memoText ? escapeHtml(memoText) : `<em class="memo-placeholder">${memoPlaceholder}</em>`}</span>`;
+    const memoLineHtml = editAffordances.memo
+      ? `<span class="txn-memo-text" data-txn-id="${escapeHtml(txnId)}" title="${escapeHtml(memoText)}">${memoText ? escapeHtml(memoText) : `<em class="memo-placeholder">${memoPlaceholder}</em>`}</span>`
+      : `<span class="txn-memo-text txn-memo-locked" data-txn-id="${escapeHtml(txnId)}" data-memo-locked="true" title="${escapeHtml(memoText ? `${memoText} — ${editAffordances.lockReason}` : editAffordances.lockReason)}">${escapeHtml(memoText)}</span>`;
 
     // ── Assemble the row ──
     const isHiddenRow = !!txn.is_hidden;
@@ -1244,7 +1243,7 @@ function renderTransactionTable() {
     }
     rowHtml += `<td class="description-column"${isDescEditable ? ' data-field="description"' : ''}>
       <div class="desc-two-line">
-        <div class="desc-top-line">${fullBadge}${pendingBadge}<span class="${topLineClass}" title="${escapeHtml(effectiveDisplayName)}">${escapeHtml(topLineText)}</span></div>
+        <div class="desc-top-line">${fullBadge}${pendingBadge}<span class="${topLineClass}" title="${escapeHtml(editAffordances.lockReason ? `${effectiveDisplayName} — ${editAffordances.lockReason}` : effectiveDisplayName)}">${escapeHtml(topLineText)}</span></div>
         <div class="desc-memo-line">${memoLineHtml}</div>
       </div>
     </td>`;
@@ -1385,6 +1384,8 @@ function _updateHiddenTransactionCount() {
 function _openInlineMemoEditor(memoSpan) {
   const span = memoSpan instanceof HTMLElement ? memoSpan : memoSpan[0];
   if (!span || span.classList.contains('inline-memo-active')) return;
+  // A waiting match's memo is read-only until the match is settled.
+  if (span.dataset.memoLocked === 'true') return;
 
   // Close any existing inline memo editor elsewhere
   const existingEditor = document.querySelector('.inline-memo-input');

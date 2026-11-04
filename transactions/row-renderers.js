@@ -130,6 +130,20 @@ function _buildCategoryAutocomplete(txnId, accountId, categoryValue, placeholder
 
 
 /**
+ * Category cell for a row that may not be recategorized: the category as
+ * plain text, with the reason on hover.
+ *
+ * @param {string} categoryValue - The category the row shows.
+ * @param {string} lockReason - Tooltip saying why it cannot be edited.
+ * @returns {string} HTML string for the category cell.
+ */
+function _buildLockedCategoryCell(categoryValue, lockReason) {
+  const shownCategory = categoryValue || 'Uncategorized';
+  return `<div class="category-cell"><span class="category-locked" title="${escapeHtml(lockReason || shownCategory)}">${escapeHtml(shownCategory)}</span></div>`;
+}
+
+
+/**
  * Context object built once per-row in renderTransactionTable and passed
  * to every type renderer. Contains pre-computed values that all renderers
  * share so each renderer stays focused on type-specific logic only.
@@ -364,11 +378,9 @@ function _renderMissingRow(ctx) {
 
 
 function _renderMatchedRow(ctx) {
-  // const matchInfo = ctx.txn.match_info; matchInfo.matched_user_category
-  const categoryCell = _buildCategoryAutocomplete(
-    ctx.txnId, ctx.accountId, ctx.currentFullCategory,
-    'Type to search categories…', _unlinkButtonIfLinked(ctx)
-  );
+  // A matched manual or bill row is a side of a waiting match, which the
+  // API will not let be edited until the match is settled.
+  const categoryCell = _buildLockedCategoryCell(ctx.currentFullCategory, WAITING_MATCH_LOCK_REASON);
 
   const approveOnclick = `event.stopPropagation(); approveMatchedTransactionAndRefresh('${escapeHtml(ctx.txnId)}', '${escapeHtml(ctx.accountId)}').catch(err => showStatus(err.message, 'error'));`;
   const unmatchOnclick = `event.stopPropagation(); unmatchScheduledTransaction('${escapeHtml(ctx.txnId)}')`;
@@ -415,13 +427,30 @@ function _matchedPairBillBadge(matchInfo) {
 }
 
 
+/**
+ * The compare button that sits beside a waiting match's ✓ and ✗. Rows from
+ * an API that sends no `compare` get none.
+ *
+ * @param {Object} matchInfo - The Plaid row's match_info.
+ * @param {string} plaidTxnId - The Plaid row's id, where the popover reads `compare`.
+ * @returns {string} HTML for the button, or ''.
+ */
+function _matchCompareButton(matchInfo, plaidTxnId) {
+  if (!matchInfo || !matchInfo.compare || !plaidTxnId) return '';
+  const safeId = escapeHtml(plaidTxnId);
+  return `<button type="button" class="compare-match-badge" data-compare-txn-id="${safeId}"`
+    + ` aria-haspopup="dialog" aria-expanded="false"`
+    + ` onclick="event.stopPropagation(); toggleMatchCompare(this, '${safeId}')"`
+    + ` title="Compare" aria-label="Compare your transaction with the bank's">⇄</button>`;
+}
+
+
 function _renderMatchedPairRow(ctx) {
   const matchInfo = ctx.txn.match_info;
   const unmatchId = escapeHtml(matchInfo.matched_txn_id);
-  const categoryCell = _buildCategoryAutocomplete(
-    ctx.txnId, ctx.accountId, matchInfo.matched_user_category,
-    'Type to search categories…', ''
-  );
+  // The row's plain fields already show what approval will write, so the
+  // category is the row's own; it stays read-only until the match settles.
+  const categoryCell = _buildLockedCategoryCell(ctx.currentFullCategory, WAITING_MATCH_LOCK_REASON);
 
   const approveOnclick = `event.stopPropagation(); approveMatchedTransactionAndRefresh('${unmatchId}', '${escapeHtml(ctx.accountId)}').catch(err => showStatus(err.message, 'error'));`;
   const unmatchOnclick = `event.stopPropagation(); unmatchScheduledTransaction('${unmatchId}')`;
@@ -432,6 +461,7 @@ function _renderMatchedPairRow(ctx) {
   const actionGroup = `<span class="match-action-group">`
     + `<button class="approve-match-badge" data-txn-id="${unmatchId}" onclick="${approveOnclick}" title="Approve this match — removes the manual counterpart">✓</button>`
     + `<button class="reject-match-badge" onclick="${unmatchOnclick}" title="Unmatch — revert manual to missing + detach from plaid">✗</button>`
+    + _matchCompareButton(matchInfo, ctx.txnId)
     + `</span> `;
 
   return {
@@ -440,7 +470,7 @@ function _renderMatchedPairRow(ctx) {
     actionCell: '<td></td>',
     rowCssClass: 'matched-row',
     sourceBadge: { label: 'Matched', cssClass: 'matched', title: matchInfo.matched_bill_id ? 'Bill-matched plaid transaction' : 'Plaid transaction merged with user-entered counterpart' },
-    displayName: matchInfo.matched_description || _txnDescription(ctx.txn),
+    displayName: _txnDescription(ctx.txn),
   };
 }
 
@@ -470,6 +500,7 @@ function _renderMatchedPairRow(ctx) {
  *   billBadgeHtml: string,
  *   approve: ({call: string, args: Array, catchErrors: boolean, title: string}|null),
  *   reject: ({call: string, args: Array, title: string}|null),
+ *   compareHtml: string,
  * }}
  */
 function getSplitPieceTreatment(parentTxn, splitIsBroken) {
@@ -483,6 +514,7 @@ function getSplitPieceTreatment(parentTxn, splitIsBroken) {
     billBadgeHtml: '',
     approve: null,
     reject: null,
+    compareHtml: '',
   };
 
   if (!parentTxn || !parentTxn.splits_awaiting_match) return treatment;
@@ -504,6 +536,7 @@ function getSplitPieceTreatment(parentTxn, splitIsBroken) {
         : 'Plaid transaction merged with user-entered counterpart',
     };
     treatment.billBadgeHtml = _matchedPairBillBadge(matchInfo);
+    treatment.compareHtml = _matchCompareButton(matchInfo, parentTxn.transaction_id);
     treatment.approve = {
       call: 'approveMatchedTransactionAndRefresh',
       args: [matchInfo.matched_txn_id, accountId],
@@ -554,6 +587,7 @@ function renderWaitingPieceBadges(treatment) {
     + `<span class="match-action-group">`
     + `<button class="approve-match-badge" data-txn-id="${escapeHtml(String(treatment.approve.args[0]))}" onclick="event.stopPropagation(); ${approveCall};" title="${escapeHtml(treatment.approve.title)}">✓</button>`
     + `<button class="reject-match-badge" onclick="event.stopPropagation(); ${rejectCall}" title="${escapeHtml(treatment.reject.title)}">✗</button>`
+    + (treatment.compareHtml || '')
     + `</span> `;
 }
 

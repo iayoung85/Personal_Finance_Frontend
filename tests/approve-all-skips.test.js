@@ -29,7 +29,7 @@ test('no skips gives no reasons, so the plain success line is used', () => {
 test('both-split skips are named with their remedy', () => {
   assert.equal(
     toast({ approved_count: 3, skipped_both_split: 1 }),
-    'Approved 3 match(es); 1 left waiting because both rows are split (delete one split first).'
+    'Approved 3 match(es); 1 left waiting because both rows are split (unmatch first).'
   );
 });
 
@@ -43,6 +43,6 @@ test('transfer bank row skips are named with their remedy', () => {
 test('both reasons are listed together', () => {
   assert.equal(
     toast({ approved_count: 3, skipped_both_split: 1, skipped_transfer_bank_row: 2 }),
-    'Approved 3 match(es); 1 left waiting because both rows are split (delete one split first); 2 left waiting because the bank row is a transfer (unmatch first).'
+    'Approved 3 match(es); 1 left waiting because both rows are split (unmatch first); 2 left waiting because the bank row is a transfer (unmatch first).'
   );
 });

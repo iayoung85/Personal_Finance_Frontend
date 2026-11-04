@@ -39,7 +39,6 @@ const ROW_TYPES_THAT_WIN_OVER_TRANSFER = [
   ['missing bill', 'BILL_MISSING', {}],
   ['missing manual', 'MANUAL_MISSING', {}],
   ['converted', 'PLAID_CONVERTED', {}],
-  ['matched', 'MANUAL_MATCH', {}],
 ];
 
 for (const [label, typeKey, ctxExtra] of ROW_TYPES_THAT_WIN_OVER_TRANSFER) {
@@ -54,4 +53,11 @@ for (const [label, typeKey, ctxExtra] of ROW_TYPES_THAT_WIN_OVER_TRANSFER) {
 test('plain cleared transfer row still offers Unlink', () => {
   const html = renderCategory(TXN_TYPE.PLAID_CLEARED, { transfer_pair_id: 'p1' });
   assert.equal((html.match(/unlinkTransfer/g) || []).length, 1);
+});
+
+test('a matched row waits on its match, so it offers no Unlink and no category editor', () => {
+  const linked = renderCategory(TXN_TYPE.MANUAL_MATCH, { transfer_pair_id: 'p1', source: 'manual', status: 'matched' });
+  assert.doesNotMatch(linked, /unlinkTransfer/);
+  assert.doesNotMatch(linked, /category-autocomplete/);
+  assert.match(linked, /Approve or unmatch this match first/);
 });

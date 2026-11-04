@@ -228,6 +228,47 @@ function _buildWaitingPieceMenuItems(txnData) {
   return null;
 }
 
+/** Menu actions the API refuses on either side of a waiting match. */
+const WAITING_MATCH_LOCKED_ACTIONS = new Set([
+  'modify',
+  'make-transfer',
+  'delete',
+  'delete-missing',
+  'reset-plaid-amount',
+  'match-to-adjacent',
+  'force-match',
+]);
+
+/**
+ * Whether the right-clicked row is a side of a waiting match. A row the
+ * cache cannot find falls back to what its row attributes say.
+ *
+ * @param {Object} txnData - Context data for the right-clicked row.
+ * @returns {boolean}
+ */
+function _isWaitingMatchMenuRow(txnData) {
+  if (!txnData || txnData.isSplitChild) return false;
+  const row = txnData.localTransaction || { source: txnData.source, status: txnData.status };
+  return isWaitingMatchRow(row) || !!txnData.matchManualTxnId;
+}
+
+/**
+ * Disable the items a waiting match refuses, with the reason as a tooltip.
+ * Every other item is left as it is.
+ *
+ * @param {Array<Object>} items
+ * @returns {Array<Object>} The same array.
+ */
+function _lockWaitingMatchItems(items) {
+  items.forEach(item => {
+    if (WAITING_MATCH_LOCKED_ACTIONS.has(item.action)) {
+      item.disabled = true;
+      item.disabledReason = WAITING_MATCH_LOCK_REASON;
+    }
+  });
+  return items;
+}
+
 // ─── Build menu items based on transaction type ───────────────
 // Visibility matrix from the implementation plan in transactions.md
 
@@ -363,8 +404,9 @@ function _buildMenuItems(txnData) {
     return _appendInspectMenuItem(items, txnData);
   }
 
-  // Matched transactions get approve actions, bill, and transfer
-  if (isMatched || isMatchedPair) {
+  // Matched transactions get approve actions, bill, and transfer. Edits
+  // the API refuses while the match waits are shown disabled.
+  if (isMatched || isMatchedPair || _isWaitingMatchMenuRow(txnData)) {
     items.push({
       label: '✓ Approve Match',
       action: 'approve-match',
@@ -385,12 +427,24 @@ function _buildMenuItems(txnData) {
       action: 'make-transfer',
       separator: false,
     });
+    if (isPlaid) {
+      items.push(txnData.isHidden
+        ? { label: '👁 Unhide', action: 'unhide', separator: false }
+        : { label: '👁‍🗨 Hide', action: 'hide', separator: false });
+    }
+    if ((isPlaid || isPlaidConverted) && txnData.amountModified) {
+      items.push({
+        label: '↺ Reset Plaid Amount',
+        action: 'reset-plaid-amount',
+        separator: false,
+      });
+    }
     items.push({
       label: '🔍 Inspect Match',
       action: 'inspect-match',
       separator: false,
     });
-    return _appendInspectMenuItem(items, txnData);
+    return _appendInspectMenuItem(_lockWaitingMatchItems(items), txnData);
   }
 
   // ── Virtual BILL_FUTURE gets its own menu: mark paid, modify, skip ──
@@ -543,8 +597,9 @@ function _showContextMenu(cursorX, cursorY, menuItems, txnData) {
   menuItems.forEach(item => {
     const destructiveClass = item.destructive ? ' ctx-destructive' : '';
     const disabledClass = item.disabled ? ' ctx-disabled' : '';
-    const disabledAttr = item.disabled ? ' disabled' : '';
-    html += `<button class="ctx-menu-item${destructiveClass}${disabledClass}" data-action="${item.action}"${disabledAttr}>${item.label}</button>`;
+    const disabledAttr = item.disabled ? ' disabled aria-disabled="true"' : '';
+    const titleAttr = item.disabled && item.disabledReason ? ` title="${escapeHtml(item.disabledReason)}"` : '';
+    html += `<button class="ctx-menu-item${destructiveClass}${disabledClass}" data-action="${item.action}"${disabledAttr}${titleAttr}>${item.label}</button>`;
     if (item.separator) {
       html += '<div class="ctx-menu-separator"></div>';
     }
@@ -554,7 +609,7 @@ function _showContextMenu(cursorX, cursorY, menuItems, txnData) {
   // Attach click handlers — use event delegation on the menu container
   menuEl.onclick = (event) => {
     const btn = event.target.closest('[data-action]');
-    if (!btn) return;
+    if (!btn || btn.disabled) return;
     _dismissContextMenu();
     _dispatchContextAction(btn.dataset.action, txnData);
   };
@@ -984,7 +1039,7 @@ function _approveAllSkipReasons(result) {
   const skippedBothSplit = (result && result.skipped_both_split) || 0;
   const skippedTransferBankRow = (result && result.skipped_transfer_bank_row) || 0;
   if (skippedBothSplit > 0) {
-    reasons.push(`${skippedBothSplit} left waiting because both rows are split (delete one split first)`);
+    reasons.push(`${skippedBothSplit} left waiting because both rows are split (unmatch first)`);
   }
   if (skippedTransferBankRow > 0) {
     reasons.push(`${skippedTransferBankRow} left waiting because the bank row is a transfer (unmatch first)`);
