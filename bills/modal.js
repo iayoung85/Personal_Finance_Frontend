@@ -231,15 +231,6 @@ function _billModalEnsureDOM() {
             </div>
 
             <div class="bill-field">
-              <label for="bill-match-account-scope">Account scope</label>
-              <select id="bill-match-account-scope">
-                <option value="bill_account" selected>This bill's account</option>
-                <option value="any">Any of my accounts</option>
-              </select>
-              <small>Restrict matching to this bill's account, or allow matching against transactions on any linked account.</small>
-            </div>
-
-            <div class="bill-field">
               <label>
                 <input type="checkbox" id="bill-match-sign-enforced" checked>
                 Enforce sign
@@ -528,7 +519,6 @@ function _billModalResetCriteriaForm() {
   document.getElementById('bill-match-date-tolerance').value = '2';
   document.getElementById('bill-match-date-tolerance').disabled = false;
   document.getElementById('bill-match-date-disable').checked = false;
-  document.getElementById('bill-match-account-scope').value = 'bill_account';
   document.getElementById('bill-match-sign-enforced').checked = true;
   document.getElementById('bill-match-plaid-name-patterns').value = '';
   document.getElementById('bill-match-merchant-name-patterns').value = '';
@@ -596,7 +586,6 @@ function _billModalPopulateCriteriaFromBill(bill) {
   toleranceInput.value = toleranceNull ? '' : String(bill.match_date_tolerance_days);
   toleranceInput.disabled = toleranceNull;
 
-  document.getElementById('bill-match-account-scope').value = bill.match_account_scope || 'bill_account';
   document.getElementById('bill-match-sign-enforced').checked = bill.match_sign_enforced !== false;
 
   document.getElementById('bill-match-plaid-name-patterns').value =
@@ -1274,7 +1263,6 @@ function _billModalReadFormData() {
     match_merchant_name_patterns: criteria.match_merchant_name_patterns,
     match_pfc_detailed_categories: criteria.match_pfc_detailed_categories,
     match_day_of_month_set: criteria.match_day_of_month_set,
-    match_account_scope: criteria.match_account_scope,
     match_sign_enforced: criteria.match_sign_enforced,
     start_date: startDate,
     interval,
@@ -1516,7 +1504,6 @@ function _buildBillUpdatePayload(billId, formData, signedAmount, transferAccount
   _setBillEditPayloadField(payload, 'match_merchant_name_patterns', formData.match_merchant_name_patterns, originalBill.match_merchant_name_patterns);
   _setBillEditPayloadField(payload, 'match_pfc_detailed_categories', formData.match_pfc_detailed_categories, originalBill.match_pfc_detailed_categories);
   _setBillEditPayloadField(payload, 'match_day_of_month_set', formData.match_day_of_month_set, originalBill.match_day_of_month_set);
-  _setBillEditPayloadField(payload, 'match_account_scope', formData.match_account_scope, originalBill.match_account_scope);
   _setBillEditPayloadField(payload, 'match_sign_enforced', formData.match_sign_enforced, originalBill.match_sign_enforced);
 
   Object.assign(payload, _bmScheduleChanges(formData, originalBill));
@@ -1635,7 +1622,6 @@ async function _billModalSave() {
       match_merchant_name_patterns: formData.match_merchant_name_patterns,
       match_pfc_detailed_categories: formData.match_pfc_detailed_categories,
       match_day_of_month_set: formData.match_day_of_month_set,
-      match_account_scope: formData.match_account_scope,
       match_sign_enforced: formData.match_sign_enforced
     };
   }
@@ -1753,7 +1739,6 @@ function _billModalReadCriteria() {
     match_merchant_name_patterns: merchantNames,
     match_pfc_detailed_categories: pfcCodes,
     match_day_of_month_set: dayOfMonth,
-    match_account_scope: document.getElementById('bill-match-account-scope').value || 'bill_account',
     match_sign_enforced: document.getElementById('bill-match-sign-enforced').checked,
   };
 }
@@ -1769,7 +1754,6 @@ function _billModalUpdateCriteriaBadge() {
   if (criteria.match_merchant_name_patterns.length > 0) count++;
   if (criteria.match_pfc_detailed_categories.length > 0) count++;
   if (criteria.match_day_of_month_set.length > 0) count++;
-  if (criteria.match_account_scope !== 'bill_account') count++;
   if (criteria.match_sign_enforced !== true) count++;
 
   const badge = document.getElementById('bill-criteria-badge');
