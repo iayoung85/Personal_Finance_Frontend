@@ -183,7 +183,7 @@ const compareModule = load(
 
 test('the compare sections list your side and the bank side in order', () => {
   const sections = plain(compareModule.buildMatchCompareSections(COMPARE));
-  assert.deepEqual(sections.map(section => section.title), ['Your transaction', 'Bank transaction']);
+  assert.deepEqual(sections.map(section => section.title), ['Your transaction', 'Plaid-downloaded transaction']);
   assert.deepEqual(sections[0].rows.map(row => [row.label, row.value]), [
     ['Date', '2026-01-12'], ['Name', 'Corner cafe'], ['Amount', -40], ['Category', 'Food: Dining'],
   ]);
@@ -222,7 +222,7 @@ test('the popover HTML formats dates and amounts like the ledger and escapes nam
   assert.match(html, /<dt>Amount<\/dt><dd class="ledger-negative">USD -40.00<\/dd>/);
   assert.match(html, /<dd>A &amp; &lt;B&gt;<\/dd>/);
   assert.match(html, /<dt>Memo<\/dt><dd>Bank memo<\/dd>/);
-  assert.match(html, /Your transaction[\s\S]*Bank transaction/);
+  assert.match(html, /Your transaction[\s\S]*Plaid-downloaded transaction/);
 });
 
 test('nothing to compare gives no popover content', () => {

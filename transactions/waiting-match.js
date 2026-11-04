@@ -59,7 +59,7 @@ function buildMatchCompareSections(compare) {
         { label: 'Category', kind: 'text', value: yours.category },
       ],
     },
-    { title: 'Bank transaction', rows: bankRows },
+    { title: 'Plaid-downloaded transaction', rows: bankRows },
   ];
 }
 
@@ -157,7 +157,7 @@ function _getMatchComparePopover() {
     popoverEl.id = MATCH_COMPARE_POPOVER_ID;
     popoverEl.className = 'match-compare-popover hidden';
     popoverEl.setAttribute('role', 'dialog');
-    popoverEl.setAttribute('aria-label', 'Compare your transaction with the bank transaction');
+    popoverEl.setAttribute('aria-label', 'Compare your transaction with the Plaid-downloaded transaction');
     popoverEl.tabIndex = -1;
     document.body.appendChild(popoverEl);
   }

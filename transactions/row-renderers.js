@@ -441,7 +441,7 @@ function _matchCompareButton(matchInfo, plaidTxnId) {
   return `<button type="button" class="compare-match-badge" data-compare-txn-id="${safeId}"`
     + ` aria-haspopup="dialog" aria-expanded="false"`
     + ` onclick="event.stopPropagation(); toggleMatchCompare(this, '${safeId}')"`
-    + ` title="Compare" aria-label="Compare your transaction with the bank's">⇄</button>`;
+    + ` title="Compare" aria-label="Compare your transaction with the Plaid-downloaded one">⇄</button>`;
 }
 
 
