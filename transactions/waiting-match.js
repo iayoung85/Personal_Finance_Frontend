@@ -39,6 +39,11 @@ function buildMatchCompareSections(compare) {
     { label: 'Name', kind: 'text', value: bank.name },
     { label: 'Amount', kind: 'amount', value: bank.amount },
   ];
+  // Plaid's own category, and the label the user's mappings give it.
+  if (bank.plaid_category) {
+    bankRows.push({ label: 'Plaid category', kind: 'text', value: bank.plaid_category });
+    bankRows.push({ label: 'Maps to', kind: 'text', value: bank.mapped_category });
+  }
   const bankMemo = typeof bank.memo === 'string' ? bank.memo.trim() : '';
   if (bankMemo) {
     bankRows.push({ label: 'Memo', kind: 'text', value: bankMemo });

@@ -23,7 +23,10 @@ const escapeHtml = value => String(value)
 
 const COMPARE = {
   yours: { date: '2026-01-12', name: 'Corner cafe', amount: -40.0, category: 'Food: Dining' },
-  bank: { date: '2026-01-15', name: 'SQ *CORNER CAFE', amount: -41.5, memo: 'Bank memo' },
+  bank: {
+    date: '2026-01-15', name: 'SQ *CORNER CAFE', amount: -41.5, memo: 'Bank memo',
+    plaid_category: 'Food And Drink: Coffee', mapped_category: 'Food: Coffee shops',
+  },
 };
 
 // The Plaid row of a waiting match, previewed as approval will leave it.
@@ -185,15 +188,29 @@ test('the compare sections list your side and the bank side in order', () => {
     ['Date', '2026-01-12'], ['Name', 'Corner cafe'], ['Amount', -40], ['Category', 'Food: Dining'],
   ]);
   assert.deepEqual(sections[1].rows.map(row => [row.label, row.value]), [
-    ['Date', '2026-01-15'], ['Name', 'SQ *CORNER CAFE'], ['Amount', -41.5], ['Memo', 'Bank memo'],
+    ['Date', '2026-01-15'], ['Name', 'SQ *CORNER CAFE'], ['Amount', -41.5],
+    ['Plaid category', 'Food And Drink: Coffee'], ['Maps to', 'Food: Coffee shops'],
+    ['Memo', 'Bank memo'],
   ]);
+});
+
+test('a bank row without a Plaid category lists neither category row', () => {
+  const compare = {
+    yours: COMPARE.yours,
+    bank: { ...COMPARE.bank, plaid_category: null, mapped_category: null },
+  };
+  const bankRows = plain(compareModule.buildMatchCompareSections(compare))[1].rows;
+  assert.deepEqual(bankRows.map(row => row.label), ['Date', 'Name', 'Amount', 'Memo']);
 });
 
 test('a blank bank memo is left out', () => {
   for (const memo of ['', '   ', null, undefined]) {
     const compare = { yours: COMPARE.yours, bank: { ...COMPARE.bank, memo } };
     const bankRows = plain(compareModule.buildMatchCompareSections(compare))[1].rows;
-    assert.deepEqual(bankRows.map(row => row.label), ['Date', 'Name', 'Amount']);
+    assert.deepEqual(
+      bankRows.map(row => row.label),
+      ['Date', 'Name', 'Amount', 'Plaid category', 'Maps to'],
+    );
     assert.doesNotMatch(compareModule.renderMatchCompareHtml(compare), /<dt>Memo<\/dt>/);
   }
 });
