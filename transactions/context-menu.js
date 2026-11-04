@@ -205,16 +205,17 @@ function _canMatchSplitParent(parentTxn, accountList) {
 }
 
 /**
- * Menu items for a piece of a waiting match, decided by its parent: the
- * actions the unsplit waiting row offers, without Modify, Match or Delete,
- * which the API refuses while the match waits. The caller adds Inspect Data.
+ * Menu items for a piece under a waiting row, whether the pieces are the
+ * Plaid row's own or lent by the manual row: the actions the unsplit
+ * waiting row offers, without Modify, Match or Delete, which the API
+ * refuses while the match waits. The caller adds Inspect Data.
  *
  * @param {Object} txnData - Context data for the right-clicked row.
  * @returns {Array<Object>|null} Items, or null when the row is not such a piece.
  */
 function _buildWaitingPieceMenuItems(txnData) {
   const parentTxn = txnData && txnData.parentTransaction;
-  if (!txnData.isSplitChild || !parentTxn || !parentTxn.splits_awaiting_match) return null;
+  if (!txnData.isSplitChild || !isWaitingMatchRow(parentTxn)) return null;
 
   if (parentTxn.match_info) {
     return [

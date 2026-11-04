@@ -61,13 +61,30 @@ const types = load(
 test('the Plaid row and the hidden matched rows are waiting; ordinary rows and pieces are not', () => {
   assert.equal(types.isWaitingMatchRow(waitingPlaidRow()), true);
   assert.equal(types.isWaitingMatchRow({ source: 'manual', status: 'matched', hidden_by_match: true }), true);
-  assert.equal(types.isWaitingMatchRow({ source: 'manual', status: 'matched' }), true);
-  assert.equal(types.isWaitingMatchRow({ source: 'scheduled', status: 'matched' }), true);
+  // A matched row whose bank row is in another account's list is not
+  // flagged hidden, but still points at it.
+  assert.equal(types.isWaitingMatchRow({ source: 'manual', status: 'matched', matched_transaction_id: 41 }), true);
+  assert.equal(types.isWaitingMatchRow({ source: 'scheduled', status: 'matched', matched_transaction_id: 41 }), true);
 
   assert.equal(types.isWaitingMatchRow(normalPlaidRow()), false);
   assert.equal(types.isWaitingMatchRow({ source: 'manual', status: 'cleared' }), false);
   assert.equal(types.isWaitingMatchRow({ source: 'split', status: 'cleared' }), false);
   assert.equal(types.isWaitingMatchRow(null), false);
+});
+
+test('a matched row whose bank row is gone is no longer waiting, and keeps its edits', () => {
+  // Deleting the bank row clears the pointer, so the list sends neither it
+  // nor hidden_by_match.
+  const orphanedManual = { transaction_id: 'manual-9', source: 'manual', status: 'matched', amount: -12 };
+  const orphanedBill = { transaction_id: 'bill-9', source: 'scheduled', status: 'matched', amount: -12 };
+  assert.equal(types.isWaitingMatchRow(orphanedManual), false);
+  assert.equal(types.isWaitingMatchRow(orphanedBill), false);
+  assert.equal(types.isWaitingMatchRow({ ...orphanedManual, matched_transaction_id: null }), false);
+
+  const affordances = types.getRowEditAffordances(orphanedManual, types.TXN_TYPE.MANUAL_MATCH);
+  assert.equal(affordances.lockReason, '');
+  assert.equal(affordances.memo, true);
+  assert.equal(affordances.category, true);
 });
 
 test('a waiting row offers no inline edit; a normal Plaid row keeps its edits', () => {
@@ -217,14 +234,36 @@ test('the popover opens below its button and stays inside the viewport', () => {
 
 // ── Accounts an unmatch touches ────────────────────────────────
 
+// Both rows of a transfer carry one shared pair id. While the match waits,
+// the Plaid row previews the manual row's pair, so all three name it.
+const PAIR_ID = 'xfr_6f1c2b9e-7d3a-4c51-9a0e-2b8d4f6a1c3e';
+
 test('unmatch refreshes the waiting row\'s account and a transfer partner in another account', () => {
   const rows = [
-    { transaction_id: 'manual-1', account_id: 'acct-1', source: 'manual', status: 'matched', hidden_by_match: true, transfer_pair_id: 'far-1' },
-    waitingPlaidRow({ transfer_pair_id: 'far-1' }),
-    { transaction_id: 'far-1', account_id: 'acct-2', transfer_pair_id: 'plaid-1' },
-    { transaction_id: 'other', account_id: 'acct-3' },
+    { transaction_id: 'manual-1', account_id: 'acct-1', source: 'manual', status: 'matched', hidden_by_match: true, transfer_pair_id: PAIR_ID },
+    waitingPlaidRow({ transfer_pair_id: PAIR_ID }),
+    { transaction_id: 'far-1', account_id: 'acct-2', source: 'plaid', status: 'cleared', transfer_pair_id: PAIR_ID },
+    { transaction_id: 'other', account_id: 'acct-3', transfer_pair_id: 'xfr_00000000-0000-4000-8000-000000000000' },
   ];
   assert.deepEqual(plain(compareModule.accountsTouchedByMatch('manual-1', rows)).sort(), ['acct-1', 'acct-2']);
+});
+
+test('a cached partner is found by its shared pair id, even when no side names its account', () => {
+  const rows = [
+    waitingPlaidRow({ transfer_pair_id: PAIR_ID }),
+    { transaction_id: 'far-1', account_id: 'acct-2', transfer_pair_id: PAIR_ID },
+  ];
+  assert.deepEqual(plain(compareModule.accountsTouchedByMatch('manual-1', rows)).sort(), ['acct-1', 'acct-2']);
+});
+
+test('a pair the Plaid row already holds refreshes that partner too', () => {
+  const ownPairId = 'xfr_1a2b3c4d-0000-4000-8000-00000000abcd';
+  const rows = [
+    { transaction_id: 'manual-1', account_id: 'acct-1', source: 'manual', status: 'matched', hidden_by_match: true },
+    waitingPlaidRow({ transfer_pair_id: ownPairId }),
+    { transaction_id: 'own-partner', account_id: 'acct-4', transfer_pair_id: ownPairId },
+  ];
+  assert.deepEqual(plain(compareModule.accountsTouchedByMatch('manual-1', rows)).sort(), ['acct-1', 'acct-4']);
 });
 
 test('a match with no transfer touches only its own account', () => {
@@ -236,10 +275,10 @@ test('a match with no transfer touches only its own account', () => {
 });
 
 test('an uncached partner falls back to its named account, or to a full fetch', () => {
-  const named = [waitingPlaidRow({ transfer_pair_id: 'far-9', transfer_partner_account_id: 'acct-9' })];
+  const named = [waitingPlaidRow({ transfer_pair_id: PAIR_ID, transfer_partner_account_id: 'acct-9' })];
   assert.deepEqual(plain(compareModule.accountsTouchedByMatch('manual-1', named)).sort(), ['acct-1', 'acct-9']);
 
-  const unnamed = [waitingPlaidRow({ transfer_pair_id: 'far-9' })];
+  const unnamed = [waitingPlaidRow({ transfer_pair_id: PAIR_ID })];
   assert.equal(compareModule.accountsTouchedByMatch('manual-1', unnamed), null);
   assert.equal(compareModule.accountsTouchedByMatch('missing', []), null);
 });
@@ -327,4 +366,30 @@ test('a waiting split exports its pieces once, under the Plaid row', () => {
   ];
   const exported = plain(exporter._getFilteredExportRows(rows).map(row => [row.txn.transaction_id, row.parentTransactionId]));
   assert.deepEqual(exported, [['manual-1_split_0', 'plaid-1'], ['manual-1_split_1', 'plaid-1']]);
+});
+
+// ── Compare popover across a re-render ─────────────────────────
+
+test('re-rendering the table closes an open compare popover first', () => {
+  const events = [];
+  const element = () => ({ innerHTML: '', classList: { add() {}, remove() {} }, querySelector: () => null });
+  const elements = { 'table-container': element(), 'export-buttons': element(), 'pending-table-container': element() };
+  const { renderTransactionTable } = load(['transactions/table-renderer.js'], 'renderTransactionTable', {
+    document: {
+      addEventListener() {},
+      getElementById: id => elements[id] || null,
+      querySelector: () => null,
+    },
+    window: {},
+    transactions: [],
+    visibleTransactions: [],
+    selectedAccountId: 'acct-1',
+    _scrollPositionCache: {},
+    _resetVirtualScrollData() {},
+    renderInsightsPanel() { events.push('rendered'); },
+    closeMatchCompare() { events.push('closed'); },
+  });
+
+  renderTransactionTable();
+  assert.deepEqual(events, ['closed', 'rendered']);
 });

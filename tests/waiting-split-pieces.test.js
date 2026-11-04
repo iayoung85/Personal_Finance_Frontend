@@ -46,7 +46,7 @@ const waitingParent = (extra = {}) => ({
 // ── Treatment of a piece ───────────────────────────────────────
 
 const rowRenderers = load(
-  ['transactions/row-renderers.js'],
+  ['transactions/transaction-types.js', 'transactions/row-renderers.js'],
   'getSplitPieceTreatment, renderWaitingPieceBadges',
   { escapeHtml },
 );
@@ -111,6 +111,44 @@ test('waiting badges call the same handlers the unsplit waiting row does', () =>
   assert.ok(matched.indexOf('✓') < matched.indexOf('✗'));
 });
 
+// A non-split manual row matched onto a Plaid row that is split itself: the
+// pieces are the Plaid row's own, so `splits_awaiting_match` is absent, but
+// the parent is still waiting and the API refuses split edits on it.
+const ownSplitWaitingParent = (extra = {}) => waitingParent({
+  splits_awaiting_match: undefined,
+  match_info: { ...MATCH_INFO, compare: { yours: { name: 'Groceries' }, bank: { name: 'MARKET' } } },
+  splits: [
+    piece('plaid-1_split_0', -60, { analytics_class: 'spending' }),
+    piece('plaid-1_split_1', -40, { analytics_class: 'spending' }),
+  ],
+  ...extra,
+});
+
+for (const splitIsBroken of [false, true]) {
+  const shape = splitIsBroken ? 'broken' : 'whole';
+
+  test(`a waiting Plaid row's own pieces (${shape}) offer no modify, repair, delete or date edit`, () => {
+    const treatment = getSplitPieceTreatment(ownSplitWaitingParent(), splitIsBroken);
+    assert.equal(treatment.firstPieceButton, 'none');
+    assert.equal(treatment.showDelete, false);
+    assert.equal(treatment.dateEditable, false);
+    assert.equal(treatment.showBrokenBadge, splitIsBroken);
+    assert.equal(treatment.rowCssClass, 'matched-row');
+    assert.equal(treatment.sourceBadge.label, 'Matched');
+  });
+}
+
+test('a waiting Plaid row\'s own pieces approve, unmatch and compare like lent pieces', () => {
+  const ownBadges = renderWaitingPieceBadges(getSplitPieceTreatment(ownSplitWaitingParent(), false));
+  const lentBadges = renderWaitingPieceBadges(getSplitPieceTreatment(
+    waitingParent({ match_info: ownSplitWaitingParent().match_info }), false,
+  ));
+  assert.equal(ownBadges, lentBadges);
+  assert.match(ownBadges, /approveMatchedTransactionAndRefresh\('manual-1', 'acct-1'\)\.catch/);
+  assert.match(ownBadges, /unmatchScheduledTransaction\('manual-1'\)/);
+  assert.match(ownBadges, /toggleMatchCompare\(this, 'plaid-1'\)/);
+});
+
 // ── Menu of a waiting piece ────────────────────────────────────
 
 const linkedAccounts = [{ account_id: 'acct-1', connection_status: 'linked', plaid_type: 'depository' }];
@@ -145,6 +183,13 @@ test('a waiting piece never offers Match, Modify or Delete', () => {
   for (const forbidden of ['match-to-adjacent', 'modify', 'delete']) {
     assert.equal(actions.includes(forbidden), false);
   }
+});
+
+test('a piece of a waiting Plaid row\'s own split gets the match actions, not Match or Modify', () => {
+  const actions = menu._buildMenuItems(pieceTxnData(ownSplitWaitingParent())).map(item => item.action);
+  assert.deepEqual(plain(actions), [
+    'approve-match', 'approve-all-matches', 'unmatch', 'inspect-match', 'inspect-data',
+  ]);
 });
 
 test('a piece of an ordinary split keeps its old menu', () => {

@@ -299,18 +299,26 @@ function accountsTouchedByMatch(manualTxnId, rows) {
     }
   };
 
-  const sideIds = new Set(sides.map(txn => txn.transaction_id));
-  sides.forEach(side => {
-    addAccount(rowAccount(side));
-    if (!side.transfer_pair_id) return;
-    const partnerRow = cachedRows.find(txn => txn && txn.transaction_id === side.transfer_pair_id);
-    addAccount(partnerRow ? rowAccount(partnerRow) : side.transfer_partner_account_id);
-  });
+  sides.forEach(side => addAccount(rowAccount(side)));
 
-  cachedRows.forEach(txn => {
-    if (txn && txn.transfer_pair_id && sideIds.has(txn.transfer_pair_id)) {
-      addAccount(rowAccount(txn));
+  // The two rows of a transfer share one `transfer_pair_id`, and while the
+  // match waits both sides can carry the same pair, so a partner is any
+  // other cached row with that id. An uncached partner is found through
+  // the account a side names for it.
+  const sideIds = new Set(sides.map(txn => txn.transaction_id));
+  const pairIds = new Set(sides.map(txn => txn.transfer_pair_id).filter(Boolean));
+  pairIds.forEach(pairId => {
+    const partnerRows = cachedRows.filter(txn => (
+      txn && txn.transfer_pair_id === pairId && !sideIds.has(txn.transaction_id)
+    ));
+    if (partnerRows.length > 0) {
+      partnerRows.forEach(partnerRow => addAccount(rowAccount(partnerRow)));
+      return;
     }
+    const namingSide = sides.find(side => (
+      side.transfer_pair_id === pairId && side.transfer_partner_account_id
+    ));
+    addAccount(namingSide ? namingSide.transfer_partner_account_id : '');
   });
 
   return accountUnknown ? null : Array.from(accountIds);

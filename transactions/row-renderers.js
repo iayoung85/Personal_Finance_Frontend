@@ -481,12 +481,13 @@ function _renderMatchedPairRow(ctx) {
  * What a split piece shows and offers, decided from its parent as the API
  * returned it.
  *
- * A piece of a waiting match (`splits_awaiting_match`) sits under the Plaid
- * row but is still owned by the hidden manual row until approval, so it
- * carries the match's approve and reject buttons and the green
- * treatment, and offers no modify, delete, repair or date edit: those go to
- * the parent id, which the API refuses while the match waits. A waiting
- * split that no longer sums to the Plaid amount still shows the warning.
+ * A piece under a waiting Plaid row carries the match's approve, reject
+ * and compare buttons and the green treatment, and offers no modify,
+ * delete, repair or date edit: those go to the parent id, which the API
+ * refuses while the match waits. The pieces may be the Plaid row's own or
+ * lent by the hidden manual row (`splits_awaiting_match`); either way the
+ * category, memo and description stay editable. A waiting split that no
+ * longer sums to the Plaid amount still shows the warning.
  *
  * @param {Object} parentTxn - The row carrying the `splits` array.
  * @param {boolean} splitIsBroken - Whether the pieces differ from the parent amount.
@@ -517,7 +518,7 @@ function getSplitPieceTreatment(parentTxn, splitIsBroken) {
     compareHtml: '',
   };
 
-  if (!parentTxn || !parentTxn.splits_awaiting_match) return treatment;
+  if (!isWaitingMatchRow(parentTxn)) return treatment;
 
   treatment.firstPieceButton = 'none';
   treatment.showDelete = false;

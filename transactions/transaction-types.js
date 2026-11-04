@@ -152,12 +152,18 @@ const WAITING_MATCH_LOCK_REASON = 'Approve or unmatch this match first';
  * hide, unhide and mark reviewed stay allowed. A split piece is not a
  * waiting row: the API lets its pieces be edited.
  *
+ * A matched row waits only while it points at a bank row. The list sends
+ * that pointer as `matched_transaction_id` and drops it once the bank row
+ * is deleted, and `hidden_by_match` marks a pointer whose bank row is in
+ * the same list; a matched row with neither is no longer waiting.
+ *
  * @param {Object|null} txn - A row as the API returned it.
  * @returns {boolean}
  */
 function isWaitingMatchRow(txn) {
   if (!txn) return false;
   if (txn.match_info || txn.hidden_by_match) return true;
+  if (!txn.matched_transaction_id) return false;
   const txnType = _SOURCE_STATUS_MAP[`${txn.source}:${txn.status}`];
   return txnType === TXN_TYPE.MANUAL_MATCH || txnType === TXN_TYPE.BILL_MATCHED;
 }

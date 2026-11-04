@@ -420,6 +420,10 @@ function _saveScrollPosition() {
 }
 
 function renderTransactionTable() {
+  // The rows are rebuilt below, so an open compare popover would point at
+  // a button that is no longer on the page.
+  closeMatchCompare();
+
   const container = document.getElementById('table-container');
   const scrollPane = document.querySelector('.transaction-scroll-pane');
   const scrollCacheKey = _getScrollPositionCacheKey();
