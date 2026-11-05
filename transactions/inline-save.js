@@ -313,12 +313,55 @@ async function _applySavedCategory(record, categoryString, data, isNewest) {
 }
 
 /**
+ * Work out how a saved memo's answer replaces a virtual bill occurrence.
+ * When the response carries the saved row, that row takes the occurrence's
+ * place, because a bill with a splits template saves as a split parent with
+ * pieces and the old virtual row cannot show that. Returns null when the
+ * answer has no saved row or the occurrence is not in the list, which leaves
+ * the caller to take only the new id and source.
+ *
+ * @param {object[]} rows — the in-memory transaction list
+ * @param {string} virtualId — the id the memo was saved under
+ * @param {object} data — the add-memo response
+ * @returns {{index: number, savedRow: object, purgeIds: string[]}|null}
+ */
+function _planSavedMemoRow(rows, virtualId, data) {
+  const savedRow = data && data.transaction;
+  if (!savedRow || !savedRow.transaction_id) return null;
+
+  const index = rows.findIndex(row => row.transaction_id === virtualId);
+  if (index === -1) return null;
+
+  const purgeIds = savedRow.transaction_id !== virtualId ? [virtualId] : [];
+  return { index, savedRow: { ...savedRow }, purgeIds };
+}
+
+/**
  * Carry a saved memo's server answer into memory and the cache. A virtual
  * bill occurrence is saved as a new real row under a new id.
  */
 function _applySavedMemo(record, data) {
   if (data.transaction_id && data.transaction_id !== record.transactionId) {
     const virtualId = record.transactionId;
+    const plan = _planSavedMemoRow(transactions, virtualId, data);
+
+    if (plan) {
+      if (record.queuedValue !== undefined) {
+        // A newer memo is still queued; the row keeps showing it.
+        plan.savedRow.user_memo = record.queuedValue;
+      }
+      _remapTransactionId(virtualId, plan.savedRow.transaction_id);
+      transactions[plan.index] = plan.savedRow;
+      _replaceCachedTransaction(plan.savedRow.transaction_id, plan.savedRow);
+      for (const purgeId of plan.purgeIds) {
+        _removeCachedTransaction(purgeId);
+      }
+      _sortTransactionsInPlace();
+      _cacheTransactions(transactions);
+      renderTransactionTable();
+      return;
+    }
+
     _remapTransactionId(virtualId, data.transaction_id);
     _removeCachedTransaction(virtualId);
     const txn = _findTransactionOrSplitChild(record.transactionId);

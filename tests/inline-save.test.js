@@ -20,7 +20,7 @@ const LINKED_ERROR = 'This transaction is part of a linked transfer. '
  * order answers however it likes.
  */
 function loadSaves(rows) {
-  const calls = { statuses: [], requests: [], cached: [], removed: [], sidebar: 0, refreshed: [], redrawn: 0 };
+  const calls = { statuses: [], requests: [], cached: [], removed: [], sidebar: 0, refreshed: [], redrawn: 0, sorted: 0, cachedAll: 0 };
   const domElements = new Map();
   const pending = [];
   const sandbox = {
@@ -46,6 +46,8 @@ function loadSaves(rows) {
     _replaceCachedTransaction: (id, row) => calls.cached.push(plain(row)),
     _removeCachedTransaction: (id) => calls.removed.push(id),
     renderTransactionTable: () => { calls.redrawn += 1; },
+    _sortTransactionsInPlace: () => { calls.sorted += 1; },
+    _cacheTransactions: () => { calls.cachedAll += 1; },
     _refreshAccountsForStaleAnalyticsClass: async (ids) => { calls.refreshed.push(...ids); },
     authenticatedFetch: (url, init) => new Promise((resolve, reject) => {
       calls.requests.push({ url, body: JSON.parse(init.body) });
@@ -53,7 +55,7 @@ function loadSaves(rows) {
     }),
   };
   vm.runInNewContext(
-    `${saveSource}\nmodule.exports = { saveInlineCategory, saveInlineMemo };`,
+    `${saveSource}\nmodule.exports = { saveInlineCategory, saveInlineMemo, _planSavedMemoRow };`,
     sandbox,
     { filename: savePath },
   );
@@ -315,4 +317,76 @@ test('a memo on a virtual bill row takes the id it was saved under', async () =>
   const row = env.sandbox.transactions[0];
   assert.equal(row.transaction_id, 'txn-real');
   assert.equal(row.source, 'manual');
+});
+
+const splitParent = {
+  transaction_id: 'txn-real', source: 'manual', account_id: 'acct-1',
+  user_category: 'System: Split', is_split: true, has_splits_template: true,
+  user_memo: 'rent', reviewed: true,
+  splits: [
+    { transaction_id: 'txn-real-s1', user_category: 'Housing: Rent' },
+    { transaction_id: 'txn-real-s2', user_category: 'Utilities' },
+  ],
+};
+
+test('a memo answer with the saved row replaces the virtual row and reports the id to purge', () => {
+  const env = loadSaves([]);
+  const rows = [plaidRow('a'), plaidRow('bill_1_occ_2', { source: 'scheduled' }), plaidRow('b')];
+
+  const plan = env.api._planSavedMemoRow(rows, 'bill_1_occ_2', {
+    transaction_id: 'txn-real', source: 'manual', transaction: splitParent,
+  });
+
+  assert.equal(plan.index, 1);
+  assert.deepEqual(plain(plan.savedRow), splitParent);
+  assert.deepEqual(plain(plan.purgeIds), ['bill_1_occ_2']);
+});
+
+test('a memo answer without the saved row plans no replacement', () => {
+  const env = loadSaves([]);
+  const rows = [plaidRow('bill_1_occ_2', { source: 'scheduled' })];
+
+  const plan = env.api._planSavedMemoRow(rows, 'bill_1_occ_2', {
+    transaction_id: 'txn-real', source: 'manual',
+  });
+
+  assert.equal(plan, null);
+});
+
+test('a saved split parent from a memo takes the virtual row place, is cached, and the table redraws', async () => {
+  const env = loadSaves([plaidRow('a'), plaidRow('bill_1_occ_2', { source: 'scheduled' }), plaidRow('b')]);
+
+  const saving = env.api.saveInlineMemo('bill_1_occ_2', 'rent');
+  env.answer(0, 200, {
+    message: 'Memo updated successfully', transaction_id: 'txn-real', source: 'manual', transaction: splitParent,
+  });
+  await saving;
+
+  const rows = env.sandbox.transactions;
+  assert.deepEqual(rows.map(row => row.transaction_id), ['a', 'txn-real', 'b']);
+  assert.equal(rows[1].is_split, true);
+  assert.equal(rows[1].splits.length, 2);
+  assert.equal(rows[1].user_category, 'System: Split');
+  assert.deepEqual(env.calls.cached.map(row => row.transaction_id), ['txn-real']);
+  assert.deepEqual(env.calls.removed, ['bill_1_occ_2']);
+  assert.equal(env.calls.redrawn, 1);
+
+  // A later edit on the real id still reaches the same save record.
+  const again = env.api.saveInlineMemo('txn-real', 'rent 2');
+  assert.equal(env.calls.requests[1].body.transaction_id, 'txn-real');
+  env.answer(1, 200, { message: 'Memo updated successfully', transaction_id: 'txn-real' });
+  await again;
+});
+
+test('a memo answer without the saved row still only takes the id and source and does not redraw', async () => {
+  const env = loadSaves([plaidRow('bill_1_occ_2', { source: 'scheduled' })]);
+
+  const saving = env.api.saveInlineMemo('bill_1_occ_2', 'rent');
+  env.answer(0, 200, { message: 'Memo updated successfully', transaction_id: 'txn-real', source: 'manual' });
+  await saving;
+
+  assert.equal(env.sandbox.transactions[0].transaction_id, 'txn-real');
+  assert.equal(env.sandbox.transactions[0].is_split, undefined);
+  assert.deepEqual(env.calls.removed, ['bill_1_occ_2']);
+  assert.equal(env.calls.redrawn, 0);
 });
