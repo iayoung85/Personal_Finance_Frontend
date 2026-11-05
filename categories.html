@@ -230,11 +230,7 @@
               <p>Recategorize transactions, rename or merge categories, and view the audit log</p>
             </div>
 
-            <div class="panel-actions">
-              <button onclick="recategorizeAllTransactions()" class="btn-recategorize">
-                🔄 Recategorize All Transactions. Nuclear option.
-              </button>
-            </div>
+            <!-- Recategorize All is hidden until CAT-007 teaches the pipeline to leave user-set categories alone. The API answers 503 meanwhile. -->
 
             <div class="card" id="migrations-card">
               <div class="card-header">
