@@ -41,6 +41,10 @@ test('transfer_unlinked with and without partner', () => {
   assert.equal(describeReviewReason(make('transfer_unlinked')), 'Its transfer pair was unlinked' + WHEN);
 });
 
+test('split_removed asks for a category check', () => {
+  assert.equal(describeReviewReason(make('split_removed')), 'Its splits were removed; check the category' + WHEN);
+});
+
 test('plaid_modified lists each change', () => {
   const detail = { changes: [
     { field: 'amount', from: '-12.00', to: '-15.50' },

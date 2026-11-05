@@ -31,8 +31,8 @@ test('counts in words, singular and plural, zeros left out', () => {
   assert.equal(describeUsageCounts({ transactions: 12, rules: 2, overrides: 0, bills: 1, alerts: 0 }), '12 transactions, 2 rules, 1 bill');
   assert.equal(describeUsageCounts({ transactions: 1, alerts: 1 }), '1 transaction, 1 alert');
   assert.equal(describeUsageCounts({}), 'nothing recorded');
-  assert.equal(describeUsageCounts({ transactions: 585, overrides: 52, split_parents: 6 }), '585 transactions, 52 overrides');
-  assert.equal(describeUsageCounts({ transactions: 0, rules: 1, split_parents: 2 }), '2 split transactions, 1 rule');
+  // An older API may still send split_parents; it is never shown.
+  assert.equal(describeUsageCounts({ transactions: 0, rules: 1, split_parents: 2 }), '1 rule');
 });
 
 test('an older API sends only labels_in_use', () => {

@@ -31,15 +31,6 @@ function describeUsageCounts(usage) {
     .map(kind => ({ kind, count: Number((usage || {})[kind.key]) || 0 }))
     .filter(entry => entry.count > 0)
     .map(entry => `${entry.count} ${entry.count === 1 ? entry.kind.singular : entry.kind.plural}`);
-
-  // A split transaction shows in the ledger as its pieces, so its own label
-  // is only worth naming when nothing visible uses the label.
-  const visibleTransactions = Number((usage || {}).transactions) || 0;
-  const splitParents = Number((usage || {}).split_parents) || 0;
-  if (visibleTransactions === 0 && splitParents > 0) {
-    const splitNoun = splitParents === 1 ? 'split transaction' : 'split transactions';
-    parts.unshift(`${splitParents} ${splitNoun}`);
-  }
   return parts.length > 0 ? parts.join(', ') : 'nothing recorded';
 }
 

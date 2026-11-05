@@ -1203,7 +1203,7 @@ tr:hover {
 }
 
 /* ============================================
-   ACTION ROW (sync, manual txn, chart, config)
+   ACTION ROW (sync, manual txn, config)
    ============================================ */
 .action-row {
   display: flex;
@@ -1286,14 +1286,6 @@ tr:hover {
 
 .btn-manual-txn:hover {
   background: var(--accent-primary-hover);
-}
-
-.btn-chart-open {
-  background: var(--accent-purple);
-}
-
-.btn-chart-open:hover {
-  background: rgba(197,134,192,0.8);
 }
 
 .btn-config {

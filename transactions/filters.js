@@ -435,14 +435,6 @@ function closeConfigModal() {
   document.getElementById('config-modal').classList.add('hidden');
 }
 
-function toggleChartModal() {
-  toggleCategorySummaryModal();
-}
-
-function closeChartModal() {
-  closeCategorySummaryModal();
-}
-
 // ===== Helper: latest transaction date =====
 
 function _latestTransactionDate() {

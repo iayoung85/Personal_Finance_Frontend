@@ -120,6 +120,9 @@ function describeReviewReason(txn) {
         ? `Its transfer pair with ${detail.partner_account_name} was unlinked`
         : 'Its transfer pair was unlinked';
       break;
+    case 'split_removed':
+      text = 'Its splits were removed; check the category';
+      break;
     default:
       return '';
   }
