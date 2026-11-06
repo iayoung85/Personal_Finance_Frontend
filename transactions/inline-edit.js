@@ -533,9 +533,22 @@ async function _saveRowInlineEdits() {
     if (changedOnlyDescription) {
       renderTransactionTable();
     } else {
-      // Date or amount changes may trigger backend-side trending recalculation
-      // (investment performance) and balance shifts — full refresh required.
-      await refreshAccountTransactions(editedAccountId || selectedAccountId);
+      const editedAccount = accounts.find(account => account.account_id === editedAccountId);
+      const hasSplitChildren = transactions.some(row => row.parent_transaction_id === editSession.txn_id);
+      const needsAccountRefetch = !data.transaction || _inlineEditNeedsAccountRefetch(
+        editSession.txn_type,
+        editedAccount ? editedAccount.account_category : null,
+        hasSplitChildren,
+      );
+      if (needsAccountRefetch) {
+        await refreshAccountTransactions(editedAccountId || selectedAccountId);
+      } else {
+        // The response already holds every row this edit changed; a date
+        // change only moves the row, so re-sort and persist the cache.
+        _applyCachedMobUpdate(data);
+        _sortTransactionsInPlace();
+        _cacheTransactions(transactions);
+      }
       if (selectedAccountMode === 'single' && selectedAccountId) {
         if (data.affected_balance_history) {
           _patchBalanceHistoryCache(editedAccountId || selectedAccountId, data.affected_balance_history);
@@ -916,6 +929,25 @@ function _dismissActiveEditor({ clearRowSession = true } = {}) {
   if (clearRowSession) {
     _activeRowEditSession = null;
   }
+}
+
+
+/**
+ * Whether an inline date or amount save still needs the account refetch.
+ * The save response carries the edited row, its transfer partner, the
+ * opening-balance row, and the rewritten ledger rows, which is everything a
+ * banking row's edit changes. An investment account's trending rows and a
+ * split's siblings are rewritten server-side without being returned, so
+ * those still refetch.
+ * @param {string} txnType The edited row's TXN_TYPE name.
+ * @param {string|null} accountCategory The edited account's category.
+ * @param {boolean} hasSplitChildren Whether cached rows name this row as parent.
+ * @returns {boolean}
+ */
+function _inlineEditNeedsAccountRefetch(txnType, accountCategory, hasSplitChildren) {
+  if (accountCategory === 'investment') return true;
+  if (txnType === TXN_TYPE.SPLIT_CHILD) return true;
+  return Boolean(hasSplitChildren);
 }
 
 
