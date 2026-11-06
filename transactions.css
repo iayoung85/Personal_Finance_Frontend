@@ -1185,6 +1185,12 @@ tr:hover {
   border-radius: 3px;
 }
 
+.search-help-note {
+  margin: 6px 0 0;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
 .search-help-shortcut {
   margin-top: 12px;
   font-size: 12px;

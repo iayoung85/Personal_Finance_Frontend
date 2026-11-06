@@ -15,25 +15,34 @@
  *   field:value       → match specific field
  *   field:"phrase"    → match specific field with exact phrase
  *   -field:value      → exclude on specific field
- *   amount:>100       → numeric comparison on amount
- *   amount:50..200    → numeric range on amount
+ *   amount:800        → fuzzy: these digits appear in the amount, either direction
+ *   amount:>100       → signed comparison: money in over 100
+ *   amount:<-100      → signed comparison: money out over 100
+ *   amount:-200..-50  → signed range
+ *   amount:=800       → exact amount, either direction (also ==)
+ *   amount:=-800      → exact amount in one direction (+ or -)
  *
  * Recognized field operators:
  *   description, desc     → description / user_description_override
  *   merchant, from        → merchant_name
  *   category, cat         → user_category (user-assigned only; Plaid PFC ignored)
  *   memo                  → user_memo
- *   amount                → transaction amount (supports >, <, >=, <=, ..)
+ *   amount, amt           → transaction amount (supports >, <, >=, <=, .., =)
  *   date                  → transaction date (supports ..)
  *   bank, account         → bank_account display name
  *   label                 → user_category, exact match (case-insensitive)
  *   pfc                   → Plaid detailed category key, exact match
  *   confidence            → Plaid category confidence level, exact match
  *   is                    → boolean flags: pending, hidden, transfer, split, override
+ *   bill, bill_id         → bill_id, as shown in the inspect panel
+ *   txn, id               → transaction_id
+ *   plaid, plaid_id       → plaid_transaction_id
+ *   account_id, acct_id   → account_id (account: is the display name)
  *
  * Returns an array of token objects:
  *   { type: 'text'|'field', negate: bool, field?: string, value: string,
- *     comparison?: '>'|'<'|'>='|'<='|'range', rangeEnd?: string }
+ *     comparison?: '>'|'<'|'>='|'<='|'range'|'exact', rangeEnd?: string,
+ *     sign?: 1|-1 }
  */
 function parseSearchQuery(queryString) {
   const tokens = [];
@@ -133,6 +142,7 @@ function _normalizeFieldName(name) {
     cat: 'category',
     memo: 'memo',
     amount: 'amount',
+    amt: 'amount',
     date: 'date',
     bank: 'bank',
     account: 'bank',
@@ -140,15 +150,44 @@ function _normalizeFieldName(name) {
     label: 'label',
     pfc: 'pfc',
     confidence: 'confidence',
+    bill: 'bill_id',
+    bill_id: 'bill_id',
+    txn: 'transaction_id',
+    id: 'transaction_id',
+    transaction_id: 'transaction_id',
+    plaid: 'plaid_transaction_id',
+    plaid_id: 'plaid_transaction_id',
+    plaid_transaction_id: 'plaid_transaction_id',
+    account_id: 'account_id',
+    acct_id: 'account_id',
   };
   return FIELD_ALIASES[name] || null;
 }
 
 /**
- * Parse amount comparison operators (>, <, >=, <=, ..) from the value string.
+ * Parse amount comparison operators (>, <, >=, <=, .., =) from the value string.
  * Mutates the token in-place with comparison type and cleaned numeric value.
+ *
+ * Comparisons and ranges read the ledger sign (negative is money out), so
+ * amount:<-100 is spending over 100 and amount:>100 is income over 100.
+ * The exact form is the forgiving one: amount:=800 matches either direction,
+ * and amount:=-800 or amount:=+800 narrows it. The bare fuzzy form ignores sign.
  */
 function _parseAmountComparison(token, rawValue) {
+  // Exact: amount:=800, amount:==800, amount:=-800
+  if (rawValue.startsWith('=')) {
+    token.comparison = 'exact';
+    let exactValue = rawValue.replace(/^==?/, '');
+    if (exactValue.startsWith('-')) {
+      token.sign = -1;
+      exactValue = exactValue.substring(1);
+    } else if (exactValue.startsWith('+')) {
+      token.sign = 1;
+      exactValue = exactValue.substring(1);
+    }
+    token.value = exactValue;
+    return;
+  }
   // Range: amount:50..200
   if (rawValue.includes('..')) {
     const parts = rawValue.split('..');
@@ -299,6 +338,16 @@ function _matchFieldToken(txn, token) {
       return _matchIsToken(txn, valueLower);
     }
 
+    case 'bill_id':
+    case 'transaction_id':
+    case 'plaid_transaction_id':
+    case 'account_id': {
+      // Ids come from the inspect panel; a pasted fragment still finds the row.
+      const idValue = txn[token.field];
+      if (idValue === undefined || idValue === null) return false;
+      return String(idValue).toLowerCase().includes(valueLower);
+    }
+
     default:
       return false;
   }
@@ -306,27 +355,40 @@ function _matchFieldToken(txn, token) {
 
 /**
  * Match amount with optional comparison operators.
- * Uses absolute value so users don't need to worry about sign convention.
+ * Comparisons and ranges are signed, following the ledger convention that
+ * negative is money out. Only the fuzzy and unsigned-exact forms drop the sign.
  */
 function _matchAmountToken(txn, token) {
-  const txnAmount = Math.abs(txn.amount || 0);
+  const signedAmount = txn.amount || 0;
+  const absAmount = Math.abs(signedAmount);
   const targetValue = parseFloat(token.value);
   if (isNaN(targetValue)) return false;
 
   if (token.comparison === 'range') {
     const rangeEnd = parseFloat(token.rangeEnd);
     if (isNaN(rangeEnd)) return false;
-    return txnAmount >= targetValue && txnAmount <= rangeEnd;
+    // Written in either order: -50..-200 means the same as -200..-50.
+    const low = Math.min(targetValue, rangeEnd);
+    const high = Math.max(targetValue, rangeEnd);
+    return signedAmount >= low && signedAmount <= high;
   }
 
-  if (token.comparison === '>') return txnAmount > targetValue;
-  if (token.comparison === '<') return txnAmount < targetValue;
-  if (token.comparison === '>=') return txnAmount >= targetValue;
-  if (token.comparison === '<=') return txnAmount <= targetValue;
+  if (token.comparison === '>') return signedAmount > targetValue;
+  if (token.comparison === '<') return signedAmount < targetValue;
+  if (token.comparison === '>=') return signedAmount >= targetValue;
+  if (token.comparison === '<=') return signedAmount <= targetValue;
 
-  // Exact match — allow small floating point tolerance
-  // or substring match on the amount string for partial matches
-  const txnAmountStr = txnAmount.toFixed(2);
+  if (token.comparison === 'exact') {
+    // Amounts are stored to the cent, so a half-cent tolerance absorbs
+    // float noise without letting a neighbouring cent through.
+    if (Math.abs(absAmount - Math.abs(targetValue)) >= 0.005) return false;
+    if (!token.sign || absAmount === 0) return true;
+    return signedAmount * token.sign > 0;
+  }
+
+  // Fuzzy match: the digits typed appear anywhere in the amount, so
+  // amount:800 finds 800.00 and 10,800.00 alike. amount:=800 is the exact form.
+  const txnAmountStr = absAmount.toFixed(2);
   return txnAmountStr.includes(token.value);
 }
 

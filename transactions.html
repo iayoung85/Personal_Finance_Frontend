@@ -228,10 +228,25 @@
         </div>
 
         <div class="search-help-section">
+          <h3>Ids (from the inspect panel)</h3>
+          <table class="search-help-table">
+            <tr><td class="search-help-example">bill:bill_7f3a…</td><td>Every instance of one bill, even those edited by hand (also: <code>bill_id:</code>)</td></tr>
+            <tr><td class="search-help-example">txn:txn_fa97…</td><td>A transaction by its id (also: <code>id:</code>)</td></tr>
+            <tr><td class="search-help-example">plaid:…</td><td>A transaction by its Plaid id (also: <code>plaid_id:</code>)</td></tr>
+            <tr><td class="search-help-example">account_id:…</td><td>Rows on one account by its id (<code>account:</code> searches the name)</td></tr>
+          </table>
+          <p class="search-help-note">A pasted fragment of an id is enough; the match is case-insensitive.</p>
+        </div>
+
+        <div class="search-help-section">
           <h3>Amount &amp; Date Filters</h3>
           <table class="search-help-table">
-            <tr><td class="search-help-example">amount:&gt;100</td><td>Amounts greater than $100</td></tr>
-            <tr><td class="search-help-example">amount:50..200</td><td>Amounts between $50 and $200</td></tr>
+            <tr><td class="search-help-example">amount:800</td><td>Any amount containing these digits: $800.00 and $10,800.00 alike (also: <code>amt:</code>)</td></tr>
+            <tr><td class="search-help-example">amount:=800</td><td>Exactly $800.00, money in or out</td></tr>
+            <tr><td class="search-help-example">amount:=-800</td><td>Exactly $800.00 out (<code>amount:=+800</code> for money in)</td></tr>
+            <tr><td class="search-help-example">amount:&gt;100</td><td>Money in over $100. Comparisons follow the sign: negative is money out</td></tr>
+            <tr><td class="search-help-example">amount:&lt;-100</td><td>Money out over $100</td></tr>
+            <tr><td class="search-help-example">amount:-200..-50</td><td>Money out between $50 and $200 (<code>amount:50..200</code> is money in)</td></tr>
             <tr><td class="search-help-example">date:2026-03</td><td>All transactions in March 2026</td></tr>
             <tr><td class="search-help-example">date:2026-01-01..2026-03-01</td><td>Date range</td></tr>
           </table>
@@ -253,12 +268,12 @@
         <div class="search-help-section">
           <h3>Combining Queries</h3>
           <table class="search-help-table">
-            <tr><td class="search-help-example">merchant:target amount:&gt;50</td><td>Target purchases over $50</td></tr>
+            <tr><td class="search-help-example">merchant:target amount:&lt;-50</td><td>Target purchases over $50</td></tr>
             <tr><td class="search-help-example">cat:food -merchant:starbucks</td><td>Food except Starbucks</td></tr>
           </table>
         </div>
 
-        <p class="search-help-shortcut">Tip: Press <kbd>Ctrl</kbd>+<kbd>F</kbd> (<kbd>⌘F</kbd> on Mac) to quickly focus the search bar.</p>
+        <p class="search-help-shortcut">Tip: Press <kbd>Ctrl</kbd>+<kbd>F</kbd> to focus the search bar. On a Mac use <kbd>Ctrl</kbd>, not <kbd>⌘</kbd>: Chrome keeps <kbd>⌘F</kbd> for its own find.</p>
       </div>
     </div>
   </div>
