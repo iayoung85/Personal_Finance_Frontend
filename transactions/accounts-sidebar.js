@@ -137,8 +137,10 @@ function updatePlaidBalanceIndicator() {
   indicator.title = state.title;
   indicator.classList.remove('hidden', 'plaid-balance-match', 'plaid-balance-mismatch');
   indicator.classList.add(state.mismatched ? 'plaid-balance-mismatch' : 'plaid-balance-match');
-  _setPlaidIndicatorClickable(indicator, state.mismatched);
-  _refreshOpenBankAgreementPanel(account, state.mismatched);
+  // The panel traces history; an investment account has none to trace.
+  const traceable = state.mismatched && state.hasHistory;
+  _setPlaidIndicatorClickable(indicator, traceable);
+  _refreshOpenBankAgreementPanel(account, traceable);
 }
 
 // ─── Bank agreement panel ────────────────────────────────────

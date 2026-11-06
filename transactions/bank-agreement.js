@@ -105,7 +105,7 @@ function _formatAgreementDateInWords(isoDate, todayIso) {
  *   title: string, dotTitle: string}}
  */
 function bankAgreementIndicatorState(account, mask) {
-  const hidden = { visible: false, mismatched: false, text: '', title: '', dotTitle: '' };
+  const hidden = { visible: false, mismatched: false, hasHistory: false, text: '', title: '', dotTitle: '' };
   const agreement = account ? account.bank_agreement : null;
   if (!agreement || account.plaid_balance == null) return hidden;
   if (agreement.status !== 'matched' && agreement.status !== 'mismatched') return hidden;
@@ -115,12 +115,16 @@ function bankAgreementIndicatorState(account, mask) {
     style: 'currency', currency: 'USD',
   }));
   const text = `Plaid: ${formattedPlaidBalance}`;
+  // An older API, or a banking account, can be traced; the API says false
+  // for an investment account, where a mismatch means stale holdings.
+  const hasHistory = agreement.has_history !== false;
 
   if (agreement.status === 'matched') {
     const afterPending = agreement.matched_at === 'pending' ? ' (after pending rows)' : '';
     return {
       visible: true,
       mismatched: false,
+      hasHistory,
       text,
       title: `Plaid balance matches app balance${afterPending}`,
       dotTitle: '',
@@ -131,12 +135,14 @@ function bankAgreementIndicatorState(account, mask) {
   const gapSize = Math.abs(Number.parseFloat(agreement.gap) || 0);
   const formattedAppBalance = mask(`$${appBalance.toFixed(2)}`);
   const formattedGap = mask(`$${gapSize.toFixed(2)}`);
+  const stale = hasHistory ? '' : '; holdings may need a sync';
   return {
     visible: true,
     mismatched: true,
+    hasHistory,
     text,
-    title: `Plaid reports ${formattedPlaidBalance} but app calculates ${formattedAppBalance} (difference: ${formattedGap})`,
-    dotTitle: `Plaid balance mismatch: ${formattedGap} difference`,
+    title: `Plaid reports ${formattedPlaidBalance} but app calculates ${formattedAppBalance} (difference: ${formattedGap}${stale})`,
+    dotTitle: `Plaid balance mismatch: ${formattedGap} difference${stale}`,
   };
 }
 

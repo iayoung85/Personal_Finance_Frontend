@@ -211,3 +211,26 @@ test('indicator: mismatched uses the API gap for the difference', () => {
   assert.equal(masked.text, `Plaid: ${MASK}`);
   assert.equal(masked.title, `Plaid reports ${MASK} but app calculates ${MASK} (difference: ${MASK})`);
 });
+
+test('indicator: an investment account keeps its dot but has no history to open', () => {
+  const account = {
+    account_id: 'acc_inv', connection_status: 'linked', account_category: 'investment',
+    current_balance: '10000.00', plaid_balance: '10250.00',
+    bank_agreement: {
+      status: 'mismatched', matched_at: null, gap: '-250.00', has_history: false,
+      last_agreed_date: null, suspect_row_count: null,
+    },
+  };
+  const state = plain(bankAgreementIndicatorState(account, showAll));
+  assert.equal(state.visible, true);
+  assert.equal(state.mismatched, true);
+  assert.equal(state.hasHistory, false);
+  assert.match(state.dotTitle, /holdings may need a sync/);
+
+  const banking = plain(bankAgreementIndicatorState({
+    ...account, account_category: 'depository',
+    bank_agreement: { ...account.bank_agreement, has_history: true },
+  }, showAll));
+  assert.equal(banking.hasHistory, true);
+  assert.doesNotMatch(banking.dotTitle, /holdings/);
+});
