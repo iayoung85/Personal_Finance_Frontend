@@ -363,6 +363,20 @@ async function _singleOrphanedAction(transactionId, action) {
 
 let _forceMatchOrphanId = null;
 
+// The pick handler runs in the capture phase so it sees a click before the
+// row's inline editors and buttons do. Those listeners sit on the same
+// container (or on the cell itself) and would otherwise open an editor
+// instead of picking the row.
+const _FORCE_MATCH_CLICK_OPTIONS = { capture: true };
+
+/**
+ * Whether the user is currently choosing a Plaid row for a force match.
+ * Inline editors check this so a click on a row picks it instead of editing.
+ */
+function isForceMatchPickModeActive() {
+  return _forceMatchOrphanId !== null;
+}
+
 /**
  * Enter force-match pick mode: close modal, show instruction banner,
  * install a one-shot click handler on the transaction table.
@@ -385,7 +399,7 @@ function enterForceMatchPickMode(orphanTxnId) {
   // Install delegated click handler on the table
   const tableContainer = document.getElementById('table-container');
   if (tableContainer) {
-    tableContainer.addEventListener('click', _forceMatchRowClickHandler);
+    tableContainer.addEventListener('click', _forceMatchRowClickHandler, _FORCE_MATCH_CLICK_OPTIONS);
   }
 
   // Allow Escape to cancel
@@ -429,7 +443,7 @@ function exitForceMatchPickMode() {
 
   const tableContainer = document.getElementById('table-container');
   if (tableContainer) {
-    tableContainer.removeEventListener('click', _forceMatchRowClickHandler);
+    tableContainer.removeEventListener('click', _forceMatchRowClickHandler, _FORCE_MATCH_CLICK_OPTIONS);
   }
   document.removeEventListener('keydown', _forceMatchEscapeHandler);
 }
@@ -449,9 +463,11 @@ async function _forceMatchRowClickHandler(event) {
   if (!row) return;
 
   const clickedTxnId = row.dataset.txnId;
-  const clickedSource = row.dataset.source || '';
-
   if (!clickedTxnId) return;
+
+  // The click is a pick, whatever the row holds under the pointer.
+  event.preventDefault();
+  event.stopPropagation();
 
   // Only Plaid-cleared transactions can serve as a force-match target
   const clickedTxn = transactions.find(txn => txn.transaction_id === clickedTxnId);
