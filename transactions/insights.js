@@ -4,13 +4,23 @@
 // the currently visible ledger rows.
 // ============================================================
 
+/**
+ * A card amount, masked when privacy mode is on. Only the cards go through
+ * here; the category summary modal keeps the plain formatter.
+ * @param {number} amount
+ * @returns {string}
+ */
+function _insightMoney(amount) {
+  return maskMoney(formatAnalyticsCurrency(amount));
+}
+
 function _buildTotalSpendingInsight(analyticsView) {
   const rawTotal = analyticsView.spendingEntries.reduce((sum, entry) => sum + entry.amount, 0);
 
   return {
     icon: '💰',
     label: 'Total Spending',
-    value: formatAnalyticsCurrency(getAnalyticsDisplayTotal(rawTotal, analyticsView.spendingEntries)),
+    value: _insightMoney(getAnalyticsDisplayTotal(rawTotal, analyticsView.spendingEntries)),
     meta: `${analyticsView.spendingEntries.length} spending transactions`,
     subtext: 'Transfers, adjustments, income, other inflow, retirement income, and system rows excluded',
   };
@@ -28,7 +38,7 @@ function _buildInsightCardInsight(card, analyticsView) {
   const averageLines = getInsightCardAverageLines(matchingEntries).map(line => (
     line.amount === null
       ? `${line.label} —`
-      : `${line.label} ${formatAnalyticsCurrency(line.amount)}`
+      : `${line.label} ${_insightMoney(line.amount)}`
   ));
   const flow = getInsightCardFlowSummary(matchingEntries);
 
@@ -39,11 +49,11 @@ function _buildInsightCardInsight(card, analyticsView) {
     return {
       icon: '🏷️',
       label: card.name,
-      value: signedNet.text,
+      value: maskMoney(signedNet.text),
       valueTone: signedNet.tone,
       meta: `${matchingEntries.length} transactions`,
       subtext: [
-        `In ${formatAnalyticsCurrency(flow.inTotal)} · Out ${formatAnalyticsCurrency(flow.outTotal)}`,
+        `In ${_insightMoney(flow.inTotal)} · Out ${_insightMoney(flow.outTotal)}`,
         ...averageLines,
       ],
     };
@@ -52,7 +62,7 @@ function _buildInsightCardInsight(card, analyticsView) {
   return {
     icon: '🏷️',
     label: card.name,
-    value: formatAnalyticsCurrency(getAnalyticsDisplayTotal(rawTotal, matchingEntries)),
+    value: _insightMoney(getAnalyticsDisplayTotal(rawTotal, matchingEntries)),
     meta: `${matchingEntries.length} transactions`,
     subtext: averageLines,
   };
@@ -64,7 +74,7 @@ function _buildLiveLedgerInsight(analyticsView) {
   return {
     icon: '🔎',
     label: 'Live Result',
-    value: formatAnalyticsCurrency(ledgerNetAmount),
+    value: _insightMoney(ledgerNetAmount),
     meta: `${analyticsView.ledgerEntries.length} displayed transactions`,
     subtext: 'Signed net sum of the current ledger view',
   };

@@ -195,6 +195,7 @@ test('a one-sided card is not mixed', () => {
 const insightsSandbox = {
   escapeHtml: value => String(value),
   getAppConfig: () => ({}),
+  maskMoney: value => value,
 };
 const I = load(['transactions/analytics.js', 'transactions/insights.js'], [
   '_buildInsightCardInsight', 'getAnalyticsAverageDisplayAmount',

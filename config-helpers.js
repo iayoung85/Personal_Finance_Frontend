@@ -32,6 +32,7 @@ const APP_CONFIG_DEFAULTS = {
   showMaskWithName: true,
   trackedInsightCategories: [],
   insightCards: [],
+  transactionsPrivacyByDefault: false,
 };
 
 /**

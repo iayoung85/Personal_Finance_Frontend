@@ -57,6 +57,12 @@ async function saveSettings() {
       throw new Error(data.error || 'Failed to save settings');
     }
     
+    const privacyCheckbox = document.getElementById('privacy-by-default');
+    if (privacyCheckbox && !(await savePrivacyByDefault(privacyCheckbox.checked))) {
+      showStatus('Settings saved, but the privacy default could not be saved', 'error');
+      return;
+    }
+
     showStatus('Settings saved successfully — refreshing transactions…', 'success');
     _refreshDateFilterWindowForForecastHorizon();
 
@@ -121,6 +127,9 @@ function applySettings(settings) {
   const billsFutureDays = resolvedSettings.bills_future_days !== undefined ? resolvedSettings.bills_future_days : 90;
   document.getElementById('bills-future-days').value = String(_parseForecastHorizonDays(billsFutureDays));
   _refreshDateFilterWindowForForecastHorizon();
+
+  const privacyCheckbox = document.getElementById('privacy-by-default');
+  if (privacyCheckbox) privacyCheckbox.checked = isPrivacyByDefault();
 
   applyLocalViewerSettings();
 }

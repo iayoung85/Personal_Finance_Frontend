@@ -308,6 +308,15 @@
             <label><input type="checkbox" class="field-checkbox" value="source"> Type</label>
           </div>
         </div>
+        <!-- Privacy -->
+        <div class="config-section">
+          <h3>Privacy</h3>
+          <label class="toggle-label">
+            <input type="checkbox" id="privacy-by-default">
+            <span>Load with balances hidden</span>
+          </label>
+          <p style="font-size: 13px; color: #666; margin: 6px 0 0;">Masks the sidebar balances and insight totals as $**.** until the 👁 button in the sidebar is clicked. Transactions stay visible.</p>
+        </div>
         <!-- Forecast Days -->
         <div class="config-section">
           <h3>Forecast Horizon</h3>
@@ -599,6 +608,7 @@
   <script src="transactions/search.js"></script>
   <script src="transactions/filters.js"></script>
   <script src="transactions/settings.js"></script>
+  <script src="transactions/privacy.js"></script>
   <script src="transactions/accounts-sidebar.js"></script>
   <script src="transactions/analytics.js"></script>
   <script src="transactions/insights.js"></script>

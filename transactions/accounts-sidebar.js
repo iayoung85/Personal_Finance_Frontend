@@ -138,13 +138,15 @@ function updatePlaidBalanceIndicator() {
   const discrepancy = Math.abs(appBalance - plaidBalance);
   const hasDiscrepancy = discrepancy > 1.00;
 
-  const formattedPlaidBal = plaidBalance.toLocaleString('en-US', {
+  const formattedPlaidBal = maskMoney(plaidBalance.toLocaleString('en-US', {
     style: 'currency', currency: 'USD',
-  });
+  }));
+  const formattedAppBal = maskMoney(`$${appBalance.toFixed(2)}`);
+  const formattedDiscrepancy = maskMoney(`$${discrepancy.toFixed(2)}`);
 
   indicator.textContent = `Plaid: ${formattedPlaidBal}`;
   indicator.title = hasDiscrepancy
-    ? `Plaid reports ${formattedPlaidBal} but app calculates $${appBalance.toFixed(2)} (difference: $${discrepancy.toFixed(2)})`
+    ? `Plaid reports ${formattedPlaidBal} but app calculates ${formattedAppBal} (difference: ${formattedDiscrepancy})`
     : `Plaid balance matches app balance`;
   indicator.classList.remove('hidden', 'plaid-balance-match', 'plaid-balance-mismatch');
   indicator.classList.add(hasDiscrepancy ? 'plaid-balance-mismatch' : 'plaid-balance-match');
@@ -283,11 +285,11 @@ function renderAccountsSidebar() {
     return;
   }
 
-  const formatSidebarCurrency = (amount) => new Intl.NumberFormat('en-US', {
+  const formatSidebarCurrency = (amount) => maskMoney(new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
     maximumFractionDigits: 0
-  }).format(amount);
+  }).format(amount));
 
   const sumAccountBalances = (accountList) => accountList.reduce((sum, account) => {
     return sum + (account.current_balance || 0);
@@ -379,7 +381,7 @@ function renderAccountsSidebar() {
   summaryContainer.innerHTML = `
     <div class="sidebar-super-group-box">
       <div class="sidebar-super-group-title">
-        <span>Net Worth:</span>
+        <span>Net Worth: ${privacyToggleButtonHtml()}</span>
         <span class="${netWorthTotalClass}">${totalBalanceStr}</span>
       </div>
       ${superCategoryRows}
@@ -503,7 +505,8 @@ function _getPlaidMismatchDotHtml(acc) {
   if (acc.connection_status !== 'linked' || acc.plaid_balance == null) return '';
   const diff = Math.abs((acc.current_balance || 0) - acc.plaid_balance);
   if (diff <= 1.00) return '';
-  return `<span class="plaid-mismatch-dot" title="Plaid balance mismatch: $${diff.toFixed(2)} difference"></span>`;
+  const diffText = maskMoney(`$${diff.toFixed(2)}`);
+  return `<span class="plaid-mismatch-dot" title="Plaid balance mismatch: ${diffText} difference"></span>`;
 }
 
 function _getUnreviewedCountForAccount(accountId) {
