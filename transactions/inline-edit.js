@@ -535,7 +535,7 @@ async function _saveRowInlineEdits() {
     } else {
       const editedAccount = accounts.find(account => account.account_id === editedAccountId);
       const hasSplitChildren = transactions.some(row => row.parent_transaction_id === editSession.txn_id);
-      const needsAccountRefetch = !data.transaction || _inlineEditNeedsAccountRefetch(
+      const needsAccountRefetch = !data.transaction || editNeedsAccountRefetch(
         editSession.txn_type,
         editedAccount ? editedAccount.account_category : null,
         hasSplitChildren,
@@ -944,19 +944,8 @@ function _dismissActiveEditor({ clearRowSession = true } = {}) {
  * @param {boolean} hasSplitChildren Whether cached rows name this row as parent.
  * @returns {boolean}
  */
-function _inlineEditNeedsAccountRefetch(txnType, accountCategory, hasSplitChildren) {
+function editNeedsAccountRefetch(txnType, accountCategory, hasSplitChildren) {
   if (accountCategory === 'investment') return true;
   if (txnType === TXN_TYPE.SPLIT_CHILD) return true;
   return Boolean(hasSplitChildren);
-}
-
-
-async function _refreshAfterInlineEdit() {
-  await refreshAccountTransactions(selectedAccountId);
-
-  if (selectedAccountMode === 'single' && selectedAccountId) {
-    await fetchBalanceHistory(selectedAccountId);
-  }
-
-  renderTransactionTable();
 }

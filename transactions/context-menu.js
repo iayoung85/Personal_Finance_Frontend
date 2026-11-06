@@ -1324,11 +1324,25 @@ async function _handleContextResetPlaidAmount(txnData) {
       _replaceCachedTransaction(data.transfer_partner_id, data.transfer_partner_transaction);
     }
 
-    // Reset touches balances and may shift future-row projections,
-    // so refresh the affected account before re-rendering.
+    // The response carries the row, its partner, the opening-balance row and
+    // the rewritten ledger rows; only an investment account or a split parent
+    // has further rows rewritten server-side that are not returned.
     const affectedAccountId = data.transaction?.account_id || txnData.accountId;
     if (affectedAccountId) {
-      await refreshAccountTransactions(affectedAccountId);
+      const affectedAccount = accounts.find(account => account.account_id === affectedAccountId);
+      const hasSplitChildren = transactions.some(row => row.parent_transaction_id === txnData.txnId);
+      const needsAccountRefetch = !data.transaction || editNeedsAccountRefetch(
+        TXN_TYPE.PLAID_CLEARED,
+        affectedAccount ? affectedAccount.account_category : null,
+        hasSplitChildren,
+      );
+      if (needsAccountRefetch) {
+        await refreshAccountTransactions(affectedAccountId);
+      } else {
+        _applyCachedMobUpdate(data);
+        _sortTransactionsInPlace();
+        _cacheTransactions(transactions);
+      }
       if (selectedAccountMode === 'single' && selectedAccountId === affectedAccountId) {
         if (data.affected_balance_history) {
           _patchBalanceHistoryCache(affectedAccountId, data.affected_balance_history);
