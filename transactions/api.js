@@ -837,6 +837,29 @@ function _replaceCachedTransaction(txnId, fullTxn) {
 
 // ===== Balance History for Ledger Column =====
 
+/**
+ * How an account's ledger stands against the bank: the summary, the
+ * snapshot days back to the last agreeing one, and the rows since.
+ * @param {string} accountId
+ * @returns {Promise<object>} The bank-agreement detail response.
+ * @throws {Error} With the API's message when the request fails.
+ */
+async function fetchBankAgreement(accountId) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/accounts/${encodeURIComponent(accountId)}/bank-agreement`
+  );
+  let data = null;
+  try {
+    data = await response.json();
+  } catch (parseError) {
+    data = null;
+  }
+  if (!response.ok || !data || data.error) {
+    throw new Error((data && data.error) || `Could not load the comparison (${response.status})`);
+  }
+  return data;
+}
+
 async function fetchBalanceHistory(accountId) {
   /**
    * Fetches all balance-history rows for a single account and builds

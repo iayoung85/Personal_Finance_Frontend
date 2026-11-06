@@ -1291,6 +1291,153 @@ tr:hover {
   color: var(--warning-text, #f2994a);
   background: rgba(242, 153, 74, 0.15);
 }
+.plaid-balance-clickable {
+  cursor: pointer;
+}
+.plaid-balance-mismatch.plaid-balance-clickable:hover {
+  background: rgba(242, 153, 74, 0.25);
+}
+.plaid-balance-clickable:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 1px;
+}
+
+/* Ledger-against-bank panel, opened from a mismatched indicator */
+.bank-agreement-panel {
+  position: fixed;
+  z-index: 10000;
+  width: 340px;
+  max-width: calc(100vw - 16px);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  box-shadow: var(--shadow-md);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.bank-agreement-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 6px 6px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.bank-agreement-title {
+  font-weight: 600;
+  color: var(--text-heading);
+}
+.bank-agreement-panel .bank-agreement-close {
+  padding: 0 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+}
+.bank-agreement-panel .bank-agreement-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.bank-agreement-body {
+  padding: 10px 12px 12px;
+}
+.bank-agreement-summary {
+  margin: 0 0 10px;
+  display: grid;
+  gap: 4px;
+}
+.bank-agreement-summary > div {
+  display: flex;
+  gap: 8px;
+}
+.bank-agreement-summary dt {
+  flex: 0 0 76px;
+  color: var(--text-secondary);
+}
+.bank-agreement-summary dd {
+  margin: 0;
+}
+.bank-agreement-figure {
+  color: var(--warning-text, #f2994a);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.bank-agreement-hint {
+  color: var(--text-muted);
+}
+.bank-agreement-message {
+  color: var(--text-secondary);
+}
+.bank-agreement-none {
+  margin-bottom: 10px;
+}
+.bank-agreement-error {
+  color: var(--color-danger);
+}
+.bank-agreement-table-wrap {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+.bank-agreement-table {
+  width: 100%;
+  margin-top: 0;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.bank-agreement-table th {
+  position: sticky;
+  top: 0;
+  background: var(--table-header-bg);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-primary);
+}
+.bank-agreement-table td {
+  padding: 3px 6px;
+  border-bottom: none;
+  border-top: 1px solid var(--table-border);
+  white-space: nowrap;
+}
+.bank-agreement-table .num {
+  text-align: right;
+}
+.bank-agreement-table .mark {
+  width: 16px;
+  text-align: center;
+}
+.bank-agreement-day-agreed td {
+  background: var(--color-success-bg);
+}
+.bank-agreement-mark {
+  color: var(--color-success);
+  cursor: default;
+}
+.bank-agreement-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+/* Three classes deep to outrank the light theme's text colour on every button. */
+.bank-agreement-panel .bank-agreement-actions .bank-agreement-show-ledger {
+  color: #ffffff;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.bank-agreement-panel .visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 
 .btn-action {
   padding: 4px 10px;

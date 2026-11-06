@@ -364,6 +364,24 @@ function _onCustomDateChange() {
   }
 }
 
+/**
+ * Show the ledger from a given day onward. Goes through the custom range,
+ * the one filter that holds an arbitrary start date, so the range survives
+ * the next refresh and the toggles show what is applied. The end date is
+ * left where it is.
+ * @param {string} startIso - YYYY-MM-DD.
+ */
+function showLedgerFromDate(startIso) {
+  if (!startIso) return;
+  const endIso = document.getElementById('end-date').value || _futureEndDateStr();
+  localStorage.setItem(DATE_FILTER_CUSTOM_START_KEY, startIso);
+  localStorage.setItem(DATE_FILTER_CUSTOM_END_KEY, endIso);
+  localStorage.setItem(DATE_FILTER_ACTIVE_KEY, 'custom');
+  _activateCustomRange();
+  _setActiveToggle('btn-date-custom');
+  renderTransactionTable();
+}
+
 // ===== Initialization =====
 
 /**

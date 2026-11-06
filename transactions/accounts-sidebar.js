@@ -120,36 +120,268 @@ function updatePlaidBalanceIndicator() {
   const indicator = document.getElementById('plaid-balance-indicator');
   if (!indicator) return;
 
-  if (selectedAccountMode !== 'single' || !selectedAccountId) {
+  const account = (selectedAccountMode === 'single' && selectedAccountId)
+    ? accounts.find(a => a.account_id === selectedAccountId)
+    : null;
+  const state = bankAgreementIndicatorState(account, maskMoney);
+
+  if (!state.visible) {
     indicator.classList.add('hidden');
     indicator.textContent = '';
+    _setPlaidIndicatorClickable(indicator, false);
+    _closeBankAgreementPanel();
     return;
   }
 
-  const account = accounts.find(a => a.account_id === selectedAccountId);
-  if (!account || account.plaid_balance == null || account.connection_status !== 'linked') {
-    indicator.classList.add('hidden');
-    indicator.textContent = '';
-    return;
-  }
-
-  const appBalance = account.current_balance || 0;
-  const plaidBalance = account.plaid_balance;
-  const discrepancy = Math.abs(appBalance - plaidBalance);
-  const hasDiscrepancy = discrepancy > 1.00;
-
-  const formattedPlaidBal = maskMoney(plaidBalance.toLocaleString('en-US', {
-    style: 'currency', currency: 'USD',
-  }));
-  const formattedAppBal = maskMoney(`$${appBalance.toFixed(2)}`);
-  const formattedDiscrepancy = maskMoney(`$${discrepancy.toFixed(2)}`);
-
-  indicator.textContent = `Plaid: ${formattedPlaidBal}`;
-  indicator.title = hasDiscrepancy
-    ? `Plaid reports ${formattedPlaidBal} but app calculates ${formattedAppBal} (difference: ${formattedDiscrepancy})`
-    : `Plaid balance matches app balance`;
+  indicator.textContent = state.text;
+  indicator.title = state.title;
   indicator.classList.remove('hidden', 'plaid-balance-match', 'plaid-balance-mismatch');
-  indicator.classList.add(hasDiscrepancy ? 'plaid-balance-mismatch' : 'plaid-balance-match');
+  indicator.classList.add(state.mismatched ? 'plaid-balance-mismatch' : 'plaid-balance-match');
+  _setPlaidIndicatorClickable(indicator, state.mismatched);
+  _refreshOpenBankAgreementPanel(account, state.mismatched);
+}
+
+// ─── Bank agreement panel ────────────────────────────────────
+// Opened from a mismatched Plaid indicator: where the ledger last agreed
+// with the bank, and a shortcut to the ledger from that day.
+
+const BANK_AGREEMENT_PANEL_ID = 'bank-agreement-panel';
+const _BANK_AGREEMENT_PANEL_GAP_PX = 6;
+const _BANK_AGREEMENT_PANEL_EDGE_PX = 8;
+
+// The account the open panel belongs to and what the API returned for it.
+let _bankAgreementPanel = null;
+
+/**
+ * Make the indicator a button while the account is mismatched, and plain
+ * text otherwise. Listeners are attached once; they check the class.
+ * @param {HTMLElement} indicator
+ * @param {boolean} clickable
+ */
+function _setPlaidIndicatorClickable(indicator, clickable) {
+  if (!indicator.dataset.bankAgreementWired) {
+    indicator.dataset.bankAgreementWired = 'true';
+    indicator.addEventListener('click', _onPlaidIndicatorActivate);
+    indicator.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        _onPlaidIndicatorActivate();
+      }
+    });
+  }
+  indicator.classList.toggle('plaid-balance-clickable', clickable);
+  if (clickable) {
+    indicator.setAttribute('role', 'button');
+    indicator.setAttribute('tabindex', '0');
+    indicator.setAttribute('aria-haspopup', 'dialog');
+  } else {
+    indicator.removeAttribute('role');
+    indicator.removeAttribute('tabindex');
+    indicator.removeAttribute('aria-haspopup');
+  }
+}
+
+function _onPlaidIndicatorActivate() {
+  const indicator = document.getElementById('plaid-balance-indicator');
+  if (!indicator || !indicator.classList.contains('plaid-balance-clickable')) return;
+  if (_bankAgreementPanel && _bankAgreementPanel.accountId === selectedAccountId) {
+    _closeBankAgreementPanel();
+    return;
+  }
+  openBankAgreementPanel(selectedAccountId);
+}
+
+/**
+ * Open the panel for an account and load its bank-agreement detail.
+ * @param {string} accountId
+ */
+async function openBankAgreementPanel(accountId) {
+  _closeBankAgreementPanel();
+  if (!accountId) return;
+
+  const panel = document.createElement('div');
+  panel.id = BANK_AGREEMENT_PANEL_ID;
+  panel.className = 'bank-agreement-panel';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'Ledger against the bank');
+  document.body.appendChild(panel);
+
+  _bankAgreementPanel = { accountId, response: null, error: null };
+  _renderBankAgreementPanel();
+
+  document.addEventListener('mousedown', _onBankAgreementOutsideClick, true);
+  document.addEventListener('keydown', _onBankAgreementEscape);
+  window.addEventListener('resize', _positionBankAgreementPanel);
+
+  try {
+    const response = await fetchBankAgreement(accountId);
+    if (!_bankAgreementPanel || _bankAgreementPanel.accountId !== accountId) return;
+    _bankAgreementPanel.response = response;
+  } catch (error) {
+    if (!_bankAgreementPanel || _bankAgreementPanel.accountId !== accountId) return;
+    _bankAgreementPanel.error = error.message || 'Could not load the comparison.';
+  }
+  _renderBankAgreementPanel();
+}
+
+/**
+ * Close the panel, if open. Safe to call at any time.
+ * @param {boolean} [returnFocus] - Put focus back on the indicator.
+ */
+function _closeBankAgreementPanel(returnFocus = false) {
+  const panel = document.getElementById(BANK_AGREEMENT_PANEL_ID);
+  if (panel) panel.remove();
+  _bankAgreementPanel = null;
+  document.removeEventListener('mousedown', _onBankAgreementOutsideClick, true);
+  document.removeEventListener('keydown', _onBankAgreementEscape);
+  window.removeEventListener('resize', _positionBankAgreementPanel);
+  if (returnFocus) {
+    const indicator = document.getElementById('plaid-balance-indicator');
+    if (indicator && indicator.classList.contains('plaid-balance-clickable')) indicator.focus();
+  }
+}
+
+/**
+ * Keep an open panel in step with the indicator: close it when the account
+ * changed or no longer mismatches, redraw it otherwise so a privacy-mode
+ * toggle masks its figures too.
+ * @param {object|null} account
+ * @param {boolean} mismatched
+ */
+function _refreshOpenBankAgreementPanel(account, mismatched) {
+  if (!_bankAgreementPanel) return;
+  if (!account || !mismatched || account.account_id !== _bankAgreementPanel.accountId) {
+    _closeBankAgreementPanel();
+    return;
+  }
+  _renderBankAgreementPanel();
+}
+
+function _onBankAgreementOutsideClick(event) {
+  const panel = document.getElementById(BANK_AGREEMENT_PANEL_ID);
+  const indicator = document.getElementById('plaid-balance-indicator');
+  if (panel && panel.contains(event.target)) return;
+  // The indicator toggles the panel itself.
+  if (indicator && indicator.contains(event.target)) return;
+  _closeBankAgreementPanel();
+}
+
+function _onBankAgreementEscape(event) {
+  if (event.key === 'Escape') _closeBankAgreementPanel(true);
+}
+
+function _renderBankAgreementPanel() {
+  const panel = document.getElementById(BANK_AGREEMENT_PANEL_ID);
+  if (!panel || !_bankAgreementPanel) return;
+
+  panel.innerHTML = `
+    <div class="bank-agreement-header">
+      <span class="bank-agreement-title">Ledger vs. bank</span>
+      <button type="button" class="bank-agreement-close" aria-label="Close" title="Close">&times;</button>
+    </div>
+    <div class="bank-agreement-body">${_bankAgreementPanelBodyHtml()}</div>`;
+
+  panel.querySelector('.bank-agreement-close')
+    .addEventListener('click', () => _closeBankAgreementPanel(true));
+  const showLedgerButton = panel.querySelector('.bank-agreement-show-ledger');
+  if (showLedgerButton) {
+    showLedgerButton.addEventListener('click', () => {
+      const startDate = showLedgerButton.dataset.date;
+      _closeBankAgreementPanel();
+      showLedgerFromDate(startDate);
+    });
+  }
+  _positionBankAgreementPanel();
+}
+
+/**
+ * @returns {string} HTML for the panel body in its current state.
+ */
+function _bankAgreementPanelBodyHtml() {
+  const { response, error } = _bankAgreementPanel;
+  if (error) {
+    return `<div class="bank-agreement-message bank-agreement-error">${escapeHtml(error)}</div>`;
+  }
+  if (!response) {
+    return '<div class="bank-agreement-message">Loading…</div>';
+  }
+
+  const model = buildBankAgreementPanelModel(response, {
+    mask: maskMoney,
+    todayIso: toISODateStr(new Date()),
+  });
+
+  if (model.state !== 'mismatched') {
+    return `<div class="bank-agreement-message">${escapeHtml(model.message)}</div>`;
+  }
+
+  let summaryHtml = '<dl class="bank-agreement-summary">';
+  if (model.lastAgreedDate) {
+    summaryHtml += `<div><dt>Last agreed</dt><dd>${escapeHtml(model.lastAgreedText)}</dd></div>`;
+  }
+  summaryHtml += `<div><dt>Gap today</dt><dd><span class="bank-agreement-figure">${escapeHtml(model.gapText)}</span>`
+    + ' <span class="bank-agreement-hint">ledger minus bank</span></dd></div>';
+  if (model.suspectText) {
+    summaryHtml += `<div><dt>Since then</dt><dd>${escapeHtml(model.suspectText)}</dd></div>`;
+  }
+  summaryHtml += '</dl>';
+
+  const messageHtml = model.message
+    ? `<div class="bank-agreement-message bank-agreement-none">${escapeHtml(model.message)}</div>`
+    : '';
+
+  let tableHtml = '';
+  if (model.days.length > 0) {
+    const rowsHtml = model.days.map(day => {
+      const rowClass = day.agreed ? ' class="bank-agreement-day-agreed"' : '';
+      const markTitle = day.agreedNote || (day.agreed ? 'Agreed with the bank' : '');
+      const markHtml = day.agreed
+        ? `<span class="bank-agreement-mark" title="${escapeHtml(markTitle)}" aria-label="${escapeHtml(markTitle)}">${day.agreedMark}</span>`
+        : '';
+      return `<tr${rowClass}>`
+        + `<td>${escapeHtml(day.dateText)}</td>`
+        + `<td class="num">${escapeHtml(day.ledgerText)}</td>`
+        + `<td class="num">${escapeHtml(day.bankText)}</td>`
+        + `<td class="num">${escapeHtml(day.gapText)}</td>`
+        + `<td class="mark">${markHtml}</td>`
+        + '</tr>';
+    }).join('');
+    tableHtml = '<div class="bank-agreement-table-wrap"><table class="bank-agreement-table">'
+      + '<thead><tr><th>Date</th><th class="num">Ledger</th><th class="num">Bank</th>'
+      + '<th class="num">Gap</th><th class="mark"><span class="visually-hidden">Agreed</span></th></tr></thead>'
+      + `<tbody>${rowsHtml}</tbody></table></div>`;
+  }
+
+  const buttonHtml = model.showLedgerButton
+    ? `<div class="bank-agreement-actions"><button type="button" class="bank-agreement-show-ledger" `
+      + `data-date="${escapeHtml(model.showLedgerButton.date)}">${escapeHtml(model.showLedgerButton.label)}</button></div>`
+    : '';
+
+  return summaryHtml + messageHtml + tableHtml + buttonHtml;
+}
+
+/**
+ * Hang the panel under the indicator, right edges aligned, flipping above
+ * it when there is no room below and staying inside the window.
+ */
+function _positionBankAgreementPanel() {
+  const panel = document.getElementById(BANK_AGREEMENT_PANEL_ID);
+  const indicator = document.getElementById('plaid-balance-indicator');
+  if (!panel || !indicator) return;
+
+  const anchor = indicator.getBoundingClientRect();
+  const panelWidth = panel.offsetWidth;
+  const panelHeight = panel.offsetHeight;
+  const maxLeft = window.innerWidth - panelWidth - _BANK_AGREEMENT_PANEL_EDGE_PX;
+  const left = Math.max(_BANK_AGREEMENT_PANEL_EDGE_PX, Math.min(anchor.right - panelWidth, maxLeft));
+
+  let top = anchor.bottom + _BANK_AGREEMENT_PANEL_GAP_PX;
+  const roomBelow = window.innerHeight - top - _BANK_AGREEMENT_PANEL_EDGE_PX;
+  if (panelHeight > roomBelow && anchor.top > roomBelow) {
+    top = Math.max(_BANK_AGREEMENT_PANEL_EDGE_PX, anchor.top - _BANK_AGREEMENT_PANEL_GAP_PX - panelHeight);
+  }
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
 }
 
 async function loadAccounts() {
@@ -194,6 +426,8 @@ async function loadAccounts() {
       // Backend-authoritative boundary for manual txn date guard (Problem 5 alignment)
       earliest_plaid_transaction_date: a.earliest_plaid_transaction_date || null,
       plaid_balance: a.plaid_balance != null ? parseFloat(a.plaid_balance) : null,
+      // The API's verdict on whether the ledger agrees with the bank.
+      bank_agreement: a.bank_agreement || null,
       // Exact bracket string the API stores for transfers to this account.
       transfer_label: a.transfer_label || null,
     }))
@@ -502,11 +736,9 @@ function _getSyncDotHtml(acc) {
 }
 
 function _getPlaidMismatchDotHtml(acc) {
-  if (acc.connection_status !== 'linked' || acc.plaid_balance == null) return '';
-  const diff = Math.abs((acc.current_balance || 0) - acc.plaid_balance);
-  if (diff <= 1.00) return '';
-  const diffText = maskMoney(`$${diff.toFixed(2)}`);
-  return `<span class="plaid-mismatch-dot" title="Plaid balance mismatch: ${diffText} difference"></span>`;
+  const state = bankAgreementIndicatorState(acc, maskMoney);
+  if (!state.mismatched) return '';
+  return `<span class="plaid-mismatch-dot" title="${escapeHtml(state.dotTitle)}"></span>`;
 }
 
 function _getUnreviewedCountForAccount(accountId) {
