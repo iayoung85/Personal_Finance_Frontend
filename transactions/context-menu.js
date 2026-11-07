@@ -273,10 +273,26 @@ function _lockWaitingMatchItems(items) {
 // ─── Build menu items based on transaction type ───────────────
 // Visibility matrix from the implementation plan in transactions.md
 
+/**
+ * The Edit Schedule entry, offered on every row whose bill still exists.
+ *
+ * @returns {{label: string, action: string, separator: boolean}}
+ */
+function _editScheduleItem() {
+  return {
+    label: '📋 Edit Schedule',
+    action: 'edit-schedule',
+    separator: false,
+  };
+}
+
 function _buildMenuItems(txnData) {
   const { isBill, isSplit } = txnData;
   // A row that already carries a bill link must not offer to become one.
   const isLinkedToBill = !!txnData.billId;
+  // The API clears is_bill when the bill behind the link has been deleted,
+  // so only a link to a bill that still exists can open its schedule.
+  const hasLiveBill = isLinkedToBill && !!txnData.isBill;
 
   if (isSplit) {
     const waitingPieceItems = _buildWaitingPieceMenuItems(txnData);
@@ -393,6 +409,9 @@ function _buildMenuItems(txnData) {
       action: 'modify',
       separator: false,
     });
+    if (hasLiveBill) {
+      items.push(_editScheduleItem());
+    }
     items.push({
       label: '🔗 Match to Transaction',
       action: 'match-to-adjacent',
@@ -426,6 +445,9 @@ function _buildMenuItems(txnData) {
         action: 'this-is-a-bill',
         separator: false,
       });
+    }
+    if (hasLiveBill) {
+      items.push(_editScheduleItem());
     }
     items.push({
       label: '⇄ Make Transfer',
@@ -468,11 +490,7 @@ function _buildMenuItems(txnData) {
       action: 'modify',
       separator: false,
     });
-    items.push({
-      label: '📋 Edit Schedule',
-      action: 'edit-schedule',
-      separator: false,
-    });
+    items.push(_editScheduleItem());
     items.push({
       label: '⏭ Skip Occurrence',
       action: 'skip-occurrence',
@@ -490,6 +508,11 @@ function _buildMenuItems(txnData) {
       action: 'modify',
       separator: false,
     });
+  }
+
+  // "Edit Schedule" — any materialized, approved, or converted row whose bill still exists
+  if (hasLiveBill) {
+    items.push(_editScheduleItem());
   }
 
   // "Hide" / "Unhide" — plaid cleared and plaid pending in linked accounts
@@ -771,7 +794,7 @@ function _handleContextThisIsABill(txnData) {
 
 /**
  * Edit Schedule — fetch the bill and open the inline bill modal in edit mode.
- * Used for BILL_FUTURE rows that have a bill_id.
+ * Used for any row that carries a bill_id whose bill still exists.
  */
 async function _handleContextEditSchedule(txnData) {
   if (!txnData.billId) {

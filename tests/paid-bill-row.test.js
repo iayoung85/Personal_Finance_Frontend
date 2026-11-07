@@ -75,3 +75,29 @@ test('a row that already belongs to a bill does not offer This is a Bill', () =>
   assert.ok(!menuActions({ billId: 'bill_1', isBill: true }).includes('this-is-a-bill'));
   assert.ok(!menuActions({ source: 'manual', billId: 'bill_1', isBill: true }).includes('this-is-a-bill'));
 });
+
+const BILL_ROW_KINDS = [
+  ['virtual future occurrence', { source: 'scheduled', status: 'future', isBill: true }],
+  ['materialized future row', { source: 'manual', status: 'future', isBill: true }],
+  ['missing bill row', { source: 'scheduled', status: 'missing', isBill: true }],
+  ['matched bill row', { source: 'scheduled', status: 'matched', isBill: true }],
+  ['approved bank row', { source: 'plaid', status: 'cleared', isBill: true }],
+  ['manual payment marked paid', { source: 'manual', status: 'cleared', isBill: true }],
+  ['converted download', { source: 'plaid', status: 'converted', isBill: true }],
+];
+
+for (const [label, extra] of BILL_ROW_KINDS) {
+  test(`${label} offers Edit Schedule while its bill exists`, () => {
+    assert.ok(menuActions({ billId: 'bill_1', ...extra }).includes('edit-schedule'));
+  });
+}
+
+test('a row whose bill was deleted does not offer Edit Schedule', () => {
+  assert.ok(!menuActions({ source: 'manual', status: 'future', billId: 'bill_gone', isBill: false }).includes('edit-schedule'));
+  assert.ok(!menuActions({ billId: 'bill_gone', isBill: false }).includes('edit-schedule'));
+});
+
+test('a row with no bill link does not offer Edit Schedule', () => {
+  assert.ok(!menuActions({}).includes('edit-schedule'));
+  assert.ok(!menuActions({ source: 'manual', status: 'future' }).includes('edit-schedule'));
+});
