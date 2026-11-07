@@ -226,13 +226,15 @@ async function revalidateTransactions(trigger) {
 }
 
 /**
- * One console line per check, so the behaviour can be watched in DevTools
- * without the network panel.
+ * One console line per check against the dev backend, so the behaviour can
+ * be watched in DevTools without the network panel.
  *
  * @param {string} source What asked for the check.
  * @param {string} result Gate reason, 'checking', or the outcome.
  */
 function _logRevalidation(source, result) {
+  // Dev backend only; a tab open all day against prod should not fill its console.
+  if (typeof window === 'undefined' || !window.LOCAL_AUTO_LOGIN_ENABLED) return;
   console.info('[transactions revalidation] ' + source + ': ' + result);
 }
 
