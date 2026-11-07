@@ -275,6 +275,8 @@ function _lockWaitingMatchItems(items) {
 
 function _buildMenuItems(txnData) {
   const { isBill, isSplit } = txnData;
+  // A row that already carries a bill link must not offer to become one.
+  const isLinkedToBill = !!txnData.billId;
 
   if (isSplit) {
     const waitingPieceItems = _buildWaitingPieceMenuItems(txnData);
@@ -418,11 +420,13 @@ function _buildMenuItems(txnData) {
       action: 'approve-all-matches',
       separator: true,
     });
-    items.push({
-      label: '📅 This is a Bill',
-      action: 'this-is-a-bill',
-      separator: false,
-    });
+    if (!isLinkedToBill) {
+      items.push({
+        label: '📅 This is a Bill',
+        action: 'this-is-a-bill',
+        separator: false,
+      });
+    }
     items.push({
       label: '⇄ Make Transfer',
       action: 'make-transfer',
@@ -517,7 +521,7 @@ function _buildMenuItems(txnData) {
   }
 
   // "This is a Bill" — plaid, manual, plaid-converted, pending (NOT scheduled, missing, split, opening, orphaned)
-  const showBill = isPlaid || (isManual && !isOrphaned) || isPlaidConverted || isPending;
+  const showBill = !isLinkedToBill && (isPlaid || (isManual && !isOrphaned) || isPlaidConverted || isPending);
   if (showBill) {
     items.push({
       label: '📅 This is a Bill',

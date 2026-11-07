@@ -3654,9 +3654,10 @@ tr:hover {
   50%      { opacity: 0.55; }
 }
 
-/* Bill provenance badge — shown on BILL_MATCHED (merged plaid row) and
-   BILL_MISSING rows to indicate the transaction originated from a bill
-   template. The clipboard emoji links visually to the bill schedule. */
+/* Bill provenance badge — shown on BILL_MATCHED (merged plaid row),
+   BILL_MISSING rows, and any cleared row that still carries its bill link,
+   to indicate the transaction belongs to a bill template. The clipboard
+   emoji links visually to the bill schedule. */
 .source-badge.bill-provenance {
   background: rgba(99,102,241,0.12);
   color: rgba(99,102,241,0.90);

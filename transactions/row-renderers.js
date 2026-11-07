@@ -428,6 +428,26 @@ function _matchedPairBillBadge(matchInfo) {
 
 
 /**
+ * Bill badge for a cleared row that still carries its bill link: an approved
+ * bank row, a manual payment marked paid, or a converted download. The API
+ * clears is_bill when the bill has since been deleted, so a stale link
+ * gets no badge.
+ *
+ * @param {Object} txn - The transaction row.
+ * @returns {string} HTML for the badge, or ''.
+ */
+function _paidBillBadge(txn) {
+  if (!txn.bill_id || !txn.is_bill) return '';
+  const scheduledDate = escapeHtml(txn.bill_scheduled_date || '');
+  const scheduleSummary = escapeHtml(txn.schedule_summary || '');
+  let hoverTitle = 'Paid bill occurrence';
+  if (scheduledDate) hoverTitle += ` scheduled ${scheduledDate}`;
+  if (scheduleSummary) hoverTitle += ` — ${scheduleSummary}`;
+  return `<span class="source-badge bill-provenance" data-tooltip="${hoverTitle}" title="${hoverTitle}">📋</span> `;
+}
+
+
+/**
  * The compare button that sits beside a waiting match's ✓ and ✗. Rows from
  * an API that sends no `compare` get none.
  *
@@ -644,7 +664,7 @@ function _renderPlaidConvertedRow(ctx) {
     : '<td></td>';
 
   return {
-    typeBadge: _amountModifiedBadge(ctx.txn),
+    typeBadge: _paidBillBadge(ctx.txn) + _amountModifiedBadge(ctx.txn),
     categoryCell,
     actionCell,
     rowCssClass: '',
@@ -662,7 +682,7 @@ function _renderTransferRow(ctx) {
   );
 
   return {
-    typeBadge: _amountModifiedBadge(ctx.txn) + '<span class="transfer-badge" title="Transfer">⇄</span> ',
+    typeBadge: _paidBillBadge(ctx.txn) + _amountModifiedBadge(ctx.txn) + '<span class="transfer-badge" title="Transfer">⇄</span> ',
     categoryCell,
     actionCell: '<td></td>',
     rowCssClass: ctx.isPendingRow ? 'pending-row' : '',
@@ -691,7 +711,7 @@ function _renderManualClearedRow(ctx) {
     : '<td></td>';
 
   return {
-    typeBadge: '',
+    typeBadge: _paidBillBadge(ctx.txn),
     categoryCell: enhancedCategory,
     actionCell,
     rowCssClass: '',
@@ -721,7 +741,7 @@ function _renderDefaultRow(ctx) {
   );
 
   return {
-    typeBadge: _amountModifiedBadge(ctx.txn),
+    typeBadge: _paidBillBadge(ctx.txn) + _amountModifiedBadge(ctx.txn),
     categoryCell: enhancedCategory,
     actionCell: '<td></td>',
     rowCssClass: ctx.isPendingRow ? 'pending-row' : '',
