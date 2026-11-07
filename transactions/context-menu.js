@@ -845,8 +845,8 @@ function _openInlineBillModal(billId, extraOptions) {
       purgedIds.forEach(virtualId => _removeCachedTransaction(virtualId));
       newVirtuals.forEach(virtualTxn => _replaceCachedTransaction(virtualTxn.transaction_id, virtualTxn));
 
-      // Wipe the ETag so the next background refresh gets a full sync,
-      // but keep cached_at so Tier-1 cache still serves the patched data.
+      // Wipe the stored ETag so the next reload downloads the full list;
+      // until then the patched rows are what the page draws first.
       if (window.txnDB) {
         window.txnDB.setMeta('etag', null).catch(() => {});
       }
@@ -1446,8 +1446,8 @@ function _invalidateTransactionCache() {
   if (typeof _fetchTransactionsFromServer !== 'undefined') {
     _fetchTransactionsFromServer._cachedEtag = null;
   }
-  // Mark cache as stale (age → Infinity) so _readCachedTransactions won't
-  // pass the freshness check, but keep the data for interim reads.
+  // Zero the cache stamp but keep the rows: the page still draws them first,
+  // and the missing ETag makes the next load a full download that replaces them.
   if (window.txnDB) {
     window.txnDB.setMeta('etag', null).catch(function() {});
     window.txnDB.setMeta('cached_at', 0).catch(function() {});

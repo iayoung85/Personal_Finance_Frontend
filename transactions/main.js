@@ -91,6 +91,10 @@ $(document).ready(async function() {
   // a sync by clicking the "Re-sync" button which calls syncTransactions().
   await fetchAllTransactions(false);
 
+  // From here the open page keeps checking the server on its own: on return
+  // to the tab and on a slow timer while it is in view.
+  startTransactionRevalidation();
+
   // Sidebar badges depend on transaction data — rebuild now that txns are loaded
   renderAccountsSidebar();
 

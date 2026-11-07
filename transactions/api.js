@@ -19,16 +19,20 @@ function refreshAuthState() {
 // Re-read auth state on script load
 refreshAuthState();
 
-const TRANSACTION_CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes — mutations patch the cache directly so staleness only matters for external changes (Plaid sync, other device)
 const RECENT_WINDOW_DAYS = 90;
 const BALANCE_HISTORY_CACHE_KEY = 'pf_balance_history_by_account';
-const BALANCE_HISTORY_CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes — same rationale as transaction cache
+const BALANCE_HISTORY_CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes — edits patch this cache directly, so age only matters for changes made elsewhere
 const NO_ACTIVE_PLAID_SYNC_CACHE_KEY = 'pf_sync_no_active_plaid_items';
 const NO_ACTIVE_PLAID_SYNC_TTL_MS = 5 * 60 * 1000;
 
 // AbortController for in-flight transaction fetches — allows cancelling stale
 // requests when a newer fetch is triggered before the previous one completes.
 let _fetchAbortController = null;
+
+// Counts full loads that have not finished, including the idle-time history
+// backfill that outlives fetchAllTransactions(). A background revalidation
+// checks it so it never starts on top of a load the user is waiting on.
+let _transactionLoadsInFlight = 0;
 const NO_ACTIVE_PLAID_ITEMS_ERROR_MESSAGE = 'No active Plaid items found';
 
 function _recordNetworkMetric(url, method, status) {
@@ -207,6 +211,7 @@ async function authenticatedFetch(url, options = {}) {
 
   const method = options.method || 'GET';
 
+  noteTransactionWriteStarted(method, url);
   const response = await fetch(url, { ...options, headers });
   _recordNetworkMetric(url, method, response.status);
 
@@ -217,10 +222,12 @@ async function authenticatedFetch(url, options = {}) {
       headers['Authorization'] = `Bearer ${token}`;
       const retriedResponse = await fetch(url, { ...options, headers });
       _recordNetworkMetric(url, method, retriedResponse.status);
+      noteTransactionWriteResponse(method, url, retriedResponse.status);
       return retriedResponse;
     }
   }
 
+  noteTransactionWriteResponse(method, url, response.status);
   return response;
 }
 
@@ -314,7 +321,9 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
   // 3. Only re-fetch from server if Plaid returned actual changes
   
   const cached = await _readCachedTransactions();
-  const cacheValid = cached && cached.age < TRANSACTION_CACHE_MAX_AGE_MS;
+  // Cache age no longer decides anything: any cached rows are shown at once,
+  // and the server's ETag decides whether they are still current.
+  const cacheValid = !!(cached && cached.data && cached.data.length > 0);
 
   if (!forceNetwork) {
     const syncBlockState = _getNoActivePlaidItemsSyncErrorState();
@@ -383,7 +392,10 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
       // latest resolution state without requiring a full page reload.
       await checkAndRenderReconciliationBanner();
     } else {
-      // Have valid cache AND no changes from Plaid → use cache
+      // Plaid reported no changes, but a webhook sync or another device may
+      // have changed the list since the cache was written (a cooldown reply
+      // says nothing about that). Ask the server before calling it current.
+      await _validateTransactionsWithServer();
       const cooldownMsg = syncData.cooldown 
         ? ` (next sync available in ${syncData.seconds_until_next_sync}s)`
         : '';
@@ -406,72 +418,159 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
   }
 }
 
-async function fetchAllTransactions(forceNetwork = false) {
-  // Three-tier cache strategy:
-  //   Tier 1: Fresh Dexie cache (< TTL) → instant, no network.
-  //   Tier 2: Stale Dexie cache + stored ETag → single full request,
-  //           backend returns 304 if unchanged → refresh timestamp, done.
-  //   Tier 3: Cold start (no Dexie data) → two-phase load
-  //           (recent window for fast paint, then full history backfill).
-  const cached = await _readCachedTransactions();
-  const hasFreshCache = cached && cached.age < TRANSACTION_CACHE_MAX_AGE_MS;
+/**
+ * Load the full transaction list into `transactions` and render it.
+ *
+ * Cached rows are always shown first when they exist, then checked against
+ * the server with the stored ETag (304 keeps them, 200 replaces them). Age
+ * never decides whether to ask: only the server knows if the list changed.
+ * With no cached rows the load is two-phase (recent window, then history).
+ *
+ * @param {boolean} [forceNetwork=false] Skip the ETag and download the full list.
+ * @param {{quiet?: boolean}} [options] quiet: no status messages, for a refetch
+ *   that must not replace the message the user is reading.
+ * @returns {Promise<void>}
+ */
+async function fetchAllTransactions(forceNetwork = false, options = {}) {
+  _transactionLoadsInFlight += 1;
+  try {
+    await _loadAllTransactions(forceNetwork, options || {});
+  } finally {
+    _transactionLoadsInFlight -= 1;
+  }
+}
 
-  // --- Tier 1: Fresh local cache — skip network entirely ---
-  if (!forceNetwork && hasFreshCache) {
-    transactions = cached.data;
-    autoExtendEndDateForScheduled();
-    renderTransactionTable();
-    renderDynamicPeriodButtons();
-    showStatus(`Loaded ${transactions.length} transactions from local cache`, 'success');
-    setTimeout(() => clearStatus(), 1500);
-    return;
+/**
+ * Ask the server whether the rows on screen are current, and replace them
+ * if not. Never touches the screen on 304.
+ *
+ * @param {{guardUser?: boolean}} [options] guardUser: for a check the user
+ *   did not ask for. A changed list is dropped, ETag and all, when the user
+ *   is editing in the table or a row write overlapped the request; the
+ *   caller decides when to ask again.
+ * @returns {Promise<'unchanged'|'updated'|'deferred'|'superseded'|'failed'|'aborted'>}
+ */
+async function _validateTransactionsWithServer(options) {
+  const guardUser = !!(options && options.guardUser);
+
+  // A reload restores the ETag into memory in main.js, but another path may
+  // have cleared it; with none, the request below is a plain full GET.
+  if (!_fetchTransactionsFromServer._cachedEtag && window.txnDB) {
+    const savedEtag = await window.txnDB.getMeta('etag').catch(() => null);
+    if (savedEtag) _fetchTransactionsFromServer._cachedEtag = savedEtag;
   }
 
-  // --- Tier 2: Stale cache + ETag — one round-trip to check freshness ---
-  const hasStaleCache = cached && cached.data && cached.data.length > 0;
-  const storedEtag = _fetchTransactionsFromServer._cachedEtag
-    || (window.txnDB ? await window.txnDB.getMeta('etag').catch(() => null) : null);
+  const writesAtStart = transactionRowWriteCount();
+  try {
+    const reply = await _requestTransactionList(null);
+    if (reply.notModified) {
+      // Only the stamp moves; the rows in the cache are already the server's.
+      if (window.txnDB) {
+        window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
+      }
+      return 'unchanged';
+    }
 
-  if (!forceNetwork && hasStaleCache && storedEtag) {
-    // Show stale data immediately while we validate with the server
-    transactions = cached.data;
+    if (guardUser) {
+      // Asked only now, when the reply is in hand: an edit opened while the
+      // request was out is just as easy to destroy as one open before it.
+      const action = backgroundReplyAction({
+        editing: isUserEditingTable(),
+        writesAtStart: writesAtStart,
+        writesNow: transactionRowWriteCount(),
+      });
+      // Nothing from the reply is kept, so the stored ETag still describes
+      // the rows on screen and the next check gets the changed list again.
+      if (action !== 'apply') return action;
+    }
+
+    transactions = reply.rows;
+    _clearBalanceHistoryCache();
     autoExtendEndDateForScheduled();
     renderTransactionTable();
     renderDynamicPeriodButtons();
-    showStatus('Checking for updated transactions...', 'info');
+    // The unreviewed badges count from this list.
+    if (typeof renderAccountsSidebar === 'function') renderAccountsSidebar();
+    await _storeFullTransactionList(transactions, reply.etag);
+    return 'updated';
+  } catch (validationError) {
+    if (validationError.name === 'AbortError') return 'aborted';
+    console.warn('Transaction validation failed, keeping the rows on screen:', validationError);
+    return 'failed';
+  }
+}
 
+async function _loadAllTransactions(forceNetwork, options) {
+  const quiet = options.quiet === true;
+  const notify = function(message, type, clearAfterMs) {
+    if (quiet) return;
+    showStatus(message, type);
+    if (clearAfterMs) setTimeout(() => clearStatus(), clearAfterMs);
+  };
+
+  const cached = await _readCachedTransactions();
+  const hasCachedRows = !!(cached && cached.data && cached.data.length > 0);
+
+  // --- Forced reload with rows already on screen: one plain full GET ---
+  // The stored ETag is dropped first. The windowed request below never
+  // refreshes it, so a 304 on the history request would leave only the
+  // recent window in `transactions`.
+  if (forceNetwork && (hasCachedRows || transactions.length > 0)) {
+    _fetchTransactionsFromServer._cachedEtag = null;
+    _recordFullHistoryCallMetric('transactions_full_history');
     try {
-      const freshResponse = await _fetchTransactionsFromServer(null);
-      if (freshResponse === null) {
-        // 304 — nothing changed on the server; refresh the cache timestamp
-        _cacheTransactions(transactions);
-        showStatus(`Transactions are up to date — ${transactions.length} loaded`, 'success');
-        setTimeout(() => clearStatus(), 2000);
+      notify('Loading transactions...', 'info');
+      const forcedReply = await _requestTransactionList(null);
+      if (forcedReply.notModified) {
+        // A 304 cannot carry rows; keep the ones on screen rather than
+        // replacing them, and the cache, with nothing.
+        notify(`Transactions are up to date — ${transactions.length} loaded`, 'success', 2000);
         return;
       }
-
-      // 200 — server has new data; replace everything
-      transactions = freshResponse;
+      transactions = forcedReply.rows;
       _clearBalanceHistoryCache();
-      _cacheTransactions(transactions);
       autoExtendEndDateForScheduled();
       renderTransactionTable();
       renderDynamicPeriodButtons();
-      showStatus(`Loaded ${transactions.length} total transactions`, 'success');
-      setTimeout(() => clearStatus(), 2000);
-      return;
-    } catch (etagError) {
-      if (etagError.name === 'AbortError') return;
-      // ETag check failed — stale data already visible, log and continue
-      console.warn('ETag validation failed, using stale cache:', etagError);
-      showStatus(`Loaded ${transactions.length} transactions (update check failed)`, 'warning');
-      setTimeout(() => clearStatus(), 3000);
-      return;
+      if (typeof renderAccountsSidebar === 'function') renderAccountsSidebar();
+      await _storeFullTransactionList(transactions, forcedReply.etag);
+      notify(`Loaded ${transactions.length} total transactions`, 'success', 2000);
+    } catch (forcedError) {
+      if (forcedError.name === 'AbortError') return;
+      console.warn('Forced transaction reload failed, keeping the rows on screen:', forcedError);
+      notify(`Load failed: ${forcedError.message}`, 'error');
     }
+    return;
   }
 
-  // --- Tier 3: Cold start — no usable cache, use two-phase load ---
+  // --- Cached rows: show them at once, then ask the server ---
+  if (!forceNetwork && hasCachedRows) {
+    transactions = cached.data;
+    autoExtendEndDateForScheduled();
+    renderTransactionTable();
+    renderDynamicPeriodButtons();
+    notify('Checking for updated transactions...', 'info');
+
+    const outcome = await _validateTransactionsWithServer();
+    if (outcome === 'unchanged') {
+      notify(`Transactions are up to date — ${transactions.length} loaded`, 'success', 2000);
+    } else if (outcome === 'updated') {
+      notify(`Loaded ${transactions.length} total transactions`, 'success', 2000);
+    } else if (outcome === 'failed') {
+      notify(`Loaded ${transactions.length} transactions (update check failed)`, 'warning', 3000);
+    }
+    return;
+  }
+
+  // --- Cold start: no rows anywhere, use the two-phase load ---
   _recordFullHistoryCallMetric('transactions_full_history');
+  // A leftover ETag would turn the history request into a 304 that keeps only
+  // the recent window, and one left in Dexie would come back on the next
+  // reload over rows it does not describe.
+  _fetchTransactionsFromServer._cachedEtag = null;
+  if (window.txnDB) {
+    window.txnDB.setMeta('etag', null).catch(function() {});
+  }
 
   // --- Phase 1: Recent window for fast first paint ---
   const sinceDate = _formatDateForApi(_daysAgo(RECENT_WINDOW_DAYS));
@@ -501,10 +600,11 @@ async function fetchAllTransactions(forceNetwork = false) {
   // Use requestIdleCallback so the backfill network call doesn't block
   // initial paint or user interaction after Phase 1 renders.
   const _scheduleIdle = window.requestIdleCallback || (cb => setTimeout(cb, 50));
+  _transactionLoadsInFlight += 1;
   _scheduleIdle(async () => {
     try {
-      const fullResponse = await _fetchTransactionsFromServer(null);
-      if (fullResponse === null) {
+      const fullReply = await _requestTransactionList(null);
+      if (fullReply.notModified) {
         // 304 on full request — recent set was same as full set, we're done
         _cacheTransactions(transactions);
         showStatus(`Loaded ${transactions.length} total transactions`, 'success');
@@ -512,9 +612,8 @@ async function fetchAllTransactions(forceNetwork = false) {
         return;
       }
 
-      transactions = fullResponse;
+      transactions = fullReply.rows;
       _clearBalanceHistoryCache();
-      _cacheTransactions(transactions);
 
       autoExtendEndDateForScheduled();
       renderTransactionTable();
@@ -522,6 +621,7 @@ async function fetchAllTransactions(forceNetwork = false) {
       // The sidebar's unreviewed badges count from this list, so redraw them
       // now that rows older than the recent window are here.
       if (typeof renderAccountsSidebar === 'function') renderAccountsSidebar();
+      await _storeFullTransactionList(transactions, fullReply.etag);
       showStatus(`Loaded ${transactions.length} total transactions (filters applied on frontend)`, 'success');
       setTimeout(() => clearStatus(), 2000);
 
@@ -532,6 +632,8 @@ async function fetchAllTransactions(forceNetwork = false) {
       _cacheTransactions(transactions);
       showStatus(`Loaded ${transactions.length} recent transactions (full history unavailable)`, 'warning');
       setTimeout(() => clearStatus(), 3000);
+    } finally {
+      _transactionLoadsInFlight -= 1;
     }
   });
 }
@@ -546,15 +648,38 @@ function _formatDateForApi(dateObject) {
   return dateObject.toISOString().slice(0, 10);
 }
 
+/**
+ * Fetch a windowed or account-scoped slice of the list. Returns the rows, or
+ * null on 304. Never stores an ETag: only a full list has one, and the
+ * full-list paths call _requestTransactionList() and
+ * _storeFullTransactionList() themselves.
+ *
+ * `_fetchTransactionsFromServer._cachedEtag` is the ETag of the full list in
+ * `transactions`, kept here because other files clear it by this name.
+ *
+ * @param {string|null} sinceDate
+ * @param {string} [accountId]
+ * @returns {Promise<Array|null>}
+ */
 async function _fetchTransactionsFromServer(sinceDate, accountId) {
-  /**
-   * Low-level fetch helper. Sends ETag header, handles 304.
-   * Returns the transactions array on success, or null on 304 (no changes).
-   * Cancels any in-flight previous request via AbortController.
-   *
-   * When accountId is provided, fetches only that account's transactions
-   * (no ETag, no abort of in-flight requests — targeted refresh).
-   */
+  const reply = await _requestTransactionList(sinceDate, accountId);
+  return reply.notModified ? null : reply.rows;
+}
+
+/**
+ * One GET of the transaction list. A full request (no window, no account)
+ * sends the ETag held in memory and cancels any full or windowed request
+ * still in flight. An account-scoped one uses its own abort controller so
+ * the two never cancel each other.
+ *
+ * The reply's ETag is returned, not stored: until the caller has kept the
+ * rows, storing it would describe rows the page does not have.
+ *
+ * @param {string|null} sinceDate
+ * @param {string} [accountId]
+ * @returns {Promise<{notModified: boolean, rows?: Array, etag?: string|null}>}
+ */
+async function _requestTransactionList(sinceDate, accountId) {
   var isAccountScoped = !!accountId;
 
   // Account-scoped fetches use a dedicated abort controller so they
@@ -588,7 +713,7 @@ async function _fetchTransactionsFromServer(sinceDate, accountId) {
   });
 
   if (response.status === 304) {
-    return null;
+    return { notModified: true };
   }
 
   const data = await response.json();
@@ -596,16 +721,42 @@ async function _fetchTransactionsFromServer(sinceDate, accountId) {
     throw new Error(data.error);
   }
 
-  // Persist the ETag for future 304 short-circuits (full requests only).
-  const newEtag = response.headers.get('ETag');
-  if (newEtag && !sinceDate && !isAccountScoped) {
-    _fetchTransactionsFromServer._cachedEtag = newEtag;
-    if (window.txnDB) {
-      window.txnDB.setMeta('etag', newEtag).catch(function() {});
-    }
-  }
+  const isFullList = !sinceDate && !isAccountScoped;
+  return {
+    notModified: false,
+    rows: data.transactions || [],
+    etag: isFullList ? (response.headers.get('ETag') || null) : null,
+  };
+}
 
-  return data.transactions || [];
+/**
+ * Keep a full list the server just sent: its ETag in memory at once, the
+ * rows in Dexie, and the ETag in Dexie only once the rows have landed.
+ * Stored the other way round, a failed or interrupted row write would leave
+ * a new ETag over old rows, and the server would confirm those old rows
+ * with a 304 on every later load.
+ *
+ * @param {Array} rows The full list, already in `transactions`.
+ * @param {string|null} etag The ETag the server sent with it.
+ * @returns {Promise<void>}
+ */
+async function _storeFullTransactionList(rows, etag) {
+  const receivedEtag = etag || null;
+  _fetchTransactionsFromServer._cachedEtag = receivedEtag;
+  if (!window.txnDB) return;
+
+  try {
+    await window.txnDB.replaceAll(rows);
+  } catch (replaceError) {
+    // Dexie keeps its old rows with the old ETag that describes them.
+    console.warn('IndexedDB replace-all failed:', replaceError);
+    return;
+  }
+  window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
+  // An edit that reset the cache while the rows were being written wins;
+  // the next load then downloads the list in full.
+  if (_fetchTransactionsFromServer._cachedEtag !== receivedEtag) return;
+  window.txnDB.setMeta('etag', receivedEtag).catch(function() {});
 }
 
 /**
