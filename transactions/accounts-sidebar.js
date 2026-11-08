@@ -83,6 +83,9 @@ async function selectAccount(accountId, skipDebounce = false) {
   _saveScrollPosition();
   selectedAccountMode = 'single';
   selectedAccountId = accountId;
+  if (bankSuspectHighlight && bankSuspectHighlight.accountId !== accountId) {
+    bankSuspectHighlight = null;
+  }
   localStorage.setItem('pf_selected_account', accountId);
   renderAccountsSidebar();
   updatePlaidBalanceIndicator();
@@ -109,6 +112,7 @@ function selectAllAccountsMode() {
   _saveScrollPosition();
   selectedAccountMode = 'all';
   selectedAccountId = null;
+  bankSuspectHighlight = null;
   localStorage.removeItem('pf_selected_account');
   balanceHistoryLookup = {};
   renderAccountsSidebar();
@@ -141,11 +145,17 @@ function updatePlaidBalanceIndicator() {
   const traceable = state.mismatched && state.hasHistory;
   _setPlaidIndicatorClickable(indicator, traceable);
   _refreshOpenBankAgreementPanel(account, traceable);
+  // Once the ledger agrees again there is nothing left to point at.
+  if (!state.mismatched && bankSuspectHighlight && bankSuspectHighlight.accountId === account.account_id) {
+    clearBankSuspectHighlight();
+  }
 }
 
 // ─── Bank agreement panel ────────────────────────────────────
 // Opened from a mismatched Plaid indicator: where the ledger last agreed
-// with the bank, and a shortcut to the ledger from that day.
+// with the bank. Opening it highlights the table rows dated after that
+// day, and the highlight outlives the panel so the user can scroll back
+// to where the highlighting stops.
 
 const BANK_AGREEMENT_PANEL_ID = 'bank-agreement-panel';
 const _BANK_AGREEMENT_PANEL_GAP_PX = 6;
@@ -219,6 +229,7 @@ async function openBankAgreementPanel(accountId) {
     const response = await fetchBankAgreement(accountId);
     if (!_bankAgreementPanel || _bankAgreementPanel.accountId !== accountId) return;
     _bankAgreementPanel.response = response;
+    _applyBankSuspectHighlight(accountId, response);
   } catch (error) {
     if (!_bankAgreementPanel || _bankAgreementPanel.accountId !== accountId) return;
     _bankAgreementPanel.error = error.message || 'Could not load the comparison.';
@@ -272,6 +283,61 @@ function _onBankAgreementEscape(event) {
   if (event.key === 'Escape') _closeBankAgreementPanel(true);
 }
 
+/**
+ * Turn the highlight on for the rows dated after the last-agreed day, and
+ * widen the date filter when that day is off the start of the range.
+ * @param {string} accountId
+ * @param {object} response - GET /api/accounts/<id>/bank-agreement body.
+ */
+function _applyBankSuspectHighlight(accountId, response) {
+  const model = buildBankAgreementPanelModel(response, {
+    mask: text => text,
+    todayIso: toISODateStr(new Date()),
+  });
+  if (model.state !== 'mismatched' || !model.highlightAfterDate) return;
+
+  bankSuspectHighlight = { accountId, afterDate: model.highlightAfterDate };
+  const currentStart = document.getElementById('start-date').value;
+  const widenedStart = bankSuspectFilterStart(model.highlightAfterDate, currentStart);
+  if (widenedStart) {
+    showLedgerFromDate(widenedStart);
+  } else {
+    renderTransactionTable();
+  }
+}
+
+/**
+ * Turn the highlight off and redraw the table without it.
+ */
+function clearBankSuspectHighlight() {
+  if (!bankSuspectHighlight) return;
+  bankSuspectHighlight = null;
+  renderTransactionTable();
+}
+
+/**
+ * Show or hide the chip above the table that names the highlight and
+ * offers to clear it. Called by the table renderer after each render.
+ * @param {number} rowCount - Highlighted rows in the current table.
+ */
+function renderBankSuspectChip(rowCount) {
+  const chip = document.getElementById('bank-suspect-chip');
+  if (!chip) return;
+  const active = bankSuspectHighlight
+    && selectedAccountMode === 'single'
+    && bankSuspectHighlight.accountId === selectedAccountId;
+  if (!active) {
+    chip.classList.add('hidden');
+    chip.innerHTML = '';
+    return;
+  }
+  const text = bankSuspectChipText(bankSuspectHighlight.afterDate, rowCount, toISODateStr(new Date()));
+  chip.innerHTML = `<span class="bank-suspect-chip-text">${escapeHtml(text)}</span>`
+    + '<button type="button" class="bank-suspect-chip-clear">Clear</button>';
+  chip.querySelector('.bank-suspect-chip-clear').addEventListener('click', clearBankSuspectHighlight);
+  chip.classList.remove('hidden');
+}
+
 function _renderBankAgreementPanel() {
   const panel = document.getElementById(BANK_AGREEMENT_PANEL_ID);
   if (!panel || !_bankAgreementPanel) return;
@@ -285,14 +351,6 @@ function _renderBankAgreementPanel() {
 
   panel.querySelector('.bank-agreement-close')
     .addEventListener('click', () => _closeBankAgreementPanel(true));
-  const showLedgerButton = panel.querySelector('.bank-agreement-show-ledger');
-  if (showLedgerButton) {
-    showLedgerButton.addEventListener('click', () => {
-      const startDate = showLedgerButton.dataset.date;
-      _closeBankAgreementPanel();
-      showLedgerFromDate(startDate);
-    });
-  }
   _positionBankAgreementPanel();
 }
 
@@ -354,12 +412,12 @@ function _bankAgreementPanelBodyHtml() {
       + `<tbody>${rowsHtml}</tbody></table></div>`;
   }
 
-  const buttonHtml = model.showLedgerButton
-    ? `<div class="bank-agreement-actions"><button type="button" class="bank-agreement-show-ledger" `
-      + `data-date="${escapeHtml(model.showLedgerButton.date)}">${escapeHtml(model.showLedgerButton.label)}</button></div>`
+  const highlightHtml = model.highlightAfterDate
+    ? '<div class="bank-agreement-hint bank-agreement-highlight-note">'
+      + 'Rows dated after the last agreed day are highlighted in the table.</div>'
     : '';
 
-  return summaryHtml + messageHtml + tableHtml + buttonHtml;
+  return summaryHtml + messageHtml + tableHtml + highlightHtml;
 }
 
 /**

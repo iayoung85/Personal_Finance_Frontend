@@ -10,14 +10,18 @@ const helperSource = fs.readFileSync(helperPath, 'utf8');
 function loadHelper() {
   const sandbox = { module: { exports: {} } };
   vm.runInNewContext(
-    `${helperSource}\nmodule.exports = { buildBankAgreementPanelModel, bankAgreementIndicatorState };`,
+    `${helperSource}\nmodule.exports = { buildBankAgreementPanelModel, bankAgreementIndicatorState, `
+    + 'isBankSuspectRow, bankSuspectChipText, bankSuspectFilterStart };',
     sandbox,
     { filename: helperPath },
   );
   return sandbox.module.exports;
 }
 
-const { buildBankAgreementPanelModel, bankAgreementIndicatorState } = loadHelper();
+const {
+  buildBankAgreementPanelModel, bankAgreementIndicatorState,
+  isBankSuspectRow, bankSuspectChipText, bankSuspectFilterStart,
+} = loadHelper();
 
 // Objects built inside a vm sandbox come from another realm; copy them first.
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -62,7 +66,7 @@ const MISMATCHED_NO_DATE = {
   suspect_rows: [],
 };
 
-test('mismatched with a date: the date in words, the gap, newest day first, and the button', () => {
+test('mismatched with a date: the date in words, the gap, newest day first, and the highlight day', () => {
   const model = plain(buildBankAgreementPanelModel(MISMATCHED_WITH_DATE, { mask: showAll, todayIso: TODAY }));
 
   assert.equal(model.state, 'mismatched');
@@ -70,7 +74,7 @@ test('mismatched with a date: the date in words, the gap, newest day first, and 
   assert.equal(model.lastAgreedText, 'Nov 4, 2026 (2 days ago)');
   assert.equal(model.gapText, '+$151.58');
   assert.equal(model.suspectText, '3 ledger rows dated after Nov 4, plus 1 pending');
-  assert.deepEqual(model.showLedgerButton, { label: 'Show ledger from Nov 4', date: '2026-11-04' });
+  assert.equal(model.highlightAfterDate, '2026-11-04');
   assert.equal(model.message, '');
 
   assert.deepEqual(model.days.map(day => day.date), ['2026-11-05', '2026-11-04']);
@@ -90,14 +94,14 @@ test('mismatched with a date: the date in words, the gap, newest day first, and 
   assert.equal(model.days[1].agreedNote, '');
 });
 
-test('mismatched with no date: says none agreed in the last year and offers no button', () => {
+test('mismatched with no date: says none agreed in the last year and highlights nothing', () => {
   const model = plain(buildBankAgreementPanelModel(MISMATCHED_NO_DATE, { mask: showAll, todayIso: TODAY }));
 
   assert.equal(model.state, 'mismatched');
   assert.equal(model.lastAgreedDate, null);
   assert.equal(model.lastAgreedText, '');
   assert.equal(model.suspectText, '');
-  assert.equal(model.showLedgerButton, null);
+  assert.equal(model.highlightAfterDate, null);
   assert.equal(model.message, 'No day in the last year agreed with the bank.');
   assert.equal(model.gapText, '-$40.00');
   assert.deepEqual(model.days.map(day => day.dateText), ['Nov 5', 'Dec 30, 2025']);
@@ -147,7 +151,7 @@ test('yesterday and today read as words', () => {
     bank_agreement: { ...MISMATCHED_WITH_DATE.bank_agreement, last_agreed_date: '2025-12-30' },
   };
   const older = plain(buildBankAgreementPanelModel(lastYear, { mask: showAll, todayIso: TODAY }));
-  assert.equal(older.showLedgerButton.label, 'Show ledger from Dec 30, 2025');
+  assert.equal(older.highlightAfterDate, '2025-12-30');
 });
 
 test('a detail response that is matched now, or has no bank balance, has nothing to trace', () => {
@@ -157,15 +161,43 @@ test('a detail response that is matched now, or has no bank balance, has nothing
   ));
   assert.equal(matched.state, 'matched');
   assert.equal(matched.message, 'The ledger agrees with the bank now, after pending rows.');
-  assert.equal(matched.showLedgerButton, null);
+  assert.equal(matched.highlightAfterDate, null);
 
   const unavailable = plain(buildBankAgreementPanelModel(
     { bank_agreement: null, days: [], suspect_rows: [] },
     { mask: showAll, todayIso: TODAY },
   ));
   assert.equal(unavailable.state, 'unavailable');
-  assert.equal(unavailable.showLedgerButton, null);
+  assert.equal(unavailable.highlightAfterDate, null);
   assert.deepEqual(unavailable.days, []);
+});
+
+test('suspect rows: dated after the last agreed day and up to today, the future block left out', () => {
+  const afterDate = '2026-11-04';
+  assert.equal(isBankSuspectRow({ date: '2026-11-05', status: 'cleared' }, afterDate, TODAY), true);
+  assert.equal(isBankSuspectRow({ date: '2026-11-06', status: 'pending' }, afterDate, TODAY), true);
+  assert.equal(isBankSuspectRow({ date: '2026-11-04', status: 'cleared' }, afterDate, TODAY), false);
+  assert.equal(isBankSuspectRow({ date: '2026-10-30', status: 'cleared' }, afterDate, TODAY), false);
+  assert.equal(isBankSuspectRow({ date: '2026-11-07', status: 'cleared' }, afterDate, TODAY), false);
+  assert.equal(isBankSuspectRow({ date: '2026-11-20', status: 'future' }, afterDate, TODAY), false);
+  assert.equal(isBankSuspectRow({ date: '2026-11-05T00:00:00', status: 'cleared' }, afterDate, TODAY), true);
+  assert.equal(isBankSuspectRow({ date: '2026-11-05', status: 'cleared' }, null, TODAY), false);
+  assert.equal(isBankSuspectRow(null, afterDate, TODAY), false);
+});
+
+test('the chip names the day and counts the rows', () => {
+  assert.equal(bankSuspectChipText('2026-11-04', 12, TODAY), 'Highlighting 12 rows after Nov 4');
+  assert.equal(bankSuspectChipText('2026-11-04', 1, TODAY), 'Highlighting 1 row after Nov 4');
+  assert.equal(bankSuspectChipText('2025-12-30', 0, TODAY), 'Highlighting 0 rows after Dec 30, 2025');
+});
+
+test('the filter widens to a week before the last agreed day only when it starts later', () => {
+  assert.equal(bankSuspectFilterStart('2026-11-04', '2026-11-01'), null);
+  assert.equal(bankSuspectFilterStart('2026-11-04', '2026-11-04'), null);
+  assert.equal(bankSuspectFilterStart('2026-11-04', '2026-11-05'), '2026-10-28');
+  assert.equal(bankSuspectFilterStart('2026-01-03', '2026-02-01'), '2025-12-27');
+  assert.equal(bankSuspectFilterStart('2026-11-04', ''), '2026-10-28');
+  assert.equal(bankSuspectFilterStart('not-a-date', '2026-11-05'), null);
 });
 
 test('indicator: hidden when the API sent no bank_agreement', () => {

@@ -669,6 +669,9 @@ function renderTransactionTable() {
   const pendingLedgerLookup = {};
   const scheduledLedgerLookup = {};
   const showLedgerColumn = selectedAccountMode === 'single' && selectedAccountId;
+  const bankSuspectAfterDate = (
+    showLedgerColumn && bankSuspectHighlight && bankSuspectHighlight.accountId === selectedAccountId
+  ) ? bankSuspectHighlight.afterDate : null;
   // BILL_MISSING / MANUAL_MISSING rows only show N/A when the account is
   // Plaid-linked and non-investment: Plaid owns balance tracking there and
   // missing rows are excluded from the ledger walk. For offline and
@@ -838,6 +841,9 @@ function renderTransactionTable() {
 
     const isMissingRow = txnRowType === TXN_TYPE.BILL_MISSING
       || txnRowType === TXN_TYPE.MANUAL_MISSING;
+
+    const bankSuspectClass = bankSuspectAfterDate && !isFutureBlockRow
+      && isBankSuspectRow(txn, bankSuspectAfterDate, todayDateStr) ? ' bank-suspect-row' : '';
     const isOpeningBalanceRow = txnRowType === TXN_TYPE.SYSTEM_OPENING_BALANCE
       || txnRowType === TXN_TYPE.SYSTEM_MANUAL_OPENING_BALANCE;
     const isPendingRow = !!txn.pending;
@@ -934,7 +940,7 @@ function renderTransactionTable() {
         // the scheduled-row class, keeping all future rows visually unified.
         const scheduledClass = isFutureBlockRow ? ' scheduled-row' : '';
         const waitingClass = pieceTreatment.rowCssClass ? ` ${pieceTreatment.rowCssClass}` : '';
-        const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}${isSoloSplit ? ' split-solo' : ''}${isPendingRow ? ' pending-row' : ''}${scheduledClass}${waitingClass}`;
+        const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}${isSoloSplit ? ' split-solo' : ''}${isPendingRow ? ' pending-row' : ''}${scheduledClass}${waitingClass}${bankSuspectClass}`;
         
         const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
         const splitBrokenBadge = pieceTreatment.showBrokenBadge
@@ -1220,7 +1226,7 @@ function renderTransactionTable() {
     const isHiddenRow = !!txn.is_hidden;
     const hiddenClass = isHiddenRow ? ' txn-hidden' : '';
     const rowCssClass = rendered.rowCssClass;
-    const combinedClass = (rowCssClass || '') + hiddenClass;
+    const combinedClass = (rowCssClass || '') + hiddenClass + bankSuspectClass;
     rowHtml += `<tr${combinedClass ? ` class="${combinedClass.trim()}"` : ''}${rowDataAttrs}>`;
     if (bulkEditActive) {
       rowHtml += renderBulkCheckboxCell(txn);
@@ -1364,6 +1370,13 @@ function renderTransactionTable() {
 
   // Update the batch-unhide toolbar with hidden transaction count
   _updateHiddenTransactionCount();
+
+  // Rows render lazily as the pane scrolls, so the chip counts from the
+  // filtered list rather than the DOM.
+  const bankSuspectRowCount = bankSuspectAfterDate
+    ? visibleTransactions.filter(txn => isBankSuspectRow(txn, bankSuspectAfterDate, todayDateStr)).length
+    : 0;
+  renderBankSuspectChip(bankSuspectRowCount);
 }
 
 /**

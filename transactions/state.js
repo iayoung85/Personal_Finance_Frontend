@@ -38,6 +38,10 @@ let isEditingSplit = false;
 let balanceHistoryLookup = {};
 let balanceHistoryLoading = false;
 
+// Rows dated after the day the ledger last agreed with the bank are
+// highlighted in the table while this is set: {accountId, afterDate}.
+let bankSuspectHighlight = null;
+
 // Scroll position cache — remembers where the user was scrolled to
 // per view so switching between accounts preserves position.
 // Key: accountId string or 'all'.  Value: scrollTop number.

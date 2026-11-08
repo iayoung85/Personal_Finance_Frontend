@@ -154,13 +154,16 @@ function bankAgreementIndicatorState(account, mask) {
  * now, so there is nothing to trace), or "unavailable" (the bank's
  * balance could not be read this time).
  *
+ * highlightAfterDate is the last-agreed day when there is one: the rows
+ * in the table dated after it are the ones to highlight.
+ *
  * @param {object} response - GET /api/accounts/<id>/bank-agreement body.
  * @param {object} options
  * @param {function(string): string} options.mask - Applied to every money figure.
  * @param {string} options.todayIso - Today's local date, YYYY-MM-DD.
  * @returns {{state: string, message: string, gapText: string,
  *   lastAgreedDate: string|null, lastAgreedText: string, suspectText: string,
- *   days: object[], showLedgerButton: {label: string, date: string}|null}}
+ *   days: object[], highlightAfterDate: string|null}}
  */
 function buildBankAgreementPanelModel(response, options) {
   const mask = options.mask;
@@ -175,7 +178,7 @@ function buildBankAgreementPanelModel(response, options) {
     lastAgreedText: '',
     suspectText: '',
     days: [],
-    showLedgerButton: null,
+    highlightAfterDate: null,
   };
 
   if (!agreement) {
@@ -234,6 +237,53 @@ function buildBankAgreementPanelModel(response, options) {
   if (pendingCount > 0) suspectText += `, plus ${pendingCount} pending`;
   model.suspectText = suspectText;
 
-  model.showLedgerButton = { label: `Show ledger from ${shortDate}`, date: lastAgreedDate };
+  model.highlightAfterDate = lastAgreedDate;
   return model;
+}
+
+/**
+ * Whether a table row is one of the rows to highlight: dated after the
+ * last-agreed day and no later than today. The ledger counts rows dated
+ * up to today, so the projected future block is not part of the story.
+ * @param {object} txn - A transaction row as the table renders it.
+ * @param {string} afterDate - The last-agreed day, YYYY-MM-DD.
+ * @param {string} todayIso - Today's local date, YYYY-MM-DD.
+ * @returns {boolean}
+ */
+function isBankSuspectRow(txn, afterDate, todayIso) {
+  if (!txn || !afterDate) return false;
+  if (txn.status === 'future') return false;
+  const rowDate = String(txn.date || '').slice(0, 10);
+  if (todayIso && rowDate > todayIso) return false;
+  return rowDate > afterDate;
+}
+
+/**
+ * The chip's text while the highlight is on.
+ * @param {string} afterDate - The last-agreed day, YYYY-MM-DD.
+ * @param {number} rowCount - Highlighted rows in the current table.
+ * @param {string} todayIso - Today's local date, YYYY-MM-DD.
+ * @returns {string}
+ */
+function bankSuspectChipText(afterDate, rowCount, todayIso) {
+  const shortDate = _formatAgreementShortDate(afterDate, todayIso);
+  const rowWord = rowCount === 1 ? 'row' : 'rows';
+  return `Highlighting ${rowCount} ${rowWord} after ${shortDate}`;
+}
+
+/**
+ * The start date the ledger filter should widen to so the highlight's
+ * boundary is on screen: a week before the last-agreed day, when the
+ * current start date is later than that day. Null when the current range
+ * already reaches it.
+ * @param {string} afterDate - The last-agreed day, YYYY-MM-DD.
+ * @param {string} currentStartIso - The filter's start date, YYYY-MM-DD.
+ * @returns {string|null}
+ */
+function bankSuspectFilterStart(afterDate, currentStartIso) {
+  const parts = _parseAgreementIsoDate(afterDate);
+  if (!parts) return null;
+  if (currentStartIso && currentStartIso <= afterDate) return null;
+  const weekBefore = new Date(Date.UTC(parts.year, parts.month - 1, parts.day - 7));
+  return weekBefore.toISOString().slice(0, 10);
 }
