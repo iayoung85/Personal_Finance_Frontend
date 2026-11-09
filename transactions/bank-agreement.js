@@ -8,6 +8,8 @@
 
 const _BANK_AGREEMENT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const _BANK_AGREEMENT_MS_PER_DAY = 24 * 60 * 60 * 1000;
+// The statuses a bank-delivered row carries while today's ledger counts it.
+const _BANK_AGREEMENT_COUNTED_STATUSES = ['cleared', 'converted'];
 
 /**
  * "$1,234.56" or "-$1,234.56" for a money value the API sent as a string.
@@ -242,9 +244,22 @@ function buildBankAgreementPanelModel(response, options) {
 }
 
 /**
+ * Whether a bank row is one today's ledger counts even when dated after
+ * today. Banks date some evening and weekend deposits the next business
+ * day while their balance already holds them, so the API counts a
+ * delivered bank row from the moment it arrives.
+ * @param {object} txn - A transaction row as the table renders it.
+ * @returns {boolean}
+ */
+function _isCountedBankRow(txn) {
+  return txn.source === 'plaid' && _BANK_AGREEMENT_COUNTED_STATUSES.includes(txn.status);
+}
+
+/**
  * Whether a table row is one of the rows to highlight: dated after the
- * last-agreed day and no later than today. The ledger counts rows dated
- * up to today, so the projected future block is not part of the story.
+ * last-agreed day and counted in today's ledger. The ledger counts rows
+ * dated up to today plus bank rows the bank dated later, so the projected
+ * future block is not part of the story.
  * @param {object} txn - A transaction row as the table renders it.
  * @param {string} afterDate - The last-agreed day, YYYY-MM-DD.
  * @param {string} todayIso - Today's local date, YYYY-MM-DD.
@@ -254,7 +269,7 @@ function isBankSuspectRow(txn, afterDate, todayIso) {
   if (!txn || !afterDate) return false;
   if (txn.status === 'future') return false;
   const rowDate = String(txn.date || '').slice(0, 10);
-  if (todayIso && rowDate > todayIso) return false;
+  if (todayIso && rowDate > todayIso && !_isCountedBankRow(txn)) return false;
   return rowDate > afterDate;
 }
 

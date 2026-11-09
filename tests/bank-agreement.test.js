@@ -179,10 +179,19 @@ test('suspect rows: dated after the last agreed day and up to today, the future 
   assert.equal(isBankSuspectRow({ date: '2026-11-04', status: 'cleared' }, afterDate, TODAY), false);
   assert.equal(isBankSuspectRow({ date: '2026-10-30', status: 'cleared' }, afterDate, TODAY), false);
   assert.equal(isBankSuspectRow({ date: '2026-11-07', status: 'cleared' }, afterDate, TODAY), false);
+  assert.equal(isBankSuspectRow({ date: '2026-11-07', status: 'cleared', source: 'manual' }, afterDate, TODAY), false);
   assert.equal(isBankSuspectRow({ date: '2026-11-20', status: 'future' }, afterDate, TODAY), false);
   assert.equal(isBankSuspectRow({ date: '2026-11-05T00:00:00', status: 'cleared' }, afterDate, TODAY), true);
   assert.equal(isBankSuspectRow({ date: '2026-11-05', status: 'cleared' }, null, TODAY), false);
   assert.equal(isBankSuspectRow(null, afterDate, TODAY), false);
+});
+
+test('suspect rows: a bank row the bank dated after today counts, as the ledger counts it', () => {
+  const afterDate = '2026-11-04';
+  assert.equal(isBankSuspectRow({ date: '2026-11-07', status: 'cleared', source: 'plaid' }, afterDate, TODAY), true);
+  assert.equal(isBankSuspectRow({ date: '2026-11-07', status: 'converted', source: 'plaid' }, afterDate, TODAY), true);
+  assert.equal(isBankSuspectRow({ date: '2026-11-07', status: 'pending', source: 'plaid' }, afterDate, TODAY), false);
+  assert.equal(isBankSuspectRow({ date: '2026-11-07', status: 'cleared', source: 'plaid' }, '2026-11-07', TODAY), false);
 });
 
 test('the chip names the day and counts the rows', () => {
