@@ -57,6 +57,20 @@ test('plaid_modified lists each change', () => {
     'Plaid changed amount from -$12.00 to -$15.50, changed date from Oct 3 to Oct 4, changed description from "X" to "Y", changed merchant from A to B, cleared the pending charge' + WHEN);
 });
 
+test('plaid_modified category shift names old and new, alone and after a status change', () => {
+  const alone = { changes: [
+    { field: 'category', from: 'Food: Dining', to: 'Bills: Insurance' },
+  ] };
+  assert.equal(describeReviewReason(make('plaid_modified', alone)),
+    'Plaid changed category from Food: Dining to Bills: Insurance' + WHEN);
+  const withStatus = { changes: [
+    { field: 'status', from: 'pending', to: 'cleared' },
+    { field: 'category', from: 'Food: Dining', to: 'Bills: Insurance' },
+  ] };
+  assert.equal(describeReviewReason(make('plaid_modified', withStatus)),
+    'Plaid cleared the pending charge, changed category from Food: Dining to Bills: Insurance' + WHEN);
+});
+
 test('plaid_modified reverted user edits', () => {
   const detail = { changes: [
     { field: 'description', from: 'A', to: 'B' },

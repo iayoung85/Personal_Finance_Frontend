@@ -74,6 +74,8 @@ function _describeReviewChange(change) {
       return (from === 'pending' && to === 'cleared')
         ? 'cleared the pending charge'
         : `changed status from ${from ?? 'none'} to ${to ?? 'none'}`;
+    case 'category':
+      return `changed category from ${from ?? 'none'} to ${to ?? 'none'}`;
     default:
       return '';
   }
