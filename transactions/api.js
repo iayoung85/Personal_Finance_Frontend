@@ -163,6 +163,56 @@ function _clearBalanceHistoryCache() {
   }
 }
 
+/**
+ * Drop the cached balance history of specific accounts, leaving the rest.
+ *
+ * @param {string[]} accountIds
+ */
+function _evictBalanceHistoryCacheEntries(accountIds) {
+  if (!Array.isArray(accountIds) || accountIds.length === 0) return;
+  const cacheByAccountId = _loadBalanceHistoryCache();
+  accountIds.forEach(function(accountId) {
+    delete cacheByAccountId[accountId];
+  });
+  _saveBalanceHistoryCache(cacheByAccountId);
+}
+
+/**
+ * Bring balances up to date after the transaction list changed on the server.
+ *
+ * @param {{evictAccountIds: string[], clearAll: boolean, refetchSelected: boolean, reloadAccounts: boolean}} plan
+ *   From balanceRefreshAfterSync, or built directly by a caller with no sync response.
+ * @param {{skipRenderWhileEditing?: boolean}} [options] skipRenderWhileEditing:
+ *   leave the table alone while the user is editing a row.
+ * @returns {Promise<void>}
+ */
+async function refreshBalancesAfterListChange(plan, options = {}) {
+  const nothingStale = !plan.clearAll && !plan.reloadAccounts && !plan.refetchSelected
+    && (!Array.isArray(plan.evictAccountIds) || plan.evictAccountIds.length === 0);
+  if (nothingStale) return;
+  try {
+    if (plan.clearAll) {
+      _clearBalanceHistoryCache();
+    } else {
+      _evictBalanceHistoryCacheEntries(plan.evictAccountIds);
+    }
+    // Accounts reload first: the balance-history cache signature is built
+    // from the account's last_updated/current_balance, so fetching before the
+    // reload would store an entry keyed to the stale account data.
+    if (plan.reloadAccounts) {
+      await loadAccounts({ quiet: true });
+    }
+    if (plan.refetchSelected && selectedAccountId) {
+      await fetchBalanceHistory(selectedAccountId);
+    }
+    if (!(options.skipRenderWhileEditing && isUserEditingTable())) {
+      renderTransactionTable();
+    }
+  } catch (refreshError) {
+    console.warn('Refreshing balances after a list change failed:', refreshError);
+  }
+}
+
 function _patchBalanceHistoryCache(accountId, affectedRows) {
   // Patch the in-memory lookup so the ledger column reflects the mutation immediately
   affectedRows.forEach(function(row) {
@@ -386,6 +436,10 @@ async function autoSyncAndLoadTransactions(forceNetwork = false) {
       } else {
         await fetchAllTransactions(true);
       }
+
+      await refreshBalancesAfterListChange(
+        balanceRefreshAfterSync(syncData, selectedAccountMode, selectedAccountId)
+      );
 
       // Orphan detection may have created new orphans during
       // post-sync processing — refresh the banner so it reflects the

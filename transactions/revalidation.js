@@ -306,17 +306,15 @@ async function _runGuardedCheck(options) {
  * @returns {Promise<void>}
  */
 async function _refreshAfterListChanged() {
-  try {
-    if (selectedAccountMode === 'single' && selectedAccountId) {
-      await fetchBalanceHistory(selectedAccountId);
-    }
-    await loadAccounts();
-    // The new rows are already drawn; this redraw only fills in balances,
-    // so it is not worth discarding an edit the user has just started.
-    if (!isUserEditingTable()) renderTransactionTable();
-  } catch (refreshError) {
-    console.warn('Refreshing balances after a list change failed:', refreshError);
-  }
+  const isSingle = selectedAccountMode === 'single' && !!selectedAccountId;
+  // The new rows are already drawn; the redraw only fills in balances, so it
+  // is skipped when it would discard an edit the user has just started.
+  await refreshBalancesAfterListChange({
+    evictAccountIds: isSingle ? [selectedAccountId] : [],
+    clearAll: false,
+    refetchSelected: isSingle,
+    reloadAccounts: true,
+  }, { skipRenderWhileEditing: true });
 }
 
 /** One pending retry at most; a later request for one joins it. */

@@ -444,9 +444,18 @@ function _positionBankAgreementPanel() {
   panel.style.top = `${top}px`;
 }
 
-async function loadAccounts() {
+/**
+ * Reload the accounts list and redraw the sidebar.
+ *
+ * @param {{quiet?: boolean}} [options] quiet: skip the progress and success
+ *   messages so a status line the user is reading is not replaced. Errors
+ *   still show.
+ * @returns {Promise<void>}
+ */
+async function loadAccounts(options = {}) {
+  const quiet = !!options && options.quiet === true;
   try {
-    showStatus('Loading accounts...', 'info');
+    if (!quiet) showStatus('Loading accounts...', 'info');
 
     // 1) Get canonical accounts list (includes Plaid + manual accounts, all types)
     const resp = await authenticatedFetch(`${BACKEND_URL}/api/accounts`);
@@ -500,8 +509,10 @@ async function loadAccounts() {
     // Keep the Plaid balance indicator in sync with freshly loaded account data.
     updatePlaidBalanceIndicator();
 
-    showStatus('Accounts loaded successfully', 'success');
-    setTimeout(() => clearStatus(), 2000);
+    if (!quiet) {
+      showStatus('Accounts loaded successfully', 'success');
+      setTimeout(() => clearStatus(), 2000);
+    }
 
   } catch (error) {
     console.error('loadAccounts error:', error);

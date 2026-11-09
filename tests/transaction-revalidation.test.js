@@ -67,6 +67,13 @@ function load(overrides = {}) {
     selectedAccountId: null,
     ...overrides,
   };
+  // The real helper lives in api.js; this stand-in follows its plan so the
+  // revalidation tests still see the calls the plan asks for.
+  sandbox.refreshBalancesAfterListChange = async (plan, options = {}) => {
+    if (plan.reloadAccounts) await sandbox.loadAccounts({ quiet: true });
+    if (plan.refetchSelected) await sandbox.fetchBalanceHistory(sandbox.selectedAccountId);
+    if (!(options.skipRenderWhileEditing && sandbox.isUserEditingTable())) sandbox.renderTransactionTable();
+  };
   vm.runInNewContext(
     `${source}\nmodule.exports = {
       isRevalidationThrottled, isUserIdle, revalidationGate, shouldRevalidateNow, backgroundReplyAction,
@@ -81,6 +88,7 @@ function load(overrides = {}) {
     sandbox,
     { filename: 'revalidation.js' },
   );
+  sandbox.isUserEditingTable = sandbox.module.exports.isUserEditingTable;
   const runTimers = async (ms) => {
     const due = calls.timers.filter((timer) => timer.ms === ms);
     calls.timers = calls.timers.filter((timer) => timer.ms !== ms);
