@@ -61,6 +61,14 @@ function _describeReviewChange(change) {
   if (change.field === 'amount' && change.kept_user_value != null) {
     return `changed amount from ${_reviewMoney(from)} to ${_reviewMoney(to)} (your ${_reviewMoney(change.kept_user_value)} kept)`;
   }
+  // The row's category did not move: say so, or the user reads a suggestion
+  // as a change already made.
+  if (change.field === 'category' && change.kept_user_value != null) {
+    const kept = `(yours stays ${change.kept_user_value})`;
+    return from
+      ? `changed its category from ${from} to ${to ?? 'none'} ${kept}`
+      : `now suggests ${to ?? 'none'} ${kept}`;
+  }
   switch (change.field) {
     case 'amount':
       return `changed amount from ${_reviewMoney(from)} to ${_reviewMoney(to)}`;

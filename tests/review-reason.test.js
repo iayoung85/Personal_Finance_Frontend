@@ -71,6 +71,20 @@ test('plaid_modified category shift names old and new, alone and after a status 
     'Plaid cleared the pending charge, changed category from Food: Dining to Bills: Insurance' + WHEN);
 });
 
+test('plaid_modified category kept says the row did not move, with and without a previous Plaid label', () => {
+  const withPrevious = { changes: [
+    { field: 'category', from: 'Auto: Gas', to: 'Food: Dining', kept_user_value: 'Auto: Gas' },
+  ] };
+  assert.equal(describeReviewReason(make('plaid_modified', withPrevious)),
+    'Plaid changed its category from Auto: Gas to Food: Dining (yours stays Auto: Gas)' + WHEN);
+  const noPrevious = { changes: [
+    { field: 'amount', from: '-12.00', to: '-15.50' },
+    { field: 'category', from: null, to: 'Food: Dining', kept_user_value: 'Uncategorized: Uncategorized' },
+  ] };
+  assert.equal(describeReviewReason(make('plaid_modified', noPrevious)),
+    'Plaid changed amount from -$12.00 to -$15.50, now suggests Food: Dining (yours stays Uncategorized: Uncategorized)' + WHEN);
+});
+
 test('plaid_modified reverted user edits', () => {
   const detail = { changes: [
     { field: 'description', from: 'A', to: 'B' },
