@@ -352,6 +352,51 @@ test('a normal Plaid row keeps its transfer and reset items enabled', () => {
   assert.ok(byAction['reset-plaid-amount'] && !byAction['reset-plaid-amount'].disabled);
 });
 
+// ── Reset to Plaid on the menu ─────────────────────────────────
+
+const menuActionsFor = (txn, extra = {}) => (
+  plain(menu._buildMenuItems(menuDataFor(txn, extra))).map(item => item.action)
+);
+
+test('a posted bank row offers Reset to Plaid, with or without an amount override', () => {
+  assert.ok(menuActionsFor(normalPlaidRow()).includes('reset-to-plaid'));
+  assert.ok(menuActionsFor(normalPlaidRow(), { amountModified: true }).includes('reset-to-plaid'));
+  assert.ok(menuActionsFor(normalPlaidRow(), { isHidden: true }).includes('reset-to-plaid'));
+});
+
+test('a converted bank row offers Reset to Plaid', () => {
+  const converted = { ...normalPlaidRow(), status: 'converted' };
+  assert.ok(menuActionsFor(converted).includes('reset-to-plaid'));
+});
+
+test('a split bank row offers Reset to Plaid, its pieces do not', () => {
+  assert.ok(menuActionsFor(normalPlaidRow(), { isSplit: true }).includes('reset-to-plaid'));
+  const piece = { transaction_id: 'piece-1', source: 'split', status: 'cleared', account_id: 'acct-1' };
+  assert.ok(!menuActionsFor(piece, { isSplit: true, isSplitChild: true }).includes('reset-to-plaid'));
+  assert.ok(!menuActionsFor(
+    { ...normalPlaidRow(), source: 'plaid' },
+    { isSplit: true, isSplitChild: true },
+  ).includes('reset-to-plaid'));
+});
+
+test('pending, manual, scheduled and waiting-match rows do not offer Reset to Plaid', () => {
+  const rows = {
+    pending: { ...normalPlaidRow(), status: 'pending' },
+    manual: { transaction_id: 'm-1', source: 'manual', status: 'cleared', account_id: 'acct-1', amount: -5 },
+    missing: { transaction_id: 'b-1', source: 'scheduled', status: 'missing', account_id: 'acct-1', amount: -5 },
+    waitingBank: waitingPlaidRow(),
+    waitingManual: {
+      transaction_id: 'manual-1', source: 'manual', status: 'matched', account_id: 'acct-1',
+      amount: -40, matched_transaction_id: 'plaid-1', hidden_by_match: true,
+    },
+  };
+  for (const [name, row] of Object.entries(rows)) {
+    assert.ok(!menuActionsFor(row).includes('reset-to-plaid'), name);
+  }
+  // A split bank row on a waiting match is locked out too.
+  assert.ok(!menuActionsFor(waitingPlaidRow(), { isSplit: true }).includes('reset-to-plaid'));
+});
+
 // ── Filtered export ────────────────────────────────────────────
 
 const exporter = load(

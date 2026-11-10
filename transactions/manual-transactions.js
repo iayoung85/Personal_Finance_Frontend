@@ -1373,6 +1373,31 @@ function _expandDateFiltersForTransaction(txnDate, options = {}) {
 // ============================================================================
 
 /**
+ * Put a changed-rows response (unmatch, reset to Plaid) into the page:
+ * balances first, then the rows it names, then the open ledger. The response
+ * names every row the request rewrote, a transfer partner in another account
+ * and the bank row of a match included. An older API leaves them out, and
+ * then the accounts that could have changed are fetched again.
+ *
+ * @param {Object|null} data - The parsed success response.
+ * @param {Array<string>|null} refetchAccountIds - Accounts to fetch again when
+ *   the response names no rows; null or empty fetches every account.
+ */
+async function applyRowChangesFromResponse(data, refetchAccountIds) {
+  await applyAffectedAccounts(data);
+  if (!applyChangedTransactions(data)) {
+    if (refetchAccountIds === null || refetchAccountIds.length === 0) {
+      await refreshAccountTransactions(null);
+    } else {
+      for (const accountId of refetchAccountIds) {
+        await refreshAccountTransactions(accountId);
+      }
+    }
+  }
+  await refreshSelectedLedgerAfterAffected(data);
+}
+
+/**
  * Unmatch a scheduled↔plaid pairing for good. The API puts the row back to
  * missing, or to scheduled when it is not due yet, and may match it to a
  * different bank transaction before it answers.
@@ -1407,21 +1432,7 @@ async function unmatchScheduledTransaction(transactionId) {
       'success'
     );
     closeMatchCompare();
-    await applyAffectedAccounts(data);
-    // The response names the restored row and the bank row it had hidden
-    // behind. Without them, the Plaid row goes back to the bank's own values
-    // and a transfer partner in another account stops naming it, so every
-    // touched account is fetched again.
-    if (!applyChangedTransactions(data)) {
-      if (touchedAccountIds === null || touchedAccountIds.length === 0) {
-        await refreshAccountTransactions(null);
-      } else {
-        for (const accountId of touchedAccountIds) {
-          await refreshAccountTransactions(accountId);
-        }
-      }
-    }
-    await refreshSelectedLedgerAfterAffected(data);
+    await applyRowChangesFromResponse(data, touchedAccountIds);
     renderTransactionTable();
 
   } catch (networkError) {

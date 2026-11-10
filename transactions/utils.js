@@ -133,6 +133,9 @@ function describeReviewReason(txn) {
     case 'split_removed':
       text = 'Its splits were removed; check the category';
       break;
+    case 'reset_to_plaid':
+      text = "Reset to the bank's data; check the category";
+      break;
     default:
       return '';
   }

@@ -286,6 +286,36 @@ function _editScheduleItem() {
   };
 }
 
+/**
+ * Whether the row is a bank row that may offer "Reset to Plaid": source
+ * plaid, status cleared or converted (both keep the bank's stored data), not
+ * a split piece, and not a side of a waiting match. Whether the reset can run
+ * (a transfer pair, a missing bank amount) is the API's call, which answers
+ * with a sentence the user sees.
+ *
+ * @param {Object} txnData - Context data for the right-clicked row.
+ * @returns {boolean}
+ */
+function _canResetToPlaid(txnData) {
+  if (!txnData || txnData.isSplitChild) return false;
+  if (txnData.source !== 'plaid') return false;
+  if (txnData.status !== 'cleared' && txnData.status !== 'converted') return false;
+  return !_isWaitingMatchMenuRow(txnData);
+}
+
+/**
+ * The Reset to Plaid entry.
+ *
+ * @returns {{label: string, action: string, separator: boolean}}
+ */
+function _resetToPlaidItem() {
+  return {
+    label: '↺ Reset to Plaid',
+    action: 'reset-to-plaid',
+    separator: false,
+  };
+}
+
 function _buildMenuItems(txnData) {
   const { isBill, isSplit } = txnData;
   // A row that already carries a bill link must not offer to become one.
@@ -307,6 +337,10 @@ function _buildMenuItems(txnData) {
         action: 'match-to-adjacent',
         separator: false,
       });
+    }
+    // A split bank row keeps its menu to Reset to Plaid, which removes the split.
+    if (_canResetToPlaid(txnData)) {
+      splitItems.push(_resetToPlaidItem());
     }
     return _appendInspectMenuItem(splitItems, txnData);
   }
@@ -543,6 +577,12 @@ function _buildMenuItems(txnData) {
     });
   }
 
+  // "Reset to Plaid" — every posted bank row that is not on a waiting match.
+  // Strips the user's changes and puts the bank's amount and date back.
+  if (_canResetToPlaid(txnData)) {
+    items.push(_resetToPlaidItem());
+  }
+
   // "This is a Bill" — plaid, manual, plaid-converted, pending (NOT scheduled, missing, split, opening, orphaned)
   const showBill = !isLinkedToBill && (isPlaid || (isManual && !isOrphaned) || isPlaidConverted || isPending);
   if (showBill) {
@@ -732,6 +772,9 @@ function _dispatchContextAction(action, txnData) {
       break;
     case 'reset-plaid-amount':
       _handleContextResetPlaidAmount(txnData);
+      break;
+    case 'reset-to-plaid':
+      _handleContextResetToPlaid(txnData);
       break;
     case 'inspect-data':
       _handleContextInspectData(txnData);
@@ -1406,6 +1449,65 @@ async function _handleContextResetPlaidAmount(txnData) {
     showStatus(data.message || 'Plaid amount restored', 'success');
   } catch (networkError) {
     showStatus(`Failed to reset amount: ${networkError.message}`, 'error');
+  }
+}
+
+/** What the Reset to Plaid confirm tells the user before anything is sent. */
+const RESET_TO_PLAID_CONFIRM_TEXT = [
+  "Reset this transaction to the bank's data?",
+  '',
+  "- The amount and date go back to the bank's. The name, memo, category, bill link, splits and hidden state are cleared, and the transaction is marked unreviewed.",
+  "- If it was matched to a bill, that bill's occurrence comes back as its own row.",
+  '- A hand-entered transaction that was merged into this one by an approved match does not come back.',
+].join('\n');
+
+/**
+ * The success message for a reset, from the response's two outcome fields.
+ *
+ * @param {Object|null} data - The parsed success response.
+ * @returns {string}
+ */
+function _resetToPlaidSuccessMessage(data) {
+  if (data && data.rematched) {
+    return "Reset to Plaid. The bill's occurrence was matched to another bank transaction.";
+  }
+  if (data && data.recreated_transaction_id) {
+    return "Reset to Plaid. The bill's occurrence is back as its own row.";
+  }
+  return 'Reset to Plaid';
+}
+
+/**
+ * Reset a posted bank row to the bank's data. The API refuses with a
+ * sentence for the user (a transfer half, a waiting match); it is shown as is.
+ */
+async function _handleContextResetToPlaid(txnData) {
+  if (!confirm(RESET_TO_PLAID_CONFIRM_TEXT)) {
+    return;
+  }
+
+  // Used only when the response carries no changed rows.
+  const refetchAccountIds = txnData.accountId ? [txnData.accountId] : null;
+
+  try {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/transactions/${encodeURIComponent(txnData.txnId)}/reset-to-plaid`,
+      { method: 'POST' }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      showStatus((errorData && errorData.error) || 'Failed to reset transaction', 'error');
+      return;
+    }
+
+    const data = await response.json().catch(() => null);
+
+    showStatus(_resetToPlaidSuccessMessage(data), 'success');
+    await applyRowChangesFromResponse(data, refetchAccountIds);
+    renderTransactionTable();
+  } catch (networkError) {
+    showStatus(`Failed to reset transaction: ${networkError.message}`, 'error');
   }
 }
 
