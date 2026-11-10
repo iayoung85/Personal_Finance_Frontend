@@ -1262,9 +1262,10 @@ function _handleContextSkipOccurrence(txnData) {
 // ─── Hide / Unhide handlers ──────────────────────────────────
 
 /**
- * Hide a plaid transaction — excluded from balance and main ledger view.
+ * Hide a plaid transaction — out of the main ledger view and the summaries;
+ * its amount still counts in the balance.
  * Common use cases: reversed fees (debit + credit pair), micro-deposits,
- * hotel pre-auth holds, or contaminating transactions from plaid.
+ * and hotel pre-auth holds.
  */
 async function _handleContextHide(txnData) {
   try {
@@ -1293,7 +1294,7 @@ async function _handleContextHide(txnData) {
 }
 
 /**
- * Unhide a plaid transaction — restores it to balance and ledger view.
+ * Unhide a plaid transaction — restores it to the ledger view and summaries.
  */
 async function _handleContextUnhide(txnData) {
   try {

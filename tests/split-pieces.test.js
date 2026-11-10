@@ -186,6 +186,22 @@ test('a normal split counts its pieces', () => {
   assert.deepEqual(plain(entries.map(entry => entry.amount)), [-60, -40]);
 });
 
+test('a hidden row shown by Show Hidden stays out of the totals', () => {
+  const shown = plaidRow('shown', { amount: -25, analytics_class: 'spending' });
+  const hidden = plaidRow('hidden', { amount: -70, analytics_class: 'spending', is_hidden: true });
+  const entries = loadAnalytics([shown, hidden]).api._collectVisibleLedgerAnalyticsEntries();
+  assert.deepEqual(plain(entries.map(entry => entry.transaction_id)), ['shown']);
+});
+
+test('a hidden split parent keeps its pieces out of the totals', () => {
+  const hiddenSplit = parentOf('plaid', 'cleared', {
+    is_hidden: true,
+    splits: [piece('p1_split_0', -60, { analytics_class: 'spending' }), piece('p1_split_1', -40, { analytics_class: 'spending' })],
+  });
+  const entries = loadAnalytics([hiddenSplit]).api._collectVisibleLedgerAnalyticsEntries();
+  assert.equal(entries.length, 0);
+});
+
 // ── Inspect normalization ──────────────────────────────────────
 
 function loadInspect(cachedTransactions) {

@@ -357,6 +357,13 @@ function _shouldSkipLedgerParentForAnalytics(txn) {
     return true;
   }
 
+  // Show Hidden puts hidden rows back in the table, not back in the totals:
+  // the API's reports and the phone leave them out, and the totals must agree.
+  // A hidden split parent takes its pieces with it.
+  if (txn.is_hidden) {
+    return true;
+  }
+
   const txnType = getTransactionType(txn);
   if (!txnType) {
     return true;
