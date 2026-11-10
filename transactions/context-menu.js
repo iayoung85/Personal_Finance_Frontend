@@ -925,7 +925,11 @@ async function _handleContextDeleteMissing(txnData) {
     const batchResult = await resolveReconciliationBatch({ delete_missing: [txnData.txnId] });
     await applyAffectedAccounts(batchResult);
     showStatus('Transaction deleted', 'success');
-    await refreshAccountTransactions(txnData.accountId);
+    if (!applyChangedTransactions(batchResult)) {
+      await refreshAccountTransactions(txnData.accountId);
+    }
+    await refreshSelectedLedgerAfterAffected(batchResult);
+    renderTransactionTable();
     await checkAndRenderReconciliationBanner();
   } catch (deleteError) {
     showStatus(`Failed to delete transaction: ${deleteError.message}`, 'error');
@@ -998,14 +1002,15 @@ async function _handleContextApproveMatch(txnData) {
   const approveId = txnData.matchManualTxnId || txnData.txnId;
   try {
     const result = await approveMatch(approveId);
-    // Before the cache patch: its table render projects from the balance.
+    // Before the row patch: its table render projects from the balance.
     await applyAffectedAccounts(result);
-    _applyReconciliationMutationToCache(result, approveId);
-    if (txnData.isSplitChild) {
-      // The pieces move onto the Plaid row with the approval; the single-row
-      // answer is not trusted to carry them.
-      await refreshAccountTransactions(txnData.accountId);
-    }
+    await _applyApprovedMatch(result, approveId, txnData.isSplitChild
+      ? function() {
+        // The pieces move onto the Plaid row with the approval; the
+        // single-row answer is not trusted to carry them.
+        return refreshAccountTransactions(txnData.accountId);
+      }
+      : null);
     showStatus('Match approved — manual transaction removed', 'success');
   } catch (approveError) {
     showStatus(`Failed to approve match: ${approveError.message}`, 'error');
@@ -1121,6 +1126,8 @@ async function _handleContextApproveAllMatches() {
     }
     _invalidateTransactionCache();
     await fetchAllTransactions(true);
+    await refreshSelectedLedgerAfterAffected(result);
+    renderTransactionTable();
   } catch (approveError) {
     showStatus(`Failed to approve matches: ${approveError.message}`, 'error');
   }

@@ -1053,6 +1053,51 @@ function _replaceCachedTransaction(txnId, fullTxn) {
   }
 }
 
+/**
+ * Apply a response's `removed_transaction_ids` and `affected_transactions` to
+ * the in-memory list and the IndexedDB cache, so the page need not download
+ * the account again. Re-sorts, and leaves the cache the way an account
+ * refresh does: the stored ETag is cleared because the cached rows no longer
+ * match the last full download. Redraws the sidebar, whose unreviewed badges
+ * count these rows. Does not render the table; the caller does, after any
+ * ledger work.
+ *
+ * @param {Object|null|undefined} responseData Parsed JSON body of the save.
+ * @returns {boolean} False when the response lacks either field and nothing
+ *   was changed; the caller then does its whole-account refetch.
+ */
+function applyChangedTransactions(responseData) {
+  var result = patchTransactionsFromResponse(transactions, responseData);
+  if (!result.patched) return false;
+  if (result.removedIds.length === 0 && result.upsertedRows.length === 0) return true;
+
+  transactions = result.rows;
+  _sortTransactionsInPlace();
+
+  if (window.txnDB) {
+    result.removedIds.forEach(function(removedId) {
+      window.txnDB.deleteOne(removedId).catch(function() {});
+    });
+    if (result.upsertedRows.length > 0) {
+      window.txnDB.bulkWrite(result.upsertedRows).catch(function(err) {
+        console.warn('IndexedDB row patch failed:', err);
+      });
+    }
+    window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
+    window.txnDB.setMeta('etag', null).catch(function() {});
+  }
+  _fetchTransactionsFromServer._cachedEtag = null;
+
+  autoExtendEndDateForScheduled();
+  renderDynamicPeriodButtons();
+  // The sidebar counts unreviewed rows per account from this list, and a
+  // changed row may have just been reviewed (splitting one does that).
+  if (typeof renderAccountsSidebar === 'function') {
+    renderAccountsSidebar();
+  }
+  return true;
+}
+
 // ===== Balance History for Ledger Column =====
 
 /**
@@ -1151,4 +1196,20 @@ async function fetchBalanceHistory(accountId) {
   } finally {
     balanceHistoryLoading = false;
   }
+}
+
+/**
+ * Refresh the selected account's ledger column when a response rebuilt that
+ * account but brought no history to patch it from, so the column agrees with
+ * the sidebar. Call after the rows are patched or refetched and before the
+ * table renders; the cached ledger is dropped first because its signature may
+ * still match.
+ *
+ * @param {Object|null|undefined} responseData Parsed JSON body of the save.
+ * @returns {Promise<void>}
+ */
+async function refreshSelectedLedgerAfterAffected(responseData) {
+  if (!selectedLedgerNeedsRefresh(responseData, selectedAccountMode, selectedAccountId)) return;
+  _evictBalanceHistoryCacheEntries([selectedAccountId]);
+  await fetchBalanceHistory(selectedAccountId);
 }

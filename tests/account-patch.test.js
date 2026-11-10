@@ -7,11 +7,11 @@ const vm = require('node:vm');
 const box = { module: { exports: {} } };
 vm.runInNewContext(
   `${fs.readFileSync(path.join(__dirname, '..', 'transactions/account-patch.js'), 'utf8')}\n`
-    + 'module.exports = { patchAccountsFromAffected, mapAccountBalanceFields };',
+    + 'module.exports = { patchAccountsFromAffected, mapAccountBalanceFields, selectedLedgerNeedsRefresh };',
   box,
   { filename: 'account-patch.js' },
 );
-const { patchAccountsFromAffected, mapAccountBalanceFields } = box.module.exports;
+const { patchAccountsFromAffected, mapAccountBalanceFields, selectedLedgerNeedsRefresh } = box.module.exports;
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 function makeAccounts() {
@@ -116,4 +116,28 @@ test('the accounts-list mapping reads last_balance_update before last_updated', 
   assert.deepEqual(plain(mapped), {
     current_balance: 12.5, last_updated: 'new', plaid_balance: null, bank_agreement: null,
   });
+});
+
+test('the ledger needs a refresh when the selected account was rebuilt and no history came', () => {
+  const response = { affected_accounts: [{ account_id: 'a' }, { account_id: 'b' }] };
+  assert.equal(selectedLedgerNeedsRefresh(response, 'single', 'a'), true);
+});
+
+test('the ledger needs no refresh for another account, all-accounts mode or no selection', () => {
+  const response = { affected_accounts: [{ account_id: 'b' }] };
+  assert.equal(selectedLedgerNeedsRefresh(response, 'single', 'a'), false);
+  assert.equal(selectedLedgerNeedsRefresh({ affected_accounts: [{ account_id: 'a' }] }, 'all', 'a'), false);
+  assert.equal(selectedLedgerNeedsRefresh({ affected_accounts: [{ account_id: 'a' }] }, 'single', null), false);
+});
+
+test('the ledger needs no refresh when the response brings its own history', () => {
+  const response = { affected_accounts: [{ account_id: 'a' }], affected_balance_history: [] };
+  assert.equal(selectedLedgerNeedsRefresh(response, 'single', 'a'), false);
+});
+
+test('the ledger needs no refresh for a missing, empty or malformed account list', () => {
+  assert.equal(selectedLedgerNeedsRefresh(null, 'single', 'a'), false);
+  assert.equal(selectedLedgerNeedsRefresh({}, 'single', 'a'), false);
+  assert.equal(selectedLedgerNeedsRefresh({ affected_accounts: [] }, 'single', 'a'), false);
+  assert.equal(selectedLedgerNeedsRefresh({ affected_accounts: 'a' }, 'single', 'a'), false);
 });

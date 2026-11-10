@@ -520,6 +520,8 @@ async function _onBulkEditApplyClick() {
     if (staleClassAccounts.length > 0) {
       await _refreshAccountsForStaleAnalyticsClass(staleClassAccounts);
     }
+    // The render that closes bulk-edit mode draws the refreshed column.
+    await refreshSelectedLedgerAfterAffected(result.body);
     const summary = result.body.summary || {};
     const succeeded = summary.succeeded || 0;
     const failed    = summary.failed || 0;

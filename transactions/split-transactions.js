@@ -440,9 +440,18 @@ async function handleSplitSubmit() {
     submitBtn.disabled = true;
     submitBtn.textContent = isEditingSplit ? 'Updating...' : 'Creating...';
     
+    // Read now: closing the modal below forgets which row was being split.
+    const splitAccountId = currentSplitTransaction.account_id;
+
+    // Whether every response so far carried the changed rows. Each one is
+    // applied as it arrives, so if the create then fails the list already
+    // holds the restored parent, and the catch below draws it.
+    let rowsPatched = true;
     if (isEditingSplit) {
       // Delete old splits using the parent's transaction_id, then create new ones
-      await deleteSplitHelper(currentSplitTransaction.transaction_id);
+      const deleteData = await deleteSplitHelper(currentSplitTransaction.transaction_id);
+      await applyAffectedAccounts(deleteData);
+      rowsPatched = applyChangedTransactions(deleteData);
     }
     
     // Create new splits
@@ -464,17 +473,28 @@ async function handleSplitSubmit() {
       throw new Error(error.error || 'Failed to create split');
     }
     
+    const createData = await response.json().catch(() => null);
+    const wasEditing = isEditingSplit;
     closeSplitModal();
-    showStatus(isEditingSplit ? 'Split updated successfully' : 'Split created successfully', 'success');
-    
-    // Refresh transactions for the affected account
-    await refreshAccountTransactions(currentSplitTransaction ? currentSplitTransaction.account_id : null);
+    showStatus(wasEditing ? 'Split updated successfully' : 'Split created successfully', 'success');
+
+    await applyAffectedAccounts(createData);
+    const createPatched = applyChangedTransactions(createData);
+    if (!rowsPatched || !createPatched) {
+      // Refresh transactions for the affected account
+      await refreshAccountTransactions(splitAccountId);
+    }
+    await refreshSelectedLedgerAfterAffected(createData);
+    renderTransactionTable();
     
   } catch (error) {
     showStatus(`Error: ${error.message}`, 'error');
     const submitBtn = document.getElementById('split-submit-btn');
     submitBtn.disabled = false;
     submitBtn.textContent = isEditingSplit ? 'Update' : 'Create';
+    // An update that deleted the old pieces before failing has already
+    // changed the list; show it as it now is.
+    renderTransactionTable();
   }
 }
 
@@ -489,6 +509,7 @@ async function deleteSplitHelper(splitTransactionId) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to delete split');
   }
+  return response.json().catch(() => null);
 }
 
 // Delete split immediately (no confirmation)
@@ -496,9 +517,14 @@ async function handleDeleteSplit(splitTransactionId) {
   try {
     var splitTxn = transactions.find(function(findTxn) { return findTxn.transaction_id === splitTransactionId; });
     var splitAccountId = splitTxn ? splitTxn.account_id : null;
-    await deleteSplitHelper(splitTransactionId);
+    const deleteData = await deleteSplitHelper(splitTransactionId);
     showStatus('Split deleted successfully', 'success');
-    await refreshAccountTransactions(splitAccountId);
+    await applyAffectedAccounts(deleteData);
+    if (!applyChangedTransactions(deleteData)) {
+      await refreshAccountTransactions(splitAccountId);
+    }
+    await refreshSelectedLedgerAfterAffected(deleteData);
+    renderTransactionTable();
   } catch (error) {
     showStatus(`Error: ${error.message}`, 'error');
   }

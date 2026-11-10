@@ -325,7 +325,7 @@ async function _bulkActionOrphaned(action) {
     });
 
     // Refresh main transaction list in the background
-    _refreshAfterReconciliation();
+    _refreshAfterBatchResolve(batchResult);
   } catch (resolveError) {
     showStatus(`Bulk action failed: ${resolveError.message}`, 'error');
   }
@@ -350,7 +350,7 @@ async function _singleOrphanedAction(transactionId, action) {
     const row = document.querySelector(`.recon-missing-row[data-txn-id="${transactionId}"]`);
     if (row) row.remove();
 
-    _refreshAfterReconciliation();
+    _refreshAfterBatchResolve(batchResult);
   } catch (resolveError) {
     showStatus(`Action failed: ${resolveError.message}`, 'error');
   }
@@ -502,7 +502,7 @@ async function _forceMatchRowClickHandler(event) {
       showStatus('Force match applied successfully', 'success');
     }
 
-    _refreshAfterReconciliation();
+    _refreshAfterReconciliation(result);
   } catch (matchError) {
     showStatus(`Force match failed: ${matchError.message}`, 'error');
   }
@@ -535,11 +535,39 @@ function _bulkForceMatchOrphaned() {
 
 // ─── Post-resolution refresh ────────────────────────────────
 
-async function _refreshAfterReconciliation() {
+/**
+ * Download the whole list again after a resolution.
+ *
+ * @param {Object} [responseData] The resolution's response, for the ledger
+ *   column of the selected account.
+ * @returns {Promise<void>}
+ */
+async function _refreshAfterReconciliation(responseData) {
   _invalidateTransactionCache();
   await fetchAllTransactions(true);
+  if (responseData) {
+    await refreshSelectedLedgerAfterAffected(responseData);
+    renderTransactionTable();
+  }
 
   // Re-check whether the banner should still show
+  await checkAndRenderReconciliationBanner();
+}
+
+/**
+ * Bring the page up to date after a batch delete: apply the response's
+ * changed rows, or download the whole list when it has none.
+ *
+ * @param {Object} batchResult Parsed JSON body of the batch resolve.
+ * @returns {Promise<void>}
+ */
+async function _refreshAfterBatchResolve(batchResult) {
+  if (!applyChangedTransactions(batchResult)) {
+    await _refreshAfterReconciliation(batchResult);
+    return;
+  }
+  await refreshSelectedLedgerAfterAffected(batchResult);
+  renderTransactionTable();
   await checkAndRenderReconciliationBanner();
 }
 
@@ -676,19 +704,43 @@ function _applyReconciliationMutationToCache(result, removedTxnId) {
   }
 }
 
+/**
+ * Bring the page up to date after an approve. The response's changed rows are
+ * applied when it has them; otherwise the single-row answer is cached and
+ * `refetch` (if any) downloads what that answer cannot be trusted to carry.
+ *
+ * @param {Object} result Parsed JSON body of the approve.
+ * @param {string} removedTxnId The manual row the approval deletes.
+ * @param {(function(): Promise<void>)|null} refetch Whole-account fallback.
+ * @returns {Promise<void>}
+ */
+async function _applyApprovedMatch(result, removedTxnId, refetch) {
+  if (applyChangedTransactions(result)) {
+    await refreshSelectedLedgerAfterAffected(result);
+  } else {
+    _applyReconciliationMutationToCache(result, removedTxnId);
+    if (refetch) await refetch();
+    await refreshSelectedLedgerAfterAffected(result);
+  }
+  renderTransactionTable();
+  if (typeof renderAccountsSidebar === 'function') {
+    renderAccountsSidebar();
+  }
+}
+
 async function approveMatchedTransactionAndRefresh(transactionId, accountId) {
   const result = await approveMatch(transactionId);
-  // Before the cache patch: its table render projects from the balance.
+  // Before the row patch: its table render projects from the balance.
   await applyAffectedAccounts(result);
-  _applyReconciliationMutationToCache(result, transactionId);
-
-  if (accountId) {
-    try {
-      await refreshAccountTransactions(accountId);
-    } catch (refreshError) {
-      console.warn('Failed to refresh account after approve-match', accountId, refreshError);
+  await _applyApprovedMatch(result, transactionId, accountId
+    ? async function() {
+      try {
+        await refreshAccountTransactions(accountId);
+      } catch (refreshError) {
+        console.warn('Failed to refresh account after approve-match', accountId, refreshError);
+      }
     }
-  }
+    : null);
 
   showStatus('Match approved — manual transaction removed', 'success');
 }
@@ -862,7 +914,7 @@ async function _selectRelocateAccount(orphanTxnId, targetAccountId, accountName)
     await applyAffectedAccounts(relocateResult);
     showStatus(`Transaction moved to ${accountName}`, 'success');
     closeModal();
-    _refreshAfterReconciliation();
+    _refreshAfterReconciliation(relocateResult);
   } catch (relocateError) {
     showStatus(`Move failed: ${relocateError.message}`, 'error');
   }

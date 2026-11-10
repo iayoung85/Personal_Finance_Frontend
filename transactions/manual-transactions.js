@@ -1024,12 +1024,17 @@ async function deleteManualTransaction(manualTransactionId) {
       _applyCachedMobUpdate(data);
     }
 
-    _sortTransactionsInPlace();
-    _cacheTransactions(transactions);
-
     // Accounts first: the ledger cache is signed with the account's
     // last_updated, and rendering needs the new balance for projections.
     await applyAffectedAccounts(data);
+
+    // The partner a delete unlinks changes its label with no other key to
+    // say so; the changed rows carry it. The keys above stay for an API that
+    // sends only those.
+    applyChangedTransactions(data);
+
+    _sortTransactionsInPlace();
+    _cacheTransactions(transactions);
 
     if (selectedAccountMode === 'single' && selectedAccountId) {
       var deletedAccountId = (deletedTxn && deletedTxn.account_id) || selectedAccountId;
@@ -1392,18 +1397,26 @@ async function unmatchScheduledTransaction(transactionId) {
       return;
     }
 
+    const data = await response.json().catch(() => null);
+
     showStatus('Match undone — transaction reverted to missing', 'success');
     closeMatchCompare();
-    // The Plaid row goes back to the bank's own values, and a transfer
-    // partner in another account stops naming it, so every touched account
-    // is fetched again.
-    if (touchedAccountIds === null || touchedAccountIds.length === 0) {
-      await refreshAccountTransactions(null);
-    } else {
-      for (const accountId of touchedAccountIds) {
-        await refreshAccountTransactions(accountId);
+    await applyAffectedAccounts(data);
+    // The response names the restored row and the bank row it had hidden
+    // behind. Without them, the Plaid row goes back to the bank's own values
+    // and a transfer partner in another account stops naming it, so every
+    // touched account is fetched again.
+    if (!applyChangedTransactions(data)) {
+      if (touchedAccountIds === null || touchedAccountIds.length === 0) {
+        await refreshAccountTransactions(null);
+      } else {
+        for (const accountId of touchedAccountIds) {
+          await refreshAccountTransactions(accountId);
+        }
       }
     }
+    await refreshSelectedLedgerAfterAffected(data);
+    renderTransactionTable();
 
   } catch (networkError) {
     showStatus(`Failed to unmatch: ${networkError.message}`, 'error');

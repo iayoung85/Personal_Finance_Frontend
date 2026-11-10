@@ -89,3 +89,23 @@ function patchAccountsFromAffected(currentAccounts, affectedAccounts) {
   });
   return { patched: true, accounts: patchedAccounts };
 }
+
+/**
+ * Whether the ledger column of the selected account is behind a response.
+ *
+ * True when the response lists the selected account among those it rebuilt
+ * and brings no `affected_balance_history` to patch the column from. A site
+ * that patches or fetches the column itself has the history and gets false.
+ *
+ * @param {Object|null|undefined} responseData Parsed JSON body of the save.
+ * @param {string} selectedMode 'single' or 'all'.
+ * @param {string|null} selectedId The selected account in single mode.
+ * @returns {boolean}
+ */
+function selectedLedgerNeedsRefresh(responseData, selectedMode, selectedId) {
+  if (!responseData || selectedMode !== 'single' || !selectedId) return false;
+  if (responseData.affected_balance_history) return false;
+  const affected = responseData.affected_accounts;
+  if (!Array.isArray(affected)) return false;
+  return affected.some((entry) => entry && entry.account_id === selectedId);
+}
