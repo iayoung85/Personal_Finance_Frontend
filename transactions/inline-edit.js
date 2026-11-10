@@ -549,6 +549,10 @@ async function _saveRowInlineEdits() {
         _sortTransactionsInPlace();
         _cacheTransactions(transactions);
       }
+      // Accounts first: the ledger cache is signed with the account's
+      // last_updated, and rendering needs the new balance for projections.
+      await applyAffectedAccounts(data);
+
       if (selectedAccountMode === 'single' && selectedAccountId) {
         if (data.affected_balance_history) {
           _patchBalanceHistoryCache(editedAccountId || selectedAccountId, data.affected_balance_history);
@@ -557,9 +561,6 @@ async function _saveRowInlineEdits() {
         }
       }
 
-      // Refresh account data before rendering so future-row balance
-      // projections use the updated current_balance.
-      await loadAccounts();
       renderTransactionTable();
     }
   } catch (saveError) {

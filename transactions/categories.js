@@ -1002,7 +1002,13 @@ async function _materializeBillOccurrenceForLinking(virtualTxnId) {
     return null;
   }
 
+  // The save rebuilds this account, and the link that follows names only the
+  // other one, so the save's own answer is applied here.
+  await applyAffectedAccounts(data);
+
   _removeCachedTransaction(virtualTxnId);
+  // A transfer bill's other side has a schedule entry of its own to drop.
+  _removePurgedVirtualTransactions(data);
   _replaceCachedTransaction(data.transaction.transaction_id, data.transaction);
   if (data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
     _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
@@ -1100,19 +1106,17 @@ async function _applyTransferAssignment(txnId, sourceAccountId, targetAccount) {
     }
     _invalidateTransactionCache();
 
+    // Accounts first: the ledger cache is signed with the account's
+    // last_updated. Linking two existing rows lists no account; creating a
+    // counterpart lists the target account it rebuilt.
+    await applyAffectedAccounts(result);
+
     // Patch balance history cache for the target account (create path
     // adds a new transaction that shifts the running balance).
     if (result.affected_balance_history && result.counterpart_account_id) {
       _patchBalanceHistoryCache(result.counterpart_account_id, result.affected_balance_history);
     }
 
-    if (selectedAccountMode === 'single' && selectedAccountId) {
-      await fetchBalanceHistory(selectedAccountId);
-    }
-    // Refresh sidebar balances for both accounts in the transfer pair.
-    // Without this, the new running balance stays stale in the sidebar
-    // until a full page refresh or account switch.
-    await loadAccounts();
     renderTransactionTable();
 
     // Build a descriptive status message
@@ -1156,12 +1160,9 @@ async function unlinkTransfer(txnId) {
     }
     _invalidateTransactionCache();
 
-    if (selectedAccountMode === 'single' && selectedAccountId) {
-      await fetchBalanceHistory(selectedAccountId);
-    }
-    // Mirror the assignment path — sidebar balances need refreshing since
-    // unlinking also moves money between accounts from an accounting view.
-    await loadAccounts();
+    // Unlinking rewrites the pair id, category and memo only: no amount
+    // moves and no ledger is rebuilt, so there is no balance to refresh.
+    await applyAffectedAccounts(data);
     renderTransactionTable();
 
     setTimeout(() => clearStatus(), 3000);

@@ -126,7 +126,6 @@ async function manualReconciliationMatch(manualTransactionId, targetTransactionI
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || 'Failed to match transactions');
   }
-  await loadAccounts();
   return response.json();
 }
 
@@ -315,7 +314,8 @@ async function _bulkActionOrphaned(action) {
   try {
     const payload = { delete_orphaned: selectedIds };
 
-    await resolveReconciliationBatch(payload);
+    const batchResult = await resolveReconciliationBatch(payload);
+    await applyAffectedAccounts(batchResult);
     showStatus(`${selectedIds.length} transaction(s) deleted`, 'success');
 
     // Remove resolved rows from the modal DOM
@@ -342,7 +342,8 @@ async function _singleOrphanedAction(transactionId, action) {
   try {
     const payload = { delete_orphaned: [transactionId] };
 
-    await resolveReconciliationBatch(payload);
+    const batchResult = await resolveReconciliationBatch(payload);
+    await applyAffectedAccounts(batchResult);
     showStatus('Transaction deleted', 'success');
 
     // Remove the row from the modal
@@ -490,6 +491,7 @@ async function _forceMatchRowClickHandler(event) {
   try {
     showStatus('Applying force match…', 'info');
     const result = await forceMatchOrphanToPlaid(orphanId, clickedTxnId);
+    await applyAffectedAccounts(result);
 
     if (result.splits_need_repair) {
       showStatus(
@@ -676,6 +678,8 @@ function _applyReconciliationMutationToCache(result, removedTxnId) {
 
 async function approveMatchedTransactionAndRefresh(transactionId, accountId) {
   const result = await approveMatch(transactionId);
+  // Before the cache patch: its table render projects from the balance.
+  await applyAffectedAccounts(result);
   _applyReconciliationMutationToCache(result, transactionId);
 
   if (accountId) {
@@ -694,6 +698,8 @@ async function _selectMatchCandidate(missingTxnId, targetTxnId) {
 
   try {
     const result = await manualReconciliationMatch(missingTxnId, targetTxnId);
+    // Before the cache patch: its table render projects from the balance.
+    await applyAffectedAccounts(result);
     _applyReconciliationMutationToCache(result, missingTxnId);
 
     if (result.splits_need_repair) {
@@ -852,7 +858,8 @@ async function _selectRelocateAccount(orphanTxnId, targetAccountId, accountName)
 
   try {
     showStatus('Moving transaction…', 'info');
-    await relocateOrphanToAccount(orphanTxnId, targetAccountId);
+    const relocateResult = await relocateOrphanToAccount(orphanTxnId, targetAccountId);
+    await applyAffectedAccounts(relocateResult);
     showStatus(`Transaction moved to ${accountName}`, 'success');
     closeModal();
     _refreshAfterReconciliation();

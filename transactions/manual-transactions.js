@@ -479,6 +479,7 @@ async function _updateManualTransaction(transactionId, accountId) {
 
     // Patch the edited transaction in-memory + IndexedDB immediately.
     var updatedAccountId = selectedAccountId;
+    _removePurgedVirtualTransactions(data);
     if (data.transaction && data.transaction.transaction_id) {
       _replaceCachedTransaction(transactionId, data.transaction);
       updatedAccountId = data.transaction.account_id || selectedAccountId;
@@ -506,6 +507,10 @@ async function _updateManualTransaction(transactionId, accountId) {
     _sortTransactionsInPlace();
     _cacheTransactions(transactions);
 
+    // Accounts first: the ledger cache is signed with the account's
+    // last_updated, and rendering needs the new balance for projections.
+    await applyAffectedAccounts(data);
+
     if (selectedAccountMode === 'single' && selectedAccountId) {
       if (data.affected_balance_history) {
         _patchBalanceHistoryCache(updatedAccountId, data.affected_balance_history);
@@ -514,9 +519,6 @@ async function _updateManualTransaction(transactionId, accountId) {
       }
     }
 
-    // Refresh account data before rendering so future-row balance
-    // projections use the updated current_balance.
-    await loadAccounts();
     renderTransactionTable();
 
     if (transferTarget) {
@@ -673,6 +675,8 @@ async function _submitPendingManualTransaction() {
   }
 
   try {
+    // The save response, whichever branch ran, for its affected_accounts.
+    let savedData = null;
     if (pending.mode === 'edit') {
       const response = await authenticatedFetch(
         `${BACKEND_URL}/api/transactions/${encodeURIComponent(pending.transactionId)}`,
@@ -687,6 +691,7 @@ async function _submitPendingManualTransaction() {
         showStatus(data.error || 'Failed to update transaction with new category', 'error');
         return;
       }
+      savedData = data;
       showStatus(`Transaction updated with category: ${pending.category}`, 'success');
 
       // Patch the updated transaction + any affected trending rows locally
@@ -712,6 +717,7 @@ async function _submitPendingManualTransaction() {
         showStatus(data.error || 'Failed to create transaction', 'error');
         return;
       }
+      savedData = data;
 
       const appliedCategory = data.transaction?.user_category;
       const successMsg = appliedCategory
@@ -741,13 +747,14 @@ async function _submitPendingManualTransaction() {
     _sortTransactionsInPlace();
     _cacheTransactions(transactions);
 
+    // Accounts first: the ledger cache is signed with the account's
+    // last_updated, and rendering needs the new balance for projections.
+    await applyAffectedAccounts(savedData);
+
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
     }
 
-    // Refresh account data before rendering so future-row balance
-    // projections use the updated current_balance.
-    await loadAccounts();
     renderTransactionTable();
 
   } catch (networkError) {
@@ -934,6 +941,28 @@ async function saveManualTransaction() {
       includePreviousDay: isOldestTransactionForAccount,
     });
     
+    // Accounts first: the ledger cache is signed with the account's
+    // last_updated, and the render needs the new balance for projections.
+    // This also has to precede the transfer assignment below, whose own
+    // response does not list the account the new row was created on.
+    await applyAffectedAccounts(data);
+
+    // The ledger column for this account is settled here, before any transfer
+    // assignment: linking changes no ledger row, so nothing after this point
+    // would bring the new row's running balance in.
+    try {
+      if (selectedAccountMode === 'single' && selectedAccountId) {
+        if (data.affected_balance_history) {
+          _patchBalanceHistoryCache(accountId, data.affected_balance_history);
+        } else {
+          await fetchBalanceHistory(selectedAccountId);
+        }
+      }
+    } catch (e) {
+      // If fetch fails, user still sees the transaction locally
+      console.warn('Background fetch failed but transaction is locally cached:', e);
+    }
+
     // Refresh table with new transaction visible
     renderTransactionTable();
 
@@ -943,26 +972,6 @@ async function saveManualTransaction() {
     const newTxnId = data.transaction_id || newTxn.transaction_id;
     if (transferTarget && newTxnId) {
       await _applyTransferAssignment(newTxnId, accountId, transferTarget);
-      return; // _applyTransferAssignment already refreshes transactions
-    }
-    
-    // Lightweight follow-ups: balance history for ledger column + sidebar balances.
-    // The heavy refreshAccountTransactions call is no longer needed — the backend
-    // response included the new txn + any affected trending rows.
-    try {
-      if (selectedAccountMode === 'single' && selectedAccountId) {
-        if (data.affected_balance_history) {
-          _patchBalanceHistoryCache(accountId, data.affected_balance_history);
-        } else {
-          await fetchBalanceHistory(selectedAccountId);
-        }
-        renderTransactionTable();
-      }
-      // Refresh sidebar balances — backend may have recalculated current_balance
-      await loadAccounts();
-    } catch (e) {
-      // If fetch fails, user still sees the transaction locally
-      console.warn('Background fetch failed but transaction is locally cached:', e);
     }
 
   } catch (error) {
@@ -1018,6 +1027,10 @@ async function deleteManualTransaction(manualTransactionId) {
     _sortTransactionsInPlace();
     _cacheTransactions(transactions);
 
+    // Accounts first: the ledger cache is signed with the account's
+    // last_updated, and rendering needs the new balance for projections.
+    await applyAffectedAccounts(data);
+
     if (selectedAccountMode === 'single' && selectedAccountId) {
       var deletedAccountId = (deletedTxn && deletedTxn.account_id) || selectedAccountId;
       // Remove the deleted row from the in-memory balance lookup
@@ -1035,9 +1048,6 @@ async function deleteManualTransaction(manualTransactionId) {
       }
     }
 
-    // Refresh account data before rendering so future-row balance
-    // projections use the updated current_balance.
-    await loadAccounts();
     renderTransactionTable();
 
   } catch (error) {
@@ -1434,6 +1444,10 @@ async function resolveMissingTransaction(transactionId) {
     _sortTransactionsInPlace();
     _cacheTransactions(transactions);
 
+    // Accounts first: the ledger cache is signed with the account's
+    // last_updated, and rendering needs the new balance for projections.
+    await applyAffectedAccounts(data);
+
     if (selectedAccountMode === 'single' && selectedAccountId) {
       if (data && data.affected_balance_history) {
         delete balanceHistoryLookup[transactionId];
@@ -1443,7 +1457,6 @@ async function resolveMissingTransaction(transactionId) {
       }
     }
     renderTransactionTable();
-    await loadAccounts();
 
   } catch (networkError) {
     showStatus(`Failed to resolve: ${networkError.message}`, 'error');

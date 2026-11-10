@@ -513,6 +513,9 @@ async function _onBulkEditApplyClick() {
       return;
     }
 
+    // Accounts first, so whatever is drawn after the rows are patched
+    // projects from the new balance.
+    await applyAffectedAccounts(result.body);
     const staleClassAccounts = _patchCacheFromApplyResults(result.body, changes);
     if (staleClassAccounts.length > 0) {
       await _refreshAccountsForStaleAnalyticsClass(staleClassAccounts);

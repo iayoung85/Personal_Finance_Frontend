@@ -479,7 +479,6 @@ async function loadAccounts(options = {}) {
       account_name: a.account_name || '',
       account_category: a.account_category || a.account_type || '',
       account_subcategory: a.account_subcategory || a.account_subtype || '',
-      current_balance: parseFloat(a.current_balance) || 0,
       custom_name: a.custom_name || null,
       origin: a.origin || 'manual',
       connection_status: a.connection_status || 'manual',
@@ -487,18 +486,17 @@ async function loadAccounts(options = {}) {
       mask: a.mask || null,
       user_mask: a.user_mask || null,
       effective_mask: a.effective_mask || a.user_mask || a.mask || null,
-      last_updated: a.last_balance_update || a.last_updated || null,
       is_archived: a.is_archived || false,
       is_hidden: a.is_hidden || false,
       billed_products: a.billed_products || [],
       available_products: a.available_products || [],
       // Backend-authoritative boundary for manual txn date guard (Problem 5 alignment)
       earliest_plaid_transaction_date: a.earliest_plaid_transaction_date || null,
-      plaid_balance: a.plaid_balance != null ? parseFloat(a.plaid_balance) : null,
-      // The API's verdict on whether the ledger agrees with the bank.
-      bank_agreement: a.bank_agreement || null,
       // Exact bracket string the API stores for transfers to this account.
       transfer_label: a.transfer_label || null,
+      // current_balance, last_updated, plaid_balance and bank_agreement: the
+      // same mapping a save response's affected_accounts entries go through.
+      ...mapAccountBalanceFields(a),
     }))
     .filter(a => a.account_id); // Filter out any without account_id
 
@@ -518,6 +516,33 @@ async function loadAccounts(options = {}) {
     console.error('loadAccounts error:', error);
     showStatus(`Failed to load accounts: ${error.message}`, 'error');
   }
+}
+
+/**
+ * Bring the page's accounts up to date after a change, from the save
+ * response instead of a fresh `GET /api/accounts`.
+ *
+ * Patches the in-memory accounts from the response's `affected_accounts`, then
+ * redraws the sidebar and the Plaid indicator as `loadAccounts` does. When the
+ * list is missing or names an account the page does not hold, it falls back to
+ * one quiet `loadAccounts`. Call it before `_patchBalanceHistoryCache`, which
+ * signs the ledger cache with the account's `last_updated`.
+ *
+ * @param {Object|null|undefined} responseData Parsed JSON body of the save.
+ * @returns {Promise<void>}
+ */
+async function applyAffectedAccounts(responseData) {
+  const affected = responseData ? responseData.affected_accounts : undefined;
+  const result = patchAccountsFromAffected(accounts, affected);
+  if (!result.patched) {
+    await loadAccounts({ quiet: true });
+    return;
+  }
+  if (affected.length === 0) return;
+
+  accounts = result.accounts;
+  renderAccountsSidebar();
+  updatePlaidBalanceIndicator();
 }
 
 function _wireSidebarKeyboardNavigation(container) {
@@ -1071,13 +1096,14 @@ function _openAddTrendingModal(accountId) {
 
       showStatus('Trending transaction created', 'success');
 
+      // Accounts first: the ledger cache is signed with the account's
+      // last_updated, and rendering needs the new balance for projections.
+      await applyAffectedAccounts(data);
+
       if (selectedAccountMode === 'single' && selectedAccountId) {
         await fetchBalanceHistory(selectedAccountId);
       }
 
-      // Refresh account data before rendering so future-row balance
-      // projections use the updated current_balance.
-      await loadAccounts();
       renderTransactionTable();
     } catch (networkError) {
       showStatus(`Failed to create trending: ${networkError.message}`, 'error');

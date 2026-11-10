@@ -922,7 +922,8 @@ async function _handleContextDeleteMissing(txnData) {
   if (!confirm('Delete this transaction permanently?')) return;
 
   try {
-    await resolveReconciliationBatch({ delete_missing: [txnData.txnId] });
+    const batchResult = await resolveReconciliationBatch({ delete_missing: [txnData.txnId] });
+    await applyAffectedAccounts(batchResult);
     showStatus('Transaction deleted', 'success');
     await refreshAccountTransactions(txnData.accountId);
     await checkAndRenderReconciliationBanner();
@@ -969,6 +970,10 @@ async function _handleContextMarkPaidMissing(txnData) {
     _sortTransactionsInPlace();
     _cacheTransactions(transactions);
 
+    // Accounts first: the ledger cache is signed with the account's
+    // last_updated, and rendering needs the new balance for projections.
+    await applyAffectedAccounts(data);
+
     if (selectedAccountMode === 'single' && selectedAccountId) {
       if (data.affected_balance_history) {
         delete balanceHistoryLookup[txnData.txnId];
@@ -978,7 +983,6 @@ async function _handleContextMarkPaidMissing(txnData) {
       }
     }
     renderTransactionTable();
-    await loadAccounts();
   } catch (networkError) {
     showStatus(`Failed to mark as paid: ${networkError.message}`, 'error');
   }
@@ -994,6 +998,8 @@ async function _handleContextApproveMatch(txnData) {
   const approveId = txnData.matchManualTxnId || txnData.txnId;
   try {
     const result = await approveMatch(approveId);
+    // Before the cache patch: its table render projects from the balance.
+    await applyAffectedAccounts(result);
     _applyReconciliationMutationToCache(result, approveId);
     if (txnData.isSplitChild) {
       // The pieces move onto the Plaid row with the approval; the single-row
@@ -1106,6 +1112,7 @@ async function _handleContextApproveAllMatches() {
 
   try {
     const result = await approveAllMatches(matchedIds);
+    await applyAffectedAccounts(result);
     const skipReasons = _approveAllSkipReasons(result);
     if (skipReasons.length > 0) {
       showStatus(_buildApproveAllWarning(result.approved_count, skipReasons), 'warning');
@@ -1204,8 +1211,10 @@ async function _handleContextMarkPaid(txnData) {
 
     showStatus('Marked as paid — occurrence materialized', 'success');
 
-    // Remove the virtual BILL_FUTURE row and add the materialized MANUAL_FUTURE
+    // Remove the virtual BILL_FUTURE row (the sent id is removed too, for an
+    // API that reports no purged ids) and add the materialized MANUAL_FUTURE.
     _removeCachedTransaction(txnData.txnId);
+    _removePurgedVirtualTransactions(data);
     if (data.transaction && data.transaction.transaction_id) {
       _replaceCachedTransaction(data.transaction.transaction_id, data.transaction);
     }
@@ -1216,6 +1225,10 @@ async function _handleContextMarkPaid(txnData) {
     _sortTransactionsInPlace();
     _cacheTransactions(transactions);
 
+    // Accounts first: the ledger cache is signed with the account's
+    // last_updated, and rendering needs the new balance for projections.
+    await applyAffectedAccounts(data);
+
     if (selectedAccountMode === 'single' && selectedAccountId) {
       if (data.affected_balance_history) {
         _patchBalanceHistoryCache(txnData.accountId, data.affected_balance_history);
@@ -1224,7 +1237,6 @@ async function _handleContextMarkPaid(txnData) {
       }
     }
     renderTransactionTable();
-    await loadAccounts();
   } catch (networkError) {
     showStatus(`Failed to mark as paid: ${networkError.message}`, 'error');
   }
@@ -1352,6 +1364,10 @@ async function _handleContextResetPlaidAmount(txnData) {
       _replaceCachedTransaction(data.transfer_partner_id, data.transfer_partner_transaction);
     }
 
+    // Accounts first: the ledger cache is signed with the account's
+    // last_updated, and rendering needs the new balance for projections.
+    await applyAffectedAccounts(data);
+
     // The response carries the row, its partner, the opening-balance row and
     // the rewritten ledger rows; only an investment account or a split parent
     // has further rows rewritten server-side that are not returned.
@@ -1378,7 +1394,6 @@ async function _handleContextResetPlaidAmount(txnData) {
           await fetchBalanceHistory(affectedAccountId);
         }
       }
-      await loadAccounts();
     }
     renderTransactionTable();
     showStatus(data.message || 'Plaid amount restored', 'success');
@@ -1658,13 +1673,14 @@ function _handleContextEditInvestmentBalance(txnData) {
       // data instead of serving stale ETag-based 304 responses.
       _invalidateTransactionCache();
 
+      // Accounts first: the ledger cache is signed with the account's
+      // last_updated, and rendering needs the new balance for projections.
+      await applyAffectedAccounts(data);
+
       if (selectedAccountMode === 'single' && selectedAccountId) {
         await fetchBalanceHistory(selectedAccountId);
       }
 
-      // Refresh account data before rendering so future-row balance
-      // projections use the updated current_balance.
-      await loadAccounts();
       renderTransactionTable();
     } catch (networkError) {
       showStatus(`Failed to update balance: ${networkError.message}`, 'error');

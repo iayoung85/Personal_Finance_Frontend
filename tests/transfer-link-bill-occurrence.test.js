@@ -13,7 +13,7 @@ const SAVED_ID = 'txn_saved';
 // Answers each call the transfer flow makes: saving the occurrence, the
 // candidate search (none), and creating the counterpart.
 function loadTransferFlow({ saveFails = false } = {}) {
-  const calls = { requests: [], statuses: [], removed: [], replaced: [] };
+  const calls = { requests: [], statuses: [], removed: [], replaced: [], accountPatches: [] };
   const sandbox = {
     module: { exports: {} },
     console,
@@ -28,7 +28,14 @@ function loadTransferFlow({ saveFails = false } = {}) {
         if (saveFails) {
           return { ok: false, json: async () => ({ error: 'Bill not found' }) };
         }
-        return { ok: true, json: async () => ({ transaction: { transaction_id: SAVED_ID, account_id: 'acct-1' } }) };
+        return {
+          ok: true,
+          json: async () => ({
+            transaction: { transaction_id: SAVED_ID, account_id: 'acct-1' },
+            affected_accounts: [{ account_id: 'acct-1', current_balance: '10.00' }],
+            purged_virtual_ids: [VIRTUAL_ID, `${VIRTUAL_ID}_cpt`],
+          }),
+        };
       }
       if (url.includes('/transfers/candidates/')) {
         return { ok: true, json: async () => ({ candidates: [] }) };
@@ -39,6 +46,10 @@ function loadTransferFlow({ saveFails = false } = {}) {
     clearStatus: () => {},
     _buildAccountDisplayName: (account) => account.name,
     _removeCachedTransaction: (id) => calls.removed.push(id),
+    _removePurgedVirtualTransactions: (data) => {
+      (data.purged_virtual_ids || []).forEach((id) => calls.removed.push(id));
+    },
+    applyAffectedAccounts: async (data) => { calls.accountPatches.push(data.affected_accounts); },
     _replaceCachedTransaction: (id) => calls.replaced.push(id),
     _invalidateTransactionCache: () => {},
     _patchBalanceHistoryCache: () => {},
@@ -66,8 +77,18 @@ test('a bill occurrence not yet saved is saved first, then the saved row is link
   assert.deepEqual(calls.requests[0].body, {});
   assert.ok(calls.requests[1].url.includes(`/transfers/candidates/${SAVED_ID}?`));
   assert.deepEqual(calls.requests[2].body, { transaction_id: SAVED_ID, target_account_id: 'acct-2' });
-  assert.deepEqual(calls.removed, [VIRTUAL_ID]);
+  assert.ok(calls.removed.includes(VIRTUAL_ID));
   assert.ok(calls.replaced.includes(SAVED_ID));
+});
+
+test('saving the occurrence applies its own account answer and drops the other side\'s schedule entry', async () => {
+  const { api, calls } = loadTransferFlow();
+
+  await api._applyTransferAssignment(VIRTUAL_ID, 'acct-1', TARGET);
+
+  // The save's answer comes first; the link that follows names no account.
+  assert.deepEqual(calls.accountPatches[0], [{ account_id: 'acct-1', current_balance: '10.00' }]);
+  assert.ok(calls.removed.includes(`${VIRTUAL_ID}_cpt`));
 });
 
 test('a failed save stops before any linking and shows the reason', async () => {

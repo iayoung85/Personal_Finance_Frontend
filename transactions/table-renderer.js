@@ -687,12 +687,11 @@ function renderTransactionTable() {
   if (showLedgerColumn) {
     const selectedAccount = accounts.find(account => account.account_id === selectedAccountId);
 
-    // Use the freshest running balance available. After a surgical balance-history
-    // patch (saveManualTransaction, deleteManualTransaction, mark-paid, etc.),
-    // balanceHistoryLookup is updated immediately but selectedAccount.current_balance
-    // is still stale — loadAccounts() hasn't resolved yet. Seeding from the most
-    // recent posted row's lookup value means future projections immediately reflect
-    // the mutation without waiting for an account reload.
+    // Use the freshest running balance available. A save normally patches both
+    // the ledger rows and the account's current_balance, but the two can arrive
+    // apart (a response with ledger rows and no account entry). Seeding from the
+    // most recent posted row's lookup value keeps future projections right in
+    // that case too.
     let currentPostedBalance = parseFloat(selectedAccount ? (selectedAccount.current_balance || 0) : 0);
     for (const postedTxn of postedTransactions) {
       // postedTransactions is sorted newest-first; the first match is the most
