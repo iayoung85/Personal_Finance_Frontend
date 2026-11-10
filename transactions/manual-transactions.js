@@ -1373,11 +1373,13 @@ function _expandDateFiltersForTransaction(txnDate, options = {}) {
 // ============================================================================
 
 /**
- * Unmatch a scheduled↔plaid pairing, reverting the scheduled row to 'missing'.
+ * Unmatch a scheduled↔plaid pairing for good. The API puts the row back to
+ * missing, or to scheduled when it is not due yet, and may match it to a
+ * different bank transaction before it answers.
  * Called from the Unmatch button in the category cell of matched transactions.
  */
 async function unmatchScheduledTransaction(transactionId) {
-  if (!confirm('Undo this match? The scheduled transaction will revert to "missing" status.')) {
+  if (!confirm('Undo this match? These two transactions will not be matched to each other again.')) {
     return;
   }
 
@@ -1399,7 +1401,11 @@ async function unmatchScheduledTransaction(transactionId) {
 
     const data = await response.json().catch(() => null);
 
-    showStatus('Match undone — transaction reverted to missing', 'success');
+    const rematched = Boolean(data && data.rematched);
+    showStatus(
+      rematched ? 'Match undone. Matched to another bank transaction.' : 'Match undone',
+      'success'
+    );
     closeMatchCompare();
     await applyAffectedAccounts(data);
     // The response names the restored row and the bank row it had hidden

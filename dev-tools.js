@@ -395,6 +395,25 @@ class DevToolsWidget {
     // --- Scenario 5: Populate manual txns with account picker ---
     this._buildScenario5Section();
 
+    // --- Pretend Plaid sync ---
+    // A database cloned from prod has its Plaid items detached, so the real
+    // sync button has nothing to sync; this runs the matchers a sync runs.
+    const pretendSyncButton = document.createElement('button');
+    pretendSyncButton.innerText = '🔄 Pretend Plaid Sync (run matching)';
+    Object.assign(pretendSyncButton.style, {
+      padding: '8px',
+      backgroundColor: '#4a6a4c',
+      color: '#fff',
+      border: 'none',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      textAlign: 'left'
+    });
+    pretendSyncButton.onmouseover = () => pretendSyncButton.style.backgroundColor = '#5c8c5e';
+    pretendSyncButton.onmouseout = () => pretendSyncButton.style.backgroundColor = '#4a6a4c';
+    pretendSyncButton.onclick = () => this.pretendSync(pretendSyncButton);
+    this.body.appendChild(pretendSyncButton);
+
     // --- Webhook Simulator ---
     this._buildWebhookSection();
 
@@ -495,6 +514,48 @@ class DevToolsWidget {
       }
     } catch (e) {
       this.log(`Fail: ${e.message}`);
+    } finally {
+      btnElement.innerText = originalText;
+      btnElement.disabled = false;
+    }
+  }
+
+  /**
+   * Run what a finished Plaid sync runs when the bank sent nothing new, then
+   * reload so the page shows what the matchers changed.
+   *
+   * @param {HTMLButtonElement} btnElement - The button that was clicked.
+   * @returns {Promise<void>}
+   */
+  async pretendSync(btnElement) {
+    const originalText = btnElement.innerText;
+    btnElement.innerText = 'Running...';
+    btnElement.disabled = true;
+    this.log('Pretend sync: running the matchers...');
+
+    try {
+      if (!window.BACKEND_URL) {
+        throw new Error('BACKEND_URL not ready');
+      }
+
+      const response = await fetch(`${window.BACKEND_URL}/api/dev/pretend-sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        }
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        this.log(data.message);
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        this.log(`Error ${response.status}: ${data.error || 'unknown'}`);
+      }
+    } catch (pretendSyncError) {
+      this.log(`Fail: ${pretendSyncError.message}`);
     } finally {
       btnElement.innerText = originalText;
       btnElement.disabled = false;
