@@ -61,3 +61,29 @@ test('a matched row waits on its match, so it offers no Unlink and no category e
   assert.doesNotMatch(linked, /category-autocomplete/);
   assert.match(linked, /Approve or unmatch this match first/);
 });
+
+function renderAction(rowType, txnExtra) {
+  const txn = { transaction_id: 't1', account_id: 'a1', transfer_pair_id: 'p1', ...txnExtra };
+  return renderRowByType({
+    txn,
+    txnId: 't1',
+    accountId: 'a1',
+    currentFullCategory: '[Savings]',
+    isBill: false,
+    isTransfer: true,
+    isPendingRow: false,
+    rowType,
+  }).actionCell;
+}
+
+test('a manual transfer row has a delete button', () => {
+  const html = renderAction(TXN_TYPE.MANUAL_CLEARED, { source: 'manual', status: 'cleared' });
+  assert.match(html, /deleteManualTransaction\('t1'\)/);
+});
+
+test('a bank transfer row has no delete button, posted or pending', () => {
+  for (const typeKey of ['PLAID_CLEARED', 'PLAID_PENDING']) {
+    const html = renderAction(TXN_TYPE[typeKey], { source: 'plaid' });
+    assert.doesNotMatch(html, /deleteManualTransaction/, typeKey);
+  }
+});

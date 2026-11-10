@@ -681,10 +681,20 @@ function _renderTransferRow(ctx) {
     'Type [ to reassign transfer…', buttons
   );
 
+  // Only a manual side can be deleted; a bank row never is. The API takes a
+  // manual partner with it, and leaves a bank partner unlinked under the
+  // Transfer In/Out label with a memo naming the account it was paired with.
+  const canDelete = ctx.txnId && ctx.rowType === TXN_TYPE.MANUAL_CLEARED;
+  const actionCell = canDelete
+    ? `<td style="text-align: center;">
+        <button class="delete-transaction-btn" onclick="deleteManualTransaction('${escapeHtml(ctx.txnId)}')" title="Delete this transfer row. A manual partner is deleted with it; a bank partner is unlinked and keeps a Transfer category.">🗑</button>
+      </td>`
+    : '<td></td>';
+
   return {
     typeBadge: _paidBillBadge(ctx.txn) + _amountModifiedBadge(ctx.txn) + '<span class="transfer-badge" title="Transfer">⇄</span> ',
     categoryCell,
-    actionCell: '<td></td>',
+    actionCell,
     rowCssClass: ctx.isPendingRow ? 'pending-row' : '',
     sourceBadge: _getDefaultSourceBadge(ctx),
     displayName: _txnDescription(ctx.txn),
