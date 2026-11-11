@@ -967,6 +967,11 @@ async function _handleContextDeleteMissing(txnData) {
   try {
     const batchResult = await resolveReconciliationBatch({ delete_missing: [txnData.txnId] });
     await applyAffectedAccounts(batchResult);
+    const skippedReason = skippedOrphanReasons(batchResult).get(txnData.txnId);
+    if (skippedReason) {
+      showStatus(`Not deleted: ${skippedReason}`, 'error');
+      return;
+    }
     showStatus('Transaction deleted', 'success');
     if (!applyChangedTransactions(batchResult)) {
       await refreshAccountTransactions(txnData.accountId);

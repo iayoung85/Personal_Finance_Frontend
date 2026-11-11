@@ -292,6 +292,20 @@ function _toggleAllOrphanedCheckboxes(checked) {
   checkboxes.forEach(cb => { cb.checked = checked; });
 }
 
+/**
+ * The orphans a batch delete left in place, with the API's reason for each.
+ * A skipped orphan is still in the ledger, so it must not be reported or
+ * removed as deleted.
+ * @param {object} batchResult - response of resolveReconciliationBatch
+ * @returns {Map<string, string>} transaction id -> reason
+ */
+function skippedOrphanReasons(batchResult) {
+  const reasons = new Map();
+  const skipped = (batchResult && batchResult.skipped) || [];
+  skipped.forEach(skip => reasons.set(skip.transaction_id, skip.reason));
+  return reasons;
+}
+
 function _getSelectedOrphanedIds() {
   const checked = document.querySelectorAll('.recon-missing-checkbox:checked');
   return Array.from(checked).map(cb => cb.value);
@@ -316,10 +330,20 @@ async function _bulkActionOrphaned(action) {
 
     const batchResult = await resolveReconciliationBatch(payload);
     await applyAffectedAccounts(batchResult);
-    showStatus(`${selectedIds.length} transaction(s) deleted`, 'success');
+    const skippedReasons = skippedOrphanReasons(batchResult);
+    const deletedIds = selectedIds.filter(txnId => !skippedReasons.has(txnId));
+    if (skippedReasons.size > 0) {
+      const firstReason = skippedReasons.values().next().value;
+      showStatus(
+        `${deletedIds.length} transaction(s) deleted, ${skippedReasons.size} not deleted: ${firstReason}`,
+        'warning'
+      );
+    } else {
+      showStatus(`${deletedIds.length} transaction(s) deleted`, 'success');
+    }
 
     // Remove resolved rows from the modal DOM
-    selectedIds.forEach(txnId => {
+    deletedIds.forEach(txnId => {
       const row = document.querySelector(`.recon-missing-row[data-txn-id="${txnId}"]`);
       if (row) row.remove();
     });
@@ -344,6 +368,11 @@ async function _singleOrphanedAction(transactionId, action) {
 
     const batchResult = await resolveReconciliationBatch(payload);
     await applyAffectedAccounts(batchResult);
+    const skippedReason = skippedOrphanReasons(batchResult).get(transactionId);
+    if (skippedReason) {
+      showStatus(`Not deleted: ${skippedReason}`, 'error');
+      return;
+    }
     showStatus('Transaction deleted', 'success');
 
     // Remove the row from the modal
