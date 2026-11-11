@@ -415,9 +415,11 @@
         <h2>Inspect Transaction Data</h2>
         <button class="modal-close" onclick="closeInspectDataModal()">✕</button>
       </div>
+      <div class="inspect-tabs hidden" id="inspect-data-tabs" role="tablist" aria-label="Inspect views"></div>
       <div class="modal-body" id="inspect-data-body">
       </div>
       <div class="modal-footer">
+        <div class="inspect-footer-actions" id="inspect-data-actions"></div>
         <button class="secondary" onclick="closeInspectDataModal()">Close</button>
       </div>
     </div>
@@ -631,6 +633,7 @@
   <script src="transactions/manual-transactions.js"></script>
   <script src="transactions/split-transactions.js"></script>
   <script src="transactions/resolution.js"></script>
+  <script src="transactions/inspect-bill-matching.js"></script>
   <script src="transactions/inspect-data.js"></script>
   <script src="bills/api.js"></script>
   <script src="shared/categories-autocomplete.js"></script>

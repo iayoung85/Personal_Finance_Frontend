@@ -206,7 +206,7 @@ test('a hidden split parent keeps its pieces out of the totals', () => {
 
 function loadInspect(cachedTransactions) {
   return load(
-    ['transactions/transaction-types.js', 'transactions/inspect-data.js'],
+    ['transactions/transaction-types.js', 'transactions/inspect-bill-matching.js', 'transactions/inspect-data.js'],
     '_normalizeInspectRequest, _buildInspectWorkingData',
     { transactions: cachedTransactions, isTransferCategory: () => false },
   );
@@ -284,7 +284,7 @@ test('a split is broken only when pieces differ from the parent by more than a c
 
 test('a waiting piece names the hidden manual row as its parent until approval', () => {
   const inspect = load(
-    ['transactions/transaction-types.js', 'transactions/inspect-data.js'],
+    ['transactions/transaction-types.js', 'transactions/inspect-bill-matching.js', 'transactions/inspect-data.js'],
     '_inspectParentId',
     { transactions: [], isTransferCategory: () => false },
   );
