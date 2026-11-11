@@ -779,6 +779,21 @@ function _getDefaultSourceBadge(ctx) {
 }
 
 
+/**
+ * The Hide button a pending row carries beside its Pending badge, so a hold
+ * can be dismissed without opening the right-click menu. It makes the same
+ * call as the menu's Hide.
+ *
+ * @param {Object} txn - The pending row (the parent, for a split).
+ * @returns {string} HTML fragment, empty for a row that is already hidden.
+ */
+function renderPendingHideButton(txn) {
+  const txnId = txn && txn.transaction_id;
+  if (!txnId || txn.is_hidden) return '';
+  return `<button type="button" class="pending-hide-btn" onclick="event.stopPropagation(); _handleContextHide({ txnId: '${escapeHtml(txnId)}' })" title="Hide this pending charge. It leaves the list and the forecast; if it posts later it comes back.">Hide</button> `;
+}
+
+
 // ── Dispatcher ─────────────────────────────────────────────────
 
 /**

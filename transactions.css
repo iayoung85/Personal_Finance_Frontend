@@ -4451,6 +4451,35 @@ tr.bank-suspect-row td:first-child {
   letter-spacing: 0.3px;
 }
 
+/* Hide button beside the Pending badge: same height, a plain outline so it
+   reads as a control rather than a status. */
+.pending-hide-btn {
+  display: inline-block;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 2px 10px;
+  border-radius: 3px;
+  border: 1px solid var(--text-muted);
+  margin-right: 6px;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.pending-hide-btn:hover {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.pending-hide-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
 .pending-separator-row td {
   text-align: center;
   font-size: 11px;

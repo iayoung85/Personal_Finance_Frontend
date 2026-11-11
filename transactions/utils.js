@@ -122,6 +122,9 @@ function describeReviewReason(txn) {
     case 'plaid_removed_kept':
       text = 'Plaid removed this from the bank feed; kept in your ledger';
       break;
+    case 'plaid_pending_dropped':
+      text = 'The bank dropped this pending charge; kept in your ledger because you edited it';
+      break;
     case 'plaid_removed_bank_dropped':
       text = "Plaid removed this and your bank's balance no longer counts it; delete it if it's gone";
       break;

@@ -1348,8 +1348,11 @@ async function _handleContextHide(txnData) {
     }
 
     showStatus('Transaction hidden', 'success');
-    _patchCachedTransaction(txnData.txnId, { is_hidden: true });
+    // The API marks a row reviewed when it hides it; the cached copy follows
+    // so the row leaves the unreviewed count and queue now, not at next fetch.
+    _patchCachedTransaction(txnData.txnId, { is_hidden: true, reviewed: true });
     renderTransactionTable();
+    renderAccountsSidebar();
   } catch (networkError) {
     showStatus(`Failed to hide transaction: ${networkError.message}`, 'error');
   }
@@ -1377,8 +1380,11 @@ async function _handleContextUnhide(txnData) {
     }
 
     showStatus('Transaction unhidden', 'success');
-    _patchCachedTransaction(txnData.txnId, { is_hidden: false });
+    // The API marks a row reviewed when it unhides it too; the cached copy
+    // follows so the row carries no stale dot until the next fetch.
+    _patchCachedTransaction(txnData.txnId, { is_hidden: false, reviewed: true });
     renderTransactionTable();
+    renderAccountsSidebar();
   } catch (networkError) {
     showStatus(`Failed to unhide transaction: ${networkError.message}`, 'error');
   }

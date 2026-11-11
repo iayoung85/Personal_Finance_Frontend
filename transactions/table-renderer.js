@@ -704,33 +704,11 @@ function renderTransactionTable() {
       }
     }
 
-    // Phase 1: pending transactions projected from current posted balance
-    let runningProjected = currentPostedBalance;
-    if (pendingTransactions.length > 0) {
-      const pendingAscending = [...pendingTransactions].reverse();
-      pendingAscending.forEach(txn => {
-        runningProjected += txn.amount;
-        const lookupKey = txn.transaction_id;
-        if (lookupKey) {
-          pendingLedgerLookup[lookupKey] = runningProjected;
-        }
-      });
-    }
-
-    // Phase 2: scheduled future transactions projected from the
-    // running balance that already incorporates all pending items.
-    // Walk in date ascending order (the array is sorted date descending,
-    // so reverse it) to accumulate balances chronologically.
-    if (scheduledFuture.length > 0) {
-      const scheduledAscending = [...scheduledFuture].reverse();
-      scheduledAscending.forEach(txn => {
-        runningProjected += txn.amount;
-        const lookupKey = txn.transaction_id;
-        if (lookupKey) {
-          scheduledLedgerLookup[lookupKey] = runningProjected;
-        }
-      });
-    }
+    // Pending rows project from the posted balance; scheduled rows go on top
+    // of the pending total. A hidden pending row is left out of both.
+    const forecast = projectLedgerForecast(currentPostedBalance, pendingTransactions, scheduledFuture);
+    Object.assign(pendingLedgerLookup, forecast.pendingLedgerLookup);
+    Object.assign(scheduledLedgerLookup, forecast.scheduledLedgerLookup);
   }
   
   // Build the combined rendering list following the blueprint block order:
@@ -943,7 +921,9 @@ function renderTransactionTable() {
         const waitingClass = pieceTreatment.rowCssClass ? ` ${pieceTreatment.rowCssClass}` : '';
         const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}${isSoloSplit ? ' split-solo' : ''}${isPendingRow ? ' pending-row' : ''}${scheduledClass}${waitingClass}${bankSuspectClass}`;
         
-        const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
+        const pendingBadge = isPendingRow
+          ? '<span class="pending-badge">Pending</span> ' + (isFirstSplit ? renderPendingHideButton(txn) : '')
+          : '';
         const splitBrokenBadge = pieceTreatment.showBrokenBadge
           ? '<span class="split-mismatch-badge" title="Split amounts no longer add up to the transaction total. This can happen when a matched transaction has a different amount than the original.">⚠ Split broken</span>'
           : '';
@@ -1135,7 +1115,9 @@ function renderTransactionTable() {
       fullBadge += '<span class="split-badge" title="Split transaction">✂</span> ';
     }
 
-    const pendingBadge = isPendingRow ? '<span class="pending-badge">Pending</span> ' : '';
+    const pendingBadge = isPendingRow
+      ? '<span class="pending-badge">Pending</span> ' + renderPendingHideButton(txn)
+      : '';
 
     // ── Date cell ──
     const ownDateStr = formatDate(txn.date);

@@ -35,6 +35,12 @@ test('simple codes', () => {
     "Plaid removed this and your bank's balance no longer counts it; delete it if it's gone" + WHEN);
 });
 
+test('plaid_pending_dropped says the bank dropped the charge and the row was kept for the edit', () => {
+  assert.equal(describeReviewReason(make('plaid_pending_dropped')),
+    'The bank dropped this pending charge; kept in your ledger because you edited it' + WHEN);
+  assert.match(unreviewedDotTitle(make('plaid_pending_dropped')), /bank dropped this pending charge/);
+});
+
 test('transfer_unlinked with and without partner', () => {
   assert.equal(describeReviewReason(make('transfer_unlinked', { partner_account_name: 'Savings' })),
     'Its transfer pair with Savings was unlinked' + WHEN);
