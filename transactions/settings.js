@@ -119,8 +119,8 @@ function applySettings(settings) {
   const showOverridesOnly = resolvedSettings.show_overrides_only !== undefined ? resolvedSettings.show_overrides_only : false;
   document.getElementById('show-overrides-only').checked = showOverridesOnly;
 
-  // Apply show_pending setting (default to false if not set)
-  const showPending = resolvedSettings.show_pending !== undefined ? resolvedSettings.show_pending : false;
+  // Apply show_pending setting (default to true if not set)
+  const showPending = resolvedSettings.show_pending !== undefined ? resolvedSettings.show_pending : true;
   document.getElementById('show-pending-toggle').checked = showPending;
 
   // Apply bills_future_days setting (default to 90 if not set)
