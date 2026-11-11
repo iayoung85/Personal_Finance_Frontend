@@ -841,14 +841,14 @@ function _getUnreviewedCountForAccount(accountId) {
   if (!Array.isArray(transactions) || transactions.length === 0) return 0;
   let count = 0;
   for (const txn of transactions) {
-    if (txn.reviewed === false && txn.account_id === accountId) count++;
+    if (txn.account_id === accountId && rowNeedsReview(txn)) count++;
   }
   return count;
 }
 
 /**
  * Badge markup for an unreviewed count, or '' when there is nothing to review.
- * @param {number} unreviewedCount
+ * @param {number} unreviewedCount - Unreviewed rows plus waiting matches.
  * @param {string} [extraStyle] - inline style for spots outside a flex row
  * @returns {string}
  */
@@ -856,7 +856,7 @@ function _unreviewedBadgeHtml(unreviewedCount, extraStyle = '') {
   if (unreviewedCount <= 0) return '';
   const plural = unreviewedCount > 1 ? 's' : '';
   const styleAttr = extraStyle ? ` style="${extraStyle}"` : '';
-  return `<span class="sidebar-unreviewed-badge"${styleAttr} title="${unreviewedCount} unreviewed transaction${plural}">${unreviewedCount}</span>`;
+  return `<span class="sidebar-unreviewed-badge"${styleAttr} title="${unreviewedCount} transaction${plural} to review">${unreviewedCount}</span>`;
 }
 
 function _renderSidebarAccountItem(acc, formatSidebarCurrency) {

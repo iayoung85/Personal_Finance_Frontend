@@ -75,6 +75,34 @@ test('the Plaid row and the hidden matched rows are waiting; ordinary rows and p
   assert.equal(types.isWaitingMatchRow(null), false);
 });
 
+// ── The review count ───────────────────────────────────────────
+
+test('a waiting match counts toward its account badge once, though its Plaid row arrives reviewed', () => {
+  const hiddenManual = {
+    transaction_id: 'manual-1', source: 'manual', status: 'matched', account_id: 'acct-1',
+    hidden_by_match: true, reviewed: true,
+  };
+  const ledger = [
+    waitingPlaidRow({ reviewed: true }),
+    hiddenManual,
+    { ...normalPlaidRow(), reviewed: false },
+    { ...normalPlaidRow(), transaction_id: 'plaid-3', reviewed: true },
+    // A match approval would refuse keeps its own unreviewed flag: still one.
+    waitingPlaidRow({ transaction_id: 'plaid-4', account_id: 'acct-2', reviewed: false }),
+  ];
+  const sidebar = load(
+    ['transactions/transaction-types.js', 'transactions/accounts-sidebar.js'],
+    '_getUnreviewedCountForAccount, rowNeedsReview',
+    { transactions: ledger, document: { addEventListener() {} }, window: {} },
+  );
+
+  assert.equal(sidebar._getUnreviewedCountForAccount('acct-1'), 2);
+  assert.equal(sidebar._getUnreviewedCountForAccount('acct-2'), 1);
+  assert.equal(sidebar._getUnreviewedCountForAccount('acct-9'), 0);
+  assert.equal(sidebar.rowNeedsReview(hiddenManual), false);
+  assert.equal(sidebar.rowNeedsReview(null), false);
+});
+
 test('a matched row whose bank row is gone is no longer waiting, and keeps its edits', () => {
   // Deleting the bank row clears the pointer, so the list sends neither it
   // nor hidden_by_match.

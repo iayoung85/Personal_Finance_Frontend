@@ -72,13 +72,15 @@ async function _markSingleTransactionReviewed(transactionId) {
 }
 
 /**
- * Whether a row belongs in the unreviewed-only view. Matches the sidebar
- * badge count, which counts only an explicit reviewed === false.
+ * Whether a row belongs in the unreviewed-only view: every row the sidebar
+ * badge counts (rowNeedsReview). A waiting match's hidden matched row rides
+ * along undrawn, as in the normal view, because Approve All Matches finds
+ * the pair through it.
  * @param {Object} txn - Transaction row.
  * @returns {boolean}
  */
 function isRowInUnreviewedQueue(txn) {
-  return !!txn && txn.reviewed === false;
+  return rowNeedsReview(txn) || !!(txn && txn.hidden_by_match);
 }
 
 /**

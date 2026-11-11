@@ -169,6 +169,20 @@ function isWaitingMatchRow(txn) {
 }
 
 /**
+ * Whether a row is waiting on the user: an unreviewed row, or the Plaid row
+ * of a waiting match. The list sends a waiting Plaid row as approving will
+ * leave it, `reviewed: true` included, so its own flag says nothing until
+ * the match is approved or unmatched. The hidden matched row is not
+ * counted, so a match counts once.
+ *
+ * @param {Object|null} txn - A row as the API returned it.
+ * @returns {boolean}
+ */
+function rowNeedsReview(txn) {
+  return !!txn && (txn.reviewed === false || !!txn.match_info);
+}
+
+/**
  * Which inline edits a ledger row offers. A waiting match offers none, so
  * the row never opens an editor the API would refuse.
  *
