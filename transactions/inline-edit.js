@@ -794,6 +794,7 @@ async function _savePlaidDescriptionEdit(txnId, newDescription) {
           reviewedTheTransaction = true;
         }
       }
+      syncPendingHideButton(txn);
     }
 
     // Persist the in-memory patch to IndexedDB (no full refetch needed —

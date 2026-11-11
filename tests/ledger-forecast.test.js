@@ -69,6 +69,12 @@ test('the pending Hide button calls the context menu hide, and is absent once hi
   assert.match(html, />Hide</);
   assert.equal(renderPendingHideButton(pending('p1', -5, { is_hidden: true })), '');
   assert.equal(renderPendingHideButton({ pending: true }), '');
+  // A row the user has worked on is one they accepted: no button.
+  assert.equal(renderPendingHideButton(pending('p1', -5, { is_override: true })), '');
+  assert.equal(renderPendingHideButton(pending('p1', -5, { user_memo: 'lunch' })), '');
+  assert.equal(renderPendingHideButton(pending('p1', -5, { user_description_override: 'Sam' })), '');
+  assert.equal(renderPendingHideButton(pending('p1', -5, { transfer_pair_id: 'pair_1' })), '');
+  assert.match(renderPendingHideButton(pending('p1', -5, { user_memo: '  ' })), /pending-hide-btn/);
 });
 
 test('a Missing row that carries a Plaid transaction id is still a Missing row', () => {

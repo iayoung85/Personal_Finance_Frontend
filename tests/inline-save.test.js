@@ -43,6 +43,7 @@ function loadSaves(rows) {
     }),
     showStatus: (message, type) => calls.statuses.push({ message, type }),
     renderAccountsSidebar: () => { calls.sidebar += 1; },
+    syncPendingHideButton: () => {},
     _replaceCachedTransaction: (id, row) => calls.cached.push(plain(row)),
     _removeCachedTransaction: (id) => calls.removed.push(id),
     renderTransactionTable: () => { calls.redrawn += 1; },

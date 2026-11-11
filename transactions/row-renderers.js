@@ -780,17 +780,61 @@ function _getDefaultSourceBadge(ctx) {
 
 
 /**
+ * Whether the user has worked on a pending row: set its category, written a
+ * memo, renamed it, or linked it as a transfer. Such a row is one they have
+ * accepted, so it is not offered the Hide button. Mirrors the API's test for a
+ * pending row that carries the user's work; this copy only decides a button.
+ *
+ * @param {Object} txn - The pending row.
+ * @returns {boolean}
+ */
+function pendingRowCarriesUserWork(txn) {
+  return Boolean(
+    txn.is_override
+    || (txn.user_memo && String(txn.user_memo).trim())
+    || txn.user_description_override
+    || txn.transfer_pair_id
+  );
+}
+
+/**
  * The Hide button a pending row carries beside its Pending badge, so a hold
  * can be dismissed without opening the right-click menu. It makes the same
- * call as the menu's Hide.
+ * call as the menu's Hide. A row the user has worked on gets none; the menu's
+ * Hide is still there for it.
  *
  * @param {Object} txn - The pending row (the parent, for a split).
- * @returns {string} HTML fragment, empty for a row that is already hidden.
+ * @returns {string} HTML fragment, empty for a row that is already hidden or
+ *   that the user has worked on.
  */
 function renderPendingHideButton(txn) {
   const txnId = txn && txn.transaction_id;
-  if (!txnId || txn.is_hidden) return '';
+  if (!txnId || txn.is_hidden || pendingRowCarriesUserWork(txn)) return '';
   return `<button type="button" class="pending-hide-btn" onclick="event.stopPropagation(); _handleContextHide({ txnId: '${escapeHtml(txnId)}' })" title="Hide this pending charge. It leaves the list and the forecast; if it posts later it comes back.">Hide</button> `;
+}
+
+/**
+ * Bring a rendered pending row's Hide button in line with the row after an
+ * edit that changed the row in place. Inline edits do not re-render the
+ * table, so without this the button would stay on a row the user has just
+ * worked on, or stay missing from one whose edit was undone.
+ *
+ * @param {Object} txn - The row as now held in memory.
+ */
+function syncPendingHideButton(txn) {
+  if (!txn || !txn.pending || !txn.transaction_id) return;
+  const row = document.querySelector(`tr[data-txn-id="${txn.transaction_id}"]`);
+  if (!row) return;
+  const existingButton = row.querySelector('.pending-hide-btn');
+  const buttonHtml = renderPendingHideButton(txn);
+  if (existingButton && !buttonHtml) {
+    existingButton.remove();
+  } else if (!existingButton && buttonHtml) {
+    const pendingBadge = row.querySelector('.pending-badge');
+    if (pendingBadge) {
+      pendingBadge.insertAdjacentHTML('afterend', ` ${buttonHtml}`);
+    }
+  }
 }
 
 

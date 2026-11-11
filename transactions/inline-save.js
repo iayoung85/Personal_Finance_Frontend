@@ -77,6 +77,7 @@ async function saveInlineMemo(transactionId, memoText) {
   });
   txn.user_memo = memoText;
   _updateMemoDom(transactionId, memoText);
+  syncPendingHideButton(txn);
   _markReviewedLocally(txn, transactionId);
   await _runInlineSaves(record, memoText);
 }
@@ -230,6 +231,7 @@ function _putBackServerValues(record) {
     }
   }
 
+  syncPendingHideButton(txn);
   _cacheRow(record.transactionId);
 }
 
@@ -245,6 +247,7 @@ function _applyCategoryLocally(txn, transactionId, categoryString) {
     txn.is_override = true;
   }
   _updateCategoryDom(transactionId, categoryString);
+  syncPendingHideButton(txn);
   _markReviewedLocally(txn, transactionId);
 }
 
@@ -294,6 +297,7 @@ async function _applySavedCategory(record, categoryString, data, isNewest) {
     if (savedRow && savedRow.analytics_class) {
       txn.analytics_class = savedRow.analytics_class;
     }
+    syncPendingHideButton(txn);
   }
 
   if (txn) {

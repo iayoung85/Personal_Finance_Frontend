@@ -921,6 +921,7 @@ function renderTransactionTable() {
         const waitingClass = pieceTreatment.rowCssClass ? ` ${pieceTreatment.rowCssClass}` : '';
         const rowClass = `split-child-row ${isFirstSplit ? 'split-first' : ''} ${isLastSplit ? 'split-last' : ''}${isSoloSplit ? ' split-solo' : ''}${isPendingRow ? ' pending-row' : ''}${scheduledClass}${waitingClass}${bankSuspectClass}`;
         
+        // One Hide button per pending charge, on its first piece; it hides the parent.
         const pendingBadge = isPendingRow
           ? '<span class="pending-badge">Pending</span> ' + (isFirstSplit ? renderPendingHideButton(txn) : '')
           : '';

@@ -4453,26 +4453,33 @@ tr.bank-suspect-row td:first-child {
 
 /* Hide button beside the Pending badge: same height, a plain outline so it
    reads as a control rather than a status. */
+/* The Hide button on a pending row: the approve-match badge's outlined shape
+   and hover, as a pill so it can carry its word. Quiet until hovered, since a
+   hold is the exception and most pending rows are never hidden. */
 .pending-hide-btn {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 11px;
+  border: 1.5px solid var(--accent-primary);
   background: transparent;
-  color: var(--text-muted);
+  color: var(--accent-primary);
   font-size: 11px;
-  font-weight: 600;
-  line-height: 1.2;
-  padding: 2px 10px;
-  border-radius: 3px;
-  border: 1px solid var(--text-muted);
+  font-weight: 700;
+  line-height: 1;
   margin-right: 6px;
-  vertical-align: middle;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  vertical-align: middle;
+  align-self: center;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
 }
 
 .pending-hide-btn:hover {
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
-  border-color: var(--color-danger);
+  background: var(--accent-primary);
+  color: #fff;
+  transform: scale(1.08);
 }
 
 .pending-hide-btn:focus-visible {
