@@ -171,7 +171,7 @@
             <div class="export-buttons">
               <button onclick="exportBalanceSnapshotJSON()" class="btn-export">JSON</button>
               <button onclick="downloadBalanceSnapshotCSV()" class="btn-export">CSV</button>
-              <button onclick="copyBalanceSnapshotCSV()" class="btn-export">Copy CSV</button>
+              <button onclick="copyBalanceSnapshotCSV()" class="btn-export" title="Copy to paste into a spreadsheet">Copy</button>
             </div>
           </div>
           <div class="export-group">
@@ -179,7 +179,7 @@
             <div class="export-buttons">
               <button onclick="exportCategorySummaryJSON()" class="btn-export">JSON</button>
               <button onclick="downloadCategorySummaryCSV()" class="btn-export">CSV</button>
-              <button onclick="copyCategorySummaryCSV()" class="btn-export">Copy CSV</button>
+              <button onclick="copyCategorySummaryCSV()" class="btn-export" title="Copy to paste into a spreadsheet">Copy</button>
             </div>
           </div>
           <div class="export-group">
@@ -187,7 +187,7 @@
             <div class="export-buttons">
               <button onclick="exportFilteredTransactionsJSON()" class="btn-export">JSON</button>
               <button onclick="downloadFilteredTransactionsCSV()" class="btn-export">CSV</button>
-              <button onclick="copyFilteredTransactionsCSV()" class="btn-export">Copy CSV</button>
+              <button onclick="copyFilteredTransactionsCSV()" class="btn-export" title="Copy to paste into a spreadsheet">Copy</button>
             </div>
           </div>
         </div>
@@ -574,7 +574,7 @@
             <span id="reports-output-title"></span>
             <div class="reports-output-actions">
               <button onclick="downloadReportCSV()" class="btn-export" title="Download as CSV">CSV ↓</button>
-              <button onclick="copyReportCSV()" class="btn-export" title="Copy CSV to clipboard">Copy</button>
+              <button onclick="copyReportCSV()" class="btn-export" title="Copy to paste into a spreadsheet">Copy</button>
             </div>
           </div>
           <div id="reports-table-container" class="reports-table-container"></div>
@@ -597,6 +597,7 @@
   <script src="nav-sidebar.js"></script>
   <script src="shared/modal-backdrop-guard.js"></script>
   <script src="shared/api-notices.js"></script>
+  <script src="shared/clipboard-table.js"></script>
 
   <!-- Modularised transactions scripts -->
   <!-- state.js MUST load first (shared variable declarations) -->

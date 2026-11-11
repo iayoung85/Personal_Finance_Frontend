@@ -58,7 +58,7 @@
                 <button onclick="downloadHoldingsByAccountCSV(); toggleExportDropdown();">Holdings by Account CSV</button>
                 <button onclick="exportHoldingsJSON(); toggleExportDropdown();">Holdings JSON</button>
                 <button onclick="exportEtfExposureCSV(); toggleExportDropdown();">ETF Exposure CSV</button>
-                <button onclick="copyHoldingsCSV(); toggleExportDropdown();">Copy CSV to Clipboard</button>
+                <button onclick="copyHoldingsCSV(); toggleExportDropdown();">Copy for Spreadsheet</button>
               </div>
             </div>
           </div>
@@ -159,6 +159,7 @@
   <script src="date-helpers.js"></script>
   <script src="nav-sidebar.js"></script>
   <script src="shared/modal-backdrop-guard.js"></script>
+  <script src="shared/clipboard-table.js"></script>
   <!-- Investment modules: state → utils → api → sidebar → filter → table → etf → main -->
   <script src="investments/state.js"></script>
   <script src="investments/utils.js"></script>

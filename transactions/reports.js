@@ -2,7 +2,7 @@
 // transactions/reports.js — Reports Modal
 // Generates balance-history and category-summary reports via
 // backend API endpoints, renders them as scrollable HTML tables,
-// and supports CSV download / clipboard copy.
+// and supports CSV download and a tab-separated clipboard copy.
 // ============================================================
 
 // ── Modal open / close ──────────────────────────────────────
@@ -618,8 +618,8 @@ async function copyReportCSV() {
   if (!csv) return;
 
   try {
-    await navigator.clipboard.writeText(csv);
-    showStatus('Report CSV copied to clipboard', 'success');
+    await copyCsvAsCells(csv);
+    showStatus('Report copied — paste into a spreadsheet', 'success');
     setTimeout(() => clearStatus(), 2000);
   } catch (clipboardError) {
     showStatus('Failed to copy to clipboard', 'error');

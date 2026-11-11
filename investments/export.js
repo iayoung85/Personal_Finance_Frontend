@@ -27,14 +27,14 @@ function downloadHoldingsCSV() {
 }
 
 /**
- * Copy holdings CSV to clipboard.
+ * Copy holdings to the clipboard, tab-separated so they paste as cells.
  */
 function copyHoldingsCSV() {
   const csv = _buildHoldingsCSV();
   if (!csv) return;
-  navigator.clipboard.writeText(csv)
-    .then(() => showInvestmentMessage('CSV copied to clipboard', 'success'))
-    .catch(() => alert('Failed to copy CSV'));
+  copyCsvAsCells(csv)
+    .then(() => showInvestmentMessage('Holdings copied — paste into a spreadsheet', 'success'))
+    .catch(() => alert('Failed to copy holdings'));
 }
 
 /**

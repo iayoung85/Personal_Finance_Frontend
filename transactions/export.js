@@ -89,6 +89,9 @@ async function copyCSV() {
     showStatus('Preparing CSV...', 'info');
     const metadata = await _fetchExportMetadata();
     const csv = generateCSV(metadata);
+    // The backup copy stays real CSV: it is the restore format, and text
+    // pasted into a file must still re-import. Every other copy button is
+    // tab-separated for spreadsheets.
     await navigator.clipboard.writeText(csv);
     showStatus('CSV copied to clipboard!', 'success');
     setTimeout(() => clearStatus(), 2000);
@@ -384,8 +387,8 @@ async function copyFilteredTransactionsCSV() {
     showStatus('Preparing CSV...', 'info');
     const metadata = await _fetchExportMetadata();
     const csv = generateCSV(metadata, visibleTransactions);
-    await navigator.clipboard.writeText(csv);
-    showStatus('CSV copied to clipboard!', 'success');
+    await copyCsvAsCells(csv);
+    showStatus('Transactions copied — paste into a spreadsheet', 'success');
     setTimeout(() => clearStatus(), 2000);
   } catch (clipboardError) {
     showStatus('Failed to copy to clipboard', 'error');
@@ -520,7 +523,7 @@ async function downloadBalanceSnapshotCSV() {
   }
 }
 
-/** Copy balance snapshot CSV to clipboard. */
+/** Copy the balance snapshot to the clipboard, tab-separated so it pastes as cells. */
 async function copyBalanceSnapshotCSV() {
   try {
     const snapshotDate = _getSnapshotDate();
@@ -528,9 +531,9 @@ async function copyBalanceSnapshotCSV() {
     const data = await _fetchBalanceSnapshot(snapshotDate);
 
     const csv = _generateBalanceSnapshotCSV(data);
-    await navigator.clipboard.writeText(csv);
+    await copyCsvAsCells(csv);
 
-    showStatus(`Balance snapshot CSV copied to clipboard (as of ${snapshotDate})`, 'success');
+    showStatus(`Balance snapshot copied (as of ${snapshotDate}) — paste into a spreadsheet`, 'success');
     setTimeout(() => clearStatus(), 3000);
   } catch (exportError) {
     showStatus(`Export failed: ${exportError.message}`, 'error');
@@ -667,7 +670,7 @@ function downloadCategorySummaryCSV() {
   }
 }
 
-/** Copy category summary CSV to clipboard. */
+/** Copy the category summary to the clipboard, tab-separated so it pastes as cells. */
 function copyCategorySummaryCSV() {
   try {
     const data = _buildCategorySummaryExportData();
@@ -677,8 +680,8 @@ function copyCategorySummaryCSV() {
     }
 
     const csv = _generateCategorySummaryCSV(data);
-    navigator.clipboard.writeText(csv).then(() => {
-      showStatus('Category summary CSV copied to clipboard', 'success');
+    copyCsvAsCells(csv).then(() => {
+      showStatus('Category summary copied — paste into a spreadsheet', 'success');
       setTimeout(() => clearStatus(), 3000);
     }).catch(clipboardError => {
       showStatus(`Clipboard failed: ${clipboardError.message}`, 'error');
