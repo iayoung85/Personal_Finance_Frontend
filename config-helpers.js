@@ -33,6 +33,7 @@ const APP_CONFIG_DEFAULTS = {
   trackedInsightCategories: [],
   insightCards: [],
   transactionsPrivacyByDefault: false,
+  fiscalYearStartMonth: 1,
 };
 
 /**

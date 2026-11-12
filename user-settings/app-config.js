@@ -247,20 +247,73 @@ function _renderNumberDisplayCard(config) {
   `;
 }
 
+const FISCAL_DEFAULT_RANGE_VALUES = ['fiscal_ytd', 'last_fiscal_year'];
+
+/**
+ * The choices for the default date range. The two fiscal ranges are offered
+ * only when the fiscal year differs from the calendar year, matching the
+ * chips on the Transactions page; one that is already the saved default
+ * stays listed so the select never shows a value the user did not pick.
+ *
+ * @param {string} selectedRange - the saved defaultDateRange
+ * @param {number} fiscalStartMonth - month 1-12
+ * @param {Date} now
+ * @returns {Array<{value: string, label: string}>}
+ */
+function _defaultRangeOptions(selectedRange, fiscalStartMonth, now) {
+  const options = [
+    { value: 'last_12_months',   label: trailingYearLabel(now) },
+    { value: 'mtd',              label: 'Month to Date' },
+    { value: 'ytd',              label: 'Year to Date' },
+    { value: 'last_month',       label: 'Last Month' },
+    { value: 'last_year',        label: 'Last Year' },
+    {
+      value: 'fiscal_ytd',
+      label: `Current Fiscal Year (${fiscalYearLabel(currentFiscalYearRange(now, fiscalStartMonth).fiscalYear)})`,
+    },
+    {
+      value: 'last_fiscal_year',
+      label: `Last Fiscal Year (${fiscalYearLabel(lastFiscalYearRange(now, fiscalStartMonth).fiscalYear)})`,
+    },
+  ];
+  const fiscalYearIsDistinct = hasDistinctFiscalYear(fiscalStartMonth);
+  return options.filter(option => {
+    if (!FISCAL_DEFAULT_RANGE_VALUES.includes(option.value)) return true;
+    return fiscalYearIsDistinct || option.value === selectedRange;
+  });
+}
+
+function _defaultRangeOptionsHtml(selectedRange, fiscalStartMonth) {
+  return _defaultRangeOptions(selectedRange, fiscalStartMonth, new Date()).map(opt => `
+    <option value="${opt.value}" ${selectedRange === opt.value ? 'selected' : ''}>${opt.label}</option>
+  `).join('');
+}
+
+/**
+ * Saves a new fiscal start month, then restates the fiscal year in words
+ * and refreshes the default-range choices that depend on it. A refused
+ * save puts the select back, so the text never describes an unsaved month.
+ *
+ * @param {HTMLSelectElement} selectEl - the fiscal start month select
+ */
+async function handleFiscalStartMonthChange(selectEl) {
+  const requestedMonth = parseInt(selectEl.value, 10);
+  await handleAppConfigChange('fiscalYearStartMonth', requestedMonth);
+
+  const savedConfig = getAppConfig();
+  const savedMonth = normalizeFiscalStartMonth(savedConfig.fiscalYearStartMonth);
+  selectEl.value = String(savedMonth);
+  $('#fiscal-year-description').text(describeFiscalYear(savedMonth, new Date()));
+  $('#defaultDateRange').html(_defaultRangeOptionsHtml(savedConfig.defaultDateRange, savedMonth));
+}
+
 /**
  * Builds the Dashboard &amp; View Defaults card HTML.
  */
 function _renderViewDefaultsCard(config) {
-  const rangeOptions = [
-    { value: 'last_12_months', label: trailingYearLabel(new Date()) },
-    { value: 'mtd',            label: 'Month to Date' },
-    { value: 'ytd',            label: 'Year to Date' },
-    { value: 'last_month',     label: 'Last Month' },
-    { value: 'last_year',      label: 'Last Year' },
-  ];
-
-  const rangeOptions_html = rangeOptions.map(opt => `
-    <option value="${opt.value}" ${config.defaultDateRange === opt.value ? 'selected' : ''}>${opt.label}</option>
+  const fiscalStartMonth = normalizeFiscalStartMonth(config.fiscalYearStartMonth);
+  const fiscalMonthOptions_html = FISCAL_MONTH_NAMES.map((monthName, index) => `
+    <option value="${index + 1}" ${fiscalStartMonth === index + 1 ? 'selected' : ''}>${monthName}</option>
   `).join('');
 
   return `
@@ -269,10 +322,19 @@ function _renderViewDefaultsCard(config) {
         <h3 class="card-title">Dashboard &amp; View Defaults</h3>
       </div>
       <div class="form-group">
+        <label for="fiscalYearStartMonth">Fiscal Year Starts In</label>
+        <select id="fiscalYearStartMonth"
+          onchange="handleFiscalStartMonthChange(this)">
+          ${fiscalMonthOptions_html}
+        </select>
+        <p id="fiscal-year-description" class="text-muted stub-note">${describeFiscalYear(fiscalStartMonth, new Date())}</p>
+        <p class="text-muted stub-note">Used by reports and by the Current FY and Last FY date filters on the Transactions page. With January, fiscal years are calendar years and those two filters are hidden.</p>
+      </div>
+      <div class="form-group">
         <label for="defaultDateRange">Default Date Range</label>
         <select id="defaultDateRange"
           onchange="handleAppConfigChange('defaultDateRange', this.value)">
-          ${rangeOptions_html}
+          ${_defaultRangeOptionsHtml(config.defaultDateRange, fiscalStartMonth)}
         </select>
         <p class="text-muted stub-note">The date range pre-selected when opening the Transactions or Dashboard page.</p>
       </div>

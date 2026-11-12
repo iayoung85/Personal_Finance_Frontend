@@ -64,6 +64,9 @@
               <button id="btn-date-ytd" class="btn-date-toggle" onclick="toggleDateFilter('ytd')">YTD</button>
               <button id="btn-date-last-month" class="btn-date-toggle" onclick="toggleDateFilter('last_month')">Last Month</button>
               <button id="btn-date-last-year" class="btn-date-toggle" onclick="toggleDateFilter('last_year')">Last Year</button>
+              <!-- Shown by filters.js only when the fiscal year is not the calendar year -->
+              <button id="btn-date-fiscal-ytd" class="btn-date-toggle" style="display:none;" onclick="toggleDateFilter('fiscal_ytd')">FYTD</button>
+              <button id="btn-date-last-fiscal-year" class="btn-date-toggle" style="display:none;" onclick="toggleDateFilter('last_fiscal_year')">Last FY</button>
               <span id="date-month-buttons" class="date-month-buttons"></span>
               <span id="date-year-buttons" class="date-year-buttons"></span>
               <button id="btn-date-custom" class="btn-date-toggle" onclick="toggleDateFilter('custom')">Custom Range</button>
@@ -505,24 +508,8 @@
             </select>
           </div>
 
-          <!-- Fiscal Year start-month selector — used by both report types -->
-          <div class="reports-form-row" id="fiscal-year-row">
-            <label for="report-fiscal-month">Fiscal Year Start Month</label>
-            <select id="report-fiscal-month" class="modal-input" onchange="_onFiscalMonthChange()">
-              <option value="1">January</option>
-              <option value="2">February</option>
-              <option value="3">March</option>
-              <option value="4">April</option>
-              <option value="5">May</option>
-              <option value="6">June</option>
-              <option value="7">July</option>
-              <option value="8">August</option>
-              <option value="9">September</option>
-              <option value="10">October</option>
-              <option value="11" selected>November</option>
-              <option value="12">December</option>
-            </select>
-          </div>
+          <!-- The fiscal start month is a saved setting; this line states it -->
+          <p id="report-fiscal-hint" class="reports-hint"></p>
 
           <!-- Balance mode: month/year pickers -->
           <div class="reports-form-row reports-date-row" id="report-balance-dates">
@@ -539,11 +526,11 @@
           <!-- Category mode: year pickers + fiscal range preview -->
           <div class="reports-form-row reports-date-row" id="report-category-dates" style="display:none;">
             <div>
-              <label for="report-start-year">Start Year</label>
+              <label for="report-start-year">Start Fiscal Year</label>
               <select id="report-start-year" class="modal-input" onchange="_updateCategoryDatePreview()"></select>
             </div>
             <div>
-              <label for="report-end-year">End Year</label>
+              <label for="report-end-year">End Fiscal Year</label>
               <select id="report-end-year" class="modal-input" onchange="_updateCategoryDatePreview()"></select>
             </div>
           </div>
@@ -597,6 +584,7 @@
   <script src="shared/history-return.js"></script>
   <script src="config-helpers.js"></script>
   <script src="date-helpers.js"></script>
+  <script src="shared/fiscal-year.js"></script>
   <script src="nav-sidebar.js"></script>
   <script src="shared/modal-backdrop-guard.js"></script>
   <script src="shared/api-notices.js"></script>

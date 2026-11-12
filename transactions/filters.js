@@ -87,6 +87,8 @@ function _refreshDateFilterWindowForForecastHorizon() {
     _applyMonthToDate();
   } else if (activeFilter === 'ytd') {
     _applyYearToDate();
+  } else if (activeFilter === 'fiscal_ytd') {
+    _applyFiscalYearToDate();
   } else if (activeFilter === 'last_12_months' || !activeFilter) {
     _applyLast12Months();
   }
@@ -159,6 +161,106 @@ function _applyLastYear() {
   document.getElementById('end-date').value = _formatDateLocal(end);
 }
 
+/**
+ * Current fiscal year: its first day through today, plus the forecast
+ * horizon so projected rows show, the same way YTD treats the future.
+ */
+function _applyFiscalYearToDate() {
+  const range = currentFiscalYearRange(new Date(), getFiscalStartMonth());
+  document.getElementById('start-date').value = _formatDateLocal(range.start);
+  document.getElementById('end-date').value = _futureEndDateStr();
+}
+
+/** The most recent finished fiscal year, first day to last, no future rows. */
+function _applyLastFiscalYear() {
+  const range = lastFiscalYearRange(new Date(), getFiscalStartMonth());
+  document.getElementById('start-date').value = _formatDateLocal(range.start);
+  document.getElementById('end-date').value = _formatDateLocal(range.end);
+}
+
+/**
+ * The fiscal filters exist only when the fiscal year differs from the
+ * calendar year. A saved or default fiscal filter met with a January start
+ * becomes its calendar twin, which covers the same dates and has a chip.
+ *
+ * @param {string} filterName
+ * @param {number} fiscalStartMonth - month 1-12
+ * @returns {string} the filter name to apply
+ */
+function _resolveDateFilterName(filterName, fiscalStartMonth) {
+  if (hasDistinctFiscalYear(fiscalStartMonth)) return filterName;
+  if (filterName === 'fiscal_ytd') return 'ytd';
+  if (filterName === 'last_fiscal_year') return 'last_year';
+  return filterName;
+}
+
+/**
+ * The two fiscal-year chips. The current one is FYTD, with no year, to sit
+ * with MTD and YTD and to stay distinct from the finished year's chip; its
+ * tooltip names the year.
+ *
+ * @param {Date} now
+ * @param {number} fiscalStartMonth - month 1-12
+ * @returns {Array<{id: string, label: string,
+ *   range: {start: Date, end: Date, fiscalYear: number}}>}
+ */
+function _fiscalChips(now, fiscalStartMonth) {
+  const currentRange = currentFiscalYearRange(now, fiscalStartMonth);
+  const lastRange = lastFiscalYearRange(now, fiscalStartMonth);
+  return [
+    {
+      id: 'btn-date-fiscal-ytd',
+      label: 'FYTD',
+      range: currentRange,
+    },
+    {
+      id: 'btn-date-last-fiscal-year',
+      label: fiscalYearLabel(lastRange.fiscalYear),
+      range: lastRange,
+    },
+  ];
+}
+
+/**
+ * Show the two fiscal-year chips only when they are not duplicates of YTD
+ * and Last Year, and put each one's exact dates in its tooltip.
+ */
+function _refreshFiscalChips() {
+  const fiscalStartMonth = getFiscalStartMonth();
+  const now = new Date();
+  // Visibility comes from the chip plan, so the row on screen and the plan
+  // the tests check cannot disagree. History does not affect these chips.
+  const shownIds = _dateChipPlan(now, null, fiscalStartMonth).fiscalIds;
+  const chips = _fiscalChips(now, fiscalStartMonth);
+  chips.forEach(chip => {
+    const button = document.getElementById(chip.id);
+    if (!button) return;
+    button.style.display = shownIds.includes(chip.id) ? '' : 'none';
+    button.textContent = chip.label;
+    button.title = `${fiscalYearLabel(chip.range.fiscalYear)}: ${formatFiscalRangeShort(chip.range)}`;
+  });
+}
+
+/**
+ * Re-read the fiscal start month after preferences arrive from the server:
+ * the chips and an active fiscal filter were first set from the local cache,
+ * which is stale when the setting was changed in another browser.
+ * Called from main.js before the first render.
+ */
+function refreshFiscalDateFilter() {
+  _refreshFiscalChips();
+  const storedFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  if (storedFilter !== 'fiscal_ytd' && storedFilter !== 'last_fiscal_year') return;
+
+  // The fresh month may be January, which hides the fiscal chips; the
+  // filter then moves to its calendar twin so a visible chip is lit.
+  const resolvedFilter = _resolveDateFilterName(storedFilter, getFiscalStartMonth());
+  if (resolvedFilter !== storedFilter) {
+    localStorage.setItem(DATE_FILTER_ACTIVE_KEY, resolvedFilter);
+  }
+  _restoreSavedToggleFilter(resolvedFilter);
+}
+
 function _applyYear(year) {
   const start = new Date(year, 0, 1);
   const end = new Date(year, 11, 31);
@@ -191,6 +293,10 @@ function _mapConfigRangeToFilter(configValue) {
       return { apply: _applyLastMonth,     filterName: 'last_month',     buttonId: 'btn-date-last-month' };
     case 'last_year':
       return { apply: _applyLastYear,      filterName: 'last_year',      buttonId: 'btn-date-last-year' };
+    case 'fiscal_ytd':
+      return { apply: _applyFiscalYearToDate, filterName: 'fiscal_ytd',    buttonId: 'btn-date-fiscal-ytd' };
+    case 'last_fiscal_year':
+      return { apply: _applyLastFiscalYear, filterName: 'last_fiscal_year', buttonId: 'btn-date-last-fiscal-year' };
     default:
       return { apply: _applyLast12Months,  filterName: 'last_12_months', buttonId: 'btn-date-last-12-months' };
   }
@@ -264,6 +370,12 @@ function toggleDateFilter(filterName) {
   } else if (filterName === 'last_year') {
     _applyLastYear();
     _setActiveToggle('btn-date-last-year');
+  } else if (filterName === 'fiscal_ytd') {
+    _applyFiscalYearToDate();
+    _setActiveToggle('btn-date-fiscal-ytd');
+  } else if (filterName === 'last_fiscal_year') {
+    _applyLastFiscalYear();
+    _setActiveToggle('btn-date-last-fiscal-year');
   } else if (filterName === 'custom') {
     _activateCustomRange();
     _setActiveToggle('btn-date-custom');
@@ -391,11 +503,17 @@ function showLedgerFromDate(startIso) {
 function setDefaultDates() {
   // Default baseline is last 12 months (fast initial render)
   _applyLast12Months();
+  _refreshFiscalChips();
 
-  const savedFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  const fiscalStartMonth = getFiscalStartMonth();
+  const storedFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  const savedFilter = storedFilter ? _resolveDateFilterName(storedFilter, fiscalStartMonth) : storedFilter;
+  if (savedFilter !== storedFilter) {
+    localStorage.setItem(DATE_FILTER_ACTIVE_KEY, savedFilter);
+  }
   if (!savedFilter) {
     // No saved page-level preference — use the user's defaultDateRange config
-    const configRange = getAppConfig().defaultDateRange;
+    const configRange = _resolveDateFilterName(getAppConfig().defaultDateRange, fiscalStartMonth);
     const mapped = _mapConfigRangeToFilter(configRange);
     mapped.apply();
     if (mapped.buttonId) _setActiveToggle(mapped.buttonId);
@@ -403,7 +521,16 @@ function setDefaultDates() {
     return;
   }
 
-  // Re-apply the saved filter without re-rendering (main.js renders later)
+  _restoreSavedToggleFilter(savedFilter);
+}
+
+/**
+ * Re-apply a saved filter's dates and highlight without re-rendering
+ * (main.js renders later).
+ *
+ * @param {string} savedFilter - the stored active-filter name
+ */
+function _restoreSavedToggleFilter(savedFilter) {
   if (savedFilter === 'last_12_months') {
     _applyLast12Months();
     _setActiveToggle('btn-date-last-12-months');
@@ -425,6 +552,12 @@ function setDefaultDates() {
   } else if (savedFilter === 'last_year') {
     _applyLastYear();
     _setActiveToggle('btn-date-last-year');
+  } else if (savedFilter === 'fiscal_ytd') {
+    _applyFiscalYearToDate();
+    _setActiveToggle('btn-date-fiscal-ytd');
+  } else if (savedFilter === 'last_fiscal_year') {
+    _applyLastFiscalYear();
+    _setActiveToggle('btn-date-last-fiscal-year');
   } else if (savedFilter.startsWith('year_')) {
     const yearStr = savedFilter.replace('year_', '');
     _applyYear(parseInt(yearStr, 10));
@@ -484,38 +617,125 @@ function autoExtendEndDateForScheduled() {
   }
 }
 
+const MONTH_CHIP_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// Chips that are always in the row, in transactions.html.
+const ALWAYS_SHOWN_DATE_CHIP_IDS = [
+  'btn-date-last-12-months', 'btn-date-mtd', 'btn-date-ytd',
+  'btn-date-last-month', 'btn-date-last-year',
+  'btn-date-custom', 'btn-date-all',
+];
+// Chips in transactions.html shown only when the fiscal year differs from
+// the calendar year.
+const FISCAL_DATE_CHIP_IDS = ['btn-date-fiscal-ytd', 'btn-date-last-fiscal-year'];
+
 /**
- * Render the last 6 calendar months as individual toggle buttons.
- * Always shows 6 months regardless of transaction history depth.
- * Also re-highlights a saved month toggle if one was active.
+ * The six month chips: the months before last month, oldest first. The
+ * current month (MTD) and last month (Last Month) have their own chips.
+ *
+ * @param {Date} now
+ * @returns {Array<{year: number, month: number, label: string}>} month is 0-11
  */
-function renderDynamicPeriodButtons() {
-  const container = document.getElementById('date-month-buttons');
-  if (!container) return;
-
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const now = new Date();
+function _monthChips(now) {
   const months = [];
-
-  // Build last 6 months, skipping current month (MTD) and last month
-  // (Last Month button). So offsets 7→2 give 6 distinct months.
   for (let offset = 7; offset >= 2; offset--) {
     const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
     months.push({ year: date.getFullYear(), month: date.getMonth() });
   }
 
   const multiYear = months[0].year !== months[months.length - 1].year;
+  return months.map(entry => ({
+    ...entry,
+    label: multiYear
+      ? `${MONTH_CHIP_NAMES[entry.month]} '${String(entry.year).slice(-2)}`
+      : MONTH_CHIP_NAMES[entry.month],
+  }));
+}
+
+/**
+ * The calendar-year chips: every year from the earliest transaction up to
+ * two years ago (this year is YTD, last year is Last Year).
+ *
+ * @param {number|null} earliestYear - year of the earliest real transaction
+ * @param {number} currentYear
+ * @returns {number[]} years, oldest first
+ */
+function _yearChipYears(earliestYear, currentYear) {
+  if (earliestYear === null || earliestYear === undefined) return [];
+  const years = [];
+  for (let year = earliestYear; year <= currentYear - 2; year++) {
+    years.push(year);
+  }
+  return years;
+}
+
+/**
+ * Every chip the date row shows, in one place: what is always there, what
+ * the fiscal setting adds, and what the transaction history adds.
+ *
+ * The year chips make the row long for a deep history. So the fiscal chips
+ * do not make that row longer still, each one takes the slot of the oldest
+ * month chip. A history too short to have year chips keeps all six months.
+ *
+ * @param {Date} now
+ * @param {number|null} earliestYear - year of the earliest real transaction
+ * @param {number} fiscalStartMonth - month 1-12
+ * @returns {{alwaysShownIds: string[], fiscalIds: string[],
+ *   months: Array<{year: number, month: number, label: string}>,
+ *   years: number[], total: number}}
+ */
+function _dateChipPlan(now, earliestYear, fiscalStartMonth) {
+  const fiscalIds = hasDistinctFiscalYear(fiscalStartMonth) ? FISCAL_DATE_CHIP_IDS.slice() : [];
+  const years = _yearChipYears(earliestYear, now.getFullYear());
+  const allMonths = _monthChips(now);
+  const historyIsLong = years.length > 0;
+  const months = historyIsLong ? allMonths.slice(fiscalIds.length) : allMonths;
+  return {
+    alwaysShownIds: ALWAYS_SHOWN_DATE_CHIP_IDS.slice(),
+    fiscalIds,
+    months,
+    years,
+    total: ALWAYS_SHOWN_DATE_CHIP_IDS.length + fiscalIds.length + months.length + years.length,
+  };
+}
+
+/**
+ * Year of the earliest real transaction loaded, or null when there is none.
+ * System rows (investment trending, opening balances, reconciliation) are
+ * skipped: they can predate real data.
+ *
+ * @returns {number|null}
+ */
+function _earliestTransactionYear() {
+  const earliestDateStr = (transactions || []).reduce((min, txn) => {
+    if (isSystemType(getTransactionType(txn))) return min;
+    return (!min || txn.date < min) ? txn.date : min;
+  }, null);
+  // Read the year from the text: parsing an ISO date gives UTC midnight,
+  // which is the previous year for a January 1 row west of Greenwich.
+  return earliestDateStr ? parseInt(earliestDateStr.slice(0, 4), 10) : null;
+}
+
+/** The chip plan for the loaded transactions and the saved fiscal setting. */
+function _currentDateChipPlan() {
+  return _dateChipPlan(new Date(), _earliestTransactionYear(), getFiscalStartMonth());
+}
+
+/**
+ * Render the month chips the plan allows as individual toggle buttons.
+ * Also re-highlights a saved month toggle if one was active.
+ */
+function renderDynamicPeriodButtons() {
+  const container = document.getElementById('date-month-buttons');
+  if (!container) return;
 
   let html = '';
-  months.forEach(m => {
-    const label = multiYear
-      ? `${monthNames[m.month]} '${String(m.year).slice(-2)}`
-      : monthNames[m.month];
-    html += `<button id="btn-month-${m.year}-${m.month}" `
+  _currentDateChipPlan().months.forEach(chip => {
+    html += `<button id="btn-month-${chip.year}-${chip.month}" `
           + `class="btn-date-toggle btn-date-month" `
-          + `onclick="toggleMonthFilter(${m.year}, ${m.month})">`
-          + `${label}</button>`;
+          + `onclick="toggleMonthFilter(${chip.year}, ${chip.month})">`
+          + `${chip.label}</button>`;
   });
 
   container.innerHTML = html;
@@ -535,52 +755,21 @@ function renderDynamicPeriodButtons() {
 }
 
 /**
- * Render year buttons for data older than 2 years. Excludes current year
- * (covered by YTD/MTD) and last year (covered by Last Year button).
- * Only appears if transactions exist 2+ calendar years back.
+ * Render the calendar-year chips for the loaded history.
  */
 function _renderDynamicYearButtons() {
   const container = document.getElementById('date-year-buttons');
   if (!container) return;
 
-  if (!transactions || transactions.length === 0) {
-    container.innerHTML = '';
-    return;
-  }
+  const plan = _currentDateChipPlan();
 
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const twoYearsAgoThreshold = currentYear - 2;
-
-  // Find the earliest transaction year — exclude system rows (investment
-  // trending, opening balances, reconciliation) which can predate real data.
-  const earliestDateStr = transactions.reduce((min, txn) => {
-    if (isSystemType(getTransactionType(txn))) return min;
-    return (!min || txn.date < min) ? txn.date : min;
-  }, null);
-
-  if (!earliestDateStr) {
-    container.innerHTML = '';
-    return;
-  }
-
-  const earliestYear = new Date(earliestDateStr).getFullYear();
-
-  // Only show if there are transactions 2+ years old
-  if (earliestYear > twoYearsAgoThreshold) {
-    container.innerHTML = '';
-    return;
-  }
-
-  // Build buttons for each year from earliest up to 2 years ago
-  // (current year = YTD, last year = Last Year button)
   let html = '';
-  for (let year = earliestYear; year <= twoYearsAgoThreshold; year++) {
+  plan.years.forEach(year => {
     html += `<button id="btn-year-${year}" `
           + `class="btn-date-toggle btn-date-year" `
           + `onclick="toggleYearFilter(${year})">`
           + `${year}</button>`;
-  }
+  });
 
   container.innerHTML = html;
 

@@ -21,6 +21,8 @@ function closeReportsModal() {
  * Both modes open on the range from _defaultRangeStartYear through the current month.
  */
 function _initReportsDefaults() {
+  document.getElementById('report-fiscal-hint').textContent =
+    `Fiscal year starts in ${FISCAL_MONTH_NAMES[_getFiscalMonth() - 1]}. Change it in Settings, under App Configuration.`;
   _populateCategoryYearSelects();
   _applyBalanceDateDefaults();
   _onReportTypeChange();
@@ -42,9 +44,9 @@ function _formatMonthInput(dateObj) {
   return `${year}-${month}`;
 }
 
-/** Read the selected fiscal start month (1-12). */
+/** The user's saved fiscal start month (1-12). */
 function _getFiscalMonth() {
-  return parseInt(document.getElementById('report-fiscal-month').value, 10);
+  return getFiscalStartMonth();
 }
 
 /**
@@ -125,8 +127,8 @@ function _populateCategoryYearSelects() {
   const earliestYear = currentYear - 10;
 
   for (let year = earliestYear; year <= currentYear + 1; year++) {
-    startSelect.add(new Option(year, year));
-    endSelect.add(new Option(year, year));
+    startSelect.add(new Option(fiscalYearLabel(year), year));
+    endSelect.add(new Option(fiscalYearLabel(year), year));
   }
 
   const defaults = _categoryDefaultFiscalYears(now, _getFiscalMonth());
@@ -165,16 +167,6 @@ function _onReportIntervalChange() {
   _updateCategoryDatePreview();
 }
 
-/** Recalculate balance defaults when fiscal month changes. */
-function _onFiscalMonthChange() {
-  const reportType = document.getElementById('report-type').value;
-  if (reportType === 'balance') {
-    _applyBalanceDateDefaults();
-  } else {
-    _updateCategoryDatePreview();
-  }
-}
-
 const _MONTH_NAMES = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December'
@@ -211,7 +203,7 @@ function _updateCategoryDatePreview() {
 
   let previewText = `Report range: ${rangeStartMonth} ${startDate.getFullYear()} – ${rangeEndMonth} ${endDate.getFullYear()}`;
   if (range.endsEarly) {
-    previewText += `. Fiscal year ${endFY} is not over; months after this one are never included.`;
+    previewText += `. ${fiscalYearLabel(endFY)} is not over; months after this one are never included.`;
   }
   previewEl.textContent = previewText;
   previewEl.style.display = '';
