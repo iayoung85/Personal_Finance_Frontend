@@ -263,7 +263,7 @@ async function loadCategorizationData(forceNetwork = false) {
 /**
  * Set how a primary category counts.
  * @param {string} primary The primary's name.
- * @param {string} kind One of the seven kinds (income, other_inflow, retirement_income, spending, transfer, adjustment, excluded).
+ * @param {string} kind One of the seven kinds (income, retirement_income, other_inflow, spending, savings, transfer, adjustment).
  * @returns {Promise<{ok: boolean, data: Object|null}>} data is the parsed body
  *   ({primary_category} on success, {error} on a refusal).
  */

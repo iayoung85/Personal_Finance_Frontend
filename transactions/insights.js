@@ -22,7 +22,20 @@ function _buildTotalSpendingInsight(analyticsView) {
     label: 'Total Spending',
     value: _insightMoney(getAnalyticsDisplayTotal(rawTotal, analyticsView.spendingEntries)),
     meta: `${analyticsView.spendingEntries.length} spending transactions`,
-    subtext: 'Transfers, adjustments, income, other inflow, retirement income, and system rows excluded',
+    subtext: 'Savings, transfers, adjustments, income, other inflow, retirement income, and system rows excluded',
+  };
+}
+
+// Spending plus savings: the same two classes the API adds into Total outflow.
+function _buildTotalOutflowInsight(analyticsView) {
+  const rawTotal = analyticsView.outflowEntries.reduce((sum, entry) => sum + entry.amount, 0);
+
+  return {
+    icon: '💸',
+    label: 'Total Outflow',
+    value: _insightMoney(getAnalyticsDisplayTotal(rawTotal, analyticsView.outflowEntries)),
+    meta: `${analyticsView.outflowEntries.length} spending and savings transactions`,
+    subtext: 'Spending plus savings. Transfers, adjustments, income, other inflow, retirement income, and system rows excluded',
   };
 }
 
@@ -85,7 +98,7 @@ function _buildCategorySummaryInsight() {
     icon: '📋',
     label: 'Category Summary',
     value: 'Open category table',
-    meta: 'Spending, total income, investment trend, and retirement income',
+    meta: 'Total outflow, total inflows, investment trend, and retirement income',
     subtext: 'Transfers, adjustments, and balance anchors excluded',
     cardClass: ' insight-summary-card',
     title: 'Open category summary table',
@@ -100,7 +113,10 @@ function generateSpendingInsights() {
     return null;
   }
 
-  const insights = [_buildTotalSpendingInsight(analyticsView)];
+  const insights = [
+    _buildTotalSpendingInsight(analyticsView),
+    _buildTotalOutflowInsight(analyticsView),
+  ];
 
   analyticsView.insightCards.forEach(card => {
     insights.push(_buildInsightCardInsight(card, analyticsView));

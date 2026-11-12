@@ -4,12 +4,13 @@
 // Preview. No DOM and no network, so tests can load this file.
 // ============================================================
 
-/** The kinds a user may pick, in the order the picker lists them: inflows, then spending, then the ones that stay out of both. */
+/** The kinds a user may pick, in the order the picker lists them: inflows, then spending and savings, then the ones that stay out of both. */
 const PRIMARY_KIND_OPTIONS = [
   { value: 'income', label: 'Earned income' },
   { value: 'other_inflow', label: 'Other inflow' },
   { value: 'retirement_income', label: 'Retirement income' },
   { value: 'spending', label: 'Spending' },
+  { value: 'savings', label: 'Savings' },
   { value: 'transfer', label: 'Transfer' },
   { value: 'adjustment', label: 'Adjustment' }
 ];

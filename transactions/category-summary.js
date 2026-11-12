@@ -29,6 +29,10 @@ function closeCategorySummaryModal() {
   }
 }
 
+// Why: a transfer between two tracked accounts is not savings, and the user
+// needs to know that before wondering why a deposit is missing from the line.
+const CATEGORY_SUMMARY_SAVINGS_HINT = 'Money sent to savings or investment accounts this app does not track. A transfer between two tracked accounts stays a transfer and is not counted here.';
+
 function _renderCategorySummaryAmount(rawTotal, displayMode, className) {
   const signed = getAnalyticsSignedDisplay(rawTotal, displayMode);
   return `<span class="${className} tone-${signed.tone}">${escapeHtml(signed.text)}</span>`;
@@ -101,11 +105,19 @@ function _renderCategorySummaryStats(summaryData) {
 
   statsEl.innerHTML = `
     <div class="category-summary-stat">
-      <span class="category-summary-stat-label">Spending</span>
-      ${_renderCategorySummaryAmount(summaryData.spending_total, 'spending', 'category-summary-stat-value')}
+      <span class="category-summary-stat-label">Total Outflow</span>
+      ${_renderCategorySummaryAmount(summaryData.all_outflow_total, 'spending', 'category-summary-stat-value')}
+      <div class="category-summary-stat-part">
+        <span>Spending</span>
+        ${_renderCategorySummaryAmount(summaryData.spending_total, 'spending', 'category-summary-stat-part-value')}
+      </div>
+      <div class="category-summary-stat-part" title="${escapeHtml(CATEGORY_SUMMARY_SAVINGS_HINT)}">
+        <span>Savings</span>
+        ${_renderCategorySummaryAmount(summaryData.savings_total, 'spending', 'category-summary-stat-part-value')}
+      </div>
     </div>
     <div class="category-summary-stat">
-      <span class="category-summary-stat-label">Total Income</span>
+      <span class="category-summary-stat-label">Total Inflows</span>
       ${_renderCategorySummaryAmount(summaryData.all_income_total, 'income', 'category-summary-stat-value')}
       <div class="category-summary-stat-part">
         <span>Earned income</span>

@@ -288,7 +288,7 @@ function renderInsightCardEditorCard() {
       </div>
       <p class="text-muted insight-editor-intro">Cards in the transactions insights bar, in this order. Each one sums the categories you choose into a single figure.</p>
       <div id="insight-editor-root">${_renderInsightEditorBody()}</div>
-      <p class="text-muted stub-note">Name a card and add any primaries or detailed categories. Totals are net; a card that mixes income and spending shows a signed net with money in and out beneath it. Averages use credits for income, inflow and retirement categories and debits for spending categories, ignoring refunds and clawbacks. Transfers and adjustments are excluded.</p>
+      <p class="text-muted stub-note">Name a card and add any primaries or detailed categories. Totals are net; a card that mixes income and spending shows a signed net with money in and out beneath it. Averages use credits for income, inflow and retirement categories and debits for spending and savings categories, ignoring refunds and clawbacks. Transfers and adjustments are excluded.</p>
     </div>
   `;
 }
@@ -300,7 +300,7 @@ function _renderInsightEditorBody() {
     : `
       <div class="insight-editor-empty">
         <div class="insight-editor-empty-title">No insight cards</div>
-        <div class="insight-editor-empty-text">Add a card to follow a group of categories, such as a "Total income" card over your income and inflow categories.</div>
+        <div class="insight-editor-empty-text">Add a card to follow a group of categories, such as a "Total inflows" card over your income and inflow categories.</div>
       </div>
     `;
 
@@ -345,7 +345,7 @@ function _renderInsightSlot(draft, index) {
           <label for="${nameId}">Card name</label>
           <div class="insight-name-row">
             <input type="text" id="${nameId}" data-field="name" maxlength="${INSIGHT_EDITOR_NAME_MAX_LENGTH}"
-              placeholder="e.g. Total income" autocomplete="off" value="${escapeHtml(draft.name)}">
+              placeholder="e.g. Total inflows" autocomplete="off" value="${escapeHtml(draft.name)}">
             <span class="insight-name-count" data-role="name-count">${draft.name.length}/${INSIGHT_EDITOR_NAME_MAX_LENGTH}</span>
           </div>
         </div>

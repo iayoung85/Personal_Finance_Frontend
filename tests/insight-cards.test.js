@@ -363,3 +363,61 @@ test('drafts match saved cards regardless of member order but not card order', (
   drafts[1].name = 'B2';
   assert.equal(E.insightDraftsMatchSaved(drafts, saved), false);
 });
+
+// ── Savings on the debit side ──────────────────────────────────
+
+test('a card tracking a savings primary keeps its total and its average debit', () => {
+  const savingsRows = [
+    row('Savings', 'Deposit', 'savings', -300),
+    row('Savings', 'Deposit', 'savings', -100),
+    row('Savings', 'Withdrawal', 'savings', 50), // withdrawal: ignored by the average
+  ];
+  assert.equal(lines(savingsRows), JSON.stringify([{ label: 'Average debit', amount: 200 }]));
+  const flow = A.getInsightCardFlowSummary(savingsRows);
+  assert.equal(flow.isMixed, false);
+  assert.equal(flow.outTotal, 350);
+});
+
+test('a card holding income and savings is mixed, with savings as money out', () => {
+  const flow = A.getInsightCardFlowSummary([
+    row('Income', 'Wages', 'income', 1000),
+    row('Savings', 'Deposit', 'savings', -300),
+    row('Food', 'Groceries', 'spending', -50),
+  ]);
+  assert.equal(flow.isMixed, true);
+  assert.equal(flow.inTotal, 1000);
+  assert.equal(flow.outTotal, 350);
+});
+
+// ── Total Spending and Total Outflow cards ─────────────────────
+
+function loadInsightBuilders() {
+  return load(['transactions/privacy.js', 'transactions/analytics.js', 'transactions/insights.js'], [
+    'initPrivacyMode', '_buildTotalSpendingInsight', '_buildTotalOutflowInsight',
+  ].join(', '), {
+    getAppConfig: () => ({}),
+    escapeHtml: s => s,
+    document: { body: { dataset: {} }, getElementById: () => null },
+  });
+}
+
+test('Total Spending leaves savings out and Total Outflow sums spending and savings', () => {
+  const I = loadInsightBuilders();
+  I.initPrivacyMode();
+  const spending = [row('Food', 'Groceries', 'spending', -80), row('Food', 'Groceries', 'spending', 30)];
+  const savings = [row('Savings', 'Deposit', 'savings', -300), row('Savings', 'Withdrawal', 'savings', 100)];
+  const view = {
+    spendingEntries: spending,
+    savingsEntries: savings,
+    outflowEntries: [...spending, ...savings],
+  };
+  const spendingCard = I._buildTotalSpendingInsight(view);
+  const outflowCard = I._buildTotalOutflowInsight(view);
+  assert.equal(spendingCard.label, 'Total Spending');
+  assert.equal(spendingCard.value, '$50.00');
+  assert.match(spendingCard.subtext, /Savings/);
+  assert.equal(outflowCard.label, 'Total Outflow');
+  assert.equal(outflowCard.value, '$250.00');
+  assert.match(outflowCard.subtext, /Spending plus savings/);
+  assert.match(outflowCard.meta, /^4 /);
+});

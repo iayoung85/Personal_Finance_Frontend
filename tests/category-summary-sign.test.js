@@ -176,3 +176,28 @@ test('summary data names stat-card-only groups and lines without changing the ex
   assert.equal(summary.retirement_income_total, 210);
   assert.equal(summary.categories.length, 4);
 });
+
+test('the summary header shows Total Outflow with Spending and Savings parts, and Total Inflows', () => {
+  const statsEl = { innerHTML: '' };
+  const { _renderCategorySummaryStats } = load(
+    'transactions/category-summary.js', '_renderCategorySummaryStats', {
+      document: { getElementById: id => (id === 'category-summary-stats' ? statsEl : null) },
+      escapeHtml: text => String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;'),
+      getAnalyticsSignedDisplay: (rawTotal, mode) => ({ text: `${mode}:${rawTotal}`, tone: 'neutral' }),
+      splitRetirementIncomeLines: lines => ({ visible: lines, hiddenCount: 0 }),
+    },
+  );
+  _renderCategorySummaryStats({
+    spending_total: -50, savings_total: -260, all_outflow_total: -310,
+    income_total: 900, other_inflow_total: 100, all_income_total: 1000,
+    investment_trending_total: 0, retirement_income_total: 0, retirement_income_lines: [],
+  });
+  const html = statsEl.innerHTML;
+  assert.match(html, /Total Outflow<\/span>\s*<span[^>]*>spending:-310</);
+  assert.match(html, /<span>Spending<\/span>\s*<span[^>]*>spending:-50</);
+  assert.match(html, /<span>Savings<\/span>\s*<span[^>]*>spending:-260</);
+  assert.match(html, /title="Money sent to savings or investment accounts this app does not track\. A transfer between two tracked accounts stays a transfer and is not counted here\."/);
+  assert.match(html, /Total Inflows/);
+  assert.doesNotMatch(html, /Total Income/);
+  assert.ok(html.indexOf('Total Outflow') < html.indexOf('Total Inflows'));
+});

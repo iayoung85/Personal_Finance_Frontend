@@ -560,7 +560,8 @@ async function copyBalanceSnapshotCSV() {
  * Categories are sorted by magnitude (largest absolute total first)
  * so the biggest spending categories surface at the top regardless of sign.
  *
- * Returns { date_range, start_date, end_date, grand_total, spending_total, income_total (earned),
+ * Returns { date_range, start_date, end_date, grand_total, spending_total (spending only),
+ * savings_total, all_outflow_total (spending + savings), income_total (earned),
  * other_inflow_total, all_income_total (earned + other inflow), retirement_income_total,
  * investment_trending_total, transaction_count, categories[] }
  * where each category has { category, total, count, detailed[] }
@@ -578,6 +579,8 @@ function _buildCategorySummaryExportData() {
     end_date: endDate,
     grand_total: summaryData.grand_total,
     spending_total: summaryData.spending_total,
+    savings_total: summaryData.savings_total,
+    all_outflow_total: summaryData.all_outflow_total,
     income_total: summaryData.income_total,
     other_inflow_total: summaryData.other_inflow_total,
     all_income_total: summaryData.all_income_total,

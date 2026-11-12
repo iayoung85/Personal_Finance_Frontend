@@ -41,6 +41,12 @@ test('other inflow shows like income, retirement income like investment trend', 
   ]), 20);
 });
 
+test('savings counts in the spending display mode', () => {
+  assert.equal(A.getAnalyticsModeForClass('savings'), 'spending');
+  assert.equal(A.isAnalyticsCountedClass('savings'), true);
+  assert.equal(A.getAnalyticsDisplayTotal(-300, [entry('savings', -300)]), 300);
+});
+
 test('transfer, adjustment, excluded are not counted', () => {
   for (const cls of ['transfer', 'adjustment', 'excluded']) {
     assert.equal(A.isAnalyticsCountedClass(cls), false, cls);
@@ -160,6 +166,81 @@ test('category summary gives other inflow and retirement income their own totals
   assert.equal(buildNormalizedAnalyticsSlice().spendingEntries.length, 1);
 });
 
+const SUMMARY_TXN_TYPE = { SPLIT_CHILD: 'SPLIT_CHILD', BILL_FUTURE: 'BILL_FUTURE', MANUAL_FUTURE: 'MANUAL_FUTURE', MANUAL_ORPHANED: 'MANUAL_ORPHANED' };
+
+function loadSummary(rows) {
+  return load('transactions/analytics.js', 'buildVisibleCategorySummaryData, buildNormalizedAnalyticsSlice', {
+    visibleTransactions: rows,
+    selectedAccountMode: 'single',
+    TXN_TYPE: SUMMARY_TXN_TYPE,
+    getTransactionType: () => 'PLAID_POSTED',
+    isSystemType: () => false,
+    parseCategoryString: label => {
+      const [primary, detailed] = label.split(': ');
+      return { primary, detailed };
+    },
+    getCategoryDisplayNames: () => ({}),
+    getAppConfig: () => ({ trackedInsightCategories: [] }),
+  });
+}
+
+test('category summary gives savings its own total and total outflow is spending plus savings', () => {
+  const { buildVisibleCategorySummaryData, buildNormalizedAnalyticsSlice } = loadSummary([
+    { transaction_id: 'a', amount: -50, user_category: 'Food: Groceries', analytics_class: 'spending' },
+    { transaction_id: 'b', amount: -300, user_category: 'Savings: Deposit', analytics_class: 'savings' },
+    { transaction_id: 'c', amount: 40, user_category: 'Savings: Withdrawal', analytics_class: 'savings' },
+    { transaction_id: 'd', amount: 1000, user_category: 'Income: Wages', analytics_class: 'income' },
+  ]);
+  const summary = buildVisibleCategorySummaryData();
+  // Spending is spending only; a withdrawal filed under savings reduces savings.
+  assert.equal(summary.spending_total, -50);
+  assert.equal(summary.savings_total, -260);
+  assert.equal(summary.all_outflow_total, -310);
+  assert.equal(summary.all_income_total, 1000);
+  assert.equal(summary.grand_total, 690);
+  assert.equal(summary.transaction_count, 4);
+  const savings = summary.categories.find(category => category.category === 'Savings');
+  assert.equal(savings.display_mode, 'spending');
+
+  const slice = buildNormalizedAnalyticsSlice();
+  assert.equal(slice.spendingEntries.length, 1);
+  assert.equal(slice.savingsEntries.length, 2);
+  assert.equal(slice.outflowEntries.length, 3);
+});
+
+test('an unknown class counts in no total, savings included in none by accident', () => {
+  const { buildVisibleCategorySummaryData, buildNormalizedAnalyticsSlice } = loadSummary([
+    { transaction_id: 'a', amount: -50, user_category: 'Food: Groceries', analytics_class: 'spending' },
+    { transaction_id: 'b', amount: -7, user_category: 'Odd: Thing', analytics_class: 'future_class' },
+    { transaction_id: 'c', amount: -8, user_category: 'Odd: Thing', analytics_class: null },
+  ]);
+  const summary = buildVisibleCategorySummaryData();
+  assert.equal(summary.spending_total, -50);
+  assert.equal(summary.savings_total, 0);
+  assert.equal(summary.all_outflow_total, -50);
+  assert.equal(summary.grand_total, -50);
+  assert.equal(summary.transaction_count, 1);
+  assert.equal(buildNormalizedAnalyticsSlice().outflowEntries.length, 1);
+});
+
+test('report savings section hides when empty, carries its subtotal, and follows show-inactive', () => {
+  const { _getReportSavingsSection } = load('transactions/reports.js', '_getReportSavingsSection, _keepReportSectionsWithCategories, _filterReportCategories, _reportCategoryHasActivity');
+  assert.equal(_getReportSavingsSection({ savings: {} }), null);
+  assert.equal(_getReportSavingsSection({}), null);
+  const data = {
+    savings: { 'Savings: Deposit': { amounts: [-100, -50], total: -150 } },
+    total_savings_row: [-100, -50],
+    total_savings_grand: -150,
+  };
+  const found = _getReportSavingsSection(data);
+  assert.equal(found.label, 'Savings');
+  assert.equal(found.grandTotal, -150);
+  assert.equal(found.totalRow.join(','), '-100,-50');
+  const idle = { savings: { 'Savings: Deposit': { amounts: [0, 0], total: 0 } } };
+  assert.notEqual(_getReportSavingsSection(idle, true), null);
+  assert.equal(_getReportSavingsSection(idle, false), null);
+});
+
 test('cache schema check', () => {
   const { isTransactionCacheSchemaCurrent, TRANSACTION_CACHE_SCHEMA } = load(
     'transactions/utils.js', 'isTransactionCacheSchemaCurrent, TRANSACTION_CACHE_SCHEMA',
@@ -230,7 +311,7 @@ test('report other inflow section hides when empty and carries its subtotal', ()
   assert.equal(found.totalRow.join(','), '4,6');
 });
 
-test('category report CSV orders earned income, other inflow, total income, expenses, total, then separate sections', () => {
+test('category report CSV orders earned income, other inflow, total inflows, spending, savings, total outflow, total, then separate sections', () => {
   const { _generateCategoryCSV } = load('transactions/reports.js', '_generateCategoryCSV', {
     _csvEscape: value => String(value).replace(/"/g, '""'),
   });
@@ -243,13 +324,18 @@ test('category report CSV orders earned income, other inflow, total income, expe
     expenses: cat('Food: Groceries', [-40]),
     total_expenses_row: [-40],
     total_expenses_grand: -40,
+    savings: cat('Savings: Deposit', [-25]),
+    total_savings_row: [-25],
+    total_savings_grand: -25,
+    total_all_outflow_row: [-65],
+    total_all_outflow_grand: -65,
     other_inflows: cat('Other Inflow: Interest', [5]),
     total_other_inflows_row: [5],
     total_other_inflows_grand: 5,
     total_all_income_row: [105],
     total_all_income_grand: 105,
-    total_row: [65],
-    total_grand: 65,
+    total_row: [40],
+    total_grand: 40,
     transfers: cat('Transfer: Out', [-9]),
     total_transfers_row: [-9],
     total_transfers_grand: -9,
@@ -265,18 +351,50 @@ test('category report CSV orders earned income, other inflow, total income, expe
   });
   const marks = [
     '"Earned Income"', '"Total Earned Income"', '"Other Inflow"', '"Total Other Inflow"',
-    '"Total Income"', '"Expenses"', '"Total Expenses"', ',,"Total"',
+    '"Total Inflows"', '"Spending"', '"Total Spending"', '"Savings"', '"Total Savings"',
+    '"Total Outflow"', ',,"Total"',
     '"Retirement Income"', '"Investment Trend"', '"Excluded"', '"Transfers"',
   ];
   const positions = marks.map(mark => csv.indexOf(mark));
   positions.forEach((pos, idx) => assert.notEqual(pos, -1, marks[idx]));
   assert.deepEqual([...positions].sort((a, b) => a - b), positions);
-  assert.match(csv, /,,"Total Income",105,105\n/);
-  assert.match(csv, /,,"Total",65,65\n/);
+  assert.match(csv, /,,"Total Inflows",105,105\n/);
+  assert.match(csv, /,,"Total Spending",-40,-40\n/);
+  assert.match(csv, /,,"Total Savings",-25,-25\n/);
+  assert.match(csv, /,,"Total Outflow",-65,-65\n/);
+  assert.match(csv, /,,"Total",40,40\n/);
+  assert.ok(!csv.includes('Expenses') && !csv.includes('"Total Income"'));
+});
+
+test('category report CSV leaves the Savings section out when empty but keeps Total Outflow', () => {
+  const { _generateCategoryCSV } = load('transactions/reports.js', '_generateCategoryCSV', {
+    _csvEscape: value => String(value).replace(/"/g, '""'),
+  });
+  const csv = _generateCategoryCSV({
+    periods: ['11/1/25 - 11/30/25'],
+    income: {}, total_income_row: [0], total_income_grand: 0,
+    expenses: { 'Food: Groceries': { amounts: [-40], total: -40 } },
+    total_expenses_row: [-40], total_expenses_grand: -40,
+    savings: {}, total_savings_row: [0], total_savings_grand: 0,
+    total_all_outflow_row: [-40], total_all_outflow_grand: -40,
+    total_all_income_row: [0], total_all_income_grand: 0,
+    total_row: [-40], total_grand: -40,
+  });
+  assert.ok(!csv.includes('Savings'));
+  assert.match(csv, /,,"Total Outflow",-40,-40\n/);
+  // An older API with no outflow keys still gets a zero row, not "undefined".
+  const older = _generateCategoryCSV({
+    periods: ['11/1/25 - 11/30/25'],
+    income: {}, total_income_row: [0], total_income_grand: 0,
+    expenses: {}, total_expenses_row: [0], total_expenses_grand: 0,
+    total_row: [0], total_grand: 0,
+  });
+  assert.match(older, /,,"Total Outflow",0\n/);
+  assert.ok(!older.includes('undefined'));
 });
 
 const REPORT_EXPORTS = [
-  '_reportCategoryHasActivity', '_filterReportCategories', '_getReportSeparateSections',
+  '_getReportSavingsSection', '_reportCategoryHasActivity', '_filterReportCategories', '_getReportSeparateSections',
   '_getReportOtherInflowSection', '_generateCategoryCSV',
 ].join(', ');
 const loadReports = () => load('transactions/reports.js', REPORT_EXPORTS, {
@@ -337,6 +455,11 @@ test('category report CSV follows the show-inactive choice', () => {
     expenses: { 'Food: Groceries': { amounts: [0, 0], total: 0 }, 'Food: Dining': { amounts: [0, -4], total: -4 } },
     total_expenses_row: [0, -4],
     total_expenses_grand: -4,
+    savings: { 'Savings: Deposit': { amounts: [0, 0], total: 0 } },
+    total_savings_row: [0, 0],
+    total_savings_grand: 0,
+    total_all_outflow_row: [0, -4],
+    total_all_outflow_grand: -4,
     other_inflows: { 'Other Inflow: Interest': { amounts: [0, 0], total: 0 } },
     total_other_inflows_row: [0, 0],
     total_other_inflows_grand: 0,
@@ -349,15 +472,15 @@ test('category report CSV follows the show-inactive choice', () => {
     total_transfers_grand: 0,
   };
   const shown = _generateCategoryCSV(data, true);
-  for (const name of ['Bonus', 'Groceries', 'Interest', 'Out', '"Other Inflow"', '"Transfers"']) {
+  for (const name of ['Bonus', 'Groceries', 'Interest', 'Out', '"Other Inflow"', '"Transfers"', '"Savings"', 'Deposit']) {
     assert.ok(shown.includes(name), name);
   }
   assert.equal(_generateCategoryCSV(data), shown);
   const hidden = _generateCategoryCSV(data, false);
-  for (const name of ['Bonus', 'Groceries', 'Interest', '"Out"', '"Other Inflow"', '"Transfers"']) {
+  for (const name of ['Bonus', 'Groceries', 'Interest', '"Out"', '"Other Inflow"', '"Transfers"', '"Savings"', 'Deposit']) {
     assert.ok(!hidden.includes(name), name);
   }
   assert.ok(hidden.includes('"Wages"') && hidden.includes('"Dining"'));
   assert.match(hidden, /,,"Total Earned Income",100,0,100\n/);
-  assert.match(hidden, /,,"Total Expenses",0,-4,-4\n/);
+  assert.match(hidden, /,,"Total Spending",0,-4,-4\n/);
 });

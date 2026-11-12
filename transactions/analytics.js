@@ -22,6 +22,7 @@ function formatAnalyticsCurrency(amount) {
 // Any value not listed here (a class added later) maps to null: not counted.
 const ANALYTICS_CLASS_TO_MODE = Object.freeze({
   spending: ANALYTICS_DISPLAY_MODE.SPENDING,
+  savings: ANALYTICS_DISPLAY_MODE.SPENDING,
   income: ANALYTICS_DISPLAY_MODE.INCOME,
   other_inflow: ANALYTICS_DISPLAY_MODE.INCOME,
   retirement_income: ANALYTICS_DISPLAY_MODE.SIGNED,
@@ -273,22 +274,27 @@ function _meanAbsoluteAmount(entries) {
 
 // Classes whose rows bring money in, for a card's credit side. Retirement
 // income joins earned income and other inflow here even though the category
-// summary keeps it out of Total income.
+// summary keeps it out of Total inflows.
 const INSIGHT_CARD_CREDIT_CLASSES = Object.freeze(['income', 'other_inflow', 'retirement_income']);
 
 function _isInsightCardCreditRow(entry) {
   return INSIGHT_CARD_CREDIT_CLASSES.includes(entry.analytics_class);
 }
 
+// Classes whose rows send money out, for a card's debit side. Savings sits
+// beside spending so a card tracking a savings primary keeps its total and its
+// "Average debit" line.
+const INSIGHT_CARD_DEBIT_CLASSES = Object.freeze(['spending', 'savings']);
+
 function _isInsightCardSpendingRow(entry) {
-  return entry.analytics_class === 'spending';
+  return INSIGHT_CARD_DEBIT_CLASSES.includes(entry.analytics_class);
 }
 
 /**
  * The average lines an insight card shows. Credit-side rows (income, other
  * inflow, retirement income) give "Average credit" from their credits only;
- * spending rows give "Average debit" from their debits only, so refunds and
- * clawbacks move neither. A card with both sides shows both lines. A card
+ * spending and savings rows give "Average debit" from their debits only, so
+ * refunds and clawbacks move neither. A card with both sides shows both lines. A card
  * with no income, other-inflow or spending rows (only retirement income, or
  * no rows) keeps the single average chosen by the group's display mode.
  * @param {Array<{analytics_class: string|null, amount: number}>} entries
@@ -444,11 +450,18 @@ function buildNormalizedAnalyticsSlice() {
   const summaryEntries = ledgerEntries.filter(entry => isAnalyticsCountedClass(entry.analytics_class));
   const trackableEntries = summaryEntries.filter(entry => entry.analytics_class !== 'investment_trend');
   const spendingEntries = summaryEntries.filter(entry => entry.analytics_class === 'spending');
+  const savingsEntries = summaryEntries.filter(entry => entry.analytics_class === 'savings');
+  // Total outflow is what the API defines as spending plus savings.
+  const outflowEntries = summaryEntries.filter(entry => (
+    entry.analytics_class === 'spending' || entry.analytics_class === 'savings'
+  ));
 
   return {
     ledgerEntries,
     trackableEntries,
     spendingEntries,
+    savingsEntries,
+    outflowEntries,
     summaryEntries,
     insightCards: getInsightCards(),
   };
@@ -534,7 +547,7 @@ function splitRetirementIncomeLines(lines, expanded) {
 }
 
 // Primary groups read income first, then the signed groups counted in no
-// spending total, then spending, so inflows never sit among expenses.
+// outflow total, then spending and savings, so inflows never sit among outflows.
 const CATEGORY_SUMMARY_MODE_ORDER = Object.freeze([
   ANALYTICS_DISPLAY_MODE.INCOME,
   ANALYTICS_DISPLAY_MODE.SIGNED,
@@ -558,6 +571,7 @@ function buildVisibleCategorySummaryData() {
   const analyticsView = buildNormalizedAnalyticsSlice();
   const groupedCategories = {};
   let spendingTotal = 0;
+  let savingsTotal = 0;
   let incomeTotal = 0;
   let otherInflowTotal = 0;
   let retirementIncomeTotal = 0;
@@ -588,9 +602,13 @@ function buildVisibleCategorySummaryData() {
       otherInflowTotal += entry.amount;
     } else if (entry.analytics_class === 'income') {
       incomeTotal += entry.amount;
-    } else {
+    } else if (entry.analytics_class === 'spending') {
       spendingTotal += entry.amount;
+    } else if (entry.analytics_class === 'savings') {
+      savingsTotal += entry.amount;
     }
+    // Any other class never reaches here: summaryEntries holds counted classes
+    // only, and a class added later must name its own branch to count.
 
     if (detailedKey) {
       if (!groupedCategories[primaryKey].detailed[detailedKey]) {
@@ -627,6 +645,8 @@ function buildVisibleCategorySummaryData() {
   return {
     grand_total: Math.round(categories.reduce((sum, category) => sum + category.total, 0) * 100) / 100,
     spending_total: Math.round(spendingTotal * 100) / 100,
+    savings_total: Math.round(savingsTotal * 100) / 100,
+    all_outflow_total: Math.round((spendingTotal + savingsTotal) * 100) / 100,
     income_total: Math.round(incomeTotal * 100) / 100,
     other_inflow_total: Math.round(otherInflowTotal * 100) / 100,
     all_income_total: Math.round((incomeTotal + otherInflowTotal) * 100) / 100,

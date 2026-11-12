@@ -504,20 +504,39 @@ function _renderCategoryReport(data, interval) {
   }
 
   // Earned income plus other inflow
-  html += '<tr class="reports-subtotal-row"><td>Total Income</td>';
+  html += '<tr class="reports-subtotal-row"><td>Total Inflows</td>';
   for (const val of (data.total_all_income_row || [])) {
     html += `<td class="reports-num-col">${_formatCurrency(val)}</td>`;
   }
   html += `<td class="reports-num-col">${_formatCurrency(data.total_all_income_grand || 0)}</td></tr>`;
 
-  // Expenses section
-  html += `<tr class="reports-section-header"><td colspan="${periodCount + 2}">Expenses</td></tr>`;
+  // Spending section (the API still keys it as expenses)
+  html += `<tr class="reports-section-header"><td colspan="${periodCount + 2}">Spending</td></tr>`;
   html += _renderCategoryRows(_filterReportCategories(data.expenses, showInactive), periodCount);
-  html += '<tr class="reports-subtotal-row"><td>Total Expenses</td>';
+  html += '<tr class="reports-subtotal-row"><td>Total Spending</td>';
   for (const val of data.total_expenses_row) {
     html += `<td class="reports-num-col">${_formatCurrency(val)}</td>`;
   }
   html += `<td class="reports-num-col">${_formatCurrency(data.total_expenses_grand)}</td></tr>`;
+
+  // Savings section, hidden when empty like Other Inflow
+  const savings = _getReportSavingsSection(data, showInactive);
+  if (savings) {
+    html += `<tr class="reports-section-header"><td colspan="${periodCount + 2}">Savings</td></tr>`;
+    html += _renderCategoryRows(savings.categories, periodCount);
+    html += '<tr class="reports-subtotal-row"><td>Total Savings</td>';
+    for (const val of savings.totalRow) {
+      html += `<td class="reports-num-col">${_formatCurrency(val)}</td>`;
+    }
+    html += `<td class="reports-num-col">${_formatCurrency(savings.grandTotal)}</td></tr>`;
+  }
+
+  // Spending plus savings; always shown, so it is there when Savings is empty
+  html += '<tr class="reports-subtotal-row"><td>Total Outflow</td>';
+  for (const val of (data.total_all_outflow_row || [])) {
+    html += `<td class="reports-num-col">${_formatCurrency(val)}</td>`;
+  }
+  html += `<td class="reports-num-col">${_formatCurrency(data.total_all_outflow_grand || 0)}</td></tr>`;
 
   // Grand total row
   html += '<tr class="reports-net-worth-row"><td><strong>Total</strong></td>';
@@ -583,6 +602,17 @@ function _keepReportSectionsWithCategories(candidates, showInactive = true) {
 function _getReportOtherInflowSection(data, showInactive = true) {
   const sections = _keepReportSectionsWithCategories([
     { label: 'Other Inflow', categories: data.other_inflows, totalRow: data.total_other_inflows_row, grandTotal: data.total_other_inflows_grand },
+  ], showInactive);
+  return sections.length ? sections[0] : null;
+}
+
+/**
+ * The Savings section of a category report, or null when it is empty. It sits
+ * after Spending, above Total Outflow, because it counts in it.
+ */
+function _getReportSavingsSection(data, showInactive = true) {
+  const sections = _keepReportSectionsWithCategories([
+    { label: 'Savings', categories: data.savings, totalRow: data.total_savings_row, grandTotal: data.total_savings_grand },
   ], showInactive);
   return sections.length ? sections[0] : null;
 }
@@ -792,19 +822,36 @@ function _generateCategoryCSV(data, showInactive = true) {
     csv += `,${otherInflow.grandTotal}\n`;
   }
 
-  csv += ',,"Total Income"';
+  csv += ',,"Total Inflows"';
   for (const val of (data.total_all_income_row || [])) { csv += `,${val}`; }
   csv += `,${data.total_all_income_grand || 0}\n`;
 
-  csv += '"Expenses"\n';
+  csv += '"Spending"\n';
   for (const [category, catData] of Object.entries(_filterReportCategories(data.expenses, showInactive))) {
     csv += _splitCategoryColumns(category);
     for (const amount of catData.amounts) { csv += `,${amount}`; }
     csv += `,${catData.total}\n`;
   }
-  csv += ',,"Total Expenses"';
+  csv += ',,"Total Spending"';
   for (const val of data.total_expenses_row) { csv += `,${val}`; }
   csv += `,${data.total_expenses_grand}\n`;
+
+  const savings = _getReportSavingsSection(data, showInactive);
+  if (savings) {
+    csv += '"Savings"\n';
+    for (const [category, catData] of Object.entries(savings.categories)) {
+      csv += _splitCategoryColumns(category);
+      for (const amount of catData.amounts) { csv += `,${amount}`; }
+      csv += `,${catData.total}\n`;
+    }
+    csv += ',,"Total Savings"';
+    for (const val of savings.totalRow) { csv += `,${val}`; }
+    csv += `,${savings.grandTotal}\n`;
+  }
+
+  csv += ',,"Total Outflow"';
+  for (const val of (data.total_all_outflow_row || [])) { csv += `,${val}`; }
+  csv += `,${data.total_all_outflow_grand || 0}\n`;
 
   csv += ',,"Total"';
   for (const val of data.total_row) { csv += `,${val}`; }

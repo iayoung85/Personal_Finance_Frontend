@@ -20,13 +20,14 @@ function loadHelpers() {
 
 const helpers = loadHelpers();
 
-test('the picker offers the six kinds with their display labels', () => {
+test('the picker offers the seven kinds with their display labels, Savings right after Spending', () => {
   const pairs = helpers.PRIMARY_KIND_OPTIONS.map(option => `${option.value}=${option.label}`);
   assert.deepEqual([...pairs], [
     'income=Earned income',
     'other_inflow=Other inflow',
     'retirement_income=Retirement income',
     'spending=Spending',
+    'savings=Savings',
     'transfer=Transfer',
     'adjustment=Adjustment'
   ]);
@@ -43,6 +44,7 @@ test('excluded is not an option but still has a label and renders read-only', ()
 });
 
 test('primaryKindLabel covers every kind and passes unknown ones through', () => {
+  assert.equal(helpers.primaryKindLabel('savings'), 'Savings');
   assert.equal(helpers.primaryKindLabel('transfer'), 'Transfer');
   assert.equal(helpers.primaryKindLabel('adjustment'), 'Adjustment');
   assert.equal(helpers.primaryKindLabel('retirement_income'), 'Retirement income');
