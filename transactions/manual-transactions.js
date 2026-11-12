@@ -1470,6 +1470,14 @@ async function resolveMissingTransaction(transactionId) {
       _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
     }
 
+    // A manual partner in another account is deleted with the missing row.
+    if (data && Array.isArray(data.cascade_deleted_ids)) {
+      for (const cascadeDeletedId of data.cascade_deleted_ids) {
+        _removeCachedTransaction(cascadeDeletedId);
+        delete balanceHistoryLookup[cascadeDeletedId];
+      }
+    }
+
     _removeCachedTransaction(transactionId);
     _sortTransactionsInPlace();
     _cacheTransactions(transactions);
