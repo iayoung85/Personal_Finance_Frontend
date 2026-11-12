@@ -109,3 +109,21 @@ function selectedLedgerNeedsRefresh(responseData, selectedMode, selectedId) {
   if (!Array.isArray(affected)) return false;
   return affected.some((entry) => entry && entry.account_id === selectedId);
 }
+
+// Waits before asking for the accounts again while the API reports that it is
+// still fetching bank balances. Each is double the last, so a slow bank is
+// given more room; after the last one the page stops asking.
+const BANK_REFRESH_WAITS_MS = [3000, 6000, 12000];
+
+/**
+ * How long to wait before re-fetching the accounts after a response that says
+ * bank balances are still being refreshed.
+ *
+ * @param {number} triesSoFar Re-fetches already made for this refresh.
+ * @returns {number|null} Milliseconds to wait, or null to stop asking.
+ */
+function nextBankRefreshWaitMs(triesSoFar) {
+  if (!Number.isInteger(triesSoFar) || triesSoFar < 0) return null;
+  if (triesSoFar >= BANK_REFRESH_WAITS_MS.length) return null;
+  return BANK_REFRESH_WAITS_MS[triesSoFar];
+}

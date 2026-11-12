@@ -7,6 +7,9 @@
 let _pendingSidebarFocusAccountId = null;
 const _ALL_ACCOUNTS_NAV_ID = '__all_accounts__';
 let _showHiddenAccounts = false;
+// One pending re-fetch at most while the API is refreshing bank balances.
+let _bankRefreshTimer = null;
+let _bankRefreshTries = 0;
 
 /**
  * Build the human-readable display name for an account.
@@ -447,13 +450,24 @@ function _positionBankAgreementPanel() {
 /**
  * Reload the accounts list and redraw the sidebar.
  *
- * @param {{quiet?: boolean}} [options] quiet: skip the progress and success
- *   messages so a status line the user is reading is not replaced. Errors
- *   still show.
+ * When the response says bank balances are still being refreshed, one quiet
+ * reload is scheduled to pick them up. Any other call replaces that pending
+ * reload and starts the count again, so reloads never stack.
+ *
+ * @param {{quiet?: boolean, bankRefreshRetry?: boolean}} [options] quiet:
+ *   skip the progress and success messages so a status line the user is
+ *   reading is not replaced. Errors still show. bankRefreshRetry: set only
+ *   by the scheduled reload itself, to keep its try count.
  * @returns {Promise<void>}
  */
 async function loadAccounts(options = {}) {
   const quiet = !!options && options.quiet === true;
+  const isBankRefreshRetry = !!options && options.bankRefreshRetry === true;
+  if (_bankRefreshTimer !== null) {
+    clearTimeout(_bankRefreshTimer);
+    _bankRefreshTimer = null;
+  }
+  if (!isBankRefreshRetry) _bankRefreshTries = 0;
   try {
     if (!quiet) showStatus('Loading accounts...', 'info');
 
@@ -507,6 +521,8 @@ async function loadAccounts(options = {}) {
     // Keep the Plaid balance indicator in sync with freshly loaded account data.
     updatePlaidBalanceIndicator();
 
+    _scheduleBankRefreshReload(data.bank_balances_refreshing === true);
+
     if (!quiet) {
       showStatus('Accounts loaded successfully', 'success');
       setTimeout(() => clearStatus(), 2000);
@@ -516,6 +532,27 @@ async function loadAccounts(options = {}) {
     console.error('loadAccounts error:', error);
     showStatus(`Failed to load accounts: ${error.message}`, 'error');
   }
+}
+
+/**
+ * Schedule the next quiet accounts reload while the API is still fetching
+ * bank balances, or reset the count once it has finished.
+ *
+ * @param {boolean} stillRefreshing The response's bank_balances_refreshing.
+ * @returns {void}
+ */
+function _scheduleBankRefreshReload(stillRefreshing) {
+  if (!stillRefreshing) {
+    _bankRefreshTries = 0;
+    return;
+  }
+  const waitMs = nextBankRefreshWaitMs(_bankRefreshTries);
+  if (waitMs === null) return;
+  _bankRefreshTries += 1;
+  _bankRefreshTimer = setTimeout(() => {
+    _bankRefreshTimer = null;
+    loadAccounts({ quiet: true, bankRefreshRetry: true });
+  }, waitMs);
 }
 
 /**

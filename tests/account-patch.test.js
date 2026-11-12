@@ -7,11 +7,13 @@ const vm = require('node:vm');
 const box = { module: { exports: {} } };
 vm.runInNewContext(
   `${fs.readFileSync(path.join(__dirname, '..', 'transactions/account-patch.js'), 'utf8')}\n`
-    + 'module.exports = { patchAccountsFromAffected, mapAccountBalanceFields, selectedLedgerNeedsRefresh };',
+    + 'module.exports = { patchAccountsFromAffected, mapAccountBalanceFields, selectedLedgerNeedsRefresh, nextBankRefreshWaitMs };',
   box,
   { filename: 'account-patch.js' },
 );
-const { patchAccountsFromAffected, mapAccountBalanceFields, selectedLedgerNeedsRefresh } = box.module.exports;
+const {
+  patchAccountsFromAffected, mapAccountBalanceFields, selectedLedgerNeedsRefresh, nextBankRefreshWaitMs,
+} = box.module.exports;
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 function makeAccounts() {
@@ -140,4 +142,18 @@ test('the ledger needs no refresh for a missing, empty or malformed account list
   assert.equal(selectedLedgerNeedsRefresh({}, 'single', 'a'), false);
   assert.equal(selectedLedgerNeedsRefresh({ affected_accounts: [] }, 'single', 'a'), false);
   assert.equal(selectedLedgerNeedsRefresh({ affected_accounts: 'a' }, 'single', 'a'), false);
+});
+
+test('the bank refresh re-fetch waits 3, 6, then 12 seconds and then stops', () => {
+  assert.equal(nextBankRefreshWaitMs(0), 3000);
+  assert.equal(nextBankRefreshWaitMs(1), 6000);
+  assert.equal(nextBankRefreshWaitMs(2), 12000);
+  assert.equal(nextBankRefreshWaitMs(3), null);
+  assert.equal(nextBankRefreshWaitMs(10), null);
+});
+
+test('the bank refresh re-fetch stops on a try count that is not a whole number from zero up', () => {
+  assert.equal(nextBankRefreshWaitMs(-1), null);
+  assert.equal(nextBankRefreshWaitMs(undefined), null);
+  assert.equal(nextBankRefreshWaitMs(1.5), null);
 });
