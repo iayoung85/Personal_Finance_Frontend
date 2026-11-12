@@ -613,6 +613,20 @@ function initCategoryFilterInput() {
   const input = document.getElementById('filter-category-input');
   if (!input) return;
 
+  // One delegated handler on the list, so every render path (including the
+  // empty-query primaries list) gets clickable items. mousedown with
+  // preventDefault keeps focus on the input, so the blur timer never clears
+  // the list before the selection applies.
+  const acList = document.getElementById('filter-category-ac-list');
+  if (acList) {
+    acList.addEventListener('mousedown', function(mouseEvent) {
+      const item = mouseEvent.target.closest('.filter-ac-item');
+      if (!item) return;
+      mouseEvent.preventDefault();
+      _applyCategoryFilterFromItem(item);
+    });
+  }
+
   // Show autocomplete on input
   input.addEventListener('input', function() {
     _showFilterCategoryAutocomplete(this.value);
@@ -755,14 +769,6 @@ function _showFilterCategoryAutocomplete(query) {
 
   list.innerHTML = html;
   list.style.display = 'block';
-
-  // Attach click handlers
-  list.querySelectorAll('.filter-ac-item').forEach(item => {
-    item.addEventListener('mousedown', function(mouseEvent) {
-      mouseEvent.preventDefault();
-      _applyCategoryFilterFromItem(this);
-    });
-  });
 }
 
 /**
