@@ -58,7 +58,9 @@ body {
   display: flex;
   gap: 16px;
   min-height: calc(100vh - 100px);
+  min-height: calc(100dvh - 100px);
   height: calc(100vh - 100px);
+  height: calc(100dvh - 100px);
 }
 
 /* ── Sidebar ──────────────────────────────────────────────── */
@@ -94,6 +96,7 @@ body {
   font-size: 12px;
   color: var(--text-muted);
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -263,6 +266,7 @@ body {
   font-size: 12px;
   color: var(--text-muted);
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
 }
 .sidebar-archived-toggle:hover {
@@ -622,6 +626,7 @@ body {
 
 .collapsible-trigger {
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
   list-style: none;
   display: flex;
@@ -1072,6 +1077,7 @@ details[open] > .collapsible-trigger::before {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
 }
 .inline-toggle-label input[type="checkbox"] {
@@ -1177,7 +1183,9 @@ details[open] > .collapsible-trigger::before {
     width: 90%;
     max-width: 420px;
     height: 100vh;
+    height: 100dvh;
     max-height: 100vh;
+    max-height: 100dvh;
     z-index: 900;
     border-radius: 0;
     box-shadow: 4px 0 20px rgba(0,0,0,0.5);

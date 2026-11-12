@@ -297,6 +297,7 @@
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
   padding: 4px 0;
 }

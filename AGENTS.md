@@ -1,6 +1,6 @@
 # personal_finance_frontend — the web client
 
-The full web app for IAY Financial, served as static files at `bank.isaacyoung.com`. Vanilla JavaScript, HTML, and CSS. No framework, no bundler, no `package.json`, no build step: what is in the repo is what ships. jQuery, Chart.js, and Dexie come from a CDN.
+The full web app for IAY Financial, served as static files at `bank.isaacyoung.com`. Vanilla JavaScript, HTML, and CSS. No framework, no bundler, no `package.json`, no build step: what is in the repo is what ships. jQuery and Chart.js come from a CDN; Dexie is vendored in `vendor/` at an exact version, because the cache worker cannot start without it.
 
 The API is a separate repo. This client holds no business rules; it renders what the API returns. If a fix seems to need logic the phone app would also need, it belongs in the API — say so instead of writing it here.
 

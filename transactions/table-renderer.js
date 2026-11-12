@@ -1429,7 +1429,7 @@ function _openInlineMemoEditor(memoSpan) {
   span.textContent = '';
   span.appendChild(input);
   input.focus();
-  input.select();
+  selectAllOnOpen(input);
 }
 
 

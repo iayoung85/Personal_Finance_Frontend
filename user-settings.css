@@ -11,6 +11,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   background: var(--gradient-auth);
   min-height: 100vh;
+  min-height: 100dvh;
   color: var(--text-primary);
 }
 
@@ -22,6 +23,7 @@ body {
   justify-content: center;
   align-items: flex-start;
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 20px;
 }
 
@@ -800,6 +802,7 @@ button {
   color: var(--text-primary);
   cursor: pointer;
   border-radius: 6px;
+  -webkit-user-select: none;
   user-select: none;
 }
 

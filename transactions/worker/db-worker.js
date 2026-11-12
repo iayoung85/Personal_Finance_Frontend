@@ -4,7 +4,9 @@
 // Dexie.js. Communicates with worker-client.js via postMessage.
 // ============================================================
 
-importScripts('https://cdn.jsdelivr.net/npm/dexie@4/dist/dexie.min.js');
+// Dexie ships with the site (vendor/) so a filtered or slow network cannot
+// leave the cache without its database layer.
+importScripts('../../vendor/dexie-4.4.7.min.js');
 
 // ── Dexie schema ────────────────────────────────────────────
 const db = new Dexie('PersonalFinanceDB');

@@ -230,7 +230,7 @@ function _openRowFieldEditor({ cell, row, txnId, field, txnType }) {
 
   input.focus();
   if (field !== 'date') {
-    input.select();
+    selectAllOnOpen(input);
   }
 
   input.addEventListener('keydown', async (keyboardEvent) => {
@@ -726,7 +726,7 @@ function _openPlaidDescriptionEditor(cell, txnId) {
   };
 
   input.focus();
-  input.select();
+  selectAllOnOpen(input);
 
   input.addEventListener('keydown', async (keyboardEvent) => {
     if (keyboardEvent.key === 'Enter') {
@@ -849,7 +849,7 @@ function _openSplitDescriptionEditor(cell, splitTxnId, parentTxnId) {
   };
 
   input.focus();
-  input.select();
+  selectAllOnOpen(input);
 
   input.addEventListener('keydown', async (keyboardEvent) => {
     if (keyboardEvent.key === 'Enter') {

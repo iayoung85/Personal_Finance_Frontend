@@ -224,6 +224,7 @@ tr:hover {
   justify-content: center;
   align-items: flex-start;
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 20px;
 }
 
@@ -1285,6 +1286,7 @@ tr:hover {
   background: var(--bg-inset);
   padding: 2px 6px;
   border-radius: 3px;
+  -webkit-user-select: all;
   user-select: all;
 }
 

@@ -99,6 +99,7 @@
 /* ── Sortable column headers ─────────────── */
 .sortable {
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -193,6 +194,7 @@
   align-items: center;
   gap: 4px;
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
   white-space: nowrap;
 }

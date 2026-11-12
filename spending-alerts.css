@@ -116,6 +116,7 @@
 /* ── Sortable Column Headers ──────────────────────────────── */
 #sa-table th.sortable {
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
   position: relative;
   padding-right: 18px;
@@ -140,6 +141,7 @@
 /* ── Group Headers ────────────────────────────────────────── */
 .group-header-row {
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
 }
 .group-header-row td {

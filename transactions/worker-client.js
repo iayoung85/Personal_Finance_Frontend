@@ -12,7 +12,7 @@ var txnDB = (function() {
   var readySettled = false;
   var readyTimeoutId = null;
   var readyPromise = new Promise(function(resolve) { readyResolve = resolve; });
-  var WORKER_READY_TIMEOUT_MS = 2500;
+  var WORKER_READY_TIMEOUT_MS = 15000;
 
   var _workerDegraded = false;
 

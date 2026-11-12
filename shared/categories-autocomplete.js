@@ -11,6 +11,7 @@
 //   wireUpCategoryAutocomplete(inputEl, listEl, options)
 //   highlightCategoryMatch(text, query)
 //   selectAllOnFocus(inputEl)
+//   selectAllOnOpen(inputEl)
 // ============================================================
 
 // ── Cache Constants ──────────────────────────────────────────
@@ -56,6 +57,48 @@ function selectAllOnFocus(input) {
   input.addEventListener('mouseup', swallowMouseUp);
   input.addEventListener('blur', release);
   timer = setTimeout(release, 1000);
+}
+
+/**
+ * True when the whole value of a text input is selected.
+ *
+ * @param {HTMLInputElement} input
+ * @returns {boolean}
+ */
+function isWholeValueSelected(input) {
+  const length = String(input.value || '').length;
+  return length > 0 && input.selectionStart === 0 && input.selectionEnd === length;
+}
+
+/**
+ * Select the whole value of an input that was opened from a click handler
+ * (an inline memo or description editor), so typing replaces it, and make the
+ * next click place the caret where it lands.
+ *
+ * Unlike selectAllOnFocus, the click that opened the editor is already over,
+ * so no mouseup needs swallowing; doing that would eat the user's next click.
+ * The next click is the trouble: WebKit treats a mousedown inside an existing
+ * selection as the start of a possible text drag, and keeps the selection
+ * through that click's mouseup, so the caret only appears a click later.
+ * Collapsing the selection on that mousedown, before WebKit looks at it,
+ * makes it an ordinary click in unselected text in every browser.
+ *
+ * @param {HTMLInputElement} input
+ */
+function selectAllOnOpen(input) {
+  input.select();
+  const release = () => {
+    input.removeEventListener('mousedown', collapseSelection);
+    input.removeEventListener('blur', release);
+  };
+  const collapseSelection = () => {
+    release();
+    if (!isWholeValueSelected(input)) return;
+    const end = input.value.length;
+    input.setSelectionRange(end, end);
+  };
+  input.addEventListener('mousedown', collapseSelection);
+  input.addEventListener('blur', release);
 }
 
 // ── Public: Fetch with Cache ─────────────────────────────────
