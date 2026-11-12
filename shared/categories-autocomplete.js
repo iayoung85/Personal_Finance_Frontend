@@ -10,6 +10,7 @@
 //   fetchCategoriesWithCache()
 //   wireUpCategoryAutocomplete(inputEl, listEl, options)
 //   highlightCategoryMatch(text, query)
+//   selectAllOnFocus(inputEl)
 // ============================================================
 
 // ── Cache Constants ──────────────────────────────────────────
@@ -24,6 +25,34 @@ function _escCatHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// ── Public: Select All On Focus ──────────────────────────────
+
+/**
+ * Select the whole value of an input from its focus handler, so typing
+ * replaces it. Safari places the caret on the mouseup that ends a
+ * click-to-focus, which undoes a selection made during focus; swallowing
+ * that one mouseup keeps the selection. The guard lifts on blur or after
+ * a second, so a later click still places the caret normally.
+ *
+ * @param {HTMLInputElement} input
+ */
+function selectAllOnFocus(input) {
+  input.select();
+  let timer = null;
+  const release = () => {
+    clearTimeout(timer);
+    input.removeEventListener('mouseup', swallowMouseUp);
+    input.removeEventListener('blur', release);
+  };
+  const swallowMouseUp = (event) => {
+    event.preventDefault();
+    release();
+  };
+  input.addEventListener('mouseup', swallowMouseUp);
+  input.addEventListener('blur', release);
+  timer = setTimeout(release, 1000);
 }
 
 // ── Public: Fetch with Cache ─────────────────────────────────
@@ -272,7 +301,7 @@ function wireUpCategoryAutocomplete(inputEl, listEl, options) {
   });
 
   input.addEventListener('focus', () => {
-    input.select();
+    selectAllOnFocus(input);
     if (input.value.trim()) _renderCategoryDropdown(input, listEl, opts);
   });
 

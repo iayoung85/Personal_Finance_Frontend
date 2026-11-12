@@ -388,7 +388,7 @@ function attachCategoryDropdownListeners() {
     // If the user cancels (Escape) or leaves without applying override,
     // we restore this value so unsaved text does not linger in the table.
     $(this).data('committedCategoryValue', this.value || '');
-    this.select();
+    selectAllOnFocus(this);
   });
 
   // ===== Keyboard navigation: Tab to accept, Escape to close, Arrow keys =====

@@ -620,7 +620,7 @@ function initCategoryFilterInput() {
 
   // Select all on focus for easy replacement
   input.addEventListener('focus', function() {
-    this.select();
+    selectAllOnFocus(this);
     _showFilterCategoryAutocomplete(this.value);
   });
 

@@ -184,7 +184,7 @@ function attachSplitCategoryAutocomplete(rowIndex) {
   
   // Focus event - select all
   input.addEventListener('focus', function() {
-    this.select();
+    selectAllOnFocus(this);
   });
   
   // Keyboard navigation (Arrow keys, Enter, Tab accept, Escape close)

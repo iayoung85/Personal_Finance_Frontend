@@ -1091,7 +1091,7 @@ function _wireUpManualCategoryAutocomplete() {
 
   // Show suggestions on focus if input already has text
   input.addEventListener('focus', () => {
-    input.select();
+    selectAllOnFocus(input);
     if (input.value.trim()) {
       _showManualCategoryDropdown(input, list);
     }
