@@ -18,8 +18,7 @@ function closeReportsModal() {
 
 /**
  * Set sensible defaults when the modal opens.
- * Balance mode: start = first month of the prior fiscal year, end = current month.
- * Category mode: year selectors populated, preview shown.
+ * Both modes open on the range from _defaultRangeStartYear through the current month.
  */
 function _initReportsDefaults() {
   _populateCategoryYearSelects();
@@ -49,32 +48,69 @@ function _getFiscalMonth() {
 }
 
 /**
- * Compute the balance-mode default start month:
- * first month of the fiscal year *before* the current fiscal year.
+ * Calendar year the default report range starts in. The range opens on the
+ * first month of the fiscal year before the current one, and keeps that start
+ * through the first month of a new fiscal year, so the year that just closed
+ * stays in view for one more month.
  *
- * Example: fiscal start = November, today = April 2026.
- * Current FY started Nov 2025. Prior FY started Nov 2024.
- * Default start = Nov 2024, default end = Apr 2026.
+ * Example, fiscal start = November:
+ *   October 2026  -> 2024 (range starts November 2024)
+ *   November 2026 -> 2024 (unchanged for the new fiscal year's first month)
+ *   December 2026 -> 2025 (range starts November 2025)
+ *
+ * @param {Date} now
+ * @param {number} fiscalMonth - fiscal start month, 1-12
+ * @returns {number}
  */
-function _applyBalanceDateDefaults() {
-  const now = new Date();
-  const fiscalMonth = _getFiscalMonth();
+function _defaultRangeStartYear(now, fiscalMonth) {
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
+  const settledFiscalStartYear = currentMonth > fiscalMonth ? currentYear : currentYear - 1;
+  return settledFiscalStartYear - 1;
+}
 
-  // Determine what year the current fiscal year started
-  let currentFiscalStartYear = currentYear;
-  if (currentMonth < fiscalMonth) {
-    currentFiscalStartYear = currentYear - 1;
+/**
+ * Balance-mode default months: the default start through the current month.
+ *
+ * @param {Date} now
+ * @param {number} fiscalMonth - fiscal start month, 1-12
+ * @returns {{startMonth: string, endMonth: string}} YYYY-MM values
+ */
+function _balanceDefaultMonths(now, fiscalMonth) {
+  const startYear = _defaultRangeStartYear(now, fiscalMonth);
+  return {
+    startMonth: _formatMonthInput(new Date(startYear, fiscalMonth - 1, 1)),
+    endMonth: _formatMonthInput(now),
+  };
+}
+
+/**
+ * Category-mode default fiscal years: the fiscal year holding the default
+ * start month through the fiscal year holding the current month, so both
+ * report types move forward on the same day. Fiscal years are named after
+ * the calendar year they end in.
+ *
+ * @param {Date} now
+ * @param {number} fiscalMonth - fiscal start month, 1-12
+ * @returns {{startFY: number, endFY: number}}
+ */
+function _categoryDefaultFiscalYears(now, fiscalMonth) {
+  const startYear = _defaultRangeStartYear(now, fiscalMonth);
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  if (fiscalMonth === 1) {
+    return { startFY: startYear, endFY: currentYear };
   }
-  // Prior fiscal year started one year before that
-  const priorFiscalStartYear = currentFiscalStartYear - 1;
+  return {
+    startFY: startYear + 1,
+    endFY: currentMonth >= fiscalMonth ? currentYear + 1 : currentYear,
+  };
+}
 
-  const startInput = document.getElementById('report-start-month');
-  const endInput = document.getElementById('report-end-month');
-
-  startInput.value = _formatMonthInput(new Date(priorFiscalStartYear, fiscalMonth - 1, 1));
-  endInput.value = _formatMonthInput(now);
+function _applyBalanceDateDefaults() {
+  const defaults = _balanceDefaultMonths(new Date(), _getFiscalMonth());
+  document.getElementById('report-start-month').value = defaults.startMonth;
+  document.getElementById('report-end-month').value = defaults.endMonth;
 }
 
 /** Populate start/end year <select> elements for category mode. */
@@ -84,7 +120,8 @@ function _populateCategoryYearSelects() {
 
   if (startSelect.options.length > 0) return;
 
-  const currentYear = new Date().getFullYear();
+  const now = new Date();
+  const currentYear = now.getFullYear();
   const earliestYear = currentYear - 10;
 
   for (let year = earliestYear; year <= currentYear + 1; year++) {
@@ -92,9 +129,9 @@ function _populateCategoryYearSelects() {
     endSelect.add(new Option(year, year));
   }
 
-  // Default: start 2 years ago, end current year
-  startSelect.value = String(currentYear - 1);
-  endSelect.value = String(currentYear);
+  const defaults = _categoryDefaultFiscalYears(now, _getFiscalMonth());
+  startSelect.value = String(defaults.startFY);
+  endSelect.value = String(defaults.endFY);
 
   _updateCategoryDatePreview();
 }
@@ -161,12 +198,47 @@ function _updateCategoryDatePreview() {
     return;
   }
 
-  const { startDate, endDate } = _fiscalYearRange(startFY, endFY, fiscalMonth);
+  const range = _categoryReportRange(startFY, endFY, fiscalMonth, new Date());
+  if (!range) {
+    previewEl.textContent = _CATEGORY_RANGE_NOT_STARTED;
+    previewEl.style.display = '';
+    return;
+  }
+
+  const { startDate, endDate } = range;
   const rangeStartMonth = _MONTH_NAMES[startDate.getMonth()];
   const rangeEndMonth = _MONTH_NAMES[endDate.getMonth()];
 
-  previewEl.textContent = `Report range: ${rangeStartMonth} ${startDate.getFullYear()} – ${rangeEndMonth} ${endDate.getFullYear()}`;
+  let previewText = `Report range: ${rangeStartMonth} ${startDate.getFullYear()} – ${rangeEndMonth} ${endDate.getFullYear()}`;
+  if (range.endsEarly) {
+    previewText += `. Fiscal year ${endFY} is not over; months after this one are never included.`;
+  }
+  previewEl.textContent = previewText;
   previewEl.style.display = '';
+}
+
+const _CATEGORY_RANGE_NOT_STARTED = 'That range has not started yet. Pick an earlier start year.';
+
+/**
+ * The category report's date range: the picked fiscal years, cut off at the
+ * end of the current month so a month that has not happened is never summed.
+ *
+ * @param {number} startFY
+ * @param {number} endFY
+ * @param {number} fiscalMonth - fiscal start month, 1-12
+ * @param {Date} now
+ * @returns {{startDate: Date, endDate: Date, endsEarly: boolean}|null}
+ *   null when the whole range lies after the current month.
+ */
+function _categoryReportRange(startFY, endFY, fiscalMonth, now) {
+  const { startDate, endDate } = _fiscalYearRange(startFY, endFY, fiscalMonth);
+  const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  if (startDate > currentMonthEnd) return null;
+  if (endDate > currentMonthEnd) {
+    return { startDate, endDate: currentMonthEnd, endsEarly: true };
+  }
+  return { startDate, endDate, endsEarly: false };
 }
 
 /**
@@ -239,7 +311,11 @@ async function generateReport() {
       return;
     }
 
-    const range = _fiscalYearRange(startYear, endYear, fiscalMonth);
+    const range = _categoryReportRange(startYear, endYear, fiscalMonth, new Date());
+    if (!range) {
+      _showReportsError(_CATEGORY_RANGE_NOT_STARTED);
+      return;
+    }
     startDate = _formatDateInput(range.startDate);
     endDate = _formatDateInput(range.endDate);
   }
