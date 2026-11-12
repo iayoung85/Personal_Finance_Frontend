@@ -104,6 +104,13 @@ const IndexState = (() => {
       localStorage.setItem('currentUser', JSON.stringify(currentUser));
     },
 
+    /** Store a name fetched from the API on the saved user, so it survives a reload. */
+    setUserName(firstName, lastName) {
+      if (!currentUser) return;
+      currentUser = { ...currentUser, first_name: firstName, last_name: lastName };
+      localStorage.setItem('currentUser', JSON.stringify(currentUser));
+    },
+
     setTempLoginCreds(creds) { tempLoginCreds = creds; },
     clearTempLoginCreds() { tempLoginCreds = null; },
 

@@ -43,14 +43,34 @@ function showDashboard(options = {}) {
   const nameElement = document.getElementById('user-name');
 
   if (emailElement) emailElement.textContent = user?.email || '';
-  if (nameElement) {
-    nameElement.textContent = `${user?.first_name || ''} ${user?.last_name || ''}`.trim();
+  const storedName = _fullName(user);
+  if (nameElement) nameElement.textContent = storedName;
+
+  // Why: the saved user is only written at login, so a session saved without a
+  // name would stay blank until the next sign-in. Ask the API once instead.
+  if (!storedName && !options.pauseBankLoad) {
+    _fillMissingName(nameElement);
   }
 
   if (options.pauseBankLoad) {
     IndexConnectionsList.showLoadPaused();
   } else {
     IndexConnectionsList.loadBanks();
+  }
+}
+
+function _fullName(user) {
+  return `${user?.first_name || ''} ${user?.last_name || ''}`.trim();
+}
+
+async function _fillMissingName(nameElement) {
+  try {
+    const profile = await IndexApi.fetchProfileInfo();
+    if (!_fullName(profile)) return;
+    IndexState.setUserName(profile.first_name || '', profile.last_name || '');
+    if (nameElement) nameElement.textContent = _fullName(profile);
+  } catch (err) {
+    console.error('Could not load the profile name', err);
   }
 }
 

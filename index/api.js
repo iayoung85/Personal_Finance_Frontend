@@ -77,6 +77,18 @@ const IndexApi = (() => {
 
   // ── Dashboard data endpoints ────────────────────────────
 
+  /** Fetch the signed-in user's profile (name, email) from the API. */
+  async function fetchProfileInfo() {
+    const response = await authenticatedFetch(
+      `${BACKEND_URL}/api/auth/profile-info`,
+      { method: 'GET' }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to load profile');
+    }
+    return response.json();
+  }
+
   /** Fetch non-archived banks from the accounts module. */
   async function fetchBanks() {
     const response = await authenticatedFetch(
@@ -378,6 +390,7 @@ const IndexApi = (() => {
     register,
     checkRegistrationStatus,
     forgotPassword,
+    fetchProfileInfo,
     fetchBanks,
     fetchPlaidItems,
     fetchDashboardBanks,
