@@ -31,10 +31,12 @@ function _escCatHtml(str) {
 
 /**
  * Select the whole value of an input from its focus handler, so typing
- * replaces it. Safari places the caret on the mouseup that ends a
- * click-to-focus, which undoes a selection made during focus; swallowing
- * that one mouseup keeps the selection. The guard lifts on blur or after
- * a second, so a later click still places the caret normally.
+ * replaces it. On a click-to-focus, WebKit fires focus from inside its
+ * mousedown handling and then places the caret at the click point, so a
+ * select() made during focus is already gone by mouseup. The mouseup that
+ * ends that click re-selects (and is swallowed so Chrome does not move the
+ * caret either). The guard lifts on blur or after a second, so a later
+ * click still places the caret normally.
  *
  * @param {HTMLInputElement} input
  */
@@ -48,6 +50,7 @@ function selectAllOnFocus(input) {
   };
   const swallowMouseUp = (event) => {
     event.preventDefault();
+    input.select();
     release();
   };
   input.addEventListener('mouseup', swallowMouseUp);
