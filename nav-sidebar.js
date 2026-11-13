@@ -50,7 +50,6 @@ const NAV_SIDEBAR_FOOTER_ITEMS = [
       { id: 'settings-profile',    label: 'Profile Details',    section: 'profile' },
       { id: 'settings-password',   label: 'Change Password',    section: 'password' },
       { id: 'settings-twofa',      label: 'Two-Factor Auth',    section: 'twofa' },
-      { id: 'settings-deletion',   label: 'Delete Account',     section: 'deletion' },
       { id: 'settings-app-config', label: 'App Configuration',  section: 'app-config' },
     ]
   },

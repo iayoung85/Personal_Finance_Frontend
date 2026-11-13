@@ -1,7 +1,6 @@
 // ============================================================
 // user-settings/api.js — Auth & Backend Communication
-// Owns authenticatedFetch, token refresh, logout, and thin
-// wrappers for backend endpoints that return raw data objects.
+// Owns authenticatedFetch, token refresh, and logout.
 // No DOM manipulation in this file.
 // ============================================================
 
@@ -46,23 +45,4 @@ function logout() {
   refreshToken = null;
   currentUser = null;
   window.location.href = 'index.html';
-}
-
-// ── Thin API call wrappers ────────────────────────────────────
-// These return the parsed JSON data object (throwing on network
-// errors) so that render modules never need to call fetch
-// directly.
-
-/**
- * Fetches account deletion pending status for the current user.
- *
- * @returns {Promise<{pending: boolean, token_expires_at?: string}>}
- */
-async function fetchDeletionStatus() {
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/deletion-status`, { method: 'GET' });
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || 'Failed to fetch deletion status');
-  }
-  return data;
 }

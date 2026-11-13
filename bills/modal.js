@@ -18,6 +18,7 @@
 //   setDateInputValue       — date-helpers.js
 //   getMonthYearInputValue  — date-helpers.js
 //   parseDateInput          — date-helpers.js
+//   _clampDay               — date-helpers.js
 //   apiCreateBill           — bills/api.js
 //   apiUpdateBill           — bills/api.js
 //   fetchCategoriesWithCache — shared/categories-autocomplete.js
@@ -647,10 +648,19 @@ function _bmOrdinal(n) {
 
 function _bmTodayStr() { return todayISO(); }
 
-function _bmSixMonthsFromNow() {
-  const date = new Date();
-  date.setMonth(date.getMonth() + 6);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+/**
+ * The same day six months ahead, held to the last day of a shorter month:
+ * Date.setMonth rolls Aug 31 over into early March.
+ *
+ * @param {Date} [now] - defaults to the current date
+ * @returns {string} YYYY-MM-DD
+ */
+function _bmSixMonthsFromNow(now = new Date()) {
+  const monthsFromYearStart = now.getMonth() + 6;
+  const year = now.getFullYear() + Math.floor(monthsFromYearStart / 12);
+  const month = (monthsFromYearStart % 12) + 1;
+  const day = _clampDay(now.getDate(), month, year);
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 function _bmRenderOnce(editData, today) {

@@ -8,7 +8,7 @@ const box = { module: { exports: {} }, console, formatCurrency: () => '', docume
 vm.runInNewContext(
   `${fs.readFileSync(path.join(__dirname, '..', 'date-helpers.js'), 'utf8')}\n`
     + `${fs.readFileSync(path.join(__dirname, '..', 'bills/modal.js'), 'utf8')}\n`
-    + 'module.exports = { _synthesizeStartDate, _bmShouldSendStartDate, _bmEarlierMonthDay, _bmScheduleChanges, _buildBillUpdatePayload, _bmUpcomingPreviewDates, _bmResolveMonthDay };',
+    + 'module.exports = { _synthesizeStartDate, _bmShouldSendStartDate, _bmEarlierMonthDay, _bmScheduleChanges, _buildBillUpdatePayload, _bmUpcomingPreviewDates, _bmResolveMonthDay, _bmSixMonthsFromNow };',
   box,
   { filename: 'modal.js' },
 );
@@ -132,4 +132,11 @@ test('dates before today still count toward an occurrence limit', () => {
   };
   const dates = m._bmUpcomingPreviewDates({ ...weeklyBill }, weeklyBill, TODAY, 10);
   assert.deepEqual([...dates], ['2026-10-20', '2026-10-27']);
+});
+
+test('six months from a month-end date stays in the target month', () => {
+  assert.equal(m._bmSixMonthsFromNow(new Date(2026, 7, 31)), '2027-02-28');
+  assert.equal(m._bmSixMonthsFromNow(new Date(2027, 7, 31)), '2028-02-29');
+  assert.equal(m._bmSixMonthsFromNow(new Date(2026, 11, 31)), '2027-06-30');
+  assert.equal(m._bmSixMonthsFromNow(new Date(2026, 2, 15)), '2026-09-15');
 });

@@ -307,10 +307,12 @@ $(document).ready(async function() {
     openCategorizeModal(txn, selectedCategory, accountId, txnId);
   });
 
-  // Global hotkey for creating manual transactions: Ctrl+M (Windows/Linux) or Cmd+M (Mac)
+  // Global hotkey for creating manual transactions: Ctrl+M on every platform,
+  // Control+M on a Mac. Cmd+M is the macOS minimize shortcut and never reaches
+  // the page, so it is not bound.
   $(document).on('keydown', function(event) {
-    // Only trigger if Ctrl/Cmd is pressed with M key (and not inside a focused input)
-    const isModifierKey = event.ctrlKey || event.metaKey;
+    // Only trigger if Ctrl is pressed with M key (and not inside a focused input)
+    const isModifierKey = event.ctrlKey && !event.metaKey;
     const isMKey = event.key === 'm' || event.key === 'M';
     const activeElement = document.activeElement;
     
