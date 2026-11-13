@@ -483,10 +483,11 @@ async function _saveRowInlineEdits() {
       showStatus(amountDiffResult.error, 'error');
       return;
     }
-    if (amountDiffResult.has_change) {
-      payload.amount = amountDiffResult.absolute_amount;
-      payload.type = amountDiffResult.effective_type;
-    }
+    Object.assign(payload, _buildAmountPayload(
+      editSession.txn_type,
+      amountDiffResult,
+      editSession.original.signed_amount
+    ));
   }
 
   const payloadKeys = Object.keys(payload);
@@ -542,6 +543,28 @@ async function _saveRowInlineEdits() {
   } catch (saveError) {
     showStatus(`Inline update failed: ${saveError.message}`, 'error');
   }
+}
+
+
+/**
+ * The amount keys of a save's PUT body. A pending bank row keeps the
+ * bank's sign and the API refuses anything but its amount, so it sends
+ * the amount alone, and typing the same figure without its minus is no
+ * change. Every other row sends the amount and the type the typed sign
+ * gives it.
+ *
+ * @param {string} txnType - The row's TXN_TYPE.
+ * @param {Object} amountDiff - The result of _getAmountDiff.
+ * @param {number} originalSignedAmount - The amount the row showed.
+ * @returns {{amount?: number, type?: string}} Empty when nothing changed.
+ */
+function _buildAmountPayload(txnType, amountDiff, originalSignedAmount) {
+  if (txnType === TXN_TYPE.PLAID_PENDING) {
+    const sameFigure = Math.abs(amountDiff.absolute_amount - Math.abs(Number(originalSignedAmount))) < 0.000001;
+    return sameFigure ? {} : { amount: amountDiff.absolute_amount };
+  }
+  if (!amountDiff.has_change) return {};
+  return { amount: amountDiff.absolute_amount, type: amountDiff.effective_type };
 }
 
 

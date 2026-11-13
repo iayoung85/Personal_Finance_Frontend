@@ -105,6 +105,10 @@ const AMOUNT_EDITABLE_TYPES = new Set([
   // a "Modified" badge; the reset endpoint restores the original amount
   // from plaid_raw_blob.
   TXN_TYPE.PLAID_CLEARED,
+  // A pending row takes only the amount the user expects it to post at.
+  // Its date and name stay out of EDITABLE_TYPES: the bank sets the date
+  // when the charge posts, and the name has its own override editor.
+  TXN_TYPE.PLAID_PENDING,
 ]);
 
 function isRowInlineEditable(txnType) {

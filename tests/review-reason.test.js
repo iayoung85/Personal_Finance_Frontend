@@ -105,6 +105,14 @@ test('plaid_modified reverted user edits', () => {
     'Plaid changed description from "A" to "B", replaced your edited amount -$20.00 with -$12.00, replaced your date Oct 3 with Oct 4' + WHEN);
 });
 
+test('a pending row that posts away from the expected amount says it replaced the edited amount', () => {
+  const detail = { changes: [
+    { field: 'amount', from: '-57.50', to: '-62.50', reverted_user_edit: true },
+  ] };
+  assert.equal(describeReviewReason(make('plaid_modified', detail)),
+    'Plaid replaced your edited amount -$57.50 with -$62.50' + WHEN);
+});
+
 test('plaid_modified amount under a kept user override', () => {
   const detail = { changes: [
     { field: 'amount', from: '-12.00', to: '-15.00', kept_user_value: '-20.00' },

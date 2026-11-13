@@ -60,15 +60,25 @@ function _unpaidBillBadge(txn) {
 /**
  * Render the "Modified" badge for plaid transactions whose amount has
  * been overridden by the user. The backend sets amount_modified=true on
- * any PLAID_CLEARED or PLAID_CONVERTED row whose amount was changed via
+ * any bank row, pending included, whose amount was changed via
  * PUT /api/transactions/<id>; reset-plaid-amount clears the flag.
+ *
+ * The hover names the bank's own amount (`plaid_amount`, ledger sign) so
+ * the user can see it without resetting. An API that does not send it
+ * gets the generic hover.
  *
  * @param {Object} txn - The transaction record.
  * @returns {string} HTML fragment (possibly empty) to prepend to the description cell.
  */
 function _amountModifiedBadge(txn) {
   if (!txn || !txn.amount_modified) return '';
-  return '<span class="source-badge amount-modified" title="Amount edited by user — right-click to reset to original Plaid value">✎ Modified</span> ';
+  const bankAmount = (txn.plaid_amount === null || txn.plaid_amount === undefined)
+    ? NaN
+    : Number(txn.plaid_amount);
+  const title = Number.isFinite(bankAmount)
+    ? `Bank shows ${_fmtCurrency(bankAmount, txn.iso_currency_code)} — right-click to reset to the bank's amount`
+    : 'Amount edited by user — right-click to reset to original Plaid value';
+  return `<span class="source-badge amount-modified" title="${escapeHtml(title)}">✎ Modified</span> `;
 }
 
 
