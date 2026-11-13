@@ -398,20 +398,25 @@ async function copyFilteredTransactionsCSV() {
 // ============================================================
 // Balance Snapshot Exports (1i — month-end balance snapshot)
 //
-// Uses the end-date from the filter strip as the snapshot date.
+// Uses the end-date from the filter strip as the snapshot date, capped
+// at today: the ledger's range usually runs past today to show future
+// bills, and the API refuses a balance for a future date.
 // Defaults to last day of the previous month if no end-date is set.
 // Fetches all account balances as-of that date from the backend
 // and exports as JSON, CSV download, or CSV copy-to-clipboard.
 // ============================================================
 
 /**
- * Determine the snapshot date from the filter strip's end-date input.
+ * Determine the snapshot date from the filter strip's end-date input,
+ * never later than today.
  * Falls back to last day of previous month when the input is empty.
  */
 function _getSnapshotDate() {
   const endDateInput = document.getElementById('end-date');
   if (endDateInput && endDateInput.value) {
-    return endDateInput.value;
+    // Both are YYYY-MM-DD, so string order is date order.
+    const today = todayISO();
+    return endDateInput.value > today ? today : endDateInput.value;
   }
   // Fallback: last day of previous month
   const today = new Date();
