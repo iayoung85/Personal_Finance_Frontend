@@ -15,9 +15,11 @@ $(document).ready(async function() {
     window.location.href = 'index.html';
     return;
   }
-  setDefaultDates();
-
   await initAppConfig();
+  // After the server preferences land, so a new browser or a reset gets the
+  // user's Default Date Range instead of the built-in fallback.
+  setDefaultDates();
+  initDateFilterActivityTracking();
   refreshFiscalDateFilter();
   initPrivacyMode();
 

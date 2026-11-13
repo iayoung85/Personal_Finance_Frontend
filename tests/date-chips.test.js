@@ -16,6 +16,7 @@ function loadFilters() {
   vm.runInNewContext(
     `${fiscalSource}\n${filtersSource}\nmodule.exports = { _dateChipPlan, _monthChips, `
       + '_yearChipYears, _resolveDateFilterName, _mapConfigRangeToFilter, _fiscalChips, '
+      + '_shouldRestoreSavedDateFilter, DATE_FILTER_STALE_AFTER_MS, '
       + 'ALWAYS_SHOWN_DATE_CHIP_IDS, FISCAL_DATE_CHIP_IDS };',
     sandbox,
     { filename: filtersPath },
@@ -30,6 +31,8 @@ const {
   _resolveDateFilterName,
   _mapConfigRangeToFilter,
   _fiscalChips,
+  _shouldRestoreSavedDateFilter,
+  DATE_FILTER_STALE_AFTER_MS,
   ALWAYS_SHOWN_DATE_CHIP_IDS,
   FISCAL_DATE_CHIP_IDS,
 } = loadFilters();
@@ -185,4 +188,35 @@ test('Settings offers the fiscal default ranges only when they are distinct', ()
   assert.deepEqual(values('ytd', NOVEMBER), [...calendarValues, 'fiscal_ytd', 'last_fiscal_year']);
   // A fiscal range saved before the start month went back to January stays listed.
   assert.deepEqual(values('fiscal_ytd', JANUARY), [...calendarValues, 'fiscal_ytd']);
+});
+
+const MINUTE_MS = 60 * 1000;
+const NOW_MS = NOW.getTime();
+
+test('a chip with recent activity is restored', () => {
+  assert.equal(_shouldRestoreSavedDateFilter('ytd', String(NOW_MS - 5 * MINUTE_MS), NOW_MS), true);
+  assert.equal(
+    _shouldRestoreSavedDateFilter('ytd', String(NOW_MS - DATE_FILTER_STALE_AFTER_MS), NOW_MS),
+    true,
+  );
+});
+
+test('a chip idle past the window falls back to the Settings default', () => {
+  const staleMs = NOW_MS - DATE_FILTER_STALE_AFTER_MS - 1;
+  assert.equal(_shouldRestoreSavedDateFilter('ytd', String(staleMs), NOW_MS), false);
+});
+
+test('a missing or unreadable timestamp counts as stale', () => {
+  assert.equal(_shouldRestoreSavedDateFilter('ytd', null, NOW_MS), false);
+  assert.equal(_shouldRestoreSavedDateFilter('ytd', '', NOW_MS), false);
+  assert.equal(_shouldRestoreSavedDateFilter('ytd', 'abc', NOW_MS), false);
+});
+
+test('a timestamp in the future counts as stale', () => {
+  assert.equal(_shouldRestoreSavedDateFilter('ytd', String(NOW_MS + MINUTE_MS), NOW_MS), false);
+});
+
+test('no saved chip means the Settings default, even with fresh activity', () => {
+  assert.equal(_shouldRestoreSavedDateFilter(null, String(NOW_MS), NOW_MS), false);
+  assert.equal(_shouldRestoreSavedDateFilter('', String(NOW_MS), NOW_MS), false);
 });

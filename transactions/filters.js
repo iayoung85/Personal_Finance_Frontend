@@ -6,6 +6,15 @@
 
 // localStorage key for the active date filter toggle
 const DATE_FILTER_ACTIVE_KEY = 'pf_date_filter_active';
+// When the user last touched the Transactions page. Decides at page open
+// whether the remembered chip is still fresh or the Settings default applies.
+const DATE_FILTER_LAST_ACTIVITY_KEY = 'pf_date_filter_last_activity';
+// A remembered chip older than this since the last activity is replaced by
+// the Settings default when the page opens.
+const DATE_FILTER_STALE_AFTER_MS = 60 * 60 * 1000;
+// Activity listeners write localStorage at most this often.
+const DATE_FILTER_ACTIVITY_WRITE_INTERVAL_MS = 60 * 1000;
+let _lastDateFilterActivityWriteMs = 0;
 // For custom range, remember user-entered start/end
 const DATE_FILTER_CUSTOM_START_KEY = 'pf_date_filter_custom_start';
 const DATE_FILTER_CUSTOM_END_KEY = 'pf_date_filter_custom_end';
@@ -382,6 +391,7 @@ function toggleDateFilter(filterName) {
   }
 
   localStorage.setItem(DATE_FILTER_ACTIVE_KEY, filterName);
+  _recordDateFilterActivity(true);
   renderTransactionTable();
 }
 
@@ -402,6 +412,7 @@ function toggleMonthFilter(year, month) {
   _hideCustomRangeInputs();
   localStorage.setItem(DATE_FILTER_ACTIVE_KEY, monthKey);
   localStorage.setItem(DATE_FILTER_MONTH_KEY, `${year}_${month}`);
+  _recordDateFilterActivity(true);
   renderTransactionTable();
 }
 
@@ -418,6 +429,7 @@ function toggleYearFilter(year) {
   _setActiveYearButton(year);
   _hideCustomRangeInputs();
   localStorage.setItem(DATE_FILTER_ACTIVE_KEY, yearKey);
+  _recordDateFilterActivity(true);
   renderTransactionTable();
 }
 
@@ -428,6 +440,7 @@ function _deactivateDateFilter() {
   _applyLast12Months();
   _setActiveToggle('btn-date-last-12-months');
   localStorage.setItem(DATE_FILTER_ACTIVE_KEY, 'last_12_months');
+  _recordDateFilterActivity(true);
   renderTransactionTable();
 }
 
@@ -489,9 +502,59 @@ function showLedgerFromDate(startIso) {
   localStorage.setItem(DATE_FILTER_CUSTOM_START_KEY, startIso);
   localStorage.setItem(DATE_FILTER_CUSTOM_END_KEY, endIso);
   localStorage.setItem(DATE_FILTER_ACTIVE_KEY, 'custom');
+  _recordDateFilterActivity(true);
   _activateCustomRange();
   _setActiveToggle('btn-date-custom');
   renderTransactionTable();
+}
+
+// ===== Last-activity tracking =====
+
+/**
+ * Decide whether the remembered date chip should be restored at page open.
+ * A missing or unreadable timestamp counts as stale, so browsers that
+ * predate the timestamp pick up the Settings default once.
+ *
+ * @param {string|null} storedChip - the stored active-filter name, if any
+ * @param {string|number|null} storedActivityMs - stored last-activity epoch ms
+ * @param {number} nowMs - the current epoch ms
+ * @returns {boolean} true to restore the chip, false to apply the Settings default
+ */
+function _shouldRestoreSavedDateFilter(storedChip, storedActivityMs, nowMs) {
+  if (!storedChip) return false;
+  if (storedActivityMs === null || storedActivityMs === undefined || storedActivityMs === '') return false;
+  const activityMs = Number(storedActivityMs);
+  if (!Number.isFinite(activityMs)) return false;
+  const ageMs = nowMs - activityMs;
+  return ageMs >= 0 && ageMs <= DATE_FILTER_STALE_AFTER_MS;
+}
+
+/**
+ * Record that the user is active on the Transactions page.
+ *
+ * @param {boolean} [force=false] - skip the write throttle
+ */
+function _recordDateFilterActivity(force = false) {
+  const nowMs = Date.now();
+  if (!force && nowMs - _lastDateFilterActivityWriteMs < DATE_FILTER_ACTIVITY_WRITE_INTERVAL_MS) return;
+  _lastDateFilterActivityWriteMs = nowMs;
+  try {
+    localStorage.setItem(DATE_FILTER_LAST_ACTIVITY_KEY, String(nowMs));
+  } catch (error) {
+    // Storage can be full or blocked; the chip just falls back to the default next time.
+  }
+}
+
+/**
+ * Refresh the last-activity timestamp on any user interaction with the page.
+ * Called once from main.js. Scroll does not bubble, so it is captured.
+ */
+function initDateFilterActivityTracking() {
+  const onActivity = () => _recordDateFilterActivity();
+  ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(eventName => {
+    document.addEventListener(eventName, onActivity, { passive: true });
+  });
+  document.addEventListener('scroll', onActivity, { capture: true, passive: true });
 }
 
 // ===== Initialization =====
@@ -507,12 +570,15 @@ function setDefaultDates() {
 
   const fiscalStartMonth = getFiscalStartMonth();
   const storedFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
-  const savedFilter = storedFilter ? _resolveDateFilterName(storedFilter, fiscalStartMonth) : storedFilter;
-  if (savedFilter !== storedFilter) {
-    localStorage.setItem(DATE_FILTER_ACTIVE_KEY, savedFilter);
-  }
-  if (!savedFilter) {
-    // No saved page-level preference — use the user's defaultDateRange config
+  const shouldRestore = _shouldRestoreSavedDateFilter(
+    storedFilter,
+    localStorage.getItem(DATE_FILTER_LAST_ACTIVITY_KEY),
+    Date.now(),
+  );
+  _recordDateFilterActivity(true);
+
+  if (!shouldRestore) {
+    // Nothing saved, or the page sat idle too long — use the user's defaultDateRange config
     const configRange = _resolveDateFilterName(getAppConfig().defaultDateRange, fiscalStartMonth);
     const mapped = _mapConfigRangeToFilter(configRange);
     mapped.apply();
@@ -521,6 +587,10 @@ function setDefaultDates() {
     return;
   }
 
+  const savedFilter = _resolveDateFilterName(storedFilter, fiscalStartMonth);
+  if (savedFilter !== storedFilter) {
+    localStorage.setItem(DATE_FILTER_ACTIVE_KEY, savedFilter);
+  }
   _restoreSavedToggleFilter(savedFilter);
 }
 

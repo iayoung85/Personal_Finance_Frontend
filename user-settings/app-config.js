@@ -337,6 +337,7 @@ function _renderViewDefaultsCard(config) {
           ${_defaultRangeOptionsHtml(config.defaultDateRange, fiscalStartMonth)}
         </select>
         <p class="text-muted stub-note">The date range pre-selected when opening the Transactions or Dashboard page.</p>
+        <p class="text-muted stub-note">On Transactions it is used after an hour without activity, or in a new browser.</p>
       </div>
       <div class="form-group">
         <label class="stub-checkbox-label">
