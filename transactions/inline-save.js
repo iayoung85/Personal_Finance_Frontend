@@ -268,6 +268,60 @@ function _putBackServerValues(record) {
   _cacheRow(record.transactionId);
 }
 
+// ───── Redrawing a Row That Changed Shape ───────────────────
+
+/**
+ * Whether a saved row can no longer be shown by patching the cells that
+ * were edited. A bill occurrence saved as a real row loses its bill badge
+ * and gains a status and delete button; a split parent gains pieces. Both
+ * need the row drawn again.
+ *
+ * @param {string} sentId The id the save was sent for.
+ * @param {object|null} savedRow The saved row from the answer, if any.
+ * @returns {boolean} True when the table must be drawn again.
+ */
+function savedRowNeedsRedraw(sentId, savedRow) {
+  if (!savedRow) return false;
+  if (savedRow.transaction_id !== sentId) return true;
+  return Boolean(savedRow.is_split || (Array.isArray(savedRow.splits) && savedRow.splits.length > 0));
+}
+
+const _INLINE_EDITOR_SELECTOR = '.inline-memo-input, .inline-edit-input, .category-autocomplete';
+let _tableRedrawOwed = false;
+
+/**
+ * Draw the table again, or, while the user is typing in an inline editor
+ * (Tab moves them on to the next row before this answer lands), once they
+ * leave the last one. Drawing the table under an open editor would throw
+ * away what they are typing.
+ */
+function _redrawTableOnceNoEditorIsOpen() {
+  if (!_isInlineEditorFocused()) {
+    _tableRedrawOwed = false;
+    renderTransactionTable();
+    return;
+  }
+  _tableRedrawOwed = true;
+}
+
+function _isInlineEditorFocused() {
+  const activeElement = document.activeElement;
+  return Boolean(activeElement && activeElement.matches && activeElement.matches(_INLINE_EDITOR_SELECTOR));
+}
+
+// Focus leaving an editor lands on the next one only after this event, and
+// the category cell settles its own text 200 ms after blur, so the check
+// waits past both.
+document.addEventListener('focusout', () => {
+  if (!_tableRedrawOwed) return;
+  setTimeout(() => {
+    if (_tableRedrawOwed && !_isInlineEditorFocused()) {
+      _tableRedrawOwed = false;
+      renderTransactionTable();
+    }
+  }, 250);
+});
+
 // ───── Applying Changes ────────────────────────────────────
 
 /**
@@ -296,7 +350,11 @@ function _applyCategoryLocally(txn, transactionId, categoryString) {
  *   keeps the row's optimistic category
  */
 async function _applySavedCategory(record, categoryString, data, isNewest) {
-  await _applyInlineSaveResponse(record, data, !isNewest);
+  const sentId = record.transactionId;
+  const savedRow = await _applyInlineSaveResponse(record, data, !isNewest);
+  if (savedRowNeedsRedraw(sentId, savedRow)) {
+    _redrawTableOnceNoEditorIsOpen();
+  }
 
   const txn = _findTransactionOrSplitChild(record.transactionId);
   if (txn && 'is_override' in txn) {
@@ -323,14 +381,11 @@ async function _applySavedCategory(record, categoryString, data, isNewest) {
  * @param {object} data — the add-memo response
  */
 async function _applySavedMemo(record, data) {
+  const sentId = record.transactionId;
   const savedRow = await _applyInlineSaveResponse(record, data, record.queuedValue !== undefined);
   _cacheRow(record.transactionId);
-
-  // The pieces of a split parent cannot be drawn into the cell that was
-  // edited, so the table is drawn again.
-  const savedRowIsSplit = savedRow && (savedRow.is_split || (Array.isArray(savedRow.splits) && savedRow.splits.length > 0));
-  if (savedRowIsSplit) {
-    renderTransactionTable();
+  if (savedRowNeedsRedraw(sentId, savedRow)) {
+    _redrawTableOnceNoEditorIsOpen();
   }
 }
 

@@ -24,9 +24,11 @@ function loadSaves(rows) {
   const calls = { statuses: [], requests: [], cached: [], sidebar: 0, refetched: [], applied: [], redrawn: 0 };
   const domElements = new Map();
   const pending = [];
+  const focusListeners = {};
   const sandbox = {
     module: { exports: {} },
     console,
+    setTimeout,
     transactions: rows,
     BACKEND_URL: 'http://api.test',
     localStorage: { removeItem() {} },
@@ -34,6 +36,7 @@ function loadSaves(rows) {
       activeElement: null,
       querySelector: (selector) => domElements.get(selector) || null,
       querySelectorAll: () => [],
+      addEventListener: (type, listener) => { (focusListeners[type] ||= []).push(listener); },
     },
     $: (element) => ({
       data(key, ...rest) {
@@ -78,7 +81,13 @@ function loadSaves(rows) {
   // Let queued sends and answers run before the test looks.
   const settle = () => new Promise(resolve => setImmediate(resolve));
 
-  return { api: sandbox.module.exports, sandbox, calls, answer, fail, settle, domElements };
+  // Focus leaves the last inline editor: the page's focusout listeners run.
+  const leaveEditor = () => {
+    sandbox.document.activeElement = null;
+    for (const listener of focusListeners.focusout || []) listener();
+  };
+
+  return { api: sandbox.module.exports, sandbox, calls, answer, fail, settle, domElements, leaveEditor };
 }
 
 const plaidRow = (id, extra = {}) => ({
@@ -345,6 +354,51 @@ test('a memo on a virtual bill row takes the id it was saved under', async () =>
   const rows = env.sandbox.transactions;
   assert.deepEqual(plain(rows.map(row => row.transaction_id)), ['txn-real']);
   assert.equal(rows[0].source, 'manual');
+  assert.equal(env.calls.redrawn, 1, 'the bill badge gives way to the real row');
+});
+
+test('a virtual bill row saved by categorize is drawn again as the real row', async () => {
+  const env = loadSaves([plaidRow('bill_1_occ_2', { source: 'scheduled' })]);
+
+  const saving = env.api.saveInlineCategory('bill_1_occ_2', 'Food: Groceries');
+  env.answer(0, 200, {
+    transaction_id: 'txn-real',
+    user_category: 'Food: Groceries',
+    removed_transaction_ids: ['bill_1_occ_2'],
+    affected_transactions: [{ ...plaidRow('txn-real'), source: 'manual', user_category: 'Food: Groceries' }],
+  });
+  await saving;
+
+  assert.equal(env.calls.redrawn, 1);
+});
+
+test('the redraw waits while the user types in the next row, then runs once they leave', async () => {
+  const env = loadSaves([plaidRow('bill_1_occ_2', { source: 'scheduled' }), plaidRow('t2')]);
+  // Tab moved on to the next row's memo editor before the answer landed.
+  env.sandbox.document.activeElement = { matches: () => true };
+
+  const saving = env.api.saveInlineCategory('bill_1_occ_2', 'Food: Groceries');
+  env.answer(0, 200, {
+    transaction_id: 'txn-real',
+    user_category: 'Food: Groceries',
+    removed_transaction_ids: ['bill_1_occ_2'],
+    affected_transactions: [{ ...plaidRow('txn-real'), source: 'manual', user_category: 'Food: Groceries' }],
+  });
+  await saving;
+  assert.equal(env.calls.redrawn, 0, 'the open editor keeps what is being typed');
+
+  env.leaveEditor();
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.equal(env.calls.redrawn, 1);
+});
+
+test('a save on a real row that stays the same shape does not redraw the table', async () => {
+  const env = loadSaves([plaidRow('t1')]);
+
+  const saving = env.api.saveInlineCategory('t1', 'Food: Groceries');
+  env.answer(0, 200, categorized(plaidRow('t1'), 'Food: Groceries'));
+  await saving;
+
   assert.equal(env.calls.redrawn, 0);
 });
 
