@@ -309,6 +309,34 @@ function _isInlineEditorFocused() {
   return Boolean(activeElement && activeElement.matches && activeElement.matches(_INLINE_EDITOR_SELECTOR));
 }
 
+const _TAB_FLOW_EDITOR_SELECTOR = '.inline-memo-input, .category-autocomplete';
+
+// Control+S draws the table now instead of waiting for the user to leave
+// the grid. In a memo or category cell it first finishes that edit the way
+// Enter does, so nothing typed is lost. Other fields (the row editor, which
+// saves and redraws itself, search, modal forms) are left alone. Control,
+// not Cmd: Cmd+S is the browser's Save Page.
+document.addEventListener('keydown', (keyEvent) => {
+  const isControlS = keyEvent.ctrlKey && !keyEvent.metaKey && (keyEvent.key === 's' || keyEvent.key === 'S');
+  if (!isControlS) return;
+
+  const activeElement = document.activeElement;
+  const isInTabFlowEditor = Boolean(
+    activeElement && activeElement.matches && activeElement.matches(_TAB_FLOW_EDITOR_SELECTOR),
+  );
+  const isInOtherField = Boolean(
+    activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement.tagName),
+  ) && !isInTabFlowEditor;
+  if (isInOtherField) return;
+
+  keyEvent.preventDefault();
+  if (isInTabFlowEditor) {
+    activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  }
+  _tableRedrawOwed = false;
+  renderTransactionTable();
+});
+
 // Focus leaving an editor lands on the next one only after this event, and
 // the category cell settles its own text 200 ms after blur, so the check
 // waits past both.

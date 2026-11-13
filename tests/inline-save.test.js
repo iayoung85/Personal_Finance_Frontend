@@ -29,6 +29,7 @@ function loadSaves(rows) {
     module: { exports: {} },
     console,
     setTimeout,
+    KeyboardEvent: class { constructor(type, init) { Object.assign(this, { type }, init); } },
     transactions: rows,
     BACKEND_URL: 'http://api.test',
     localStorage: { removeItem() {} },
@@ -82,12 +83,19 @@ function loadSaves(rows) {
   const settle = () => new Promise(resolve => setImmediate(resolve));
 
   // Focus leaves the last inline editor: the page's focusout listeners run.
+  const pressKey = (fields) => {
+    const keyEvent = { ctrlKey: false, metaKey: false, prevented: false, ...fields };
+    keyEvent.preventDefault = () => { keyEvent.prevented = true; };
+    for (const listener of focusListeners.keydown || []) listener(keyEvent);
+    return keyEvent;
+  };
+
   const leaveEditor = () => {
     sandbox.document.activeElement = null;
     for (const listener of focusListeners.focusout || []) listener();
   };
 
-  return { api: sandbox.module.exports, sandbox, calls, answer, fail, settle, domElements, leaveEditor };
+  return { api: sandbox.module.exports, sandbox, calls, answer, fail, settle, domElements, leaveEditor, pressKey };
 }
 
 const plaidRow = (id, extra = {}) => ({
@@ -530,4 +538,56 @@ test('an answer to a request sent after the other field settled takes the whole 
   await category;
 
   assert.equal(env.sandbox.transactions[0].user_memo, 'dinner');
+});
+
+test('Control+S with no editor open draws the table now', () => {
+  const env = loadSaves([plaidRow('t1')]);
+
+  const keyEvent = env.pressKey({ ctrlKey: true, key: 's' });
+
+  assert.equal(keyEvent.prevented, true);
+  assert.equal(env.calls.redrawn, 1);
+});
+
+test('Control+S in a memo or category cell finishes that edit, then draws the table', async () => {
+  const env = loadSaves([plaidRow('bill_1_occ_2', { source: 'scheduled' }), plaidRow('t2')]);
+  const dispatched = [];
+  const memoEditor = {
+    tagName: 'INPUT',
+    matches: (selector) => selector.includes('.inline-memo-input'),
+    dispatchEvent: (keyEvent) => dispatched.push(keyEvent.key),
+  };
+  env.sandbox.document.activeElement = memoEditor;
+
+  // The answer that made the bill row real waited on the open editor.
+  const saving = env.api.saveInlineCategory('bill_1_occ_2', 'Food: Groceries');
+  env.answer(0, 200, {
+    transaction_id: 'txn-real',
+    user_category: 'Food: Groceries',
+    removed_transaction_ids: ['bill_1_occ_2'],
+    affected_transactions: [{ ...plaidRow('txn-real'), source: 'manual', user_category: 'Food: Groceries' }],
+  });
+  await saving;
+  assert.equal(env.calls.redrawn, 0);
+
+  env.pressKey({ ctrlKey: true, key: 's' });
+
+  assert.deepEqual(dispatched, ['Enter']);
+  assert.equal(env.calls.redrawn, 1);
+  env.leaveEditor();
+  await new Promise(resolve => setTimeout(resolve, 300));
+  assert.equal(env.calls.redrawn, 1, 'the owed redraw is not run a second time');
+});
+
+test('Control+S leaves other fields and Cmd+S alone', () => {
+  const env = loadSaves([plaidRow('t1')]);
+
+  env.sandbox.document.activeElement = { tagName: 'INPUT', matches: () => false };
+  const inSearch = env.pressKey({ ctrlKey: true, key: 's' });
+  env.sandbox.document.activeElement = null;
+  const commandS = env.pressKey({ metaKey: true, key: 's' });
+
+  assert.equal(inSearch.prevented, false);
+  assert.equal(commandS.prevented, false);
+  assert.equal(env.calls.redrawn, 0);
 });
