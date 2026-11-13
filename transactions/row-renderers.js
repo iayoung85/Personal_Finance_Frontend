@@ -465,6 +465,19 @@ function _matchCompareButton(matchInfo, plaidTxnId) {
 }
 
 
+/**
+ * The approve check drawn disabled, for a pair whose approval has to wait
+ * for the bank to post the row. It carries the reason as its hover title.
+ *
+ * @param {string} escapedMatchedTxnId - The matched row's id, already escaped.
+ * @param {string} reason - Why approval is not open yet.
+ * @returns {string} HTML for the button.
+ */
+function _disabledApproveButton(escapedMatchedTxnId, reason) {
+  return `<button class="approve-match-badge" data-txn-id="${escapedMatchedTxnId}" disabled aria-disabled="true" title="${escapeHtml(reason)}">✓</button>`;
+}
+
+
 function _renderMatchedPairRow(ctx) {
   const matchInfo = ctx.txn.match_info;
   const unmatchId = escapeHtml(matchInfo.matched_txn_id);
@@ -478,8 +491,11 @@ function _renderMatchedPairRow(ctx) {
   // Bill badge when the matched counterpart originated from a bill template
   const billBadge = _matchedPairBillBadge(matchInfo);
 
+  const approveButton = approvalWaitsForPosting(ctx.txn)
+    ? _disabledApproveButton(unmatchId, APPROVE_WAITS_FOR_POSTING_REASON)
+    : `<button class="approve-match-badge" data-txn-id="${unmatchId}" onclick="${approveOnclick}" title="Approve this match — removes the manual counterpart">✓</button>`;
   const actionGroup = `<span class="match-action-group">`
-    + `<button class="approve-match-badge" data-txn-id="${unmatchId}" onclick="${approveOnclick}" title="Approve this match — removes the manual counterpart">✓</button>`
+    + approveButton
     + `<button class="reject-match-badge" onclick="${unmatchOnclick}" title="Unmatch — revert manual to missing + detach from plaid">✗</button>`
     + _matchCompareButton(matchInfo, ctx.txnId)
     + `</span> `;
@@ -519,9 +535,10 @@ function _renderMatchedPairRow(ctx) {
  *   rowCssClass: string,
  *   sourceBadge: ({label: string, cssClass: string, title: string}|null),
  *   billBadgeHtml: string,
- *   approve: ({call: string, args: Array, catchErrors: boolean, title: string}|null),
+ *   approve: ({call: string, args: Array, catchErrors: boolean, title: string, disabledReason: string}|null),
  *   reject: ({call: string, args: Array, title: string}|null),
  *   compareHtml: string,
+ *   reviewDotTxnId: string,
  * }}
  */
 function getSplitPieceTreatment(parentTxn, splitIsBroken) {
@@ -536,6 +553,7 @@ function getSplitPieceTreatment(parentTxn, splitIsBroken) {
     approve: null,
     reject: null,
     compareHtml: '',
+    reviewDotTxnId: '',
   };
 
   if (!isWaitingMatchRow(parentTxn)) return treatment;
@@ -563,12 +581,18 @@ function getSplitPieceTreatment(parentTxn, splitIsBroken) {
       args: [matchInfo.matched_txn_id, accountId],
       catchErrors: true,
       title: 'Approve this match — removes the manual counterpart',
+      disabledReason: approvalWaitsForPosting(parentTxn) ? APPROVE_WAITS_FOR_POSTING_REASON : '',
     };
     treatment.reject = {
       call: 'unmatchScheduledTransaction',
       args: [matchInfo.matched_txn_id],
       title: 'Unmatch — revert manual to missing + detach from plaid',
     };
+    // A pair that cannot be approved yet is reviewed like an ordinary row:
+    // the pieces are all the list draws of it, so the dot rides on the first.
+    if (approvalWaitsForPosting(parentTxn) && parentTxn.reviewed === false) {
+      treatment.reviewDotTxnId = parentTxn.transaction_id || '';
+    }
   }
   return treatment;
 }
@@ -604,9 +628,13 @@ function renderWaitingPieceBadges(treatment) {
     + (treatment.approve.catchErrors ? ".catch(err => showStatus(err.message, 'error'))" : '');
   const rejectCall = _inlineCallText(treatment.reject.call, treatment.reject.args);
 
+  const approveButton = treatment.approve.disabledReason
+    ? _disabledApproveButton(escapeHtml(String(treatment.approve.args[0])), treatment.approve.disabledReason)
+    : `<button class="approve-match-badge" data-txn-id="${escapeHtml(String(treatment.approve.args[0]))}" onclick="event.stopPropagation(); ${approveCall};" title="${escapeHtml(treatment.approve.title)}">✓</button>`;
+
   return treatment.billBadgeHtml
     + `<span class="match-action-group">`
-    + `<button class="approve-match-badge" data-txn-id="${escapeHtml(String(treatment.approve.args[0]))}" onclick="event.stopPropagation(); ${approveCall};" title="${escapeHtml(treatment.approve.title)}">✓</button>`
+    + approveButton
     + `<button class="reject-match-badge" onclick="event.stopPropagation(); ${rejectCall}" title="${escapeHtml(treatment.reject.title)}">✗</button>`
     + (treatment.compareHtml || '')
     + `</span> `;
@@ -782,15 +810,17 @@ function _getDefaultSourceBadge(ctx) {
 /**
  * Whether the user has worked on a pending row: set its category, written a
  * memo, renamed it, or linked it as a transfer. Such a row is one they have
- * accepted, so it is not offered the Hide button. Mirrors the API's test for a
- * pending row that carries the user's work; this copy only decides a button.
+ * accepted, so it is not offered the Hide button. A row a waiting match points
+ * at is not offered it either, because the API refuses to hide it until the
+ * match is undone. Mirrors the API's tests; this copy only decides a button.
  *
  * @param {Object} txn - The pending row.
  * @returns {boolean}
  */
 function pendingRowCarriesUserWork(txn) {
   return Boolean(
-    txn.is_override
+    txn.match_info
+    || txn.is_override
     || (txn.user_memo && String(txn.user_memo).trim())
     || txn.user_description_override
     || txn.transfer_pair_id
@@ -800,12 +830,12 @@ function pendingRowCarriesUserWork(txn) {
 /**
  * The Hide button a pending row carries beside its Pending badge, so a hold
  * can be dismissed without opening the right-click menu. It makes the same
- * call as the menu's Hide. A row the user has worked on gets none; the menu's
- * Hide is still there for it.
+ * call as the menu's Hide. A row the user has worked on, or a match waits on,
+ * gets none; the menu's Hide is still there for the first.
  *
  * @param {Object} txn - The pending row (the parent, for a split).
- * @returns {string} HTML fragment, empty for a row that is already hidden or
- *   that the user has worked on.
+ * @returns {string} HTML fragment, empty for a row that is already hidden, that
+ *   the user has worked on, or that a match waits on.
  */
 function renderPendingHideButton(txn) {
   const txnId = txn && txn.transaction_id;

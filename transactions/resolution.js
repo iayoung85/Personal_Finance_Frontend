@@ -485,6 +485,20 @@ function _forceMatchEscapeHandler(event) {
   }
 }
 
+/**
+ * Whether a row may serve as a force-match target: a Plaid row, posted or
+ * pending. The API refuses a pending row the user hid, so it is not taken.
+ *
+ * @param {Object|undefined} txn - The clicked row as the page holds it.
+ * @returns {boolean}
+ */
+function _isForceMatchTarget(txn) {
+  if (!txn) return false;
+  const txnType = getTransactionType(txn);
+  if (txnType === TXN_TYPE.PLAID_CLEARED) return true;
+  return txnType === TXN_TYPE.PLAID_PENDING && !txn.is_hidden;
+}
+
 async function _forceMatchRowClickHandler(event) {
   if (!_forceMatchOrphanId) return;
 
@@ -499,10 +513,8 @@ async function _forceMatchRowClickHandler(event) {
   event.preventDefault();
   event.stopPropagation();
 
-  // Only Plaid-cleared transactions can serve as a force-match target
   const clickedTxn = transactions.find(txn => txn.transaction_id === clickedTxnId);
-  const clickedType = clickedTxn ? getTransactionType(clickedTxn) : null;
-  if (clickedType !== TXN_TYPE.PLAID_CLEARED) {
+  if (!_isForceMatchTarget(clickedTxn)) {
     showStatus('Please click a Plaid transaction (blue "Plaid" badge rows)', 'warning');
     return;
   }
@@ -605,11 +617,12 @@ async function _refreshAfterBatchResolve(batchResult) {
  * Rows the match picker may offer as targets for a source transaction.
  *
  * When the source is MANUAL_CLEARED (user-entered txn waiting for Plaid
- * delivery) or PLAID_CONVERTED, only PLAID_CLEARED targets are offered —
- * matching manual-to-manual doesn't make sense in this flow. Split rows are
- * left out because the API refuses a match between two split rows, and rows
- * already carrying a match are left out because they are waiting on their
- * own resolution.
+ * delivery) or PLAID_CONVERTED, only bank rows are offered — matching
+ * manual-to-manual doesn't make sense in this flow. A bank row is posted or
+ * still pending, as the API accepts both; a pending row the user hid is left
+ * out because the API refuses it. Split rows are left out because the API
+ * refuses a match between two split rows, and rows already carrying a match
+ * are left out because they are waiting on their own resolution.
  *
  * @param {Object} sourceTxn - The transaction being matched (a split's parent, never a piece).
  * @param {Array<Object>} allTransactions - Every cached transaction.
@@ -621,13 +634,15 @@ function _filterMatchPickerCandidates(sourceTxn, allTransactions) {
     sourceType === TXN_TYPE.MANUAL_CLEARED ||
     sourceType === TXN_TYPE.PLAID_CONVERTED;
   const matchableTargetTypes = isSourceManualCleared
-    ? new Set([TXN_TYPE.PLAID_CLEARED])
-    : new Set([TXN_TYPE.PLAID_CLEARED, TXN_TYPE.MANUAL_CLEARED, TXN_TYPE.PLAID_CONVERTED]);
+    ? new Set([TXN_TYPE.PLAID_CLEARED, TXN_TYPE.PLAID_PENDING])
+    : new Set([TXN_TYPE.PLAID_CLEARED, TXN_TYPE.PLAID_PENDING, TXN_TYPE.MANUAL_CLEARED, TXN_TYPE.PLAID_CONVERTED]);
   const sourceAccountId = sourceTxn.account_id || sourceTxn.plaid_account_id;
 
   return allTransactions.filter(txn => {
     if (txn.transaction_id === sourceTxn.transaction_id) return false;
-    if (!matchableTargetTypes.has(getTransactionType(txn))) return false;
+    const targetType = getTransactionType(txn);
+    if (!matchableTargetTypes.has(targetType)) return false;
+    if (targetType === TXN_TYPE.PLAID_PENDING && txn.is_hidden) return false;
     if ((txn.account_id || txn.plaid_account_id) !== sourceAccountId) return false;
     if (txn.matched_transaction_id) return false;
     if (txn.is_split && Array.isArray(txn.splits) && txn.splits.length > 0) return false;
@@ -637,8 +652,9 @@ function _filterMatchPickerCandidates(sourceTxn, allTransactions) {
 }
 
 /**
- * Opens a small picker modal showing cleared plaid transactions in the same
- * account so the user can manually match a missing/orphaned txn.
+ * Opens a small picker modal showing the bank transactions, posted or
+ * pending, in the same account so the user can manually match a
+ * missing, orphaned or not-yet-due txn.
  */
 function openInlineMatchPicker(missingTxnId) {
   const missingTxn = transactions.find(txn => txn.transaction_id === missingTxnId);
@@ -662,7 +678,7 @@ function openInlineMatchPicker(missingTxnId) {
   const topCandidates = candidates.slice(0, MAX_CANDIDATES);
 
   if (topCandidates.length === 0) {
-    showStatus('No cleared transactions available to match in this account', 'warning');
+    showStatus('No bank transactions available to match in this account', 'warning');
     return;
   }
 

@@ -48,6 +48,19 @@ function _logoFallbackChar(txn) {
   }
 }
 
+/**
+ * The pulsing dot that marks a row unreviewed; clicking it marks the row
+ * reviewed.
+ *
+ * @param {Object} txn - The row the dot is about, for the reason it shows.
+ * @param {string} txnId - The id sent to the mark-reviewed call.
+ * @returns {string} HTML for the dot.
+ */
+function _unreviewedDotHtml(txn, txnId) {
+  const title = escapeHtml(unreviewedDotTitle(txn));
+  return `<span class="unreviewed-dot" data-review-tooltip="${title}" aria-label="${title}" onclick="event.stopPropagation(); _markSingleTransactionReviewed('${txnId}')"></span>`;
+}
+
 async function _markSingleTransactionReviewed(transactionId) {
   try {
     const response = await authenticatedFetch(
@@ -883,6 +896,9 @@ function renderTransactionTable() {
       // approve and reject buttons, no modify, delete, repair or date edit.
       const pieceTreatment = getSplitPieceTreatment(txn, splitIsBroken);
       const waitingBadgesHtml = renderWaitingPieceBadges(pieceTreatment);
+      const waitingReviewDotHtml = pieceTreatment.reviewDotTxnId
+        ? _unreviewedDotHtml(txn, pieceTreatment.reviewDotTxnId)
+        : '';
 
       // Render only split children that match active search/category filters.
       const visibleSplits = txn.splits.filter(split => (
@@ -942,7 +958,7 @@ function renderTransactionTable() {
           ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
           ${pieceTreatment.dateEditable
             ? `<td class="date-column inline-editable" data-field="date" title="Editing the date here updates all splits and the parent transaction">${escapeHtml(dateStr)}</td>`
-            : `<td class="date-column">${escapeHtml(dateStr)}</td>`}
+            : `<td class="date-column">${isFirstSplit ? waitingReviewDotHtml : ''}${escapeHtml(dateStr)}</td>`}
           ${showBankAccountColumn ? `<td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>` : ''}
           <td class="description-column" data-field="description">
             <div class="desc-two-line">
@@ -1229,7 +1245,7 @@ function renderTransactionTable() {
     // before moving on. Approving a match auto-flips the flag, and the
     // context-menu "Mark visible as reviewed" action clears it in bulk.
     const unreviewedDot = (txn.reviewed === false && !isFutureBlockRow && !isOpeningBalanceRow)
-      ? `<span class="unreviewed-dot" data-review-tooltip="${escapeHtml(unreviewedDotTitle(txn))}" aria-label="${escapeHtml(unreviewedDotTitle(txn))}" onclick="event.stopPropagation(); _markSingleTransactionReviewed('${txnId}')"></span>`
+      ? _unreviewedDotHtml(txn, txnId)
       : '';
     rowHtml += `<td class="date-column${isDateInlineEditable ? ' inline-editable' : ''}"${isDateInlineEditable ? ' data-field="date"' : ''}>${!showLogoColumn ? hiddenCheckboxHtml : ''}${unreviewedDot}${dateStr}</td>`;
     if (showBankAccountColumn) {

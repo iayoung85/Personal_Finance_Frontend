@@ -665,8 +665,28 @@ function _buildPerRowPatch(txn, appliedFields, changes) {
   return patch;
 }
 
+/**
+ * The warning line for a bulk edit that left some rows alone. It carries the
+ * API's own reason for each distinct refusal, so the user learns why a row
+ * was skipped (a pending row under a waiting match, say) and not only that
+ * one was.
+ *
+ * @param {number} succeeded
+ * @param {number} failed
+ * @param {Array<{ok: boolean, error?: string}>} results - Per-row outcomes.
+ * @returns {string}
+ */
+function _partialFailureMessage(succeeded, failed, results) {
+  const reasons = [];
+  results.forEach(outcome => {
+    if (!outcome.ok && outcome.error && !reasons.includes(outcome.error)) reasons.push(outcome.error);
+  });
+  const base = `${succeeded} updated, ${failed} failed`;
+  return reasons.length > 0 ? `${base}: ${reasons.join(' ')}` : base;
+}
+
 function _showPartialFailureToast(succeeded, failed, results) {
   const failures = results.filter(r => !r.ok);
-  showStatus(`${succeeded} updated, ${failed} failed`, 'warning');
+  showStatus(_partialFailureMessage(succeeded, failed, results), 'warning');
   console.warn('Bulk edit partial failures:', failures);
 }

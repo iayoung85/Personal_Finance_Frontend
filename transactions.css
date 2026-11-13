@@ -3414,10 +3414,20 @@ tr.bank-suspect-row td:first-child {
   line-height: 1;
 }
 
-.approve-match-badge:hover {
+.approve-match-badge:hover:not(:disabled) {
   background: var(--color-success);
   color: #fff;
   transform: scale(1.15);
+}
+
+/* A pair that waits for the bank to post it: same muted look as a disabled
+   right-click item, with the reason in the hover title. */
+.approve-match-badge:disabled {
+  border-color: var(--text-muted);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .reject-match-badge {

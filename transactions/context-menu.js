@@ -176,6 +176,36 @@ function _appendInspectMenuItem(items, txnData) {
 }
 
 /**
+ * Whether an account is a linked, non-investment one: the accounts where a
+ * hand-entered row can be matched to a bank row.
+ *
+ * @param {string} accountId
+ * @param {Array<Object>} accountList - Accounts, as the page holds them.
+ * @returns {boolean}
+ */
+function _isLinkedNonInvestmentAccount(accountId, accountList) {
+  const account = (accountList || []).find(acct => acct.account_id === accountId);
+  return !!account
+    && account.connection_status === 'linked'
+    && account.plaid_type !== 'investment';
+}
+
+/**
+ * Whether a row that is not yet due, a hand-entered future row or an upcoming
+ * bill occurrence, may offer "Match to Transaction": the bank row can arrive
+ * as a pending hold before the row's date, so the user can pair them at once.
+ *
+ * @param {string} txnType - A TXN_TYPE value.
+ * @param {string} accountId
+ * @param {Array<Object>} accountList - Accounts, as the page holds them.
+ * @returns {boolean}
+ */
+function _canMatchNotYetDueRow(txnType, accountId, accountList) {
+  if (txnType !== TXN_TYPE.MANUAL_FUTURE && txnType !== TXN_TYPE.BILL_FUTURE) return false;
+  return _isLinkedNonInvestmentAccount(accountId, accountList);
+}
+
+/**
  * Whether a split piece's menu may offer "Match to Transaction". The piece
  * row itself says source "split", so the decision follows the parent's type
  * and account: the same parents the unsplit menu offers Match for.
@@ -193,12 +223,9 @@ function _canMatchSplitParent(parentTxn, accountList) {
   if (parentType === TXN_TYPE.BILL_MISSING || parentType === TXN_TYPE.MANUAL_MISSING) return true;
   if (parentType === TXN_TYPE.PLAID_CONVERTED) return true;
 
-  if (parentType === TXN_TYPE.MANUAL_CLEARED) {
+  if (parentType === TXN_TYPE.MANUAL_CLEARED || parentType === TXN_TYPE.MANUAL_FUTURE) {
     const parentAccountId = parentTxn.account_id || parentTxn.plaid_account_id || '';
-    const parentAccount = (accountList || []).find(acct => acct.account_id === parentAccountId);
-    return !!parentAccount
-      && parentAccount.connection_status === 'linked'
-      && parentAccount.plaid_type !== 'investment';
+    return _isLinkedNonInvestmentAccount(parentAccountId, accountList);
   }
 
   return false;
@@ -219,7 +246,7 @@ function _buildWaitingPieceMenuItems(txnData) {
 
   if (parentTxn.match_info) {
     return [
-      { label: '✓ Approve Match', action: 'approve-match', separator: false },
+      _approveMatchItem(txnData),
       { label: '✓ Approve All Matches', action: 'approve-all-matches', separator: false },
       { label: '✗ Unmatch', action: 'unmatch', separator: true },
       { label: '🔍 Inspect Match', action: 'inspect-match', separator: false },
@@ -227,6 +254,40 @@ function _buildWaitingPieceMenuItems(txnData) {
   }
 
   return null;
+}
+
+/**
+ * The Approve Match entry, disabled with the reason while the pair waits for
+ * the bank to post it, as the API refuses the approval until then.
+ *
+ * @param {Object} txnData - Context data for the right-clicked row.
+ * @returns {{label: string, action: string, separator: boolean, disabled?: boolean, disabledReason?: string}}
+ */
+function _approveMatchItem(txnData) {
+  const item = { label: '✓ Approve Match', action: 'approve-match', separator: false };
+  const bankRow = txnData.parentTransaction || txnData.localTransaction;
+  if (approvalWaitsForPosting(bankRow)) {
+    item.disabled = true;
+    item.disabledReason = APPROVE_WAITS_FOR_POSTING_REASON;
+  }
+  return item;
+}
+
+/**
+ * The Hide entry for a Plaid row in a waiting match's menu. A pending row
+ * the match waits on is shown disabled, because the API refuses to hide it
+ * until the match is undone; a posted row keeps Hide.
+ *
+ * @param {boolean} isPendingUnderMatch - The row is pending and carries the match.
+ * @returns {{label: string, action: string, separator: boolean, disabled?: boolean, disabledReason?: string}}
+ */
+function _hideItemForMatchedPlaidRow(isPendingUnderMatch) {
+  const item = { label: '👁‍🗨 Hide', action: 'hide', separator: false };
+  if (isPendingUnderMatch) {
+    item.disabled = true;
+    item.disabledReason = PENDING_MATCH_HIDE_REASON;
+  }
+  return item;
 }
 
 /** Menu actions the API refuses on either side of a waiting match. */
@@ -463,11 +524,7 @@ function _buildMenuItems(txnData) {
   // Matched transactions get approve actions, bill, and transfer. Edits
   // the API refuses while the match waits are shown disabled.
   if (isMatched || isMatchedPair || _isWaitingMatchMenuRow(txnData)) {
-    items.push({
-      label: '✓ Approve Match',
-      action: 'approve-match',
-      separator: false,
-    });
+    items.push(_approveMatchItem(txnData));
     items.push({
       label: '✓ Approve All Matches',
       action: 'approve-all-matches',
@@ -491,7 +548,7 @@ function _buildMenuItems(txnData) {
     if (isPlaid) {
       items.push(txnData.isHidden
         ? { label: '👁 Unhide', action: 'unhide', separator: false }
-        : { label: '👁‍🗨 Hide', action: 'hide', separator: false });
+        : _hideItemForMatchedPlaidRow(isPending && isMatchedPair));
     }
     if ((isPlaid || isPlaidConverted) && txnData.amountModified) {
       items.push({
@@ -525,6 +582,13 @@ function _buildMenuItems(txnData) {
       separator: false,
     });
     items.push(_editScheduleItem());
+    if (_canMatchNotYetDueRow(txnType, txnData.accountId, accounts)) {
+      items.push({
+        label: '🔗 Match to Transaction',
+        action: 'match-to-adjacent',
+        separator: false,
+      });
+    }
     items.push({
       label: '⏭ Skip Occurrence',
       action: 'skip-occurrence',
@@ -608,18 +672,20 @@ function _buildMenuItems(txnData) {
   // When a user hand-enters a transaction and Plaid later delivers the real
   // one, this lets them merge metadata onto the Plaid row instead of
   // deleting and re-entering.
-  if (isManual) {
-    const matchAcct = accounts.find(findAcct => findAcct.account_id === txnData.accountId);
-    const isLinkedDepository = matchAcct
-      && matchAcct.connection_status === 'linked'
-      && matchAcct.plaid_type !== 'investment';
-    if (isLinkedDepository) {
-      items.push({
-        label: '🔗 Match to Transaction',
-        action: 'match-to-adjacent',
-        separator: false,
-      });
-    }
+  if (isManual && _isLinkedNonInvestmentAccount(txnData.accountId, accounts)) {
+    items.push({
+      label: '🔗 Match to Transaction',
+      action: 'match-to-adjacent',
+      separator: false,
+    });
+  }
+  // A row not yet due too: its bank row may already be there as a pending hold.
+  if (_canMatchNotYetDueRow(txnType, txnData.accountId, accounts)) {
+    items.push({
+      label: '🔗 Match to Transaction',
+      action: 'match-to-adjacent',
+      separator: false,
+    });
   }
   if (isPlaidConverted) {
     items.push({
@@ -1103,11 +1169,15 @@ function _approveAllSkipReasons(result) {
   const reasons = [];
   const skippedBothSplit = (result && result.skipped_both_split) || 0;
   const skippedTransferBankRow = (result && result.skipped_transfer_bank_row) || 0;
+  const skippedWaitsForPosting = (result && result.skipped_waits_for_posting) || 0;
   if (skippedBothSplit > 0) {
     reasons.push(`${skippedBothSplit} left waiting because both rows are split (unmatch first)`);
   }
   if (skippedTransferBankRow > 0) {
     reasons.push(`${skippedTransferBankRow} left waiting because the bank row is a transfer (unmatch first)`);
+  }
+  if (skippedWaitsForPosting > 0) {
+    reasons.push(`${skippedWaitsForPosting} left waiting because the transaction is split and the bank has not posted it yet`);
   }
   return reasons;
 }
