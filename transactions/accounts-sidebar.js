@@ -1103,14 +1103,9 @@ function _openAddTrendingModal(accountId) {
 
       closeModal();
 
-      // The response names the new row and the next month's recalculated
-      // one, and carries no `transaction_id`, so the new row is the one the
-      // account has in the month saved. Without the fields the account's rows
-      // are fetched again.
-      await applyRowChangesFromResponse(data, [accountId], { siteSettlesLedger: true });
-
-      const createdRow = (Array.isArray(data.affected_transactions) ? data.affected_transactions : [])
-        .find((row) => row.account_id === accountId && String(row.date || '').startsWith(month));
+      // Without the changed-rows fields the account's rows are fetched again,
+      // and the month saved stands in for the new row's date.
+      const createdRow = await applyRowChangesFromResponse(data, [accountId], { siteSettlesLedger: true });
       _expandDateFiltersForTransaction((createdRow && createdRow.date) || `${month}-01`);
 
       showStatus('Trending transaction created', 'success');
