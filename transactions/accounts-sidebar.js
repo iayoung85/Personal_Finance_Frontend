@@ -1103,39 +1103,17 @@ function _openAddTrendingModal(accountId) {
 
       closeModal();
 
-      if (data.created_transaction) {
-        const newTxn = data.created_transaction;
-        newTxn.account_id = accountId;
-        newTxn.iso_currency_code = 'USD';
-        newTxn.status = 'cleared';
-        newTxn.user_category = 'System: Investment Performance';
-        newTxn.date = newTxn.transaction_date;
-        // Coerce string amounts from backend to numbers
-        if (newTxn.amount != null) newTxn.amount = parseFloat(newTxn.amount);
-        if (newTxn.balance_at_date != null) newTxn.balance_at_date = parseFloat(newTxn.balance_at_date);
-        transactions.unshift(newTxn);
-      }
+      // The response names the new row and the next month's recalculated
+      // one, and carries no `transaction_id`, so the new row is the one the
+      // account has in the month saved. Without the fields the account's rows
+      // are fetched again.
+      await applyRowChangesFromResponse(data, [accountId], { siteSettlesLedger: true });
 
-      if (data.next_month_transaction) {
-        const nextCoerced = { ...data.next_month_transaction };
-        if (nextCoerced.amount != null) nextCoerced.amount = parseFloat(nextCoerced.amount);
-        if (nextCoerced.balance_at_date != null) nextCoerced.balance_at_date = parseFloat(nextCoerced.balance_at_date);
-        const nextId = nextCoerced.transaction_id;
-        _patchCachedTransactions([nextId], nextCoerced);
-      }
-
-      _cacheTransactions(transactions);
-      _invalidateTransactionCache();
-
-      _expandDateFiltersForTransaction(
-        data.created_transaction?.transaction_date
-      );
+      const createdRow = (Array.isArray(data.affected_transactions) ? data.affected_transactions : [])
+        .find((row) => row.account_id === accountId && String(row.date || '').startsWith(month));
+      _expandDateFiltersForTransaction((createdRow && createdRow.date) || `${month}-01`);
 
       showStatus('Trending transaction created', 'success');
-
-      // Accounts first: the ledger cache is signed with the account's
-      // last_updated, and rendering needs the new balance for projections.
-      await applyAffectedAccounts(data);
 
       if (selectedAccountMode === 'single' && selectedAccountId) {
         await fetchBalanceHistory(selectedAccountId);

@@ -966,17 +966,14 @@ async function _handleContextDeleteMissing(txnData) {
 
   try {
     const batchResult = await resolveReconciliationBatch({ delete_missing: [txnData.txnId] });
-    await applyAffectedAccounts(batchResult);
     const skippedReason = skippedOrphanReasons(batchResult).get(txnData.txnId);
     if (skippedReason) {
+      await applyAffectedAccounts(batchResult);
       showStatus(`Not deleted: ${skippedReason}`, 'error');
       return;
     }
     showStatus('Transaction deleted', 'success');
-    if (!applyChangedTransactions(batchResult)) {
-      await refreshAccountTransactions(txnData.accountId);
-    }
-    await refreshSelectedLedgerAfterAffected(batchResult);
+    await applyRowChangesFromResponse(batchResult, txnData.accountId ? [txnData.accountId] : null);
     renderTransactionTable();
     await checkAndRenderReconciliationBanner();
   } catch (deleteError) {
@@ -1010,21 +1007,9 @@ async function _handleContextMarkPaidMissing(txnData) {
     const paidLabel = txnData.amount < 0 ? 'paid' : 'received';
     showStatus(`Bill marked as ${paidLabel}`, 'success');
 
-    // Surgically remove the old BILL_MISSING and add the new MANUAL_CLEARED
-    _removeCachedTransaction(txnData.txnId);
-    if (data.transaction && data.transaction.transaction_id) {
-      _replaceCachedTransaction(data.transaction.transaction_id, data.transaction);
-    }
-    if (data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
-      _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
-    }
-    _applyCachedMobUpdate(data);
-    _sortTransactionsInPlace();
-    _cacheTransactions(transactions);
-
-    // Accounts first: the ledger cache is signed with the account's
-    // last_updated, and rendering needs the new balance for projections.
-    await applyAffectedAccounts(data);
+    // The response drops the old BILL_MISSING row and carries the new
+    // MANUAL_CLEARED one, its transfer partner and any rebuilt opening balance.
+    await applyRowChangesFromResponse(data, fallbackAccountIdsForRow(transactions.find((txn) => txn.transaction_id === txnData.txnId)), { siteSettlesLedger: true });
 
     if (selectedAccountMode === 'single' && selectedAccountId) {
       if (data.affected_balance_history) {
@@ -1049,16 +1034,9 @@ async function _handleContextApproveMatch(txnData) {
   // row's transaction_id, not the displayed plaid row's.
   const approveId = txnData.matchManualTxnId || txnData.txnId;
   try {
+    const refetchAccountIds = approveFallbackAccountIds(approveId, txnData.accountId);
     const result = await approveMatch(approveId);
-    // Before the row patch: its table render projects from the balance.
-    await applyAffectedAccounts(result);
-    await _applyApprovedMatch(result, approveId, txnData.isSplitChild
-      ? function() {
-        // The pieces move onto the Plaid row with the approval; the
-        // single-row answer is not trusted to carry them.
-        return refreshAccountTransactions(txnData.accountId);
-      }
-      : null);
+    await _applyApprovedMatch(result, refetchAccountIds);
     showStatus('Match approved — manual transaction removed', 'success');
   } catch (approveError) {
     showStatus(`Failed to approve match: ${approveError.message}`, 'error');
@@ -1266,23 +1244,9 @@ async function _handleContextMarkPaid(txnData) {
 
     showStatus('Marked as paid — occurrence materialized', 'success');
 
-    // Remove the virtual BILL_FUTURE row (the sent id is removed too, for an
-    // API that reports no purged ids) and add the materialized MANUAL_FUTURE.
-    _removeCachedTransaction(txnData.txnId);
-    _removePurgedVirtualTransactions(data);
-    if (data.transaction && data.transaction.transaction_id) {
-      _replaceCachedTransaction(data.transaction.transaction_id, data.transaction);
-    }
-    if (data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
-      _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
-    }
-    _applyCachedMobUpdate(data);
-    _sortTransactionsInPlace();
-    _cacheTransactions(transactions);
-
-    // Accounts first: the ledger cache is signed with the account's
-    // last_updated, and rendering needs the new balance for projections.
-    await applyAffectedAccounts(data);
+    // The response drops the virtual BILL_FUTURE row and any counterpart, and
+    // carries the materialized MANUAL_FUTURE row and its transfer partner.
+    await applyRowChangesFromResponse(data, fallbackAccountIdsForRow(transactions.find((txn) => txn.transaction_id === txnData.txnId)), { siteSettlesLedger: true });
 
     if (selectedAccountMode === 'single' && selectedAccountId) {
       if (data.affected_balance_history) {
@@ -1353,9 +1317,12 @@ async function _handleContextHide(txnData) {
     }
 
     showStatus('Transaction hidden', 'success');
-    // The API marks a row reviewed when it hides it; the cached copy follows
-    // so the row leaves the unreviewed count and queue now, not at next fetch.
-    _patchCachedTransaction(txnData.txnId, { is_hidden: true, reviewed: true });
+    // The API marks a row reviewed when it hides it; the row it returns
+    // carries that, so the row leaves the unreviewed count and queue now.
+    await applyRowChangesFromResponse(
+      data,
+      fallbackAccountIdsForRow(transactions.find((txn) => txn.transaction_id === txnData.txnId)),
+    );
     renderTransactionTable();
     renderAccountsSidebar();
   } catch (networkError) {
@@ -1385,9 +1352,12 @@ async function _handleContextUnhide(txnData) {
     }
 
     showStatus('Transaction unhidden', 'success');
-    // The API marks a row reviewed when it unhides it too; the cached copy
-    // follows so the row carries no stale dot until the next fetch.
-    _patchCachedTransaction(txnData.txnId, { is_hidden: false, reviewed: true });
+    // The API marks a row reviewed when it unhides it too; the row it returns
+    // carries that, so the row has no stale dot.
+    await applyRowChangesFromResponse(
+      data,
+      fallbackAccountIdsForRow(transactions.find((txn) => txn.transaction_id === txnData.txnId)),
+    );
     renderTransactionTable();
     renderAccountsSidebar();
   } catch (networkError) {
@@ -1415,45 +1385,22 @@ async function _handleContextResetPlaidAmount(txnData) {
       return;
     }
 
-    if (data.transaction && data.transaction.transaction_id) {
-      _replaceCachedTransaction(txnData.txnId, data.transaction);
-    } else {
-      _patchCachedTransaction(txnData.txnId, { amount_modified: false });
-    }
-
-    if (data.transfer_partner_transaction && data.transfer_partner_transaction.transaction_id) {
-      _replaceCachedTransaction(data.transfer_partner_id, data.transfer_partner_transaction);
-    }
-
-    // Accounts first: the ledger cache is signed with the account's
-    // last_updated, and rendering needs the new balance for projections.
-    await applyAffectedAccounts(data);
-
-    // The response carries the row, its partner, the opening-balance row and
-    // the rewritten ledger rows; only an investment account or a split parent
-    // has further rows rewritten server-side that are not returned.
-    const affectedAccountId = data.transaction?.account_id || txnData.accountId;
-    if (affectedAccountId) {
-      const affectedAccount = accounts.find(account => account.account_id === affectedAccountId);
-      const hasSplitChildren = transactions.some(row => row.parent_transaction_id === txnData.txnId);
-      const needsAccountRefetch = !data.transaction || editNeedsAccountRefetch(
-        TXN_TYPE.PLAID_CLEARED,
-        affectedAccount ? affectedAccount.account_category : null,
-        hasSplitChildren,
-      );
-      if (needsAccountRefetch) {
-        await refreshAccountTransactions(affectedAccountId);
+    // The response carries the row, its transfer partner, the opening-balance
+    // row, the rows of an investment account or split parent the reset
+    // rewrote, and the rewritten ledger rows. Without the fields the row's
+    // account is fetched again, and every account when the row is half of a
+    // transfer.
+    const affectedAccountId = txnData.accountId;
+    await applyRowChangesFromResponse(
+      data,
+      fallbackAccountIdsForRow(transactions.find((txn) => txn.transaction_id === txnData.txnId)),
+      { siteSettlesLedger: true },
+    );
+    if (selectedAccountMode === 'single' && selectedAccountId && selectedAccountId === affectedAccountId) {
+      if (data.affected_balance_history) {
+        _patchBalanceHistoryCache(affectedAccountId, data.affected_balance_history);
       } else {
-        _applyCachedMobUpdate(data);
-        _sortTransactionsInPlace();
-        _cacheTransactions(transactions);
-      }
-      if (selectedAccountMode === 'single' && selectedAccountId === affectedAccountId) {
-        if (data.affected_balance_history) {
-          _patchBalanceHistoryCache(affectedAccountId, data.affected_balance_history);
-        } else {
-          await fetchBalanceHistory(affectedAccountId);
-        }
+        await fetchBalanceHistory(affectedAccountId);
       }
     }
     renderTransactionTable();
@@ -1591,6 +1538,22 @@ function _invalidateTransactionCache() {
 }
 
 /**
+ * The accounts the given cached rows sit in, for a batch save's fallback
+ * refetch. Null (every account) when none of the rows is cached.
+ *
+ * @param {Array<string>} rowIds Transaction ids.
+ * @returns {Array<string>|null}
+ */
+function _accountIdsOfRows(rowIds) {
+  const wanted = new Set(rowIds);
+  const accountIds = new Set();
+  transactions.forEach((txn) => {
+    if (wanted.has(txn.transaction_id) && txn.account_id) accountIds.add(txn.account_id);
+  });
+  return accountIds.size > 0 ? Array.from(accountIds) : null;
+}
+
+/**
  * Batch unhide: unhides all currently selected hidden transactions.
  * Uses the data-driven _selectedHiddenTxnIds set so off-screen rows
  * (not in the DOM due to virtual scroll) are included.
@@ -1625,9 +1588,7 @@ async function batchUnhideSelected() {
     }
 
     showStatus(`Unhid ${data.unhidden_count} transaction(s)`, 'success');
-    var skipped = new Set(data.skipped_ids || []);
-    var unhiddenIds = transactionIds.filter(function(id) { return !skipped.has(id); });
-    _patchCachedTransactions(unhiddenIds, { is_hidden: false });
+    await applyRowChangesFromResponse(data, _accountIdsOfRows(transactionIds));
     renderTransactionTable();
   } catch (networkError) {
     showStatus(`Failed to batch unhide: ${networkError.message}`, 'error');
@@ -1667,9 +1628,7 @@ async function batchUnhideAll() {
     }
 
     showStatus(`Unhid all ${data.unhidden_count} transaction(s)`, 'success');
-    var skippedAll = new Set(data.skipped_ids || []);
-    var unhiddenAllIds = transactionIds.filter(function(id) { return !skippedAll.has(id); });
-    _patchCachedTransactions(unhiddenAllIds, { is_hidden: false });
+    await applyRowChangesFromResponse(data, _accountIdsOfRows(transactionIds));
     renderTransactionTable();
   } catch (networkError) {
     showStatus(`Failed to batch unhide: ${networkError.message}`, 'error');
@@ -1763,39 +1722,18 @@ function _handleContextEditInvestmentBalance(txnData) {
 
       closeModal();
 
-      // Handle deletion response (balance set to $0 on oldest row)
+      // The response drops a deleted row (balance set to $0 on the oldest
+      // row) and carries every trending row it recalculated. Without the
+      // fields the account's rows are fetched again.
       if (data.deleted) {
-        _removeCachedTransaction(txnData.txnId);
         showStatus(`Trending row removed (${data.rows_deleted} row${data.rows_deleted !== 1 ? 's' : ''} deleted)`, 'success');
       } else {
-        // Update the edited transaction in cache.
-        // Backend returns amount/balance_at_date as strings — coerce to
-        // numbers so downstream arithmetic (runningProjected += txn.amount)
-        // doesn't silently switch to string concatenation.
-        if (data.updated_transaction) {
-          const coerced = { ...data.updated_transaction };
-          if (coerced.amount != null) coerced.amount = parseFloat(coerced.amount);
-          if (coerced.balance_at_date != null) coerced.balance_at_date = parseFloat(coerced.balance_at_date);
-          _patchCachedTransactions([txnData.txnId], coerced);
-        }
-        // Update next month's transaction if recalculated
-        if (data.next_month_transaction) {
-          const nextCoerced = { ...data.next_month_transaction };
-          if (nextCoerced.amount != null) nextCoerced.amount = parseFloat(nextCoerced.amount);
-          if (nextCoerced.balance_at_date != null) nextCoerced.balance_at_date = parseFloat(nextCoerced.balance_at_date);
-          const nextId = nextCoerced.transaction_id;
-          _patchCachedTransactions([nextId], nextCoerced);
-        }
         showStatus('Account balance updated', 'success');
       }
 
-      // Invalidate transaction cache so next page load fetches fresh
-      // data instead of serving stale ETag-based 304 responses.
-      _invalidateTransactionCache();
-
-      // Accounts first: the ledger cache is signed with the account's
-      // last_updated, and rendering needs the new balance for projections.
-      await applyAffectedAccounts(data);
+      // Accounts first inside the helper: the ledger cache is signed with the
+      // account's last_updated, and rendering needs the new balance.
+      await applyRowChangesFromResponse(data, [txnData.accountId], { siteSettlesLedger: true });
 
       if (selectedAccountMode === 'single' && selectedAccountId) {
         await fetchBalanceHistory(selectedAccountId);
@@ -1827,14 +1765,14 @@ async function _handleContextDeleteTrending(txnData) {
       { method: 'DELETE' }
     );
 
+    const data = await response.json().catch(() => null);
     if (!response.ok) {
-      const data = await response.json();
-      showStatus(data.error || 'Failed to delete trending row', 'error');
+      showStatus((data && data.error) || 'Failed to delete trending row', 'error');
       return;
     }
 
     showStatus('Trending row deleted', 'success');
-    _removeCachedTransaction(txnData.txnId);
+    await applyRowChangesFromResponse(data, [txnData.accountId], { siteSettlesLedger: true });
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
     }

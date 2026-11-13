@@ -26,10 +26,9 @@ function patchTransactionsFromResponse(currentRows, responseData) {
   const unpatched = { patched: false, rows: held, removedIds: [], upsertedRows: [] };
   if (!responseData) return unpatched;
 
+  if (!responseCarriesChangedRows(responseData)) return unpatched;
   const removedIds = responseData.removed_transaction_ids;
   const affectedRows = responseData.affected_transactions;
-  if (!Array.isArray(removedIds) || !Array.isArray(affectedRows)) return unpatched;
-  if (affectedRows.some((row) => !row || !row.transaction_id)) return unpatched;
 
   const rowsById = new Map();
   affectedRows.forEach((row) => rowsById.set(row.transaction_id, row));
@@ -66,4 +65,35 @@ function patchTransactionsFromResponse(currentRows, responseData) {
     removedIds: removedForCache,
     upsertedRows,
   };
+}
+
+/**
+ * Whether a response names the rows it changed: both fields present as
+ * arrays, and every affected row carrying an id. Without them the page has
+ * to fetch the rows again.
+ *
+ * @param {Object|null|undefined} responseData Parsed JSON body of the save.
+ * @returns {boolean}
+ */
+function responseCarriesChangedRows(responseData) {
+  if (!responseData) return false;
+  const removedIds = responseData.removed_transaction_ids;
+  const affectedRows = responseData.affected_transactions;
+  if (!Array.isArray(removedIds) || !Array.isArray(affectedRows)) return false;
+  return !affectedRows.some((row) => !row || !row.transaction_id);
+}
+
+/**
+ * The row a save is about: the entry of `affected_transactions` whose id is
+ * the response's `transaction_id`. A bill occurrence saved for the first time
+ * gets a new id, and this is how a caller learns the row it became.
+ *
+ * @param {Object|null|undefined} responseData Parsed JSON body of the save.
+ * @returns {Object|null} The row, or null when the response lacks it.
+ */
+function findSavedRowInResponse(responseData) {
+  if (!responseData || !responseData.transaction_id) return null;
+  const affectedRows = responseData.affected_transactions;
+  if (!Array.isArray(affectedRows)) return null;
+  return affectedRows.find((row) => row && row.transaction_id === responseData.transaction_id) || null;
 }

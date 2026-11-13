@@ -6,6 +6,7 @@ const vm = require('node:vm');
 
 const savePath = path.join(__dirname, '..', 'transactions', 'inline-save.js');
 const saveSource = fs.readFileSync(savePath, 'utf8');
+const patchSource = fs.readFileSync(path.join(__dirname, '..', 'transactions', 'transaction-patch.js'), 'utf8');
 
 // Values built inside the vm context have another Object.prototype, which
 // strict deepEqual rejects; a JSON round trip hands back plain test values.
@@ -20,7 +21,7 @@ const LINKED_ERROR = 'This transaction is part of a linked transfer. '
  * order answers however it likes.
  */
 function loadSaves(rows) {
-  const calls = { statuses: [], requests: [], cached: [], removed: [], sidebar: 0, refreshed: [], redrawn: 0, sorted: 0, cachedAll: 0 };
+  const calls = { statuses: [], requests: [], cached: [], sidebar: 0, refetched: [], applied: [], redrawn: 0 };
   const domElements = new Map();
   const pending = [];
   const sandbox = {
@@ -45,18 +46,27 @@ function loadSaves(rows) {
     renderAccountsSidebar: () => { calls.sidebar += 1; },
     syncPendingHideButton: () => {},
     _replaceCachedTransaction: (id, row) => calls.cached.push(plain(row)),
-    _removeCachedTransaction: (id) => calls.removed.push(id),
     renderTransactionTable: () => { calls.redrawn += 1; },
-    _sortTransactionsInPlace: () => { calls.sorted += 1; },
-    _cacheTransactions: () => { calls.cachedAll += 1; },
-    _refreshAccountsForStaleAnalyticsClass: async (ids) => { calls.refreshed.push(...ids); },
+    fallbackAccountIdsForRow: (row) => (row && row.account_id ? [row.account_id] : null),
+    // The page's one changed-rows entry point: rows from the response, or a
+    // refetch of the named accounts when the response lacks them.
+    applyRowChangesFromResponse: async (data, refetchAccountIds) => {
+      const result = sandbox.patchTransactionsFromResponse(sandbox.transactions, data);
+      if (result.patched) {
+        sandbox.transactions = result.rows;
+        calls.applied.push(plain(data));
+      } else {
+        calls.refetched.push(refetchAccountIds);
+      }
+    },
     authenticatedFetch: (url, init) => new Promise((resolve, reject) => {
       calls.requests.push({ url, body: JSON.parse(init.body) });
       pending.push({ resolve, reject });
     }),
   };
   vm.runInNewContext(
-    `${saveSource}\nmodule.exports = { saveInlineCategory, saveInlineMemo, _planSavedMemoRow };`,
+    `${patchSource}\n${saveSource}\n`
+      + 'module.exports = { saveInlineCategory, saveInlineMemo };',
     sandbox,
     { filename: savePath },
   );
@@ -77,10 +87,19 @@ const plaidRow = (id, extra = {}) => ({
   ...extra,
 });
 
+const memoSaved = (row, memo, extra = {}) => ({
+  message: 'Memo updated successfully',
+  transaction_id: row.transaction_id,
+  source: row.source,
+  affected_transactions: [{ ...row, user_memo: memo, reviewed: true, ...extra }],
+  removed_transaction_ids: [],
+});
+
 const categorized = (row, category) => ({
   transaction_id: row.transaction_id,
   user_category: category,
-  transaction: { ...row, user_category: category, is_override: true, analytics_class: 'spending' },
+  affected_transactions: [{ ...row, user_category: category, is_override: true, analytics_class: 'spending' }],
+  removed_transaction_ids: [],
 });
 
 test('a Tab category posts that one row to categorize and shows on the row before the answer', async () => {
@@ -213,13 +232,15 @@ test('a refused category leaves the row reviewed when a memo save on it went thr
 
   const category = env.api.saveInlineCategory('t1', 'Food: Groceries');
   const memo = env.api.saveInlineMemo('t1', 'lunch');
-  env.answer(1, 200, { message: 'Memo updated successfully', transaction_id: 't1', source: 'plaid' });
+  env.answer(1, 200, memoSaved(plaidRow('t1'), 'lunch'));
   await memo;
+  assert.equal(env.sandbox.transactions[0].user_category, 'Food: Groceries', 'the memo answer does not undo the category still on its way');
   env.answer(0, 400, { error: 'Refused' });
   await category;
 
   assert.equal(env.sandbox.transactions[0].reviewed, true);
   assert.equal(env.sandbox.transactions[0].user_memo, 'lunch');
+  assert.equal(env.sandbox.transactions[0].user_category, 'Shopping: Online');
 });
 
 test('a category refused after a memo turned a virtual row real is still put back', async () => {
@@ -227,7 +248,10 @@ test('a category refused after a memo turned a virtual row real is still put bac
 
   const memo = env.api.saveInlineMemo('bill_1_occ_2', 'rent');
   const category = env.api.saveInlineCategory('bill_1_occ_2', 'Food: Groceries');
-  env.answer(0, 200, { message: 'Memo updated successfully', transaction_id: 'txn-real', source: 'manual' });
+  env.answer(0, 200, {
+    ...memoSaved(plaidRow('txn-real', { source: 'manual', user_category: '[Savings]' }), 'rent'),
+    removed_transaction_ids: ['bill_1_occ_2'],
+  });
   await memo;
   env.answer(1, 400, { error: LINKED_ERROR });
   await category;
@@ -246,8 +270,8 @@ test('a queued edit on a virtual row is sent to the real id the first save creat
   env.answer(0, 200, {
     transaction_id: 'txn-real',
     user_category: 'Food: Groceries',
-    purged_virtual_ids: ['bill_1_occ_2'],
-    transaction: { ...plaidRow('txn-real'), source: 'manual', user_category: 'Food: Groceries' },
+    removed_transaction_ids: ['bill_1_occ_2'],
+    affected_transactions: [{ ...plaidRow('txn-real'), source: 'manual', user_category: 'Food: Groceries' }],
   });
   await env.settle();
 
@@ -274,8 +298,8 @@ test('a virtual bill row saved by categorize takes the real row id', async () =>
   env.answer(0, 200, {
     transaction_id: 'txn-real',
     user_category: 'Food: Groceries',
-    purged_virtual_ids: ['bill_1_occ_2'],
-    transaction: { ...plaidRow('txn-real'), source: 'manual', user_category: 'Food: Groceries', analytics_class: 'spending' },
+    removed_transaction_ids: ['bill_1_occ_2'],
+    affected_transactions: [{ ...plaidRow('txn-real'), source: 'manual', user_category: 'Food: Groceries', analytics_class: 'spending' }],
   });
   await saving;
 
@@ -290,7 +314,7 @@ test('a memo posts that one row to add-memo', async () => {
   const saving = env.api.saveInlineMemo('t1', 'lunch');
   assert.ok(env.calls.requests[0].url.endsWith('/api/transactions/add-memo'));
   assert.deepEqual(env.calls.requests[0].body, { transaction_id: 't1', user_memo: 'lunch' });
-  env.answer(0, 200, { message: 'Memo updated successfully', transaction_id: 't1', source: 'plaid' });
+  env.answer(0, 200, memoSaved(plaidRow('t1'), 'lunch'));
   await saving;
 
   assert.equal(env.sandbox.transactions[0].user_memo, 'lunch');
@@ -312,12 +336,16 @@ test('a memo on a virtual bill row takes the id it was saved under', async () =>
   const env = loadSaves([plaidRow('bill_1_occ_2', { source: 'scheduled' })]);
 
   const saving = env.api.saveInlineMemo('bill_1_occ_2', 'rent');
-  env.answer(0, 200, { message: 'Memo updated successfully', transaction_id: 'txn-real', source: 'manual' });
+  env.answer(0, 200, {
+    ...memoSaved(plaidRow('txn-real', { source: 'manual' }), 'rent'),
+    removed_transaction_ids: ['bill_1_occ_2'],
+  });
   await saving;
 
-  const row = env.sandbox.transactions[0];
-  assert.equal(row.transaction_id, 'txn-real');
-  assert.equal(row.source, 'manual');
+  const rows = env.sandbox.transactions;
+  assert.deepEqual(plain(rows.map(row => row.transaction_id)), ['txn-real']);
+  assert.equal(rows[0].source, 'manual');
+  assert.equal(env.calls.redrawn, 0);
 });
 
 const splitParent = {
@@ -330,64 +358,122 @@ const splitParent = {
   ],
 };
 
-test('a memo answer with the saved row replaces the virtual row and reports the id to purge', () => {
-  const env = loadSaves([]);
-  const rows = [plaidRow('a'), plaidRow('bill_1_occ_2', { source: 'scheduled' }), plaidRow('b')];
-
-  const plan = env.api._planSavedMemoRow(rows, 'bill_1_occ_2', {
-    transaction_id: 'txn-real', source: 'manual', transaction: splitParent,
-  });
-
-  assert.equal(plan.index, 1);
-  assert.deepEqual(plain(plan.savedRow), splitParent);
-  assert.deepEqual(plain(plan.purgeIds), ['bill_1_occ_2']);
-});
-
-test('a memo answer without the saved row plans no replacement', () => {
-  const env = loadSaves([]);
-  const rows = [plaidRow('bill_1_occ_2', { source: 'scheduled' })];
-
-  const plan = env.api._planSavedMemoRow(rows, 'bill_1_occ_2', {
-    transaction_id: 'txn-real', source: 'manual',
-  });
-
-  assert.equal(plan, null);
-});
-
-test('a saved split parent from a memo takes the virtual row place, is cached, and the table redraws', async () => {
+test('a saved split parent from a memo takes the virtual row place and the table redraws', async () => {
   const env = loadSaves([plaidRow('a'), plaidRow('bill_1_occ_2', { source: 'scheduled' }), plaidRow('b')]);
 
   const saving = env.api.saveInlineMemo('bill_1_occ_2', 'rent');
   env.answer(0, 200, {
-    message: 'Memo updated successfully', transaction_id: 'txn-real', source: 'manual', transaction: splitParent,
+    message: 'Memo updated successfully',
+    transaction_id: 'txn-real',
+    source: 'manual',
+    affected_transactions: [splitParent],
+    removed_transaction_ids: ['bill_1_occ_2'],
   });
   await saving;
 
   const rows = env.sandbox.transactions;
-  assert.deepEqual(rows.map(row => row.transaction_id), ['a', 'txn-real', 'b']);
+  assert.deepEqual(plain(rows.map(row => row.transaction_id)), ['a', 'txn-real', 'b']);
   assert.equal(rows[1].is_split, true);
   assert.equal(rows[1].splits.length, 2);
   assert.equal(rows[1].user_category, 'System: Split');
   assert.deepEqual(env.calls.cached.map(row => row.transaction_id), ['txn-real']);
-  assert.deepEqual(env.calls.removed, ['bill_1_occ_2']);
   assert.equal(env.calls.redrawn, 1);
 
   // A later edit on the real id still reaches the same save record.
   const again = env.api.saveInlineMemo('txn-real', 'rent 2');
   assert.equal(env.calls.requests[1].body.transaction_id, 'txn-real');
-  env.answer(1, 200, { message: 'Memo updated successfully', transaction_id: 'txn-real' });
+  env.answer(1, 200, memoSaved(splitParent, 'rent 2'));
   await again;
 });
 
-test('a memo answer without the saved row still only takes the id and source and does not redraw', async () => {
+test('a memo answer without the changed-rows fields fetches the row\'s account again', async () => {
   const env = loadSaves([plaidRow('bill_1_occ_2', { source: 'scheduled' })]);
 
   const saving = env.api.saveInlineMemo('bill_1_occ_2', 'rent');
   env.answer(0, 200, { message: 'Memo updated successfully', transaction_id: 'txn-real', source: 'manual' });
   await saving;
 
-  assert.equal(env.sandbox.transactions[0].transaction_id, 'txn-real');
-  assert.equal(env.sandbox.transactions[0].is_split, undefined);
-  assert.deepEqual(env.calls.removed, ['bill_1_occ_2']);
+  assert.deepEqual(env.calls.refetched, [['acct-1']]);
   assert.equal(env.calls.redrawn, 0);
+  assert.equal(env.sandbox.transactions[0].transaction_id, 'txn-real', 'the elements and saves in flight still follow the new id');
+});
+
+test('a category answer without the changed-rows fields fetches the row\'s account again', async () => {
+  const env = loadSaves([plaidRow('t1')]);
+
+  const saving = env.api.saveInlineCategory('t1', 'Food: Groceries');
+  env.answer(0, 200, { transaction_id: 't1', user_category: 'Food: Groceries' });
+  await saving;
+
+  assert.deepEqual(env.calls.refetched, [['acct-1']]);
+});
+
+test('a category answer puts the transfer partner and class from the response into the list', async () => {
+  const env = loadSaves([plaidRow('t1'), plaidRow('p1', { account_id: 'acct-2', user_category: '[Checking]' })]);
+
+  const saving = env.api.saveInlineCategory('t1', 'Food: Groceries');
+  env.answer(0, 200, {
+    transaction_id: 't1',
+    affected_transactions: [
+      { ...plaidRow('t1'), user_category: 'Food: Groceries', is_override: true, analytics_class: 'spending' },
+      plaidRow('p1', { account_id: 'acct-2', user_category: 'Food: Groceries' }),
+    ],
+    removed_transaction_ids: [],
+  });
+  await saving;
+
+  assert.equal(env.sandbox.transactions[0].analytics_class, 'spending');
+  assert.equal(env.sandbox.transactions[1].user_category, 'Food: Groceries');
+  assert.deepEqual(env.calls.refetched, []);
+});
+
+test('an older whole-row answer does not undo the other field a newer answer confirmed', async () => {
+  const env = loadSaves([plaidRow('t1')]);
+
+  const category = env.api.saveInlineCategory('t1', 'Food: Groceries');
+  const memo = env.api.saveInlineMemo('t1', 'lunch');
+  // The memo answer lands first; the category answer, built before the memo
+  // was saved, still carries the old memo.
+  env.answer(1, 200, memoSaved(plaidRow('t1'), 'lunch'));
+  await memo;
+  env.answer(0, 200, categorized(plaidRow('t1'), 'Food: Groceries'));
+  await category;
+
+  const row = env.sandbox.transactions[0];
+  assert.equal(row.user_memo, 'lunch');
+  assert.equal(row.user_category, 'Food: Groceries');
+  assert.equal(row.analytics_class, 'spending', 'the rest of the older answer is still taken');
+  assert.equal(env.calls.cached.at(-1).user_memo, 'lunch');
+  assert.equal(env.calls.cached.at(-1).user_category, 'Food: Groceries');
+});
+
+test('an older whole-row answer does not undo a confirmed category either', async () => {
+  const env = loadSaves([plaidRow('t1')]);
+
+  const memo = env.api.saveInlineMemo('t1', 'lunch');
+  const category = env.api.saveInlineCategory('t1', 'Food: Groceries');
+  env.answer(1, 200, categorized(plaidRow('t1'), 'Food: Groceries'));
+  await category;
+  env.answer(0, 200, memoSaved(plaidRow('t1'), 'lunch'));
+  await memo;
+
+  const row = env.sandbox.transactions[0];
+  assert.equal(row.user_category, 'Food: Groceries');
+  assert.equal(row.is_override, true);
+  assert.equal(row.user_memo, 'lunch');
+  assert.equal(env.calls.cached.at(-1).user_category, 'Food: Groceries');
+});
+
+test('an answer to a request sent after the other field settled takes the whole row', async () => {
+  const env = loadSaves([plaidRow('t1')]);
+
+  const memo = env.api.saveInlineMemo('t1', 'lunch');
+  env.answer(0, 200, memoSaved(plaidRow('t1'), 'lunch'));
+  await memo;
+  const category = env.api.saveInlineCategory('t1', 'Food: Groceries');
+  // Another writer changed the memo between the two saves.
+  env.answer(1, 200, categorized(plaidRow('t1', { user_memo: 'dinner' }), 'Food: Groceries'));
+  await category;
+
+  assert.equal(env.sandbox.transactions[0].user_memo, 'dinner');
 });

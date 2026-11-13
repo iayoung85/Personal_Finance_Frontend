@@ -7,11 +7,11 @@ const vm = require('node:vm');
 const box = { module: { exports: {} } };
 vm.runInNewContext(
   `${fs.readFileSync(path.join(__dirname, '..', 'transactions/transaction-patch.js'), 'utf8')}\n`
-    + 'module.exports = { patchTransactionsFromResponse };',
+    + 'module.exports = { patchTransactionsFromResponse, findSavedRowInResponse, responseCarriesChangedRows };',
   box,
   { filename: 'transaction-patch.js' },
 );
-const { patchTransactionsFromResponse } = box.module.exports;
+const { patchTransactionsFromResponse, findSavedRowInResponse, responseCarriesChangedRows } = box.module.exports;
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const ids = (rows) => plain(rows.map((row) => row.transaction_id));
 
@@ -126,4 +126,31 @@ test('the input rows and the response are not mutated', () => {
   patchTransactionsFromResponse(input, response);
   assert.deepEqual(plain(input), plain(makeRows()));
   assert.deepEqual(plain(response), responseBefore);
+});
+
+test('the saved row is the affected row with the response\'s transaction_id', () => {
+  const saved = { transaction_id: 'real-1', account_id: 'a' };
+  const partner = { transaction_id: 'p1', account_id: 'b' };
+  const response = {
+    transaction_id: 'real-1',
+    removed_transaction_ids: ['bill_1_occ_2'],
+    affected_transactions: [partner, saved],
+  };
+  assert.deepEqual(plain(findSavedRowInResponse(response)), saved);
+});
+
+test('no saved row is found when the response lacks the id, the fields or the row', () => {
+  assert.equal(findSavedRowInResponse(null), null);
+  assert.equal(findSavedRowInResponse({ affected_transactions: [] }), null);
+  assert.equal(findSavedRowInResponse({ transaction_id: 'x' }), null);
+  assert.equal(findSavedRowInResponse({ transaction_id: 'x', affected_transactions: [{ transaction_id: 'y' }] }), null);
+});
+
+test('a response carries changed rows only with both fields as arrays and every row named', () => {
+  assert.equal(responseCarriesChangedRows({ affected_transactions: [], removed_transaction_ids: [] }), true);
+  assert.equal(responseCarriesChangedRows({ affected_transactions: [{ transaction_id: 't1' }], removed_transaction_ids: ['t2'] }), true);
+  assert.equal(responseCarriesChangedRows({ affected_transactions: [] }), false);
+  assert.equal(responseCarriesChangedRows({ removed_transaction_ids: [] }), false);
+  assert.equal(responseCarriesChangedRows({ affected_transactions: [{}], removed_transaction_ids: [] }), false);
+  assert.equal(responseCarriesChangedRows(null), false);
 });

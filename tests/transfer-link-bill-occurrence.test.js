@@ -18,6 +18,7 @@ function loadTransferFlow({ saveFails = false } = {}) {
     module: { exports: {} },
     console,
     BACKEND_URL: 'http://api.test',
+    transactions: [],
     selectedAccountMode: 'all',
     selectedAccountId: null,
     document: { getElementById: () => null },
@@ -31,9 +32,10 @@ function loadTransferFlow({ saveFails = false } = {}) {
         return {
           ok: true,
           json: async () => ({
-            transaction: { transaction_id: SAVED_ID, account_id: 'acct-1' },
+            transaction_id: SAVED_ID,
             affected_accounts: [{ account_id: 'acct-1', current_balance: '10.00' }],
-            purged_virtual_ids: [VIRTUAL_ID, `${VIRTUAL_ID}_cpt`],
+            affected_transactions: [{ transaction_id: SAVED_ID, account_id: 'acct-1' }],
+            removed_transaction_ids: [VIRTUAL_ID, `${VIRTUAL_ID}_cpt`],
           }),
         };
       }
@@ -45,12 +47,13 @@ function loadTransferFlow({ saveFails = false } = {}) {
     showStatus: (message, type) => calls.statuses.push({ message, type }),
     clearStatus: () => {},
     _buildAccountDisplayName: (account) => account.name,
-    _removeCachedTransaction: (id) => calls.removed.push(id),
-    _removePurgedVirtualTransactions: (data) => {
-      (data.purged_virtual_ids || []).forEach((id) => calls.removed.push(id));
+    fallbackAccountIdsForRow: () => ['acct-1'],
+    // The page's one changed-rows entry point, recording what it was given.
+    applyRowChangesFromResponse: async (data) => {
+      calls.accountPatches.push(data.affected_accounts);
+      (data.removed_transaction_ids || []).forEach((id) => calls.removed.push(id));
+      (data.affected_transactions || []).forEach((row) => calls.replaced.push(row.transaction_id));
     },
-    applyAffectedAccounts: async (data) => { calls.accountPatches.push(data.affected_accounts); },
-    _replaceCachedTransaction: (id) => calls.replaced.push(id),
     _invalidateTransactionCache: () => {},
     _patchBalanceHistoryCache: () => {},
     fetchBalanceHistory: async () => {},

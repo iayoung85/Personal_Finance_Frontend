@@ -443,15 +443,23 @@ async function handleSplitSubmit() {
     // Read now: closing the modal below forgets which row was being split.
     const splitAccountId = currentSplitTransaction.account_id;
 
-    // Whether every response so far carried the changed rows. Each one is
-    // applied as it arrives, so if the create then fails the list already
-    // holds the restored parent, and the catch below draws it.
-    let rowsPatched = true;
+    const splitFallbackAccountIds = splitAccountId ? [splitAccountId] : null;
+
+    // Whether the delete's response carried the changed rows. It is applied
+    // as it arrives, so if the create then fails the list already holds the
+    // restored parent, and the catch below draws it. One without them is
+    // left to a single account fetch after the create.
+    let deleteRowsApplied = true;
     if (isEditingSplit) {
       // Delete old splits using the parent's transaction_id, then create new ones
       const deleteData = await deleteSplitHelper(currentSplitTransaction.transaction_id);
-      await applyAffectedAccounts(deleteData);
-      rowsPatched = applyChangedTransactions(deleteData);
+      deleteRowsApplied = responseCarriesChangedRows(deleteData);
+      if (deleteRowsApplied) {
+        // The create's answer settles the ledger.
+        await applyRowChangesFromResponse(deleteData, splitFallbackAccountIds, { siteSettlesLedger: true });
+      } else {
+        await applyAffectedAccounts(deleteData);
+      }
     }
     
     // Create new splits
@@ -478,13 +486,12 @@ async function handleSplitSubmit() {
     closeSplitModal();
     showStatus(wasEditing ? 'Split updated successfully' : 'Split created successfully', 'success');
 
-    await applyAffectedAccounts(createData);
-    const createPatched = applyChangedTransactions(createData);
-    if (!rowsPatched || !createPatched) {
-      // Refresh transactions for the affected account
-      await refreshAccountTransactions(splitAccountId);
-    }
-    await refreshSelectedLedgerAfterAffected(createData);
+    // The delete's rows were never applied, so the account is fetched again
+    // whatever the create's answer carries.
+    const createChanges = deleteRowsApplied
+      ? createData
+      : { ...createData, affected_transactions: undefined };
+    await applyRowChangesFromResponse(createChanges, splitFallbackAccountIds);
     renderTransactionTable();
     
   } catch (error) {
@@ -519,11 +526,7 @@ async function handleDeleteSplit(splitTransactionId) {
     var splitAccountId = splitTxn ? splitTxn.account_id : null;
     const deleteData = await deleteSplitHelper(splitTransactionId);
     showStatus('Split deleted successfully', 'success');
-    await applyAffectedAccounts(deleteData);
-    if (!applyChangedTransactions(deleteData)) {
-      await refreshAccountTransactions(splitAccountId);
-    }
-    await refreshSelectedLedgerAfterAffected(deleteData);
+    await applyRowChangesFromResponse(deleteData, splitAccountId ? [splitAccountId] : null);
     renderTransactionTable();
   } catch (error) {
     showStatus(`Error: ${error.message}`, 'error');

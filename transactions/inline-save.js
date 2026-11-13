@@ -15,6 +15,11 @@
 // edits send only the newest. Answers therefore arrive in the order the
 // edits were sent, and the server cannot end up holding an older value
 // than the cell shows.
+//
+// The two fields of one row are saved independently, and each answer
+// carries the whole row. An answer built before the other field's save
+// reached the server holds that field's older value, so a field another
+// answer has already confirmed keeps the confirmed value.
 // ============================================================
 
 /**
@@ -27,6 +32,21 @@
  *   queuedValue   — the newest edit waiting to be sent, or undefined
  */
 const _inlineSaveRecords = new Map();
+
+/**
+ * The value an accepted answer confirmed for one field of a row, keyed like
+ * the save records and kept while either field of the row has a save in
+ * flight. Each holds:
+ *   values     — the field's values as the server saved them
+ *   answeredAt — the clock reading when the answer arrived
+ */
+const _settledInlineFields = new Map();
+
+/**
+ * Counts sends and answers, so an answer can tell whether the other field's
+ * confirmed value reached this client after its own request went out.
+ */
+let _inlineSaveClock = 0;
 
 // ───── Public API ──────────────────────────────────────────
 
@@ -93,7 +113,7 @@ function _inlineSaveRecordFor(field, transactionId, currentValues) {
   const key = `${field}:${transactionId}`;
   let record = _inlineSaveRecords.get(key);
   if (!record) {
-    record = { transactionId, field, serverValues: currentValues, queuedValue: undefined, running: false };
+    record = { transactionId, field, serverValues: currentValues, queuedValue: undefined, running: false, sentAt: 0 };
     _inlineSaveRecords.set(key, record);
   }
   return record;
@@ -116,6 +136,8 @@ async function _runInlineSaves(record, value) {
   while (record.queuedValue !== undefined) {
     const sentValue = record.queuedValue;
     record.queuedValue = undefined;
+    _inlineSaveClock += 1;
+    record.sentAt = _inlineSaveClock;
     const answer = await _sendInlineSave(record.field, record.transactionId, sentValue);
 
     if (answer.ok) {
@@ -131,6 +153,17 @@ async function _runInlineSaves(record, value) {
   if (lastAnswerRefused) {
     _putBackServerValues(record);
   }
+  _forgetSettledFieldsWhenIdle(record.transactionId);
+}
+
+/**
+ * Drop a row's confirmed values once neither field has a save in flight: a
+ * request sent later is built after both, so they can no longer be needed.
+ */
+function _forgetSettledFieldsWhenIdle(transactionId) {
+  const fields = ['category', 'memo'];
+  if (fields.some(field => _inlineSaveRecords.has(`${field}:${transactionId}`))) return;
+  fields.forEach(field => _settledInlineFields.delete(`${field}:${transactionId}`));
 }
 
 /**
@@ -179,7 +212,7 @@ async function _settleSavedAnswer(record, sentValue, data) {
     await _applySavedCategory(record, sentValue, data, isNewest);
   } else {
     record.serverValues = { ...record.serverValues, user_memo: sentValue };
-    _applySavedMemo(record, data);
+    await _applySavedMemo(record, data);
   }
 
   // The server marks a row reviewed on any accepted edit.
@@ -260,53 +293,18 @@ function _applyCategoryLocally(txn, transactionId, categoryString) {
  * @param {string} categoryString — the value this answer saved
  * @param {object} data — the categorize response
  * @param {boolean} isNewest — false while a newer edit is queued, which
- *   keeps the row's optimistic category and leaves the class to its answer
+ *   keeps the row's optimistic category
  */
 async function _applySavedCategory(record, categoryString, data, isNewest) {
-  const savedRow = data.transaction;
-  if (savedRow && savedRow.transaction_id && savedRow.transaction_id !== record.transactionId) {
-    _remapTransactionId(record.transactionId, savedRow.transaction_id);
-  }
-
-  const purgedVirtualIds = Array.isArray(data.purged_virtual_ids) ? data.purged_virtual_ids : [];
-  for (const virtualId of purgedVirtualIds) {
-    _removeCachedTransaction(virtualId);
-  }
-
-  if (data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
-    _replaceCachedTransaction(
-      data.affected_transfer_partner.transaction_id,
-      data.affected_transfer_partner,
-    );
-  }
+  await _applyInlineSaveResponse(record, data, !isNewest);
 
   const txn = _findTransactionOrSplitChild(record.transactionId);
-  if (savedRow && 'is_override' in savedRow) {
-    record.serverValues = { ...record.serverValues, is_override: savedRow.is_override };
+  if (txn && 'is_override' in txn) {
+    record.serverValues = { ...record.serverValues, is_override: txn.is_override };
   }
-
-  if (txn && savedRow && savedRow.source) {
-    txn.source = savedRow.source;
-  }
-
-  if (txn && isNewest) {
-    txn.user_category = (savedRow && savedRow.user_category) || data.user_category || categoryString;
-    if (savedRow && 'is_override' in savedRow) {
-      txn.is_override = savedRow.is_override;
-    }
-    if (savedRow && savedRow.analytics_class) {
-      txn.analytics_class = savedRow.analytics_class;
-    }
-    syncPendingHideButton(txn);
-  }
-
   if (txn) {
+    syncPendingHideButton(txn);
     _cacheRow(record.transactionId);
-  }
-
-  if (isNewest && !(savedRow && savedRow.analytics_class)) {
-    // The class may have changed with the category and only the server knows it.
-    await _refreshAccountsForStaleAnalyticsClass([txn ? txn.account_id : null]);
   }
 
   // Invalidate the categories page cache so its overrides summary refreshes.
@@ -317,63 +315,137 @@ async function _applySavedCategory(record, categoryString, data, isNewest) {
 }
 
 /**
- * Work out how a saved memo's answer replaces a virtual bill occurrence.
- * When the response carries the saved row, that row takes the occurrence's
- * place, because a bill with a splits template saves as a split parent with
- * pieces and the old virtual row cannot show that. Returns null when the
- * answer has no saved row or the occurrence is not in the list, which leaves
- * the caller to take only the new id and source.
+ * Carry a saved memo's server answer into memory and the cache. A virtual
+ * bill occurrence is saved as a new real row under a new id; a bill with a
+ * splits template saves as a split parent with pieces.
  *
- * @param {object[]} rows — the in-memory transaction list
- * @param {string} virtualId — the id the memo was saved under
+ * @param {object} record — the memo save record
  * @param {object} data — the add-memo response
- * @returns {{index: number, savedRow: object, purgeIds: string[]}|null}
  */
-function _planSavedMemoRow(rows, virtualId, data) {
-  const savedRow = data && data.transaction;
-  if (!savedRow || !savedRow.transaction_id) return null;
+async function _applySavedMemo(record, data) {
+  const savedRow = await _applyInlineSaveResponse(record, data, record.queuedValue !== undefined);
+  _cacheRow(record.transactionId);
 
-  const index = rows.findIndex(row => row.transaction_id === virtualId);
-  if (index === -1) return null;
-
-  const purgeIds = savedRow.transaction_id !== virtualId ? [virtualId] : [];
-  return { index, savedRow: { ...savedRow }, purgeIds };
+  // The pieces of a split parent cannot be drawn into the cell that was
+  // edited, so the table is drawn again.
+  const savedRowIsSplit = savedRow && (savedRow.is_split || (Array.isArray(savedRow.splits) && savedRow.splits.length > 0));
+  if (savedRowIsSplit) {
+    renderTransactionTable();
+  }
 }
 
 /**
- * Carry a saved memo's server answer into memory and the cache. A virtual
- * bill occurrence is saved as a new real row under a new id.
+ * Put a save's answer into the page through the one changed-rows entry
+ * point, keeping what the user has typed on the row since. The answer
+ * replaces the row, so a field with an edit still on its way (this field
+ * with a newer edit queued, or the other field with a request in flight)
+ * would show the older server value until its own answer; those fields are
+ * put back from what the row showed before. The other field's value that an
+ * answer confirmed after this request went out is kept the same way.
+ *
+ * A virtual bill occurrence saved as a real row first has its id, the
+ * elements tagged with it and the saves in flight pointed at the new id,
+ * from the response's `transaction_id`.
+ *
+ * @param {object} record — the save record being settled
+ * @param {object} data — the save response
+ * @param {boolean} keepOwnField — true while a newer edit of this record's
+ *   field is queued
+ * @returns {Promise<object|null>} The saved row, or null when the response
+ *   does not carry it.
  */
-function _applySavedMemo(record, data) {
-  if (data.transaction_id && data.transaction_id !== record.transactionId) {
-    const virtualId = record.transactionId;
-    const plan = _planSavedMemoRow(transactions, virtualId, data);
+async function _applyInlineSaveResponse(record, data, keepOwnField) {
+  const sentId = record.transactionId;
+  const rowBefore = _findTransactionOrSplitChild(sentId);
+  const keptEdits = _readEditsStillOnTheWay(record, keepOwnField, rowBefore);
 
-    if (plan) {
-      if (record.queuedValue !== undefined) {
-        // A newer memo is still queued; the row keeps showing it.
-        plan.savedRow.user_memo = record.queuedValue;
-      }
-      _remapTransactionId(virtualId, plan.savedRow.transaction_id);
-      transactions[plan.index] = plan.savedRow;
-      _replaceCachedTransaction(plan.savedRow.transaction_id, plan.savedRow);
-      for (const purgeId of plan.purgeIds) {
-        _removeCachedTransaction(purgeId);
-      }
-      _sortTransactionsInPlace();
-      _cacheTransactions(transactions);
-      renderTransactionTable();
-      return;
-    }
-
-    _remapTransactionId(virtualId, data.transaction_id);
-    _removeCachedTransaction(virtualId);
-    const txn = _findTransactionOrSplitChild(record.transactionId);
-    if (txn && data.source) {
-      txn.source = data.source;
-    }
+  if (data.transaction_id && data.transaction_id !== sentId) {
+    _remapTransactionId(sentId, data.transaction_id);
   }
-  _cacheRow(record.transactionId);
+  // Recorded before anything is awaited, so an answer for the other field
+  // that is applied meanwhile already sees this value.
+  _recordSettledField(record, data);
+
+  await applyRowChangesFromResponse(data, fallbackAccountIdsForRow(rowBefore));
+
+  _keepNewerSettledField(record, keptEdits);
+  _putBackEditsStillOnTheWay(record.transactionId, keptEdits);
+  return findSavedRowInResponse(data);
+}
+
+/**
+ * Remember the value this answer confirmed for its own field.
+ *
+ * @param {object} record — the save record being settled
+ * @param {object} data — the save response
+ */
+function _recordSettledField(record, data) {
+  const savedRow = findSavedRowInResponse(data);
+  let values;
+  if (record.field === 'category') {
+    values = { user_category: savedRow ? savedRow.user_category : record.serverValues.user_category };
+    if (savedRow && 'is_override' in savedRow) values.is_override = savedRow.is_override;
+  } else {
+    values = { user_memo: savedRow ? savedRow.user_memo : record.serverValues.user_memo };
+  }
+  _inlineSaveClock += 1;
+  _settledInlineFields.set(`${record.field}:${record.transactionId}`, { values, answeredAt: _inlineSaveClock });
+}
+
+/**
+ * Keep the other field's confirmed value when its answer arrived after this
+ * request went out: this answer's row may have been built before that save,
+ * and the server now holds the confirmed value. An edit of that field still
+ * on its way is newer again and takes precedence.
+ *
+ * @param {object} record — the save record being settled
+ * @param {{category?: object, memo?: object}} keptEdits — filled in place
+ */
+function _keepNewerSettledField(record, keptEdits) {
+  const otherField = record.field === 'category' ? 'memo' : 'category';
+  if (keptEdits[otherField]) return;
+  const settled = _settledInlineFields.get(`${otherField}:${record.transactionId}`);
+  if (settled && settled.answeredAt > record.sentAt) {
+    keptEdits[otherField] = settled.values;
+  }
+}
+
+/**
+ * What the row shows for each field that has an edit not yet answered.
+ *
+ * @returns {{category?: object, memo?: object}}
+ */
+function _readEditsStillOnTheWay(record, keepOwnField, row) {
+  const kept = {};
+  if (!row) return kept;
+  const sentId = record.transactionId;
+
+  const categoryOnTheWay = record.field === 'category'
+    ? keepOwnField
+    : _inlineSaveRecords.has(`category:${sentId}`);
+  const memoOnTheWay = record.field === 'memo'
+    ? keepOwnField
+    : _inlineSaveRecords.has(`memo:${sentId}`);
+
+  if (categoryOnTheWay) kept.category = { user_category: row.user_category, is_override: row.is_override };
+  if (memoOnTheWay) kept.memo = { user_memo: row.user_memo };
+  return kept;
+}
+
+/**
+ * Show the edits kept by _readEditsStillOnTheWay on the row the answer put
+ * in memory.
+ */
+function _putBackEditsStillOnTheWay(transactionId, kept) {
+  const row = _findTransactionOrSplitChild(transactionId);
+  if (!row) return;
+  if (kept.category) {
+    row.user_category = kept.category.user_category;
+    if ('is_override' in kept.category) row.is_override = kept.category.is_override;
+  }
+  if (kept.memo) {
+    row.user_memo = kept.memo.user_memo;
+  }
 }
 
 /**
@@ -429,6 +501,11 @@ function _remapTransactionId(oldId, newId) {
       _inlineSaveRecords.delete(`${field}:${oldId}`);
       record.transactionId = newId;
       _inlineSaveRecords.set(`${field}:${newId}`, record);
+    }
+    const settled = _settledInlineFields.get(`${field}:${oldId}`);
+    if (settled) {
+      _settledInlineFields.delete(`${field}:${oldId}`);
+      _settledInlineFields.set(`${field}:${newId}`, settled);
     }
   }
 }

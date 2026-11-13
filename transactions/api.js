@@ -1022,19 +1022,6 @@ function _removeCachedTransaction(txnId) {
 }
 
 /**
- * Remove every virtual bill row a save response says it replaced, from the
- * in-memory list and IndexedDB. A transfer bill has a counterpart row on the
- * other account that the request never named.
- * @param {Object|null|undefined} responseData Parsed JSON body of the save.
- */
-function _removePurgedVirtualTransactions(responseData) {
-  const purgedIds = responseData && Array.isArray(responseData.purged_virtual_ids)
-    ? responseData.purged_virtual_ids
-    : [];
-  purgedIds.forEach(function(virtualId) { _removeCachedTransaction(virtualId); });
-}
-
-/**
  * Replace a single transaction in both the in-memory array and IndexedDB
  * using a full transaction object (e.g. from a PUT response).
  */

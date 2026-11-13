@@ -3,20 +3,6 @@
 // Open the add-manual-transaction modal, save, and delete.
 // ============================================================
 
-/**
- * Patch the in-memory + IndexedDB cache with MOB changes returned by the
- * backend after a manual transaction create/update/delete.  The backend
- * includes ``affected_mob`` (updated/created MOB row) or ``removed_mob_id``
- * (MOB that was deleted) so the frontend stays in sync without a full refetch.
- */
-function _applyCachedMobUpdate(responseData) {
-  if (responseData.affected_mob && responseData.affected_mob.transaction_id) {
-    _replaceCachedTransaction(responseData.affected_mob.transaction_id, responseData.affected_mob);
-  } else if (responseData.removed_mob_id) {
-    _removeCachedTransaction(responseData.removed_mob_id);
-  }
-}
-
 function _normalizeManualTransactionEditValue(value) {
   if (value === null || value === undefined) return null;
   if (typeof value === 'string') {
@@ -427,7 +413,8 @@ async function _updateManualTransaction(transactionId, accountId) {
 
   // A bracket is applied by linking, not by saving it on the row. Resolve the
   // target first so an unknown account stops before anything is saved.
-  const currentTxn = transactions.find(findTxn => findTxn.transaction_id === transactionId) || {};
+  const cachedTxn = transactions.find(findTxn => findTxn.transaction_id === transactionId);
+  const currentTxn = cachedTxn || {};
   let transferTarget = null;
   if (category && isTransferCategory(category)
       && category.trim() !== String(currentTxn.user_category || '').trim()) {
@@ -477,39 +464,12 @@ async function _updateManualTransaction(transactionId, accountId) {
     closeModal();
     showStatus('Transaction updated successfully', 'success');
 
-    // Patch the edited transaction in-memory + IndexedDB immediately.
-    var updatedAccountId = selectedAccountId;
-    _removePurgedVirtualTransactions(data);
-    if (data.transaction && data.transaction.transaction_id) {
-      _replaceCachedTransaction(transactionId, data.transaction);
-      updatedAccountId = data.transaction.account_id || selectedAccountId;
-    }
-
-    // Patch any affected trending rows (investment accounts) returned by
-    // the backend instead of doing a full account refetch.
-    if (data.affected_trending_transactions && data.affected_trending_transactions.length > 0) {
-      for (var ati = 0; ati < data.affected_trending_transactions.length; ati++) {
-        var trendingTxn = data.affected_trending_transactions[ati];
-        _replaceCachedTransaction(trendingTxn.transaction_id, trendingTxn);
-      }
-    }
-
-    // Patch the transfer partner so the counterpart account's cached row
-    // reflects the propagated amount/date change without a full refetch.
-    if (data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
-      _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
-    }
-
-    // Patch the MOB row that the backend may have updated/removed
-    // during balance reconciliation so the cached row isn't stale.
-    _applyCachedMobUpdate(data);
-
-    _sortTransactionsInPlace();
-    _cacheTransactions(transactions);
-
-    // Accounts first: the ledger cache is signed with the account's
-    // last_updated, and rendering needs the new balance for projections.
-    await applyAffectedAccounts(data);
+    // Accounts first inside the helper: the ledger cache is signed with the
+    // account's last_updated, and rendering needs the new balance.
+    // A linked transfer half's partner sits in another account and changes
+    // with it, so the fallback reaches past this row's account.
+    const savedRow = await applyRowChangesFromResponse(data, fallbackAccountIdsForRow(cachedTxn), { siteSettlesLedger: true });
+    const updatedAccountId = (savedRow && savedRow.account_id) || accountId || selectedAccountId;
 
     if (selectedAccountMode === 'single' && selectedAccountId) {
       if (data.affected_balance_history) {
@@ -523,7 +483,7 @@ async function _updateManualTransaction(transactionId, accountId) {
 
     if (transferTarget) {
       // Saving a bill occurrence gives it a new ID; link that row.
-      const savedTransactionId = (data.transaction && data.transaction.transaction_id) || transactionId;
+      const savedTransactionId = data.transaction_id || transactionId;
       await _applyTransferAssignment(savedTransactionId, accountId, transferTarget);
     }
 
@@ -647,9 +607,13 @@ async function _submitPendingManualTransaction() {
   sessionStorage.removeItem('pf_pending_txn_new_categories');
   sessionStorage.removeItem('pf_return_url');
 
+  // Read before the save, which may replace the row.
+  const pendingEditedRow = pending.mode === 'edit'
+    ? transactions.find(txn => txn.transaction_id === pending.transactionId)
+    : undefined;
   const payload = pending.mode === 'edit'
     ? _buildManualTransactionEditPayload(
-        transactions.find(txn => txn.transaction_id === pending.transactionId) || {},
+        pendingEditedRow || {},
         {
           amountRaw: pending.amount,
           type: pending.type,
@@ -675,7 +639,7 @@ async function _submitPendingManualTransaction() {
   }
 
   try {
-    // The save response, whichever branch ran, for its affected_accounts.
+    // The save response, whichever branch ran.
     let savedData = null;
     if (pending.mode === 'edit') {
       const response = await authenticatedFetch(
@@ -693,17 +657,6 @@ async function _submitPendingManualTransaction() {
       }
       savedData = data;
       showStatus(`Transaction updated with category: ${pending.category}`, 'success');
-
-      // Patch the updated transaction + any affected trending rows locally
-      if (data.transaction && data.transaction.transaction_id) {
-        _replaceCachedTransaction(pending.transactionId, data.transaction);
-      }
-      if (data.affected_trending_transactions && data.affected_trending_transactions.length > 0) {
-        for (var ati = 0; ati < data.affected_trending_transactions.length; ati++) {
-          _replaceCachedTransaction(data.affected_trending_transactions[ati].transaction_id, data.affected_trending_transactions[ati]);
-        }
-      }
-
     } else {
       // Create mode — POST with account_id
       payload.account_id = pending.accountId;
@@ -718,38 +671,26 @@ async function _submitPendingManualTransaction() {
         return;
       }
       savedData = data;
+    }
 
-      const appliedCategory = data.transaction?.user_category;
+    // An edited transfer half's partner sits in another account; a new row
+    // has none yet.
+    let pendingFallbackAccountIds = pending.accountId ? [pending.accountId] : null;
+    if (pending.mode === 'edit') {
+      pendingFallbackAccountIds = fallbackAccountIdsForRow(pendingEditedRow);
+    }
+    const savedRow = await applyRowChangesFromResponse(savedData, pendingFallbackAccountIds, { siteSettlesLedger: true });
+
+    if (pending.mode !== 'edit') {
+      const appliedCategory = savedRow ? savedRow.user_category : null;
       const successMsg = appliedCategory
         ? `Manual transaction created (category: ${appliedCategory})`
         : 'Manual transaction created successfully';
       showStatus(successMsg, 'success');
-
-      // Add to in-memory array for immediate UI update
-      const newTxn = data.transaction || {};
-      newTxn.transaction_id = data.transaction_id || newTxn.transaction_id;
-      newTxn.account_id = pending.accountId;
-      newTxn.iso_currency_code = 'USD';
-      newTxn.source = 'manual';
-      transactions.unshift(newTxn);
-
-      // Patch any affected trending rows (investment accounts)
-      if (data.affected_trending_transactions && data.affected_trending_transactions.length > 0) {
-        for (var ati2 = 0; ati2 < data.affected_trending_transactions.length; ati2++) {
-          _replaceCachedTransaction(data.affected_trending_transactions[ati2].transaction_id, data.affected_trending_transactions[ati2]);
-        }
-      }
-
-      _expandDateFiltersForTransaction(newTxn.date);
+      // Why: the new row, historical or not, must not fall outside the
+      // active date window.
+      _expandDateFiltersForTransaction((savedRow && savedRow.date) || pending.date);
     }
-
-    // Sort and persist — trending rows may have shifted positions
-    _sortTransactionsInPlace();
-    _cacheTransactions(transactions);
-
-    // Accounts first: the ledger cache is signed with the account's
-    // last_updated, and rendering needs the new balance for projections.
-    await applyAffectedAccounts(savedData);
 
     if (selectedAccountMode === 'single' && selectedAccountId) {
       await fetchBalanceHistory(selectedAccountId);
@@ -896,56 +837,30 @@ async function saveManualTransaction() {
     }
 
     closeModal();
-    
+
+    // Read before the rows change: whether the new row lands before every
+    // other row of the account decides how far the date window widens.
+    const isOldestTransactionForAccount = _isOldestTransactionForAccount(accountId, date);
+
+    // Accounts first inside the helper: the ledger cache is signed with the
+    // account's last_updated, and the render needs the new balance for
+    // projections. This also has to precede the transfer assignment below,
+    // whose own response does not list the account the new row was created on.
+    const newTxn = await applyRowChangesFromResponse(data, [accountId], { siteSettlesLedger: true });
+
     // Show success message with category info if available
-    const appliedCategory = data.transaction?.user_category;
-    const successMsg = appliedCategory 
+    const appliedCategory = newTxn ? newTxn.user_category : null;
+    const successMsg = appliedCategory
       ? `Manual transaction created successfully (category: ${appliedCategory})`
       : 'Manual transaction created successfully';
     showStatus(successMsg, 'success');
-    
-    // Add the new transaction to the in-memory array and localStorage immediately for instant UI update
-    const newTxn = data.transaction || {};
-    
-    // Ensure transaction has required fields for rendering
-    newTxn.transaction_id = data.transaction_id || newTxn.transaction_id;
-    newTxn.account_id = accountId;
-    newTxn.iso_currency_code = 'USD';
-    newTxn.source = 'manual';
-    
-    const isOldestTransactionForAccount = _isOldestTransactionForAccount(accountId, newTxn.date);
 
-    // Add to in-memory transactions array
-    transactions.unshift(newTxn);
-
-    // Patch any affected trending rows (investment accounts) returned by
-    // the backend instead of doing a full account refetch.
-    if (data.affected_trending_transactions && data.affected_trending_transactions.length > 0) {
-      for (var ati = 0; ati < data.affected_trending_transactions.length; ati++) {
-        _replaceCachedTransaction(data.affected_trending_transactions[ati].transaction_id, data.affected_trending_transactions[ati]);
-      }
-    }
-
-    // Patch the MOB row that the backend may have created/updated/removed
-    // during balance reconciliation so the cached row isn't stale.
-    _applyCachedMobUpdate(data);
-
-    // Sort and persist — new txn + trending rows may need reordering
-    _sortTransactionsInPlace();
-    _cacheTransactions(transactions);
-    
     // Why: expand date filters so the newly created transaction (including
     // historical ones and opening-balance entries) is immediately visible
     // instead of silently falling outside the active date window.
-    _expandDateFiltersForTransaction(newTxn.date, {
+    _expandDateFiltersForTransaction((newTxn && newTxn.date) || date, {
       includePreviousDay: isOldestTransactionForAccount,
     });
-    
-    // Accounts first: the ledger cache is signed with the account's
-    // last_updated, and the render needs the new balance for projections.
-    // This also has to precede the transfer assignment below, whose own
-    // response does not list the account the new row was created on.
-    await applyAffectedAccounts(data);
 
     // The ledger column for this account is settled here, before any transfer
     // assignment: linking changes no ledger row, so nothing after this point
@@ -969,7 +884,7 @@ async function saveManualTransaction() {
     // If the category is bracket-notation transfer (e.g. "[Checking]"),
     // trigger the transfer assignment flow to link/create a counterpart.
     // This runs after the modal is closed so status messages are visible.
-    const newTxnId = data.transaction_id || newTxn.transaction_id;
+    const newTxnId = data.transaction_id;
     if (transferTarget && newTxnId) {
       await _applyTransferAssignment(newTxnId, accountId, transferTarget);
     }
@@ -998,43 +913,10 @@ async function deleteManualTransaction(manualTransactionId) {
 
     showStatus('Manual transaction deleted successfully', 'success');
     var deletedTxn = transactions.find(function(findTxn) { return findTxn.transaction_id === manualTransactionId; });
-    _removeCachedTransaction(manualTransactionId);
 
-    // A manual-to-manual transfer cascade-deletes its partner on the server.
-    // Evict those partner rows from the cache so the ledger matches reality
-    // without requiring a full page reload.
-    if (data && Array.isArray(data.cascade_deleted_ids)) {
-      for (var cdi = 0; cdi < data.cascade_deleted_ids.length; cdi++) {
-        _removeCachedTransaction(data.cascade_deleted_ids[cdi]);
-        delete balanceHistoryLookup[data.cascade_deleted_ids[cdi]];
-      }
-    }
-
-    // Patch any affected trending rows (investment accounts) returned by
-    // the backend instead of doing a full account refetch.
-    if (data && data.affected_trending_transactions && data.affected_trending_transactions.length > 0) {
-      for (var ati = 0; ati < data.affected_trending_transactions.length; ati++) {
-        _replaceCachedTransaction(data.affected_trending_transactions[ati].transaction_id, data.affected_trending_transactions[ati]);
-      }
-    }
-
-    // Patch the MOB row that the backend may have updated/removed
-    // after deleting a pre-OB manual transaction.
-    if (data) {
-      _applyCachedMobUpdate(data);
-    }
-
-    // Accounts first: the ledger cache is signed with the account's
-    // last_updated, and rendering needs the new balance for projections.
-    await applyAffectedAccounts(data);
-
-    // The partner a delete unlinks changes its label with no other key to
-    // say so; the changed rows carry it. The keys above stay for an API that
-    // sends only those.
-    applyChangedTransactions(data);
-
-    _sortTransactionsInPlace();
-    _cacheTransactions(transactions);
+    // The response names the deleted row, a cascade-deleted partner, the
+    // opening-balance row it rebuilt and an unlinked partner.
+    await applyRowChangesFromResponse(data, fallbackAccountIdsForRow(deletedTxn), { siteSettlesLedger: true });
 
     if (selectedAccountMode === 'single' && selectedAccountId) {
       var deletedAccountId = (deletedTxn && deletedTxn.account_id) || selectedAccountId;
@@ -1373,20 +1255,43 @@ function _expandDateFiltersForTransaction(txnDate, options = {}) {
 // ============================================================================
 
 /**
- * Put a changed-rows response (unmatch, reset to Plaid) into the page:
+ * The accounts to fetch again when a save's response names no rows: the saved
+ * row's own account, or null (every account) when the row is half of a
+ * transfer, whose partner sits in another account, or is not in the cache.
+ *
+ * @param {Object|null|undefined} cachedRow The row as the page held it before the save.
+ * @returns {Array<string>|null}
+ */
+function fallbackAccountIdsForRow(cachedRow) {
+  if (!cachedRow || !cachedRow.account_id) return null;
+  if (isTransferCategory(cachedRow.user_category || '')) return null;
+  return [cachedRow.account_id];
+}
+
+/**
+ * Put a changed-rows response into the page, the one place every save that
+ * returns `affected_transactions` and `removed_transaction_ids` goes through:
  * balances first, then the rows it names, then the open ledger. The response
- * names every row the request rewrote, a transfer partner in another account
- * and the bank row of a match included. An older API leaves them out, and
- * then the accounts that could have changed are fetched again.
+ * names every row the request rewrote, a transfer partner in another account,
+ * renumbered bill occurrences and a rebuilt opening-balance row included. A
+ * response without the two fields (an older API, or one that could not follow
+ * the writes) leaves the page with the accounts that could have changed
+ * fetched again.
  *
  * @param {Object|null} data - The parsed success response.
  * @param {Array<string>|null} refetchAccountIds - Accounts to fetch again when
  *   the response names no rows; null or empty fetches every account.
+ * @param {{siteSettlesLedger?: boolean}} [options] With `siteSettlesLedger`,
+ *   the caller patches or fetches the ledger column itself, so the helper does
+ *   not fetch it a second time.
+ * @returns {Promise<Object|null>} The saved row (the affected row whose id is
+ *   the response's `transaction_id`), or null when the response does not carry
+ *   it, so a caller can focus it or learn the id a virtual occurrence got.
  */
-async function applyRowChangesFromResponse(data, refetchAccountIds) {
+async function applyRowChangesFromResponse(data, refetchAccountIds, options) {
   await applyAffectedAccounts(data);
   if (!applyChangedTransactions(data)) {
-    if (refetchAccountIds === null || refetchAccountIds.length === 0) {
+    if (refetchAccountIds === null || refetchAccountIds === undefined || refetchAccountIds.length === 0) {
       await refreshAccountTransactions(null);
     } else {
       for (const accountId of refetchAccountIds) {
@@ -1394,7 +1299,13 @@ async function applyRowChangesFromResponse(data, refetchAccountIds) {
       }
     }
   }
-  await refreshSelectedLedgerAfterAffected(data);
+  if (data && Array.isArray(data.removed_transaction_ids)) {
+    data.removed_transaction_ids.forEach((removedId) => { delete balanceHistoryLookup[removedId]; });
+  }
+  if (!(options && options.siteSettlesLedger)) {
+    await refreshSelectedLedgerAfterAffected(data);
+  }
+  return findSavedRowInResponse(data);
 }
 
 /**
@@ -1464,27 +1375,10 @@ async function resolveMissingTransaction(transactionId) {
 
     showStatus('Missing transaction resolved', 'success');
 
-    // Patch the transfer partner's cached data so the unlinked state
-    // renders immediately without waiting for a full account refetch.
-    if (data && data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
-      _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
-    }
-
-    // A manual partner in another account is deleted with the missing row.
-    if (data && Array.isArray(data.cascade_deleted_ids)) {
-      for (const cascadeDeletedId of data.cascade_deleted_ids) {
-        _removeCachedTransaction(cascadeDeletedId);
-        delete balanceHistoryLookup[cascadeDeletedId];
-      }
-    }
-
-    _removeCachedTransaction(transactionId);
-    _sortTransactionsInPlace();
-    _cacheTransactions(transactions);
-
-    // Accounts first: the ledger cache is signed with the account's
-    // last_updated, and rendering needs the new balance for projections.
-    await applyAffectedAccounts(data);
+    // A manual partner in another account is deleted with the missing row,
+    // and a bank partner is unlinked; the response carries both.
+    const missingTxn = transactions.find((txn) => txn.transaction_id === transactionId);
+    await applyRowChangesFromResponse(data, fallbackAccountIdsForRow(missingTxn), { siteSettlesLedger: true });
 
     if (selectedAccountMode === 'single' && selectedAccountId) {
       if (data && data.affected_balance_history) {

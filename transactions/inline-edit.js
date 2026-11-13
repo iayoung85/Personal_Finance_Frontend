@@ -513,56 +513,32 @@ async function _saveRowInlineEdits() {
     showStatus('Transaction updated', 'success');
     _dismissActiveEditor({ clearRowSession: true });
 
-    // Patch the edited transaction immediately for instant feedback.
-    var editedAccountId = null;
-    if (data.transaction && data.transaction.transaction_id) {
-      _replaceCachedTransaction(editSession.txn_id, data.transaction);
-      editedAccountId = data.transaction.account_id;
-    }
-
-    // Patch the transfer partner so the counterpart account's cached row
-    // reflects the propagated amount/date change without a full refetch.
-    if (data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
-      _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
-    }
-
-    // Description-only edits don't affect trending, balances, or other rows —
-    // the _replaceCachedTransaction above is sufficient. Skip the expensive
-    // account refetch + balance history round-trips.
+    // Description-only edits change no balance, so the ledger column is not
+    // fetched for them; any other edit settles the ledger below. The response
+    // carries the edited row, its transfer partner, the opening-balance row,
+    // and every trending row or split sibling the edit rewrote. Without the
+    // fields the account is fetched again.
     const changedOnlyDescription = payloadKeys.length === 1 && payloadKeys[0] === 'description';
-    if (changedOnlyDescription) {
-      renderTransactionTable();
-    } else {
-      const editedAccount = accounts.find(account => account.account_id === editedAccountId);
-      const hasSplitChildren = transactions.some(row => row.parent_transaction_id === editSession.txn_id);
-      const needsAccountRefetch = !data.transaction || editNeedsAccountRefetch(
-        editSession.txn_type,
-        editedAccount ? editedAccount.account_category : null,
-        hasSplitChildren,
-      );
-      if (needsAccountRefetch) {
-        await refreshAccountTransactions(editedAccountId || selectedAccountId);
-      } else {
-        // The response already holds every row this edit changed; a date
-        // change only moves the row, so re-sort and persist the cache.
-        _applyCachedMobUpdate(data);
-        _sortTransactionsInPlace();
-        _cacheTransactions(transactions);
-      }
-      // Accounts first: the ledger cache is signed with the account's
-      // last_updated, and rendering needs the new balance for projections.
-      await applyAffectedAccounts(data);
+    const editedCachedRow = transactions.find(row => row.transaction_id === editSession.txn_id);
+    const savedRow = await applyRowChangesFromResponse(
+      data,
+      fallbackAccountIdsForRow(editedCachedRow),
+      { siteSettlesLedger: !changedOnlyDescription },
+    );
 
+    if (!changedOnlyDescription) {
+      const editedAccountId = (savedRow && savedRow.account_id)
+        || (editedCachedRow && editedCachedRow.account_id)
+        || selectedAccountId;
       if (selectedAccountMode === 'single' && selectedAccountId) {
         if (data.affected_balance_history) {
-          _patchBalanceHistoryCache(editedAccountId || selectedAccountId, data.affected_balance_history);
+          _patchBalanceHistoryCache(editedAccountId, data.affected_balance_history);
         } else {
           await fetchBalanceHistory(selectedAccountId);
         }
       }
-
-      renderTransactionTable();
     }
+    renderTransactionTable();
   } catch (saveError) {
     showStatus(`Inline update failed: ${saveError.message}`, 'error');
   }
@@ -781,33 +757,14 @@ async function _savePlaidDescriptionEdit(txnId, newDescription) {
       throw new Error(data.error || 'Failed to update description');
     }
 
-    const txn = transactions.find(find_txn => find_txn.transaction_id === txnId);
-    let reviewedTheTransaction = false;
-    if (txn) {
-      if (isClearing) {
-        txn.user_description_override = null;
-      } else {
-        txn.user_description_override = newDescription;
-        txn.description = newDescription;
-        if (!txn.reviewed) {
-          txn.reviewed = true;
-          reviewedTheTransaction = true;
-        }
-      }
-      syncPendingHideButton(txn);
-    }
-
-    // Persist the in-memory patch to IndexedDB (no full refetch needed —
-    // description edits don't affect other rows or balance history).
-    if (window.txnDB && txn) {
-      window.txnDB.putOne(txn).catch(function() {});
-      window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
-    }
+    // The returned row carries the override, the description it now shows,
+    // and the reviewed flag the API sets with it.
+    const describedRow = transactions.find(find_txn => find_txn.transaction_id === txnId);
+    await applyRowChangesFromResponse(data, fallbackAccountIdsForRow(describedRow));
+    const savedRow = transactions.find(find_txn => find_txn.transaction_id === txnId);
+    if (savedRow) syncPendingHideButton(savedRow);
 
     showStatus(isClearing ? 'Description override cleared' : 'Description updated', 'success');
-    if (reviewedTheTransaction) {
-      renderAccountsSidebar();
-    }
     renderTransactionTable();
   } catch (saveError) {
     showStatus(`Description update failed: ${saveError.message}`, 'error');
@@ -889,24 +846,10 @@ async function _saveSplitDescriptionEdit(splitTxnId, parentTxnId, newDescription
       throw new Error(data.error || 'Failed to update description');
     }
 
-    // Patch the split child in the parent's splits array using the
-    // server-resolved values (which may differ from the input when the
-    // backend resets a blank description to the parent's name).
-    const resolvedDescription = data.description || newDescription;
-    const resolvedMerchant = data.merchant_name || resolvedDescription;
-    const parentTxn = transactions.find(findTxn => findTxn.transaction_id === parentTxnId);
-    if (parentTxn && parentTxn.splits) {
-      const splitChild = parentTxn.splits.find(s => s.transaction_id === splitTxnId);
-      if (splitChild) {
-        splitChild.description = resolvedDescription;
-        splitChild.merchant_name = resolvedMerchant;
-      }
-    }
-
-    if (window.txnDB && parentTxn) {
-      window.txnDB.putOne(parentTxn).catch(function() {});
-      window.txnDB.setMeta('cached_at', Date.now()).catch(function() {});
-    }
+    // The response replaces the parent row, whose pieces carry the
+    // server-resolved description (a blank one falls back to the parent's).
+    const describedParent = transactions.find(findTxn => findTxn.transaction_id === parentTxnId);
+    await applyRowChangesFromResponse(data, fallbackAccountIdsForRow(describedParent));
 
     showStatus('Description updated', 'success');
     _dismissActiveEditor({ clearRowSession: true });
@@ -931,23 +874,4 @@ function _dismissActiveEditor({ clearRowSession = true } = {}) {
   if (clearRowSession) {
     _activeRowEditSession = null;
   }
-}
-
-
-/**
- * Whether an inline date or amount save still needs the account refetch.
- * The save response carries the edited row, its transfer partner, the
- * opening-balance row, and the rewritten ledger rows, which is everything a
- * banking row's edit changes. An investment account's trending rows and a
- * split's siblings are rewritten server-side without being returned, so
- * those still refetch.
- * @param {string} txnType The edited row's TXN_TYPE name.
- * @param {string|null} accountCategory The edited account's category.
- * @param {boolean} hasSplitChildren Whether cached rows name this row as parent.
- * @returns {boolean}
- */
-function editNeedsAccountRefetch(txnType, accountCategory, hasSplitChildren) {
-  if (accountCategory === 'investment') return true;
-  if (txnType === TXN_TYPE.SPLIT_CHILD) return true;
-  return Boolean(hasSplitChildren);
 }

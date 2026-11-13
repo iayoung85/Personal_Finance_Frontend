@@ -328,8 +328,8 @@ async function _bulkActionOrphaned(action) {
   try {
     const payload = { delete_orphaned: selectedIds };
 
+    // Balances are applied with the rows in _refreshAfterBatchResolve.
     const batchResult = await resolveReconciliationBatch(payload);
-    await applyAffectedAccounts(batchResult);
     const skippedReasons = skippedOrphanReasons(batchResult);
     const deletedIds = selectedIds.filter(txnId => !skippedReasons.has(txnId));
     if (skippedReasons.size > 0) {
@@ -367,9 +367,9 @@ async function _singleOrphanedAction(transactionId, action) {
     const payload = { delete_orphaned: [transactionId] };
 
     const batchResult = await resolveReconciliationBatch(payload);
-    await applyAffectedAccounts(batchResult);
     const skippedReason = skippedOrphanReasons(batchResult).get(transactionId);
     if (skippedReason) {
+      await applyAffectedAccounts(batchResult);
       showStatus(`Not deleted: ${skippedReason}`, 'error');
       return;
     }
@@ -584,18 +584,15 @@ async function _refreshAfterReconciliation(responseData) {
 }
 
 /**
- * Bring the page up to date after a batch delete: apply the response's
- * changed rows, or download the whole list when it has none.
+ * Bring the page up to date after a batch delete: balances, the response's
+ * changed rows, or the whole list downloaded again when it has none, then
+ * the open ledger.
  *
  * @param {Object} batchResult Parsed JSON body of the batch resolve.
  * @returns {Promise<void>}
  */
 async function _refreshAfterBatchResolve(batchResult) {
-  if (!applyChangedTransactions(batchResult)) {
-    await _refreshAfterReconciliation(batchResult);
-    return;
-  }
-  await refreshSelectedLedgerAfterAffected(batchResult);
+  await applyRowChangesFromResponse(batchResult, null);
   renderTransactionTable();
   await checkAndRenderReconciliationBanner();
 }
@@ -713,44 +710,49 @@ function openInlineMatchPicker(missingTxnId) {
   }
 }
 
-function _applyReconciliationMutationToCache(result, removedTxnId) {
-  if (removedTxnId) {
-    _removeCachedTransaction(removedTxnId);
-  }
+/**
+ * The accounts to fetch again when an approve's response names no rows:
+ * those of the matched row being approved and of the bank row it merges
+ * into, or every account when either is a transfer half (its partner sits
+ * in another account) or neither is cached. Read before the request, which
+ * deletes the matched row.
+ *
+ * @param {string} matchedTxnId The matched manual or bill row's id.
+ * @param {string|null} [shownAccountId] The account of the row the approve
+ *   was started from, used when neither row is cached.
+ * @returns {Array<string>|null}
+ */
+function approveFallbackAccountIds(matchedTxnId, shownAccountId) {
+  const matchedRow = transactions.find(txn => txn.transaction_id === matchedTxnId);
+  const bankRow = transactions.find(txn => (
+    (txn.match_info && txn.match_info.matched_txn_id === matchedTxnId)
+    || (matchedRow && matchedRow.matched_transaction_id && txn.transaction_id === matchedRow.matched_transaction_id)
+  ));
+  const sides = [matchedRow, bankRow].filter(Boolean);
+  if (sides.length === 0) return shownAccountId ? [shownAccountId] : null;
 
-  if (result && result.transaction && result.transaction.transaction_id) {
-    _replaceCachedTransaction(result.transaction.transaction_id, result.transaction);
+  const accountIds = new Set();
+  for (const side of sides) {
+    const sideAccountIds = fallbackAccountIdsForRow(side);
+    if (sideAccountIds === null) return null;
+    sideAccountIds.forEach(accountId => accountIds.add(accountId));
   }
-
-  const partnerTransaction = result?.transfer_partner_transaction || result?.affected_transfer_partner;
-  if (partnerTransaction && partnerTransaction.transaction_id) {
-    _replaceCachedTransaction(partnerTransaction.transaction_id, partnerTransaction);
-  }
-
-  renderTransactionTable();
-  if (typeof renderAccountsSidebar === 'function') {
-    renderAccountsSidebar();
-  }
+  return Array.from(accountIds);
 }
 
 /**
- * Bring the page up to date after an approve. The response's changed rows are
- * applied when it has them; otherwise the single-row answer is cached and
- * `refetch` (if any) downloads what that answer cannot be trusted to carry.
+ * Bring the page up to date after an approve: balances, the response's
+ * changed rows (the manual row it deletes, the bank row that keeps its
+ * data, a split's pieces, a transfer partner), the open ledger. Without the
+ * fields the named accounts are fetched again.
  *
  * @param {Object} result Parsed JSON body of the approve.
- * @param {string} removedTxnId The manual row the approval deletes.
- * @param {(function(): Promise<void>)|null} refetch Whole-account fallback.
+ * @param {Array<string>|null} refetchAccountIds From
+ *   approveFallbackAccountIds, read before the request.
  * @returns {Promise<void>}
  */
-async function _applyApprovedMatch(result, removedTxnId, refetch) {
-  if (applyChangedTransactions(result)) {
-    await refreshSelectedLedgerAfterAffected(result);
-  } else {
-    _applyReconciliationMutationToCache(result, removedTxnId);
-    if (refetch) await refetch();
-    await refreshSelectedLedgerAfterAffected(result);
-  }
+async function _applyApprovedMatch(result, refetchAccountIds) {
+  await applyRowChangesFromResponse(result, refetchAccountIds);
   renderTransactionTable();
   if (typeof renderAccountsSidebar === 'function') {
     renderAccountsSidebar();
@@ -758,18 +760,9 @@ async function _applyApprovedMatch(result, removedTxnId, refetch) {
 }
 
 async function approveMatchedTransactionAndRefresh(transactionId, accountId) {
+  const refetchAccountIds = approveFallbackAccountIds(transactionId, accountId);
   const result = await approveMatch(transactionId);
-  // Before the row patch: its table render projects from the balance.
-  await applyAffectedAccounts(result);
-  await _applyApprovedMatch(result, transactionId, accountId
-    ? async function() {
-      try {
-        await refreshAccountTransactions(accountId);
-      } catch (refreshError) {
-        console.warn('Failed to refresh account after approve-match', accountId, refreshError);
-      }
-    }
-    : null);
+  await _applyApprovedMatch(result, refetchAccountIds);
 
   showStatus('Match approved — manual transaction removed', 'success');
 }
@@ -779,9 +772,15 @@ async function _selectMatchCandidate(missingTxnId, targetTxnId) {
 
   try {
     const result = await manualReconciliationMatch(missingTxnId, targetTxnId);
-    // Before the cache patch: its table render projects from the balance.
-    await applyAffectedAccounts(result);
-    _applyReconciliationMutationToCache(result, missingTxnId);
+    // The response drops the missing row and carries the matched bank row
+    // and any transfer partner. The ledger is fetched below, so the helper
+    // does not fetch it too.
+    const missingRow = transactions.find(row => row.transaction_id === missingTxnId);
+    await applyRowChangesFromResponse(result, fallbackAccountIdsForRow(missingRow), { siteSettlesLedger: true });
+    renderTransactionTable();
+    if (typeof renderAccountsSidebar === 'function') {
+      renderAccountsSidebar();
+    }
 
     if (result.splits_need_repair) {
       showStatus(

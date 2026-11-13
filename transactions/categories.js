@@ -793,15 +793,10 @@ async function _updateManualTransactionCategory(txnId, categoryString) {
       showStatus(data.error || 'Failed to update category', 'error');
       return;
     }
-    const txn = transactions.find(t => t.transaction_id === txnId);
-    if (txn) {
-      txn.user_category = data.transaction?.user_category || categoryString;
-      if (data.transaction?.analytics_class) {
-        txn.analytics_class = data.transaction.analytics_class;
-      }
-      // is_override intentionally NOT set — manual txns don't use overrides
-      _cacheTransactions(transactions);
-    }
+    // The returned row carries the category and the analytics class only the
+    // server can compute. A manual row has no override, so none is set.
+    const savedTxn = transactions.find(t => t.transaction_id === txnId);
+    await applyRowChangesFromResponse(data, fallbackAccountIdsForRow(savedTxn));
     renderTransactionTable();
     showStatus(`Category updated: ${categoryString}`, 'success');
     setTimeout(() => clearStatus(), 2000);
@@ -849,7 +844,9 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
 
     showStatus(`Override applied: ${categoryString}. Recategorizing transactions...`, 'success');
 
-    _patchCategorizationCache(txnId, data, categoryString, true);
+    // The response carries the saved row (a virtual occurrence's real row
+    // included), the transfer partner it touched, and the analytics class.
+    await applyRowChangesFromResponse(data, fallbackAccountIdsForRow(txn));
 
     if (isUnreviewedTransaction) {
       // re-render accounts sidebar to update unreviewed count
@@ -870,86 +867,6 @@ async function applyOverride(txnId, accountId, selectedPrimary, selectedDetailed
   } catch (error) {
     showStatus(`Failed to apply override: ${error.message}`, 'error');
   }
-}
-
-/**
- * True when an id names a split piece held inside a parent row, not a row of
- * its own in the cached list.
- *
- * @param {string} transactionId
- * @returns {boolean}
- */
-function _isNestedSplitPieceId(transactionId) {
-  if (transactions.some(row => row.transaction_id === transactionId)) return false;
-  return transactions.some(row => (
-    Array.isArray(row.splits) && row.splits.some(piece => piece.transaction_id === transactionId)
-  ));
-}
-
-function _patchCategorizationCache(requestedTxnId, responseData, fallbackCategory, fallbackIsOverride) {
-  const purgedVirtualIds = Array.isArray(responseData.purged_virtual_ids)
-    ? responseData.purged_virtual_ids
-    : [];
-
-  purgedVirtualIds.forEach(virtualId => _removeCachedTransaction(virtualId));
-
-  // A split piece lives inside its parent's `splits`. The server's answer for
-  // it describes the piece alone, so caching it as a row would add a stray
-  // top-level row and leave the parent's piece unchanged; patch the piece
-  // in place instead.
-  const resolvedTxn = _isNestedSplitPieceId(requestedTxnId) ? null : responseData.transaction;
-  if (resolvedTxn && resolvedTxn.transaction_id) {
-    if (
-      requestedTxnId !== resolvedTxn.transaction_id
-      && !purgedVirtualIds.includes(requestedTxnId)
-    ) {
-      _removeCachedTransaction(requestedTxnId);
-    }
-
-    _replaceCachedTransaction(resolvedTxn.transaction_id, resolvedTxn);
-
-    if (
-      responseData.affected_transfer_partner
-      && responseData.affected_transfer_partner.transaction_id
-    ) {
-      _replaceCachedTransaction(
-        responseData.affected_transfer_partner.transaction_id,
-        responseData.affected_transfer_partner,
-      );
-    }
-
-    _sortTransactionsInPlace();
-    return;
-  }
-
-  let txn = transactions.find(t => t.transaction_id === requestedTxnId);
-  if (!txn) {
-    for (const parentTxn of transactions) {
-      if (parentTxn.splits) {
-        const splitChild = parentTxn.splits.find(s => s.transaction_id === requestedTxnId);
-        if (splitChild) {
-          txn = splitChild;
-          break;
-        }
-      }
-    }
-  }
-
-  if (!txn) {
-    return;
-  }
-
-  txn.user_category = responseData.user_category || fallbackCategory;
-  txn.is_override = fallbackIsOverride;
-  // The categorize route sends the class on the edited row, not at the top level.
-  const answeredClass = responseData.transaction?.analytics_class || responseData.analytics_class;
-  if (answeredClass) {
-    txn.analytics_class = answeredClass;
-  } else {
-    // The class may have changed with the category and only the server knows it.
-    _refreshAccountsForStaleAnalyticsClass([txn.account_id]);
-  }
-  _cacheTransactions(transactions);
 }
 
 // ───── Transfer Assignment ─────
@@ -981,7 +898,7 @@ function _isVirtualBillOccurrenceId(transactionId) {
 /**
  * Save a bill occurrence that exists only as a schedule entry, so it has a
  * row to link. An update with no fields saves it, as Mark Paid does. The
- * cache swaps the schedule entry for the saved row.
+ * list swaps the schedule entry for the saved row.
  *
  * @param {string} virtualTxnId - "bill_<id>_occ_<date>"
  * @returns {Promise<string|null>} The saved row's ID, or null after showing the error.
@@ -997,23 +914,18 @@ async function _materializeBillOccurrenceForLinking(virtualTxnId) {
   );
   const data = await response.json();
 
-  if (!response.ok || !data.transaction || !data.transaction.transaction_id) {
+  if (!response.ok || !data.transaction_id) {
     showStatus(data.error || 'Failed to save the bill occurrence before linking', 'error');
     return null;
   }
 
   // The save rebuilds this account, and the link that follows names only the
-  // other one, so the save's own answer is applied here.
-  await applyAffectedAccounts(data);
-
-  _removeCachedTransaction(virtualTxnId);
-  // A transfer bill's other side has a schedule entry of its own to drop.
-  _removePurgedVirtualTransactions(data);
-  _replaceCachedTransaction(data.transaction.transaction_id, data.transaction);
-  if (data.affected_transfer_partner && data.affected_transfer_partner.transaction_id) {
-    _replaceCachedTransaction(data.affected_transfer_partner.transaction_id, data.affected_transfer_partner);
-  }
-  return data.transaction.transaction_id;
+  // other one, so the save's own answer is applied here. The response drops
+  // the schedule entry, a transfer bill's counterpart entry included, and
+  // carries the saved row and its partner.
+  const virtualRow = transactions.find(row => row.transaction_id === virtualTxnId);
+  await applyRowChangesFromResponse(data, fallbackAccountIdsForRow(virtualRow));
+  return data.transaction_id;
 }
 
 async function _applyTransferAssignment(txnId, sourceAccountId, targetAccount) {
@@ -1097,19 +1009,11 @@ async function _applyTransferAssignment(txnId, sourceAccountId, targetAccount) {
       hideTransfersCheckbox.checked = false;
     }
 
-    // Surgical cache patch — replace only the affected transactions
-    // instead of refetching all 10k+ rows from the server.
-    if (result.affected_transactions) {
-      result.affected_transactions.forEach(txnObj => {
-        _replaceCachedTransaction(txnObj.transaction_id, txnObj);
-      });
-    }
-    _invalidateTransactionCache();
-
-    // Accounts first: the ledger cache is signed with the account's
-    // last_updated. Linking two existing rows lists no account; creating a
-    // counterpart lists the target account it rebuilt.
-    await applyAffectedAccounts(result);
+    // Both accounts are fetched again if the response names no rows.
+    // Accounts first inside the helper: the ledger cache is signed with the
+    // account's last_updated. Linking two existing rows lists no account;
+    // creating a counterpart lists the target account it rebuilt.
+    await applyRowChangesFromResponse(result, [sourceAccountId, targetAccountId]);
 
     // Patch balance history cache for the target account (create path
     // adds a new transaction that shifts the running balance).
@@ -1151,18 +1055,11 @@ async function unlinkTransfer(txnId) {
 
     showStatus('Transfer pair unlinked', 'success');
 
-    // Surgical cache patch — replace only the 2 affected transactions
-    // instead of refetching all 10k+ rows from the server.
-    if (data.affected_transactions) {
-      data.affected_transactions.forEach(txnObj => {
-        _replaceCachedTransaction(txnObj.transaction_id, txnObj);
-      });
-    }
-    _invalidateTransactionCache();
-
     // Unlinking rewrites the pair id, category and memo only: no amount
-    // moves and no ledger is rebuilt, so there is no balance to refresh.
-    await applyAffectedAccounts(data);
+    // moves and no ledger is rebuilt, so there is no balance to refresh. The
+    // partner's account is not known here, so every account is fetched again
+    // if the response names no rows.
+    await applyRowChangesFromResponse(data, null);
     renderTransactionTable();
 
     setTimeout(() => clearStatus(), 3000);
@@ -1190,20 +1087,9 @@ async function clearOverride(event) {
       return;
     }
 
-    // Update local transaction object
-    const txn = transactions.find(t => t.transaction_id === txnId);
-    if (txn) {
-      txn.is_override = false;
-      if (data.updated_category) {
-        txn.user_category = data.updated_category;
-      }
-      if (data.analytics_class) {
-        txn.analytics_class = data.analytics_class;
-      } else if (data.updated_category) {
-        _refreshAccountsForStaleAnalyticsClass([txn.account_id]);
-      }
-      _cacheTransactions(transactions);
-    }
+    // The returned row carries the restored category and its analytics class.
+    const clearedTxn = transactions.find(t => t.transaction_id === txnId);
+    await applyRowChangesFromResponse(data, fallbackAccountIdsForRow(clearedTxn));
 
     renderTransactionTable();
     showStatus('Override cleared', 'success');
@@ -1323,7 +1209,7 @@ async function _applyCategorizeAndClose(txn, txnId, accountId) {
 
     closeModal();
 
-    _patchCategorizationCache(txnId, data, selectedCategory, true);
+    await applyRowChangesFromResponse(data, fallbackAccountIdsForRow(txn));
     showStatus('Transaction categorized', 'success');
     renderTransactionTable();
     setTimeout(() => clearStatus(), 2000);
