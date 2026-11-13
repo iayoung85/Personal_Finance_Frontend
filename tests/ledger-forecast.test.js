@@ -74,6 +74,8 @@ test('the pending Hide button calls the context menu hide, and is absent once hi
   assert.equal(renderPendingHideButton(pending('p1', -5, { user_memo: 'lunch' })), '');
   assert.equal(renderPendingHideButton(pending('p1', -5, { user_description_override: 'Sam' })), '');
   assert.equal(renderPendingHideButton(pending('p1', -5, { transfer_pair_id: 'pair_1' })), '');
+  assert.equal(renderPendingHideButton(pending('p1', -5, { amount_modified: true })), '');
+  assert.match(renderPendingHideButton(pending('p1', -5, { amount_modified: false })), /pending-hide-btn/);
   assert.match(renderPendingHideButton(pending('p1', -5, { user_memo: '  ' })), /pending-hide-btn/);
 });
 

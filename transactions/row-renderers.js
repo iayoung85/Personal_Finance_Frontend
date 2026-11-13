@@ -819,7 +819,8 @@ function _getDefaultSourceBadge(ctx) {
 
 /**
  * Whether the user has worked on a pending row: set its category, written a
- * memo, renamed it, or linked it as a transfer. Such a row is one they have
+ * memo, renamed it, linked it as a transfer, or set the amount they expect it
+ * to post at. Such a row is one they have
  * accepted, so it is not offered the Hide button. A row a waiting match points
  * at is not offered it either, because the API refuses to hide it until the
  * match is undone. Mirrors the API's tests; this copy only decides a button.
@@ -834,6 +835,7 @@ function pendingRowCarriesUserWork(txn) {
     || (txn.user_memo && String(txn.user_memo).trim())
     || txn.user_description_override
     || txn.transfer_pair_id
+    || txn.amount_modified
   );
 }
 
