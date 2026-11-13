@@ -47,6 +47,8 @@ function openSplitModal(txn) {
   }).format(txn.amount);
   
   document.getElementById('split-modal-title').textContent = 'Create Split Transaction';
+  // A save leaves its in-progress label on the button; each opening resets it.
+  document.getElementById('split-submit-btn').textContent = 'Create';
   document.getElementById('split-orig-date').textContent = dateStr;
   document.getElementById('split-orig-description').textContent = txn.description || txn.name || '';
   document.getElementById('split-orig-account').textContent = txn.bank_account || '';
@@ -105,6 +107,7 @@ async function modifySplitModal(parentTransactionId) {
     }).format(parentTxn.amount);
     
     document.getElementById('split-modal-title').textContent = 'Modify Split Transaction';
+    document.getElementById('split-submit-btn').textContent = 'Update';
     document.getElementById('split-orig-date').textContent = dateStr;
     document.getElementById('split-orig-description').textContent = parentTxn.description || parentTxn.name || '';
     document.getElementById('split-orig-account').textContent = parentTxn.bank_account || '';

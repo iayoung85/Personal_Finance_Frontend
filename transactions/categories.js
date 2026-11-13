@@ -189,6 +189,20 @@ function normalizeCategoryLabel(label) {
 }
 
 /**
+ * Whether a category cell is being left with the value it had when it was
+ * focused. Tabbing through the grid passes every category cell, and a cell
+ * left as it was must save nothing: for a transfer label that would link the
+ * row again, and for a bill occurrence it would first save the occurrence.
+ *
+ * @param {string} committedValue The cell's value when it was focused.
+ * @param {string} resolvedValue The category the typed text resolves to.
+ * @returns {boolean} True when the two name the same category.
+ */
+function isUnchangedCategoryEntry(committedValue, resolvedValue) {
+  return normalizeCategoryLabel(committedValue) === normalizeCategoryLabel(resolvedValue);
+}
+
+/**
  * Trim the primary category prefix from a detailed category.
  * Example: "GENERAL_MERCHANDISE_SPORTING_GOODS" + "GENERAL_MERCHANDISE" → "SPORTING_GOODS"
  */
@@ -433,8 +447,11 @@ function attachCategoryDropdownListeners() {
             e.preventDefault();
             const resolvedValue = resolved.value || currentValue;
             const editedTxnId = $(input).data('txn-id');
+            const committedValue = $(input).data('committedCategoryValue');
 
-            if (resolved.isTransfer && resolved.account) {
+            if (isUnchangedCategoryEntry(committedValue, resolvedValue)) {
+              input.value = committedValue;
+            } else if (resolved.isTransfer && resolved.account) {
               // Transfer assignments still need the full interactive flow
               const accountId = $(input).data('account-id') || $(input).closest('tr').data('account-id');
               _applyTransferAssignment(editedTxnId, accountId, resolved.account);
@@ -527,13 +544,12 @@ function attachCategoryDropdownListeners() {
       return;
     }
 
-    if (resolved.isTransfer && resolved.account) {
-      _applyTransferAssignment(txnId, accountId, resolved.account);
+    if (isUnchangedCategoryEntry(input.data('committedCategoryValue'), resolved.value)) {
       return;
     }
 
-    const committedValue = (input.data('committedCategoryValue') || '').trim();
-    if (resolved.value === committedValue) {
+    if (resolved.isTransfer && resolved.account) {
+      _applyTransferAssignment(txnId, accountId, resolved.account);
       return;
     }
 
@@ -563,18 +579,13 @@ function attachCategoryDropdownListeners() {
       return;
     }
 
-    // Transfer assignment: user entered [AccountName]
-    if (resolved.isTransfer && resolved.account) {
-      _applyTransferAssignment(txnId, accountId, resolved.account);
+    if (isUnchangedCategoryEntry(input.data('committedCategoryValue'), resolved.value)) {
       return;
     }
 
-    // Skip the override when the resolved category is the same as what
-    // was already committed — avoids creating a redundant user_category
-    // override when the user just clicked into the cell and pressed Enter
-    // without actually changing the category.
-    const committedValue = (input.data('committedCategoryValue') || '').trim();
-    if (resolved.value === committedValue) {
+    // Transfer assignment: user entered [AccountName]
+    if (resolved.isTransfer && resolved.account) {
+      _applyTransferAssignment(txnId, accountId, resolved.account);
       return;
     }
 
