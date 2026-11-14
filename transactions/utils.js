@@ -50,9 +50,14 @@ function _reviewMoney(value) {
 function _describeReviewChange(change) {
   const from = change.from;
   const to = change.to;
+  // A row with no bank of its own that took the amount the bank sent for
+  // the other half of its transfer names that half's account.
+  const followedPartner = (change.field === 'amount' && change.transfer_partner_account_name)
+    ? ` to match the other side of this transfer (${change.transfer_partner_account_name})`
+    : '';
   if (change.reverted_user_edit) {
     if (change.field === 'amount') {
-      return `replaced your edited amount ${_reviewMoney(from)} with ${_reviewMoney(to)}`;
+      return `replaced your edited amount ${_reviewMoney(from)} with ${_reviewMoney(to)}${followedPartner}`;
     }
     if (change.field === 'transaction_date') {
       return `replaced your date ${_reviewShortDate(from)} with ${_reviewShortDate(to)}`;
@@ -71,7 +76,7 @@ function _describeReviewChange(change) {
   }
   switch (change.field) {
     case 'amount':
-      return `changed amount from ${_reviewMoney(from)} to ${_reviewMoney(to)}`;
+      return `changed amount from ${_reviewMoney(from)} to ${_reviewMoney(to)}${followedPartner}`;
     case 'transaction_date':
       return `changed date from ${_reviewShortDate(from)} to ${_reviewShortDate(to)}`;
     case 'description':
@@ -87,6 +92,17 @@ function _describeReviewChange(change) {
     default:
       return '';
   }
+}
+
+/**
+ * Why a sync unlinked a transfer pair: the bank changed one side's amount.
+ * `amountChange` is a transfer_unlinked detail's `amount_change` ({from, to,
+ * on_this_row}); returns '' when the unlink carried none.
+ */
+function _describeUnlinkAmountChange(amountChange) {
+  if (!amountChange || amountChange.from == null || amountChange.to == null) return '';
+  const side = amountChange.on_this_row ? "this side's" : "the other side's";
+  return `: Plaid changed ${side} amount from ${_reviewMoney(amountChange.from)} to ${_reviewMoney(amountChange.to)}`;
 }
 
 /**
@@ -132,6 +148,7 @@ function describeReviewReason(txn) {
       text = detail.partner_account_name
         ? `Its transfer pair with ${detail.partner_account_name} was unlinked`
         : 'Its transfer pair was unlinked';
+      text += _describeUnlinkAmountChange(detail.amount_change);
       break;
     case 'split_removed':
       text = 'Its splits were removed; check the category';

@@ -140,3 +140,25 @@ test('dot title adds the action line', () => {
   assert.equal(unreviewedDotTitle({ review_reason: null }), 'Click to mark reviewed');
   assert.equal(unreviewedDotTitle(make('plaid_new')), 'New from Plaid (Oct 19)\nClick to mark reviewed');
 });
+
+test('a transfer side that followed the bank names the other side, for a plain change and a replaced expected amount', () => {
+  const followed = { changes: [
+    { field: 'amount', from: '50.00', to: '52.00', transfer_partner_account_name: 'Checking' },
+  ] };
+  assert.equal(describeReviewReason(make('plaid_modified', followed)),
+    'Plaid changed amount from $50.00 to $52.00 to match the other side of this transfer (Checking)' + WHEN);
+  const replaced = { changes: [
+    { field: 'amount', from: '57.50', to: '62.50', reverted_user_edit: true, transfer_partner_account_name: 'Checking' },
+  ] };
+  assert.equal(describeReviewReason(make('plaid_modified', replaced)),
+    'Plaid replaced your edited amount $57.50 with $62.50 to match the other side of this transfer (Checking)' + WHEN);
+});
+
+test('transfer_unlinked after a bank amount change says which side moved', () => {
+  const onThisRow = { partner_account_name: 'Savings', amount_change: { from: '-50.00', to: '-52.00', on_this_row: true } };
+  assert.equal(describeReviewReason(make('transfer_unlinked', onThisRow)),
+    "Its transfer pair with Savings was unlinked: Plaid changed this side's amount from -$50.00 to -$52.00" + WHEN);
+  const onPartner = { partner_account_name: 'Checking', amount_change: { from: '-50.00', to: '-52.00', on_this_row: false } };
+  assert.equal(describeReviewReason(make('transfer_unlinked', onPartner)),
+    "Its transfer pair with Checking was unlinked: Plaid changed the other side's amount from -$50.00 to -$52.00" + WHEN);
+});
