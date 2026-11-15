@@ -380,7 +380,91 @@ function _resetToPlaidItem() {
   };
 }
 
+/**
+ * Whether a row is an open occurrence: one not yet dealt with, upcoming or
+ * missing, that no bank row is matched to. A paid, orphaned, converted or
+ * waiting row is not.
+ *
+ * @param {{source: string, status: string, matched_transaction_id?: string}} row
+ * @returns {boolean}
+ */
+function _isOpenOccurrenceRow(row) {
+  const rowType = getTransactionType(row);
+  const isOpenType = rowType === TXN_TYPE.BILL_FUTURE
+    || rowType === TXN_TYPE.MANUAL_FUTURE
+    || rowType === TXN_TYPE.BILL_MISSING
+    || rowType === TXN_TYPE.MANUAL_MISSING;
+  return isOpenType && !row.matched_transaction_id;
+}
+
+/**
+ * The earliest open occurrence of the row's bill dated before the row, in the
+ * row's account, or null; null too when the row is not itself an open
+ * occurrence of a bill. The API refuses the user's match of a later open
+ * occurrence while an earlier one is open; this is the same question asked of
+ * the rows the page holds, so the menu can say so first.
+ *
+ * @param {Object} txnData - Context data for the right-clicked row.
+ * @param {Array<Object>} allTransactions - The rows the page holds.
+ * @returns {Object|null} The earlier row, as the API returned it.
+ */
+function earlierOpenBillOccurrence(txnData, allTransactions) {
+  if (!txnData || !txnData.billId || !txnData.txnDate) return null;
+  if (!_isOpenOccurrenceRow({ source: txnData.source, status: txnData.status })) return null;
+  let earliest = null;
+  (allTransactions || []).forEach(txn => {
+    if (txn.bill_id !== txnData.billId) return;
+    if ((txn.account_id || txn.plaid_account_id) !== txnData.accountId) return;
+    if (!_isOpenOccurrenceRow(txn)) return;
+    // Both are ISO dates, which sort as text.
+    if (!txn.date || txn.date >= txnData.txnDate) return;
+    if (!earliest || txn.date < earliest.date) earliest = txn;
+  });
+  return earliest;
+}
+
+/**
+ * Why "Match to Transaction" is locked behind an earlier occurrence.
+ *
+ * @param {string} isoDate - The earlier occurrence's date, YYYY-MM-DD.
+ * @returns {string}
+ */
+function earlierOccurrenceLockReason(isoDate) {
+  const occurrenceDate = new Date(`${isoDate}T00:00:00`);
+  const shownDate = Number.isNaN(occurrenceDate.getTime())
+    ? isoDate
+    : occurrenceDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `Match, skip or delete the ${shownDate} occurrence of this bill first`;
+}
+
+/**
+ * Disable "Match to Transaction" on a bill occurrence while an earlier one of
+ * the same bill is open, with the earlier date as the tooltip.
+ *
+ * @param {Array<Object>} items
+ * @param {Object} txnData - Context data for the right-clicked row.
+ * @param {Array<Object>} allTransactions - The rows the page holds.
+ * @returns {Array<Object>} The same array.
+ */
+function _lockMatchBehindEarlierOccurrence(items, txnData, allTransactions) {
+  if (!items.some(item => item.action === 'match-to-adjacent' && !item.disabled)) return items;
+  const earlierOccurrence = earlierOpenBillOccurrence(txnData, allTransactions);
+  if (!earlierOccurrence) return items;
+  items.forEach(item => {
+    if (item.action === 'match-to-adjacent' && !item.disabled) {
+      item.disabled = true;
+      item.disabledReason = earlierOccurrenceLockReason(earlierOccurrence.date);
+    }
+  });
+  return items;
+}
+
 function _buildMenuItems(txnData) {
+  const heldTransactions = typeof transactions === 'undefined' ? [] : transactions;
+  return _lockMatchBehindEarlierOccurrence(_buildMenuItemsForRow(txnData), txnData, heldTransactions);
+}
+
+function _buildMenuItemsForRow(txnData) {
   const { isBill, isSplit } = txnData;
   // A row that already carries a bill link must not offer to become one.
   const isLinkedToBill = !!txnData.billId;

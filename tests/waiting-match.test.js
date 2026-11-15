@@ -380,6 +380,99 @@ test('a normal Plaid row keeps its transfer and reset items enabled', () => {
   assert.ok(byAction['reset-plaid-amount'] && !byAction['reset-plaid-amount'].disabled);
 });
 
+// ── Match to Transaction waits for the earlier occurrence ──────
+
+const BILL_ID = 'bill-rent';
+const billOccurrence = (isoDate, extra = {}) => ({
+  transaction_id: `bill_${BILL_ID}_occ_${isoDate}`,
+  source: 'scheduled',
+  status: 'future',
+  account_id: 'acct-1',
+  amount: -900,
+  date: isoDate,
+  is_bill: true,
+  bill_id: BILL_ID,
+  ...extra,
+});
+const LINKED_ACCOUNT = { account_id: 'acct-1', connection_status: 'linked', plaid_type: 'depository' };
+
+const menuHolding = heldRows => load(
+  ['transactions/transaction-types.js', 'transactions/context-menu.js'],
+  '_buildMenuItems, earlierOpenBillOccurrence',
+  { accounts: [LINKED_ACCOUNT], visibleTransactions: [], transactions: heldRows },
+);
+
+const matchItemFor = (heldRows, row) => {
+  const items = plain(menuHolding(heldRows)._buildMenuItems(
+    menuDataFor(row, { billId: row.bill_id, isBill: true, txnDate: row.date }),
+  ));
+  return items.find(item => item.action === 'match-to-adjacent');
+};
+
+test('a later bill occurrence cannot be matched while an earlier one is upcoming', () => {
+  const november = billOccurrence('2026-11-18');
+  const december = billOccurrence('2026-12-18');
+  const rows = [december, november];
+
+  const lockedItem = matchItemFor(rows, december);
+  assert.equal(lockedItem.disabled, true);
+  assert.equal(lockedItem.disabledReason, 'Match, skip or delete the Nov 18 occurrence of this bill first');
+
+  assert.ok(!matchItemFor(rows, november).disabled);
+});
+
+test('an earlier missing occurrence locks the match too, and the earliest is named', () => {
+  const october = billOccurrence('2026-10-18', { transaction_id: 'missing-oct', status: 'missing' });
+  const november = billOccurrence('2026-11-18');
+  const december = billOccurrence('2026-12-18');
+  const rows = [december, november, october];
+
+  assert.match(matchItemFor(rows, december).disabledReason, /Oct 18/);
+  assert.match(matchItemFor(rows, november).disabledReason, /Oct 18/);
+  assert.ok(!matchItemFor(rows, october).disabled);
+});
+
+test('an earlier occurrence that is dealt with, or not this bill, locks nothing', () => {
+  const december = billOccurrence('2026-12-18');
+  const heldBy = {
+    waiting: billOccurrence('2026-11-18', { status: 'matched', matched_transaction_id: 'plaid-1' }),
+    paid: billOccurrence('2026-11-18', { source: 'manual', status: 'cleared' }),
+    mergedIntoBankRow: billOccurrence('2026-11-18', { source: 'plaid', status: 'cleared' }),
+    otherBill: billOccurrence('2026-11-18', { bill_id: 'bill-gym' }),
+    otherAccount: billOccurrence('2026-11-18', { account_id: 'acct-2' }),
+    later: billOccurrence('2027-01-18'),
+  };
+  for (const [name, earlierRow] of Object.entries(heldBy)) {
+    assert.ok(!matchItemFor([december, earlierRow], december).disabled, name);
+  }
+});
+
+test('a paid, orphaned or converted row of the bill is not locked behind an earlier missing one', () => {
+  const october = billOccurrence('2026-10-18', { transaction_id: 'missing-oct', status: 'missing' });
+  const dealtWith = {
+    paid: billOccurrence('2026-11-18', { transaction_id: 'paid-nov', source: 'manual', status: 'cleared' }),
+    converted: billOccurrence('2026-11-18', { transaction_id: 'conv-nov', source: 'plaid', status: 'converted' }),
+  };
+  for (const [name, sourceRow] of Object.entries(dealtWith)) {
+    const matchItem = matchItemFor([sourceRow, october], sourceRow);
+    assert.ok(matchItem, name);
+    assert.ok(!matchItem.disabled, name);
+  }
+  const held = menuHolding([october]);
+  assert.equal(held.earlierOpenBillOccurrence(
+    { txnId: 'orph-nov', source: 'manual', status: 'orphaned', billId: BILL_ID, accountId: 'acct-1', txnDate: '2026-11-18' },
+    [october],
+  ), null);
+});
+
+test('a row with no bill is never locked behind another row', () => {
+  const held = menuHolding([billOccurrence('2026-11-18')]);
+  assert.equal(held.earlierOpenBillOccurrence(
+    { txnId: 'm-1', source: 'manual', status: 'future', billId: '', accountId: 'acct-1', txnDate: '2026-12-18' },
+    [billOccurrence('2026-11-18')],
+  ), null);
+});
+
 // ── Reset to Plaid on the menu ─────────────────────────────────
 
 const menuActionsFor = (txn, extra = {}) => (
