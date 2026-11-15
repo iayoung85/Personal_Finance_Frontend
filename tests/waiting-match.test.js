@@ -407,12 +407,19 @@ test('a split bank row offers Reset to Plaid, its pieces do not', () => {
   ).includes('reset-to-plaid'));
 });
 
-test('pending, manual, scheduled and waiting-match rows do not offer Reset to Plaid', () => {
+test('a pending bank row offers Reset to Plaid, hidden or carrying an expected amount too', () => {
+  const pending = { ...normalPlaidRow(), status: 'pending' };
+  assert.ok(menuActionsFor(pending).includes('reset-to-plaid'));
+  assert.ok(menuActionsFor(pending, { amountModified: true }).includes('reset-to-plaid'));
+  assert.ok(menuActionsFor(pending, { isHidden: true }).includes('reset-to-plaid'));
+});
+
+test('manual, scheduled and waiting-match rows do not offer Reset to Plaid', () => {
   const rows = {
-    pending: { ...normalPlaidRow(), status: 'pending' },
     manual: { transaction_id: 'm-1', source: 'manual', status: 'cleared', account_id: 'acct-1', amount: -5 },
     missing: { transaction_id: 'b-1', source: 'scheduled', status: 'missing', account_id: 'acct-1', amount: -5 },
     waitingBank: waitingPlaidRow(),
+    waitingPendingBank: waitingPlaidRow({ status: 'pending' }),
     waitingManual: {
       transaction_id: 'manual-1', source: 'manual', status: 'matched', account_id: 'acct-1',
       amount: -40, matched_transaction_id: 'plaid-1', hidden_by_match: true,

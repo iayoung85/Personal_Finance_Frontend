@@ -347,10 +347,13 @@ function _editScheduleItem() {
   };
 }
 
+/** Statuses of a bank row (source plaid) the API resets to the bank's data. */
+const RESET_TO_PLAID_STATUSES = new Set(['pending', 'cleared', 'converted']);
+
 /**
  * Whether the row is a bank row that may offer "Reset to Plaid": source
- * plaid, status cleared or converted (both keep the bank's stored data), not
- * a split piece, and not a side of a waiting match. Whether the reset can run
+ * plaid, status pending, cleared or converted (each keeps the bank's stored
+ * data), not a split piece, and not a side of a waiting match. Whether the reset can run
  * (a transfer pair, a missing bank amount) is the API's call, which answers
  * with a sentence the user sees.
  *
@@ -360,7 +363,7 @@ function _editScheduleItem() {
 function _canResetToPlaid(txnData) {
   if (!txnData || txnData.isSplitChild) return false;
   if (txnData.source !== 'plaid') return false;
-  if (txnData.status !== 'cleared' && txnData.status !== 'converted') return false;
+  if (!RESET_TO_PLAID_STATUSES.has(txnData.status)) return false;
   return !_isWaitingMatchMenuRow(txnData);
 }
 
@@ -641,7 +644,7 @@ function _buildMenuItems(txnData) {
     });
   }
 
-  // "Reset to Plaid" — every posted bank row that is not on a waiting match.
+  // "Reset to Plaid" — every bank row, pending or posted, that is not on a waiting match.
   // Strips the user's changes and puts the bank's amount and date back.
   if (_canResetToPlaid(txnData)) {
     items.push(_resetToPlaidItem());
@@ -1506,7 +1509,7 @@ function _resetToPlaidSuccessMessage(data) {
 }
 
 /**
- * Reset a posted bank row to the bank's data. The API refuses with a
+ * Reset a pending or posted bank row to the bank's data. The API refuses with a
  * sentence for the user (a transfer half, a waiting match); it is shown as is.
  */
 async function _handleContextResetToPlaid(txnData) {
