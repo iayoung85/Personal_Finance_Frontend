@@ -896,6 +896,11 @@ function renderTransactionTable() {
       // approve and reject buttons, no modify, delete, repair or date edit.
       const pieceTreatment = getSplitPieceTreatment(txn, splitIsBroken);
       const waitingBadgesHtml = renderWaitingPieceBadges(pieceTreatment);
+      // The parent is never drawn, so its unreviewed dot sits on the first
+      // piece. A scheduled row gets none, as an unsplit one gets none.
+      const groupReviewDotHtml = (pieceTreatment.reviewDotTxnId && !isFutureBlockRow)
+        ? _unreviewedDotHtml(txn, pieceTreatment.reviewDotTxnId)
+        : '';
 
       // Render only split children that match active search/category filters.
       const visibleSplits = txn.splits.filter(split => (
@@ -954,8 +959,8 @@ function renderTransactionTable() {
           ${bulkEditActive ? '<td class="bulk-cell bulk-cell-disabled" title="Not bulk-editable"><input type="checkbox" class="bulk-row-checkbox" disabled></td>' : ''}
           ${showLogoColumn ? `<td class="logo-cell">${_renderLogoCell(txn)}</td>` : ''}
           ${pieceTreatment.dateEditable
-            ? `<td class="date-column inline-editable" data-field="date" title="Editing the date here updates all splits and the parent transaction">${escapeHtml(dateStr)}</td>`
-            : `<td class="date-column">${escapeHtml(dateStr)}</td>`}
+            ? `<td class="date-column inline-editable" data-field="date" title="Editing the date here updates all splits and the parent transaction">${isFirstSplit ? groupReviewDotHtml : ''}${escapeHtml(dateStr)}</td>`
+            : `<td class="date-column">${isFirstSplit ? groupReviewDotHtml : ''}${escapeHtml(dateStr)}</td>`}
           ${showBankAccountColumn ? `<td>${escapeHtml(split.bank_account || txn.bank_account || '')}</td>` : ''}
           <td class="description-column" data-field="description">
             <div class="desc-two-line">

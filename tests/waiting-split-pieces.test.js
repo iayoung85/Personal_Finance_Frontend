@@ -62,6 +62,22 @@ test('a normal split keeps Modify, Delete and the editable date', () => {
   assert.equal(renderWaitingPieceBadges(treatment), '');
 });
 
+test('a split group whose parent is unreviewed carries the review dot for the parent', () => {
+  const ownSplit = { splits_awaiting_match: undefined };
+  assert.equal(getSplitPieceTreatment(waitingParent({ ...ownSplit, reviewed: false }), false).reviewDotTxnId, 'plaid-1');
+  assert.equal(getSplitPieceTreatment(waitingParent({ ...ownSplit, reviewed: false }), true).reviewDotTxnId, 'plaid-1');
+  assert.equal(getSplitPieceTreatment(waitingParent({ ...ownSplit, reviewed: true }), false).reviewDotTxnId, '');
+  // A row the API sends without the flag is not in the review queue.
+  assert.equal(getSplitPieceTreatment(waitingParent(ownSplit), false).reviewDotTxnId, '');
+});
+
+test('a waiting match never carries the review dot, whatever its flag says', () => {
+  const lentPieces = waitingParent({ match_info: MATCH_INFO, reviewed: false });
+  const ownPieces = waitingParent({ match_info: MATCH_INFO, splits_awaiting_match: undefined, reviewed: false });
+  assert.equal(getSplitPieceTreatment(lentPieces, false).reviewDotTxnId, '');
+  assert.equal(getSplitPieceTreatment(ownPieces, false).reviewDotTxnId, '');
+});
+
 test('a broken normal split still offers Repair', () => {
   const treatment = getSplitPieceTreatment(waitingParent({ splits_awaiting_match: undefined }), true);
   assert.equal(treatment.firstPieceButton, 'repair');

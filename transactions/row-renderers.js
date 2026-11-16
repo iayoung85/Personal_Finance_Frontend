@@ -520,6 +520,12 @@ function _renderMatchedPairRow(ctx) {
  * category, memo and description stay editable. A waiting split that no
  * longer sums to the Plaid amount still shows the warning.
  *
+ * A split group is unreviewed when its parent is: a bank change to a split
+ * row's amount or name, or a split pending row the bank dropped, un-reviews
+ * the parent, which is never drawn. Its first piece then carries the dot,
+ * and the dot marks the parent reviewed. A waiting match has none: the
+ * match itself is what waits on the user.
+ *
  * @param {Object} parentTxn - The row carrying the `splits` array.
  * @param {boolean} splitIsBroken - Whether the pieces differ from the parent amount.
  * @returns {{
@@ -533,6 +539,7 @@ function _renderMatchedPairRow(ctx) {
  *   approve: ({call: string, args: Array, catchErrors: boolean, title: string}|null),
  *   reject: ({call: string, args: Array, title: string}|null),
  *   compareHtml: string,
+ *   reviewDotTxnId: string,
  * }}
  */
 function getSplitPieceTreatment(parentTxn, splitIsBroken) {
@@ -547,9 +554,15 @@ function getSplitPieceTreatment(parentTxn, splitIsBroken) {
     approve: null,
     reject: null,
     compareHtml: '',
+    reviewDotTxnId: '',
   };
 
-  if (!isWaitingMatchRow(parentTxn)) return treatment;
+  if (!isWaitingMatchRow(parentTxn)) {
+    if (parentTxn.reviewed === false) {
+      treatment.reviewDotTxnId = parentTxn.transaction_id || '';
+    }
+    return treatment;
+  }
 
   treatment.firstPieceButton = 'none';
   treatment.showDelete = false;
