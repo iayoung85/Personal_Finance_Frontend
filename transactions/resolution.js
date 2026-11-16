@@ -385,72 +385,94 @@ async function _singleOrphanedAction(transactionId, action) {
   }
 }
 
-// ─── Force Match Pick Mode ──────────────────────────────────
-// When the user clicks "Force Match" on an orphan (from the modal or
-// context menu), we close any open modal, show a floating instruction
-// banner, and let them click any plaid transaction row in the table.
-// The orphan is rewritten to adopt the plaid txn's amount/account.
+// ─── Pick modes: Force Match and Match to Transaction ───────
+// Both modes close any open modal, show an instruction banner above the
+// table, and let the user click a row of the real transaction list. What
+// differs is the banner text, which rows can be picked, and what a pick
+// sends. Everything else (banner, click and Escape listeners, "is a pick
+// mode active") is shared below. Only one mode is on at a time.
 
+// Force Match: the orphan to rewrite onto the Plaid row the user clicks.
 let _forceMatchOrphanId = null;
+// Match to Transaction: the row to match onto the bank row the user clicks.
+let _matchSourceId = null;
+
+// The mode that is on: the click handler it installed on the table and the
+// status shown when Escape ends it. Null when no mode is on.
+let _activePickMode = null;
 
 // The pick handler runs in the capture phase so it sees a click before the
 // row's inline editors and buttons do. Those listeners sit on the same
 // container (or on the cell itself) and would otherwise open an editor
 // instead of picking the row.
-const _FORCE_MATCH_CLICK_OPTIONS = { capture: true };
+const _PICK_MODE_CLICK_OPTIONS = { capture: true };
 
 /**
- * Whether the user is currently choosing a Plaid row for a force match.
- * Inline editors check this so a click on a row picks it instead of editing.
+ * Whether the user is currently choosing a row for a force match or a
+ * Match to Transaction. Inline editors check this so a click on a row picks
+ * it instead of editing.
  */
-function isForceMatchPickModeActive() {
-  return _forceMatchOrphanId !== null;
+function isPickModeActive() {
+  return _activePickMode !== null;
+}
+
+/**
+ * Turn a pick mode on: end the other mode if it is on, close any open
+ * modal, show the banner and install the click and Escape listeners.
+ *
+ * @param {Object} mode
+ * @param {string} mode.bannerHtml - Inner HTML of the instruction text.
+ * @param {Function} mode.clickHandler - Capture-phase click handler for the table.
+ * @param {string} mode.cancelMessage - Info status shown when Escape ends the mode.
+ */
+function _startPickMode({ bannerHtml, clickHandler, cancelMessage }) {
+  exitPickMode();
+  _activePickMode = { clickHandler, cancelMessage };
+
+  if (typeof closeModal === 'function') closeModal();
+  _showPickModeBanner(bannerHtml);
+
+  const tableContainer = document.getElementById('table-container');
+  if (tableContainer) {
+    tableContainer.addEventListener('click', clickHandler, _PICK_MODE_CLICK_OPTIONS);
+  }
+  document.addEventListener('keydown', _pickModeEscapeHandler);
 }
 
 /**
  * Enter force-match pick mode: close modal, show instruction banner,
- * install a one-shot click handler on the transaction table.
+ * install a click handler on the transaction table.
  */
 function enterForceMatchPickMode(orphanTxnId) {
-  _forceMatchOrphanId = orphanTxnId;
-
-  // Close the resolution center modal if open
-  if (typeof closeModal === 'function') closeModal();
-
   // Find the orphan in the transactions array for display context
   const orphanTxn = transactions.find(txn => txn.transaction_id === orphanTxnId);
   const orphanLabel = orphanTxn
     ? `"${orphanTxn.description || orphanTxn.name || 'Unnamed'}" (${_formatCurrency(orphanTxn.amount)})`
     : orphanTxnId;
 
-  // Show the pick-mode instruction banner
-  _showForceMatchBanner(orphanLabel);
-
-  // Install delegated click handler on the table
-  const tableContainer = document.getElementById('table-container');
-  if (tableContainer) {
-    tableContainer.addEventListener('click', _forceMatchRowClickHandler, _FORCE_MATCH_CLICK_OPTIONS);
-  }
-
-  // Allow Escape to cancel
-  document.addEventListener('keydown', _forceMatchEscapeHandler);
+  _startPickMode({
+    bannerHtml: `
+      <strong>Force Match Mode:</strong> Click any <em>Plaid</em> transaction row to match orphan ${escapeHtml(orphanLabel)}.
+      The orphan will be rewritten to match the selected transaction's amount and account.
+    `,
+    clickHandler: _forceMatchRowClickHandler,
+    cancelMessage: 'Force match cancelled',
+  });
+  _forceMatchOrphanId = orphanTxnId;
 }
 
-function _showForceMatchBanner(orphanLabel) {
+function _showPickModeBanner(bannerHtml) {
   // Remove existing banner if any
-  _removeForceMatchBanner();
+  _removePickModeBanner();
 
   const banner = document.createElement('div');
   banner.id = 'force-match-pick-banner';
   banner.className = 'force-match-pick-banner';
   banner.innerHTML = `
     <span class="force-match-pick-icon">\ud83d\udd17</span>
-    <span class="force-match-pick-text">
-      <strong>Force Match Mode:</strong> Click any <em>Plaid</em> transaction row to match orphan ${escapeHtml(orphanLabel)}.
-      The orphan will be rewritten to match the selected transaction's amount and account.
-    </span>
+    <span class="force-match-pick-text">${bannerHtml}</span>
     <button class="btn-banner btn-banner-secondary force-match-pick-cancel"
-            onclick="exitForceMatchPickMode()">Cancel</button>
+            onclick="exitPickMode()">Cancel</button>
   `;
 
   // Insert at the top of the main content area, above the table
@@ -462,27 +484,32 @@ function _showForceMatchBanner(orphanLabel) {
   }
 }
 
-function _removeForceMatchBanner() {
+function _removePickModeBanner() {
   const existing = document.getElementById('force-match-pick-banner');
   if (existing) existing.remove();
 }
 
-function exitForceMatchPickMode() {
+/** Turn whichever pick mode is on off: banner, listeners and picked ids. */
+function exitPickMode() {
+  const endedMode = _activePickMode;
+  _activePickMode = null;
   _forceMatchOrphanId = null;
-  _removeForceMatchBanner();
+  _matchSourceId = null;
+  _removePickModeBanner();
 
+  if (!endedMode) return;
   const tableContainer = document.getElementById('table-container');
   if (tableContainer) {
-    tableContainer.removeEventListener('click', _forceMatchRowClickHandler, _FORCE_MATCH_CLICK_OPTIONS);
+    tableContainer.removeEventListener('click', endedMode.clickHandler, _PICK_MODE_CLICK_OPTIONS);
   }
-  document.removeEventListener('keydown', _forceMatchEscapeHandler);
+  document.removeEventListener('keydown', _pickModeEscapeHandler);
 }
 
-function _forceMatchEscapeHandler(event) {
-  if (event.key === 'Escape') {
-    exitForceMatchPickMode();
-    showStatus('Force match cancelled', 'info');
-  }
+function _pickModeEscapeHandler(event) {
+  if (event.key !== 'Escape' || !_activePickMode) return;
+  const { cancelMessage } = _activePickMode;
+  exitPickMode();
+  showStatus(cancelMessage, 'info');
 }
 
 /**
@@ -527,7 +554,7 @@ async function _forceMatchRowClickHandler(event) {
 
   // Capture the orphan ID before exiting pick mode
   const orphanId = _forceMatchOrphanId;
-  exitForceMatchPickMode();
+  exitPickMode();
 
   try {
     showStatus('Applying force match…', 'info');
@@ -609,26 +636,34 @@ async function _refreshAfterBatchResolve(batchResult) {
   await checkAndRenderReconciliationBanner();
 }
 
-// ─── Inline Quick-Fix: Match to Adjacent Transaction ────────
-// Called from the context menu on orphaned rows
-// in the day-to-day inline handling flow.
+// ─── Match to Transaction ───────────────────────────────────
+// Called from the context menu on a missing, hand-entered, not-yet-due or
+// bill row. The user picks the bank row on the real list, so the row is seen
+// in its account with its neighbours, then confirms the match.
 
 /**
- * Rows the match picker may offer as targets for a source transaction.
+ * Why a clicked row cannot be the bank row for a source transaction, or null
+ * when it can. This is the one rule for which rows may be picked, and the
+ * sentence is what the user is told when a click is refused.
  *
  * When the source is MANUAL_CLEARED (user-entered txn waiting for Plaid
- * delivery) or PLAID_CONVERTED, only bank rows are offered — matching
+ * delivery) or PLAID_CONVERTED, only bank rows are allowed: matching
  * manual-to-manual doesn't make sense in this flow. A bank row is posted or
- * still pending, as the API accepts both; a pending row the user hid is left
- * out because the API refuses it. Split rows are left out because the API
+ * still pending, as the API accepts both; a pending row the user hid is
+ * refused because the API refuses it. Split rows are refused because the API
  * refuses a match between two split rows, and rows already carrying a match
- * are left out because they are waiting on their own resolution.
+ * are refused because they are waiting on their own resolution.
  *
  * @param {Object} sourceTxn - The transaction being matched (a split's parent, never a piece).
- * @param {Array<Object>} allTransactions - Every cached transaction.
- * @returns {Array<Object>} Candidate target rows, in input order.
+ * @param {Object|undefined} targetTxn - The clicked row as the page holds it.
+ * @returns {string|null} The reason to show, or null when the row can be picked.
  */
-function _filterMatchPickerCandidates(sourceTxn, allTransactions) {
+function _matchTargetRefusal(sourceTxn, targetTxn) {
+  if (!targetTxn) return 'Please click a bank transaction to match to';
+  if (targetTxn.transaction_id === sourceTxn.transaction_id) {
+    return 'Cannot match a transaction to itself';
+  }
+
   const sourceType = getTransactionType(sourceTxn);
   const isSourceManualCleared =
     sourceType === TXN_TYPE.MANUAL_CLEARED ||
@@ -636,93 +671,112 @@ function _filterMatchPickerCandidates(sourceTxn, allTransactions) {
   const matchableTargetTypes = isSourceManualCleared
     ? new Set([TXN_TYPE.PLAID_CLEARED, TXN_TYPE.PLAID_PENDING])
     : new Set([TXN_TYPE.PLAID_CLEARED, TXN_TYPE.PLAID_PENDING, TXN_TYPE.MANUAL_CLEARED, TXN_TYPE.PLAID_CONVERTED]);
-  const sourceAccountId = sourceTxn.account_id || sourceTxn.plaid_account_id;
 
-  return allTransactions.filter(txn => {
-    if (txn.transaction_id === sourceTxn.transaction_id) return false;
-    const targetType = getTransactionType(txn);
-    if (!matchableTargetTypes.has(targetType)) return false;
-    if (targetType === TXN_TYPE.PLAID_PENDING && txn.is_hidden) return false;
-    if ((txn.account_id || txn.plaid_account_id) !== sourceAccountId) return false;
-    if (txn.matched_transaction_id) return false;
-    if (txn.is_split && Array.isArray(txn.splits) && txn.splits.length > 0) return false;
-    if (txn.match_info) return false;
-    return true;
-  });
+  const targetType = getTransactionType(targetTxn);
+  if (!matchableTargetTypes.has(targetType)) return 'Please click a bank transaction to match to';
+  if (targetType === TXN_TYPE.PLAID_PENDING && targetTxn.is_hidden) {
+    return 'That pending transaction is hidden. Unhide it first, then match to it';
+  }
+  const sourceAccountId = sourceTxn.account_id || sourceTxn.plaid_account_id;
+  if ((targetTxn.account_id || targetTxn.plaid_account_id) !== sourceAccountId) {
+    return 'That transaction is in another account. Click one in the same account';
+  }
+  if (targetTxn.matched_transaction_id || targetTxn.match_info) {
+    return 'That transaction is already matched or has a match waiting';
+  }
+  if (targetTxn.is_split && Array.isArray(targetTxn.splits) && targetTxn.splits.length > 0) {
+    return 'That transaction is split. Clear its splits first, then match to it';
+  }
+  return null;
+}
+
+/** A row named for a prompt: its name, amount and date. */
+function _matchRowLabel(txn) {
+  return `"${txn.description || txn.name || 'Unnamed'}" (${_formatCurrency(txn.amount)}, ${txn.date || ''})`;
 }
 
 /**
- * Opens a small picker modal showing the bank transactions, posted or
- * pending, in the same account so the user can manually match a
- * missing, orphaned or not-yet-due txn.
+ * Enter Match to Transaction pick mode for a missing, hand-entered,
+ * not-yet-due or bill row: close any modal, show the instruction banner and
+ * let the user click the bank row it belongs to.
+ *
+ * @param {string} sourceTxnId - The row being matched.
  */
-function openInlineMatchPicker(missingTxnId) {
-  const missingTxn = transactions.find(txn => txn.transaction_id === missingTxnId);
-  if (!missingTxn) {
+function enterMatchToTransactionPickMode(sourceTxnId) {
+  const sourceTxn = transactions.find(txn => txn.transaction_id === sourceTxnId);
+  if (!sourceTxn) {
     showStatus('Transaction not found', 'error');
     return;
   }
-
-  const candidates = _filterMatchPickerCandidates(missingTxn, transactions);
-
-  // Sort by date proximity to the missing transaction
-  const missingDate = new Date(missingTxn.date).getTime();
-  candidates.sort((candidateA, candidateB) => {
-    const diffA = Math.abs(new Date(candidateA.date).getTime() - missingDate);
-    const diffB = Math.abs(new Date(candidateB.date).getTime() - missingDate);
-    return diffA - diffB;
-  });
-
-  // Limit to a reasonable number to avoid overwhelming the picker
-  const MAX_CANDIDATES = 50;
-  const topCandidates = candidates.slice(0, MAX_CANDIDATES);
-
-  if (topCandidates.length === 0) {
+  if (!transactions.some(txn => _matchTargetRefusal(sourceTxn, txn) === null)) {
     showStatus('No bank transactions available to match in this account', 'warning');
     return;
   }
 
-  let bodyHtml = `
-    <p>Select a transaction to match with: <strong>${escapeHtml(missingTxn.description || missingTxn.name || '—')}</strong>
-    (${_formatCurrency(missingTxn.amount)}, ${escapeHtml(missingTxn.date || '')})</p>
-    <div class="recon-match-picker-list">
-  `;
-
-  topCandidates.forEach(candidate => {
-    const amountMatch = Math.abs((candidate.amount || 0) - (missingTxn.amount || 0)) < 0.02;
-    const highlightClass = amountMatch ? 'recon-match-candidate-highlight' : '';
-
-    bodyHtml += `
-      <div class="recon-match-candidate ${highlightClass}"
-           onclick="_selectMatchCandidate('${escapeHtml(missingTxnId)}', '${escapeHtml(candidate.transaction_id)}')">
-        <span class="recon-match-date">${escapeHtml(candidate.date || '—')}</span>
-        <span class="recon-match-desc">${escapeHtml(candidate.name || '—')}</span>
-        <span class="recon-match-amount">${_formatCurrency(candidate.amount)}</span>
-        ${amountMatch ? '<span class="recon-amount-match-badge">$ Match</span>' : ''}
-      </div>
-    `;
+  _startPickMode({
+    bannerHtml: `
+      <strong>Match to Transaction:</strong> Click the bank transaction that ${escapeHtml(_matchRowLabel(sourceTxn))} belongs to.
+    `,
+    clickHandler: _matchToTransactionRowClickHandler,
+    cancelMessage: 'Match cancelled',
   });
+  _matchSourceId = sourceTxnId;
+}
 
-  bodyHtml += '</div>';
+async function _matchToTransactionRowClickHandler(event) {
+  if (!_matchSourceId) return;
 
-  openModal({
-    title: 'Match to Transaction',
-    body: bodyHtml,
-    actions: [
-      {
-        label: 'Cancel',
-        className: 'secondary',
-        onClick: closeModal,
-      },
-    ],
-  });
+  const row = event.target.closest('tr');
+  if (!row) return;
+  const clickedTxnId = row.dataset.txnId;
+  if (!clickedTxnId) return;
 
-  // Size the modal for the picker
-  const modalEl = document.querySelector('#modal-overlay .modal');
-  if (modalEl) {
-    modalEl.style.width = 'min(700px, 92vw)';
-    modalEl.style.maxHeight = '80vh';
-    modalEl.style.overflow = 'auto';
+  // The click is a pick, whatever the row holds under the pointer.
+  event.preventDefault();
+  event.stopPropagation();
+
+  const sourceTxn = transactions.find(txn => txn.transaction_id === _matchSourceId);
+  if (!sourceTxn) {
+    exitPickMode();
+    showStatus('Transaction not found', 'error');
+    return;
+  }
+
+  const clickedTxn = transactions.find(txn => txn.transaction_id === clickedTxnId);
+  const refusal = _matchTargetRefusal(sourceTxn, clickedTxn);
+  if (refusal) {
+    showStatus(refusal, 'warning');
+    return;
+  }
+
+  // Declining leaves the mode on so the user can pick another row.
+  if (!confirm(`Match ${_matchRowLabel(sourceTxn)} to ${_matchRowLabel(clickedTxn)}?`)) return;
+
+  exitPickMode();
+
+  try {
+    const result = await manualReconciliationMatch(sourceTxn.transaction_id, clickedTxn.transaction_id);
+    // The response drops the missing row and carries the matched bank row
+    // and any transfer partner. The ledger is fetched below, so the helper
+    // does not fetch it too.
+    await applyRowChangesFromResponse(result, fallbackAccountIdsForRow(sourceTxn), { siteSettlesLedger: true });
+    renderTransactionTable();
+    if (typeof renderAccountsSidebar === 'function') {
+      renderAccountsSidebar();
+    }
+
+    if (result.splits_need_repair) {
+      showStatus(
+        'Transactions matched — but split amounts no longer add up. Open the transaction to repair splits.',
+        'warning'
+      );
+    } else {
+      showStatus('Transactions matched successfully', 'success');
+    }
+
+    fetchBalanceHistory(result.account_id);
+  } catch (matchError) {
+    showStatus(`Match failed: ${matchError.message}`, 'error');
   }
 }
 
@@ -781,37 +835,6 @@ async function approveMatchedTransactionAndRefresh(transactionId, accountId) {
   await _applyApprovedMatch(result, refetchAccountIds);
 
   showStatus('Match approved — manual transaction removed', 'success');
-}
-
-async function _selectMatchCandidate(missingTxnId, targetTxnId) {
-  if (!confirm('Link these two transactions?')) return;
-
-  try {
-    const result = await manualReconciliationMatch(missingTxnId, targetTxnId);
-    // The response drops the missing row and carries the matched bank row
-    // and any transfer partner. The ledger is fetched below, so the helper
-    // does not fetch it too.
-    const missingRow = transactions.find(row => row.transaction_id === missingTxnId);
-    await applyRowChangesFromResponse(result, fallbackAccountIdsForRow(missingRow), { siteSettlesLedger: true });
-    renderTransactionTable();
-    if (typeof renderAccountsSidebar === 'function') {
-      renderAccountsSidebar();
-    }
-
-    if (result.splits_need_repair) {
-      showStatus(
-        'Transactions matched — but split amounts no longer add up. Open the transaction to repair splits.',
-        'warning'
-      );
-    } else {
-      showStatus('Transactions matched successfully', 'success');
-    }
-
-    closeModal();
-    fetchBalanceHistory(result.account_id);
-  } catch (matchError) {
-    showStatus(`Match failed: ${matchError.message}`, 'error');
-  }
 }
 
 // ─── Approve match API calls ────────────────────────────────

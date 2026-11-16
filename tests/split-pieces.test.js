@@ -84,7 +84,7 @@ test('piece menu offers no Match for Plaid parents or parents with match info', 
   assert.equal(menu.api._canMatchSplitParent(null, linkedAccounts), false);
 });
 
-test('a piece row gets Match plus Inspect; Match opens the picker with the parent id', () => {
+test('a piece row gets Match plus Inspect; Match hands over the parent id', () => {
   const parent = parentOf('manual', 'missing');
   const txnData = {
     txnId: 'p1',
@@ -97,7 +97,7 @@ test('a piece row gets Match plus Inspect; Match opens the picker with the paren
   const actions = menu.api._buildMenuItems(txnData).map(item => item.action);
   assert.deepEqual(plain(actions), ['match-to-adjacent', 'inspect-data']);
   // txnId is the parent's id for a piece (the row's data-txn-id), which is
-  // what _handleContextMatchToAdjacent hands to the picker.
+  // what _handleContextMatchToAdjacent hands to Match to Transaction.
   assert.equal(txnData.txnId, parent.transaction_id);
 });
 
@@ -114,18 +114,21 @@ test('a piece of a Plaid parent keeps Inspect only', () => {
   assert.deepEqual(plain(actions), ['inspect-data']);
 });
 
-// ── Match picker candidates ────────────────────────────────────
+// ── Match to Transaction targets ───────────────────────────────
 
-const picker = load(
+const matchRule = load(
   ['transactions/transaction-types.js', 'transactions/resolution.js'],
-  '_filterMatchPickerCandidates',
+  '_matchTargetRefusal',
 );
+
+// The rows of `all` the source may be matched to.
+const pickable = (source, all) => all.filter(txn => matchRule.api._matchTargetRefusal(source, txn) === null);
 
 const plaidRow = (id, extra = {}) => ({
   transaction_id: id, source: 'plaid', status: 'cleared', account_id: 'acct-1', amount: -50, ...extra,
 });
 
-test('picker candidates skip split rows and rows with match info', () => {
+test('Match to Transaction skips split rows and rows with match info', () => {
   const source = parentOf('manual', 'missing');
   const all = [
     source,
@@ -135,20 +138,20 @@ test('picker candidates skip split rows and rows with match info', () => {
     plaidRow('other-account', { account_id: 'acct-2' }),
     plaidRow('linked', { matched_transaction_id: 'x' }),
   ];
-  const ids = picker.api._filterMatchPickerCandidates(source, all).map(txn => txn.transaction_id);
+  const ids = pickable(source, all).map(txn => txn.transaction_id);
   assert.deepEqual(plain(ids), ['ok']);
 });
 
-test('picker keeps an is_split row whose splits are empty', () => {
+test('Match to Transaction keeps an is_split row whose splits are empty', () => {
   const source = parentOf('manual', 'missing', { is_split: false, splits: [] });
   const all = [plaidRow('empty-split', { is_split: true, splits: [] })];
-  assert.equal(picker.api._filterMatchPickerCandidates(source, all).length, 1);
+  assert.equal(pickable(source, all).length, 1);
 });
 
 test('a manual cleared source is only offered Plaid cleared targets', () => {
   const source = parentOf('manual', 'cleared');
   const all = [plaidRow('p'), { ...plaidRow('c'), source: 'manual' }];
-  const ids = picker.api._filterMatchPickerCandidates(source, all).map(txn => txn.transaction_id);
+  const ids = pickable(source, all).map(txn => txn.transaction_id);
   assert.deepEqual(plain(ids), ['p']);
 });
 

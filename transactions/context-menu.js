@@ -1077,14 +1077,14 @@ function _handleContextMakeTransfer(txnData) {
 // ─── Reconciliation quick-fix context menu handlers ─────────
 
 /**
- * Opens the inline match picker for a missing/orphaned transaction.
- * Delegates to the reconciliation module.
+ * Match to Transaction: enters pick mode so the user can click the bank
+ * transaction the row belongs to. Delegates to the reconciliation module.
  */
 function _handleContextMatchToAdjacent(txnData) {
-  if (typeof openInlineMatchPicker === 'function') {
-    openInlineMatchPicker(txnData.txnId);
+  if (typeof enterMatchToTransactionPickMode === 'function') {
+    enterMatchToTransactionPickMode(txnData.txnId);
   } else {
-    showStatus('Match picker not available', 'error');
+    showStatus('Match to Transaction not available', 'error');
   }
 }
 

@@ -522,13 +522,29 @@ async function deleteSplitHelper(splitTransactionId) {
   return response.json().catch(() => null);
 }
 
-// Delete split immediately (no confirmation)
+/**
+ * The question asked before a split is cleared. The button sits beside the
+ * edit button, so one stray click must not be enough to lose the pieces.
+ *
+ * @param {Object|undefined} splitTxn - The split's parent row as the page holds it.
+ * @returns {string} The confirmation sentence.
+ */
+function _clearSplitsConfirmText(splitTxn) {
+  const pieceCount = splitTxn && Array.isArray(splitTxn.splits) ? splitTxn.splits.length : 0;
+  const shownName = splitTxn ? (splitTxn.description || splitTxn.name || '') : '';
+  const pieces = pieceCount > 0 ? `the ${pieceCount} splits` : 'the splits';
+  const onRow = shownName ? ` on "${shownName}"` : '';
+  return `Clear ${pieces}${onRow}? It goes back to one transaction, and the pieces' categories and memos are removed.`;
+}
+
+// Clear a split after the user confirms: the pieces go and the row shows as one transaction again.
 async function handleDeleteSplit(splitTransactionId) {
+  var splitTxn = transactions.find(function(findTxn) { return findTxn.transaction_id === splitTransactionId; });
+  if (!confirm(_clearSplitsConfirmText(splitTxn))) return;
   try {
-    var splitTxn = transactions.find(function(findTxn) { return findTxn.transaction_id === splitTransactionId; });
     var splitAccountId = splitTxn ? splitTxn.account_id : null;
     const deleteData = await deleteSplitHelper(splitTransactionId);
-    showStatus('Split deleted successfully', 'success');
+    showStatus('Splits cleared', 'success');
     await applyRowChangesFromResponse(deleteData, splitAccountId ? [splitAccountId] : null);
     renderTransactionTable();
   } catch (error) {

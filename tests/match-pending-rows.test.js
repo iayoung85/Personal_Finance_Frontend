@@ -33,13 +33,16 @@ const row = (id, source, status, extra = {}) => ({
 
 const resolution = load(
   ['transactions/transaction-types.js', 'transactions/resolution.js'],
-  '_filterMatchPickerCandidates, _isForceMatchTarget',
+  '_matchTargetRefusal, _isForceMatchTarget',
 );
-const { _filterMatchPickerCandidates, _isForceMatchTarget } = resolution;
+const { _matchTargetRefusal, _isForceMatchTarget } = resolution;
 
 const idsOf = rows => plain(rows).map(candidate => candidate.transaction_id);
 
-// ── Match picker targets ───────────────────────────────────────
+// The rows of `allRows` the source may be matched to.
+const pickableRows = (source, allRows) => allRows.filter(txn => _matchTargetRefusal(source, txn) === null);
+
+// ── Match to Transaction targets ───────────────────────────────────────
 
 const everyRow = [
   row('cleared', 'plaid', 'cleared'),
@@ -57,14 +60,14 @@ for (const [label, source] of [
   ['a hand-entered future row', row('src', 'manual', 'future')],
   ['an upcoming bill occurrence', row('bill_ab_occ_2026-12-01', 'scheduled', 'future', { is_bill: true })],
 ]) {
-  test(`the picker for ${label} offers a pending bank row that is not hidden`, () => {
-    const offered = idsOf(_filterMatchPickerCandidates(source, [source, ...everyRow]));
+  test(`Match to Transaction for ${label} accepts a pending bank row that is not hidden`, () => {
+    const offered = idsOf(pickableRows(source, [source, ...everyRow]));
     assert.ok(offered.includes('pending'));
     assert.ok(offered.includes('cleared'));
   });
 
-  test(`the picker for ${label} keeps its exclusions for pending rows`, () => {
-    const offered = idsOf(_filterMatchPickerCandidates(source, [source, ...everyRow]));
+  test(`Match to Transaction for ${label} keeps its exclusions for pending rows`, () => {
+    const offered = idsOf(pickableRows(source, [source, ...everyRow]));
     for (const excluded of ['pending-hidden', 'pending-matched', 'pending-split', 'pending-other-account', 'src']) {
       assert.equal(offered.includes(excluded), false, excluded);
     }
@@ -73,7 +76,7 @@ for (const [label, source] of [
 
 test('a hand-entered cleared row is not offered another hand-entered row', () => {
   const source = row('src', 'manual', 'cleared');
-  assert.equal(idsOf(_filterMatchPickerCandidates(source, [source, ...everyRow])).includes('manual-cleared'), false);
+  assert.equal(idsOf(pickableRows(source, [source, ...everyRow])).includes('manual-cleared'), false);
 });
 
 // ── Force-match targets ────────────────────────────────────────

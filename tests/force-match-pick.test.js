@@ -76,17 +76,17 @@ test('pick mode listens in the capture phase and removes the same way', () => {
   const page = buildPage();
   const { api } = load(
     ['transactions/transaction-types.js', 'transactions/resolution.js'],
-    'enterForceMatchPickMode, exitForceMatchPickMode, isForceMatchPickModeActive',
+    'enterForceMatchPickMode, exitPickMode, isPickModeActive',
     page.globals,
   );
 
   api.enterForceMatchPickMode('orphan_1');
-  assert.equal(api.isForceMatchPickModeActive(), true);
+  assert.equal(api.isPickModeActive(), true);
   assert.equal(page.listeners[0].action, 'add');
   assert.equal(page.listeners[0].options.capture, true);
 
-  api.exitForceMatchPickMode();
-  assert.equal(api.isForceMatchPickModeActive(), false);
+  api.exitPickMode();
+  assert.equal(api.isPickModeActive(), false);
   assert.equal(page.listeners[1].action, 'remove');
   assert.equal(page.listeners[1].options.capture, true);
 });
@@ -117,7 +117,7 @@ test('a click on a non-Plaid row is swallowed with a warning, not edited', async
   const page = buildPage();
   const { api } = load(
     ['transactions/transaction-types.js', 'transactions/resolution.js'],
-    'enterForceMatchPickMode, _forceMatchRowClickHandler, isForceMatchPickModeActive',
+    'enterForceMatchPickMode, _forceMatchRowClickHandler, isPickModeActive',
     page.globals,
   );
   api.enterForceMatchPickMode('orphan_1');
@@ -128,7 +128,7 @@ test('a click on a non-Plaid row is swallowed with a warning, not edited', async
   assert.equal(calls.stopped, 1);
   assert.equal(page.requests.length, 0);
   assert.equal(page.statuses.at(-1).kind, 'warning');
-  assert.equal(api.isForceMatchPickModeActive(), true);
+  assert.equal(api.isPickModeActive(), true);
 });
 
 test('inline editing steps aside while pick mode is active', () => {
@@ -136,7 +136,7 @@ test('inline editing steps aside while pick mode is active', () => {
   let cellLookups = 0;
   const { api } = load(
     ['transactions/transaction-types.js', 'transactions/resolution.js', 'transactions/inline-edit.js'],
-    'enterForceMatchPickMode, exitForceMatchPickMode, _handleInlineClick',
+    'enterForceMatchPickMode, exitPickMode, _handleInlineClick',
     page.globals,
   );
   const event = {
@@ -150,7 +150,7 @@ test('inline editing steps aside while pick mode is active', () => {
   api._handleInlineClick(event);
   assert.equal(cellLookups, 0);
 
-  api.exitForceMatchPickMode();
+  api.exitPickMode();
   api._handleInlineClick(event);
   assert.equal(cellLookups, 1);
 });

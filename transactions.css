@@ -3924,13 +3924,6 @@ tr.bank-suspect-row td:first-child {
   white-space: nowrap;
 }
 
-.split-actions-cell {
-  padding: 6px 8px !important;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .split-badge-inline {
   display: inline-block;
   background: var(--bg-surface-elevated);
@@ -3966,13 +3959,25 @@ tr.bank-suspect-row td:first-child {
   color: var(--accent-link);
 }
 
-.split-delete-badge {
-  color: var(--color-danger);
-  border-color: var(--color-danger-border);
+.split-buttons-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.split-delete-badge:hover {
+.split-clear-badge {
+  color: var(--color-danger);
+  border-color: var(--color-danger-border);
+  width: auto;
+  padding: 2px 8px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.split-clear-badge:hover {
   background: var(--color-danger-bg);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
 }
 
 /* Broken split: each piece is flagged and the first carries Repair */
@@ -4920,74 +4925,6 @@ tr.bank-suspect-row td:first-child {
   color: var(--text-muted);
   padding: 20px;
   font-style: italic;
-}
-
-/* ── Inline Match Picker ─────────────────────────────────────── */
-
-.recon-match-picker-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 400px;
-  overflow-y: auto;
-  margin-top: 10px;
-}
-
-.recon-match-candidate {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  background: var(--bg-surface);
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.recon-match-candidate:hover {
-  background: var(--bg-surface-elevated);
-  border-color: var(--accent-link);
-}
-
-.recon-match-candidate-highlight {
-  border-color: var(--color-success-border);
-}
-
-.recon-match-candidate-highlight:hover {
-  border-color: var(--color-success);
-}
-
-.recon-match-date {
-  width: 80px;
-  flex-shrink: 0;
-  color: var(--text-secondary);
-}
-
-.recon-match-desc {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-primary);
-}
-
-.recon-match-amount {
-  width: 85px;
-  flex-shrink: 0;
-  text-align: right;
-  font-weight: 500;
-}
-
-.recon-amount-match-badge {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 8px;
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  flex-shrink: 0;
 }
 
 /* ── Force Match Pick Mode Banner ───────────────────────────── */

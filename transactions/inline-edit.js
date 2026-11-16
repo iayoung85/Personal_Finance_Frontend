@@ -131,8 +131,8 @@ function initInlineEditing() {
 
 
 function _handleInlineClick(event) {
-  // While a force-match target is being chosen, a click on a row picks it.
-  if (typeof isForceMatchPickModeActive === 'function' && isForceMatchPickModeActive()) return;
+  // While a force-match or match target is being chosen, a click on a row picks it.
+  if (typeof isPickModeActive === 'function' && isPickModeActive()) return;
 
   const targetCell = event.target.closest('td[data-field]');
   if (!targetCell) return;

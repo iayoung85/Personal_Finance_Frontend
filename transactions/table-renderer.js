@@ -975,12 +975,21 @@ function renderTransactionTable() {
           splitCategoryDisplay = split.personal_finance_category.detailed;
         }
         
-        // Category cell with autocomplete input (same as normal rows) + edit-splits button (first split only)
+        // Category cell with autocomplete input (same as normal rows) + the split's own buttons (first split only)
         let splitEditBtn = '';
         if (isFirstSplit && pieceTreatment.firstPieceButton !== 'none') {
           splitEditBtn = pieceTreatment.firstPieceButton === 'repair'
             ? `<button class="split-badge-btn split-repair-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Repair splits — amounts no longer match parent total">Repair</button>`
             : `<button class="split-badge-btn split-modify-badge" onclick="modifySplitModal('${escapeHtml(parentTxnId)}')" title="Modify splits">✎</button>`;
+        }
+        // Clearing sits beside editing and is spelled out: an icon alone in
+        // the far column did not say what it removes.
+        if (isFirstSplit && pieceTreatment.showDelete) {
+          splitEditBtn += `<button class="split-badge-btn split-clear-badge" onclick="handleDeleteSplit('${escapeHtml(parentTxnId)}')" title="Remove the split and show this as one transaction again">Clear splits</button>`;
+        }
+        if (splitEditBtn) {
+          // The category cell stacks its buttons; these two read as a pair.
+          splitEditBtn = `<span class="split-buttons-row">${splitEditBtn}</span>`;
         }
         const splitCategoryAutocomplete = _buildCategoryAutocomplete(
           split.transaction_id,
@@ -1056,11 +1065,7 @@ function renderTransactionTable() {
               rowHtml += '<td class="ledger-cell ledger-unavailable">—</td>';
             }
           }
-          rowHtml += pieceTreatment.showDelete
-            ? `<td class="split-actions-cell">
-            <button class="split-badge-btn split-delete-badge" onclick="handleDeleteSplit('${escapeHtml(parentTxnId)}')" title="Delete splits">🗑</button>
-          </td>`
-            : '<td></td>';
+          rowHtml += '<td></td>';
         } else {
           // Non-top split children: show amount but dash for ledger
           rowHtml += `<td class="${splitAmountCellClass}">${amount}</td>`;
