@@ -77,6 +77,16 @@ test('a pending transfer half shows the badge too', () => {
   assert.match(html, /amount-modified/);
 });
 
+test('a pending row on a waiting match keeps the badge beside approve and unmatch', () => {
+  const matchInfo = { matched_txn_id: 'm1' };
+  const html = badgeFor(TXN_TYPE.PLAID_PENDING, { amount_modified: true, plaid_amount: -50, match_info: matchInfo });
+  assert.match(html, /approve-match-badge/);
+  assert.match(html, /amount-modified/);
+  assert.match(html, /title="Bank shows -\$50\.00 /);
+  const untouched = badgeFor(TXN_TYPE.PLAID_PENDING, { amount_modified: false, match_info: matchInfo });
+  assert.doesNotMatch(untouched, /amount-modified/);
+});
+
 test('the badge hover names the bank amount, on a pending and a posted row', () => {
   const pending = badgeFor(TXN_TYPE.PLAID_PENDING, { amount_modified: true, plaid_amount: -50 });
   assert.match(pending, /title="Bank shows -\$50\.00 /);

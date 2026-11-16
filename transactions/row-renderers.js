@@ -495,8 +495,10 @@ function _renderMatchedPairRow(ctx) {
     + _matchCompareButton(matchInfo, ctx.txnId)
     + `</span> `;
 
+  // Approval leaves the bank row's amount alone, so an amount the user set
+  // on it is still theirs while the match waits and the row says so.
   return {
-    typeBadge: billBadge + actionGroup,
+    typeBadge: billBadge + actionGroup + _amountModifiedBadge(ctx.txn),
     categoryCell,
     actionCell: '<td></td>',
     rowCssClass: 'matched-row',
