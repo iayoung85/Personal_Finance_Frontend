@@ -246,7 +246,7 @@ function _buildWaitingPieceMenuItems(txnData) {
 
   if (parentTxn.match_info) {
     return [
-      _approveMatchItem(txnData),
+      _approveMatchItem(),
       { label: '✓ Approve All Matches', action: 'approve-all-matches', separator: false },
       { label: '✗ Unmatch', action: 'unmatch', separator: true },
       { label: '🔍 Inspect Match', action: 'inspect-match', separator: false },
@@ -257,20 +257,12 @@ function _buildWaitingPieceMenuItems(txnData) {
 }
 
 /**
- * The Approve Match entry, disabled with the reason while the pair waits for
- * the bank to post it, as the API refuses the approval until then.
+ * The Approve Match entry.
  *
- * @param {Object} txnData - Context data for the right-clicked row.
- * @returns {{label: string, action: string, separator: boolean, disabled?: boolean, disabledReason?: string}}
+ * @returns {{label: string, action: string, separator: boolean}}
  */
-function _approveMatchItem(txnData) {
-  const item = { label: '✓ Approve Match', action: 'approve-match', separator: false };
-  const bankRow = txnData.parentTransaction || txnData.localTransaction;
-  if (approvalWaitsForPosting(bankRow)) {
-    item.disabled = true;
-    item.disabledReason = APPROVE_WAITS_FOR_POSTING_REASON;
-  }
-  return item;
+function _approveMatchItem() {
+  return { label: '✓ Approve Match', action: 'approve-match', separator: false };
 }
 
 /**
@@ -611,7 +603,7 @@ function _buildMenuItemsForRow(txnData) {
   // Matched transactions get approve actions, bill, and transfer. Edits
   // the API refuses while the match waits are shown disabled.
   if (isMatched || isMatchedPair || _isWaitingMatchMenuRow(txnData)) {
-    items.push(_approveMatchItem(txnData));
+    items.push(_approveMatchItem());
     items.push({
       label: '✓ Approve All Matches',
       action: 'approve-all-matches',
@@ -1256,15 +1248,11 @@ function _approveAllSkipReasons(result) {
   const reasons = [];
   const skippedBothSplit = (result && result.skipped_both_split) || 0;
   const skippedTransferBankRow = (result && result.skipped_transfer_bank_row) || 0;
-  const skippedWaitsForPosting = (result && result.skipped_waits_for_posting) || 0;
   if (skippedBothSplit > 0) {
     reasons.push(`${skippedBothSplit} left waiting because both rows are split (unmatch first)`);
   }
   if (skippedTransferBankRow > 0) {
     reasons.push(`${skippedTransferBankRow} left waiting because the bank row is a transfer (unmatch first)`);
-  }
-  if (skippedWaitsForPosting > 0) {
-    reasons.push(`${skippedWaitsForPosting} left waiting because the transaction is split and the bank has not posted it yet`);
   }
   return reasons;
 }

@@ -475,19 +475,6 @@ function _matchCompareButton(matchInfo, plaidTxnId) {
 }
 
 
-/**
- * The approve check drawn disabled, for a pair whose approval has to wait
- * for the bank to post the row. It carries the reason as its hover title.
- *
- * @param {string} escapedMatchedTxnId - The matched row's id, already escaped.
- * @param {string} reason - Why approval is not open yet.
- * @returns {string} HTML for the button.
- */
-function _disabledApproveButton(escapedMatchedTxnId, reason) {
-  return `<button class="approve-match-badge" data-txn-id="${escapedMatchedTxnId}" disabled aria-disabled="true" title="${escapeHtml(reason)}">✓</button>`;
-}
-
-
 function _renderMatchedPairRow(ctx) {
   const matchInfo = ctx.txn.match_info;
   const unmatchId = escapeHtml(matchInfo.matched_txn_id);
@@ -501,9 +488,7 @@ function _renderMatchedPairRow(ctx) {
   // Bill badge when the matched counterpart originated from a bill template
   const billBadge = _matchedPairBillBadge(matchInfo);
 
-  const approveButton = approvalWaitsForPosting(ctx.txn)
-    ? _disabledApproveButton(unmatchId, APPROVE_WAITS_FOR_POSTING_REASON)
-    : `<button class="approve-match-badge" data-txn-id="${unmatchId}" onclick="${approveOnclick}" title="Approve this match — removes the manual counterpart">✓</button>`;
+  const approveButton = `<button class="approve-match-badge" data-txn-id="${unmatchId}" onclick="${approveOnclick}" title="Approve this match — removes the manual counterpart">✓</button>`;
   const actionGroup = `<span class="match-action-group">`
     + approveButton
     + `<button class="reject-match-badge" onclick="${unmatchOnclick}" title="Unmatch — revert manual to missing + detach from plaid">✗</button>`
@@ -545,10 +530,9 @@ function _renderMatchedPairRow(ctx) {
  *   rowCssClass: string,
  *   sourceBadge: ({label: string, cssClass: string, title: string}|null),
  *   billBadgeHtml: string,
- *   approve: ({call: string, args: Array, catchErrors: boolean, title: string, disabledReason: string}|null),
+ *   approve: ({call: string, args: Array, catchErrors: boolean, title: string}|null),
  *   reject: ({call: string, args: Array, title: string}|null),
  *   compareHtml: string,
- *   reviewDotTxnId: string,
  * }}
  */
 function getSplitPieceTreatment(parentTxn, splitIsBroken) {
@@ -563,7 +547,6 @@ function getSplitPieceTreatment(parentTxn, splitIsBroken) {
     approve: null,
     reject: null,
     compareHtml: '',
-    reviewDotTxnId: '',
   };
 
   if (!isWaitingMatchRow(parentTxn)) return treatment;
@@ -591,18 +574,12 @@ function getSplitPieceTreatment(parentTxn, splitIsBroken) {
       args: [matchInfo.matched_txn_id, accountId],
       catchErrors: true,
       title: 'Approve this match — removes the manual counterpart',
-      disabledReason: approvalWaitsForPosting(parentTxn) ? APPROVE_WAITS_FOR_POSTING_REASON : '',
     };
     treatment.reject = {
       call: 'unmatchScheduledTransaction',
       args: [matchInfo.matched_txn_id],
       title: 'Unmatch — revert manual to missing + detach from plaid',
     };
-    // A pair that cannot be approved yet is reviewed like an ordinary row:
-    // the pieces are all the list draws of it, so the dot rides on the first.
-    if (approvalWaitsForPosting(parentTxn) && parentTxn.reviewed === false) {
-      treatment.reviewDotTxnId = parentTxn.transaction_id || '';
-    }
   }
   return treatment;
 }
@@ -638,9 +615,7 @@ function renderWaitingPieceBadges(treatment) {
     + (treatment.approve.catchErrors ? ".catch(err => showStatus(err.message, 'error'))" : '');
   const rejectCall = _inlineCallText(treatment.reject.call, treatment.reject.args);
 
-  const approveButton = treatment.approve.disabledReason
-    ? _disabledApproveButton(escapeHtml(String(treatment.approve.args[0])), treatment.approve.disabledReason)
-    : `<button class="approve-match-badge" data-txn-id="${escapeHtml(String(treatment.approve.args[0]))}" onclick="event.stopPropagation(); ${approveCall};" title="${escapeHtml(treatment.approve.title)}">✓</button>`;
+  const approveButton = `<button class="approve-match-badge" data-txn-id="${escapeHtml(String(treatment.approve.args[0]))}" onclick="event.stopPropagation(); ${approveCall};" title="${escapeHtml(treatment.approve.title)}">✓</button>`;
 
   return treatment.billBadgeHtml
     + `<span class="match-action-group">`
@@ -819,8 +794,8 @@ function _getDefaultSourceBadge(ctx) {
 
 /**
  * Whether the user has worked on a pending row: set its category, written a
- * memo, renamed it, linked it as a transfer, or set the amount they expect it
- * to post at. Such a row is one they have
+ * memo, renamed it, linked it as a transfer, set the amount they expect it
+ * to post at, or split it. Such a row is one they have
  * accepted, so it is not offered the Hide button. A row a waiting match points
  * at is not offered it either, because the API refuses to hide it until the
  * match is undone. Mirrors the API's tests; this copy only decides a button.
@@ -829,6 +804,9 @@ function _getDefaultSourceBadge(ctx) {
  * @returns {boolean}
  */
 function pendingRowCarriesUserWork(txn) {
+  // Pieces shown for a waiting match belong to the other row, not this one.
+  const hasOwnPieces = !txn.splits_awaiting_match
+    && Boolean(txn.is_split || (Array.isArray(txn.splits) && txn.splits.length > 0));
   return Boolean(
     txn.match_info
     || txn.is_override
@@ -836,6 +814,7 @@ function pendingRowCarriesUserWork(txn) {
     || txn.user_description_override
     || txn.transfer_pair_id
     || txn.amount_modified
+    || hasOwnPieces
   );
 }
 

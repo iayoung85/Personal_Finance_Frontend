@@ -97,15 +97,9 @@ test('force match refuses a hidden pending row and rows that are not bank rows',
 
 const { rowNeedsReview } = load(['transactions/transaction-types.js'], 'rowNeedsReview');
 
-test('a pair that waits for the bank reads the row\'s own reviewed flag', () => {
-  const waits = { matched_txn_id: 'm', approval_waits_for_posting: true };
-  assert.equal(rowNeedsReview({ reviewed: true, match_info: waits }), false);
-  assert.equal(rowNeedsReview({ reviewed: false, match_info: waits }), true);
-});
-
 test('every other matched row stays in the queue whatever its flag says', () => {
   assert.equal(rowNeedsReview({ reviewed: true, match_info: { matched_txn_id: 'm' } }), true);
-  assert.equal(rowNeedsReview({ reviewed: true, match_info: { matched_txn_id: 'm', approval_waits_for_posting: false } }), true);
+  assert.equal(rowNeedsReview({ reviewed: true, match_info: { matched_txn_id: 'm', splits_awaiting_match: true } }), true);
   assert.equal(rowNeedsReview({ reviewed: false, match_info: { matched_txn_id: 'm' } }), true);
 });
 
@@ -119,12 +113,11 @@ test('an ordinary row needs review only when unreviewed', () => {
 
 const renderers = load(
   ['transactions/transaction-types.js', 'transactions/row-renderers.js'],
-  'renderPendingHideButton, getSplitPieceTreatment, renderWaitingPieceBadges',
+  'renderPendingHideButton, pendingRowCarriesUserWork, getSplitPieceTreatment, renderWaitingPieceBadges',
   { escapeHtml },
 );
 
 const pendingRow = (extra = {}) => row('p1', 'plaid', 'pending', { pending: true, is_hidden: false, ...extra });
-const WAITS = { matched_txn_id: 'm1', approval_waits_for_posting: true };
 
 test('a pending row carrying a match is offered no Hide button', () => {
   assert.match(renderers.renderPendingHideButton(pendingRow()), /pending-hide-btn/);
@@ -140,26 +133,32 @@ const waitingPair = (matchInfo, extra = {}) => pendingRow({
   ...extra,
 });
 
-test('a pair that waits for the bank draws its approve check disabled, with the reason', () => {
-  const treatment = renderers.getSplitPieceTreatment(waitingPair(WAITS), false);
-  const html = renderers.renderWaitingPieceBadges(treatment);
-  assert.match(html, /approve-match-badge" data-txn-id="m1" disabled/);
-  assert.match(html, /title="This transaction is split\. It can be approved once the bank posts it\."/);
-  assert.doesNotMatch(html, /approveMatchedTransactionAndRefresh/);
-  assert.match(html, /reject-match-badge/);
-});
-
-test('a pair that can be approved keeps its live approve check and has no review dot', () => {
+test('a split pair on a pending bank row draws a live approve check', () => {
   const treatment = renderers.getSplitPieceTreatment(waitingPair({ matched_txn_id: 'm1' }), false);
   const html = renderers.renderWaitingPieceBadges(treatment);
   assert.match(html, /approveMatchedTransactionAndRefresh/);
   assert.doesNotMatch(html, / disabled/);
-  assert.equal(treatment.reviewDotTxnId, '');
+  assert.match(html, /reject-match-badge/);
 });
 
-test('the review dot is wanted only while a waiting pair is unreviewed', () => {
-  assert.equal(renderers.getSplitPieceTreatment(waitingPair(WAITS), false).reviewDotTxnId, 'p1');
-  assert.equal(renderers.getSplitPieceTreatment(waitingPair(WAITS, { reviewed: true }), false).reviewDotTxnId, '');
+// ── Pieces are the user's work ─────────────────────────────────
+
+const PIECES = [{ transaction_id: 'p1_split_0', amount: -30 }, { transaction_id: 'p1_split_1', amount: -20 }];
+
+test('a split pending row carries the user\'s work, so it is offered no Hide button', () => {
+  assert.equal(renderers.pendingRowCarriesUserWork(pendingRow({ is_split: true, splits: PIECES })), true);
+  assert.equal(renderers.pendingRowCarriesUserWork(pendingRow({ splits: PIECES })), true);
+  assert.equal(renderers.renderPendingHideButton(pendingRow({ is_split: true, splits: PIECES })), '');
+});
+
+test('pieces shown for a waiting match are not this row\'s own work', () => {
+  const lent = pendingRow({ is_split: true, splits: PIECES, splits_awaiting_match: true });
+  assert.equal(renderers.pendingRowCarriesUserWork(lent), false);
+});
+
+test('a plain pending row with no pieces is still offered Hide', () => {
+  assert.equal(renderers.pendingRowCarriesUserWork(pendingRow()), false);
+  assert.equal(renderers.pendingRowCarriesUserWork(pendingRow({ is_split: false, splits: [] })), false);
 });
 
 // ── Context menu ───────────────────────────────────────────────
@@ -230,21 +229,25 @@ test('Hide on a matched pending row is shown disabled; Unhide and posted rows ar
   assert.equal(itemFor(menu._buildMenuItems(menuData(postedPair)), 'hide').disabled, undefined);
 });
 
-test('Approve Match is disabled for a pair that waits for the bank', () => {
-  const waiting = row('c2', 'plaid', 'pending', { match_info: WAITS, pending: true });
+test('Approve Match is offered live on a pending bank row, split or not', () => {
+  const waiting = row('c2', 'plaid', 'pending', { match_info: { matched_txn_id: 'm1' }, pending: true });
   const approve = itemFor(menu._buildMenuItems(menuData(waiting)), 'approve-match');
-  assert.equal(approve.disabled, true);
-  assert.match(approve.disabledReason, /bank posts it/);
+  assert.equal(approve.disabled, undefined);
 
   const ordinary = row('c3', 'plaid', 'cleared', { match_info: { matched_txn_id: 'm1' } });
   assert.equal(itemFor(menu._buildMenuItems(menuData(ordinary)), 'approve-match').disabled, undefined);
 });
 
-test('Approve All names the matches left waiting for the bank to post', () => {
-  assert.deepEqual(plain(menu._approveAllSkipReasons({ skipped_waits_for_posting: 2 })), [
-    '2 left waiting because the transaction is split and the bank has not posted it yet',
-  ]);
-  assert.deepEqual(plain(menu._approveAllSkipReasons({ skipped_waits_for_posting: 0 })), []);
+// ── Splitting a pending row ────────────────────────────────────
+
+const { SPLITTABLE_TYPES, TXN_TYPE } = load(
+  ['transactions/transaction-types.js'],
+  'SPLITTABLE_TYPES, TXN_TYPE',
+);
+
+test('a pending bank row can be split, as a posted one can', () => {
+  assert.equal(SPLITTABLE_TYPES.has(TXN_TYPE.PLAID_PENDING), true);
+  assert.equal(SPLITTABLE_TYPES.has(TXN_TYPE.PLAID_CLEARED), true);
 });
 
 // ── Bulk edit refusal text ─────────────────────────────────────

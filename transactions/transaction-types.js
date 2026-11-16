@@ -149,23 +149,8 @@ function getInlineEditableFields(txnType) {
 /** Tooltip for every edit a waiting match refuses. */
 const WAITING_MATCH_LOCK_REASON = 'Approve or unmatch this match first';
 
-/** Why a split pair on a pending bank row cannot be approved yet. */
-const APPROVE_WAITS_FOR_POSTING_REASON =
-  'This transaction is split. It can be approved once the bank posts it.';
-
 /** Why a pending bank row under a waiting match is not offered Hide. */
 const PENDING_MATCH_HIDE_REASON = 'Unmatch this pending transaction before hiding it';
-
-/**
- * Whether a waiting match's approval is refused until the bank posts the
- * row: the matched transaction is split and the bank row is still pending.
- *
- * @param {Object|null} bankRow - The Plaid row carrying `match_info`.
- * @returns {boolean}
- */
-function approvalWaitsForPosting(bankRow) {
-  return !!(bankRow && bankRow.match_info && bankRow.match_info.approval_waits_for_posting);
-}
 
 /**
  * Whether a row is either side of a waiting match: the Plaid row that
@@ -197,19 +182,11 @@ function isWaitingMatchRow(txn) {
  * the match is approved or unmatched. The hidden matched row is not
  * counted, so a match counts once.
  *
- * The exception is a pair whose approval has to wait for the bank to post
- * it (`match_info.approval_waits_for_posting`). Approve is refused there, so
- * keeping the row in the queue would leave the user no way out of it; the
- * list sends the row's own flag for such a pair, and that flag decides.
- *
  * @param {Object|null} txn - A row as the API returned it.
  * @returns {boolean}
  */
 function rowNeedsReview(txn) {
   if (!txn) return false;
-  if (approvalWaitsForPosting(txn)) {
-    return txn.reviewed === false;
-  }
   return txn.reviewed === false || !!txn.match_info;
 }
 
@@ -255,6 +232,7 @@ const MATCHABLE_TYPES = new Set([
 ]);
 
 const SPLITTABLE_TYPES = new Set([
+  TXN_TYPE.PLAID_PENDING,
   TXN_TYPE.PLAID_CLEARED,
   TXN_TYPE.PLAID_CONVERTED,
   TXN_TYPE.MANUAL_CLEARED,
