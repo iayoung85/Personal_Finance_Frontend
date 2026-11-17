@@ -14,6 +14,7 @@
 const MATCH_COMPARE_POPOVER_ID = 'match-compare-popover';
 const MATCH_COMPARE_VIEWPORT_MARGIN = 8;
 const MATCH_COMPARE_ANCHOR_GAP = 4;
+const BANK_ROW_MEMO_LABEL = 'Memo on this row';
 
 let _matchCompareAnchor = null;
 
@@ -34,33 +35,54 @@ function buildMatchCompareSections(compare) {
   const yours = compare.yours || {};
   const bank = compare.bank || {};
 
+  const yourRows = [
+    { label: 'Date', kind: 'date', value: yours.date },
+    { label: 'Name', kind: 'text', value: yours.name },
+    { label: 'Amount', kind: 'amount', value: yours.amount },
+    { label: 'Category', kind: 'text', value: yours.category },
+  ];
+  const yourMemo = _matchCompareMemo(yours.memo);
+  if (yourMemo) {
+    yourRows.push({ label: 'Memo', kind: 'text', value: yourMemo });
+  }
+
+  // A bank row whose amount the user set holds their amount, so the bank's
+  // own is sent beside it. The section is the bank's, so its own leads.
+  const bankSentItsOwnAmount = bank.plaid_amount !== null && bank.plaid_amount !== undefined;
   const bankRows = [
     { label: 'Date', kind: 'date', value: bank.date },
     { label: 'Name', kind: 'text', value: bank.name },
-    { label: 'Amount', kind: 'amount', value: bank.amount },
+    { label: 'Amount', kind: 'amount', value: bankSentItsOwnAmount ? bank.plaid_amount : bank.amount },
   ];
+  if (bankSentItsOwnAmount) {
+    bankRows.push({ label: 'Amount you set', kind: 'amount', value: bank.amount });
+  }
   // Plaid's own category, and the label the user's mappings give it.
   if (bank.plaid_category) {
     bankRows.push({ label: 'Plaid category', kind: 'text', value: bank.plaid_category });
     bankRows.push({ label: 'Maps to', kind: 'text', value: bank.mapped_category });
   }
-  const bankMemo = typeof bank.memo === 'string' ? bank.memo.trim() : '';
+  // The bank sends no memo; this one was written on the row in the app.
+  const bankMemo = _matchCompareMemo(bank.memo);
   if (bankMemo) {
-    bankRows.push({ label: 'Memo', kind: 'text', value: bankMemo });
+    bankRows.push({ label: BANK_ROW_MEMO_LABEL, kind: 'text', value: bankMemo });
   }
 
   return [
-    {
-      title: 'Your transaction',
-      rows: [
-        { label: 'Date', kind: 'date', value: yours.date },
-        { label: 'Name', kind: 'text', value: yours.name },
-        { label: 'Amount', kind: 'amount', value: yours.amount },
-        { label: 'Category', kind: 'text', value: yours.category },
-      ],
-    },
+    { title: 'Your transaction', rows: yourRows },
     { title: 'Plaid-downloaded transaction', rows: bankRows },
   ];
+}
+
+
+/**
+ * A memo as the compare view lists it.
+ *
+ * @param {*} memo - A side's memo from `compare`.
+ * @returns {string} The trimmed text, '' for a blank or missing memo.
+ */
+function _matchCompareMemo(memo) {
+  return typeof memo === 'string' ? memo.trim() : '';
 }
 
 

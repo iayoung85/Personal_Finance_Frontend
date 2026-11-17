@@ -218,7 +218,7 @@ test('the compare sections list your side and the bank side in order', () => {
   assert.deepEqual(sections[1].rows.map(row => [row.label, row.value]), [
     ['Date', '2026-01-15'], ['Name', 'SQ *CORNER CAFE'], ['Amount', -41.5],
     ['Plaid category', 'Food And Drink: Coffee'], ['Maps to', 'Food: Coffee shops'],
-    ['Memo', 'Bank memo'],
+    ['Memo on this row', 'Bank memo'],
   ]);
 });
 
@@ -228,7 +228,7 @@ test('a bank row without a Plaid category lists neither category row', () => {
     bank: { ...COMPARE.bank, plaid_category: null, mapped_category: null },
   };
   const bankRows = plain(compareModule.buildMatchCompareSections(compare))[1].rows;
-  assert.deepEqual(bankRows.map(row => row.label), ['Date', 'Name', 'Amount', 'Memo']);
+  assert.deepEqual(bankRows.map(row => row.label), ['Date', 'Name', 'Amount', 'Memo on this row']);
 });
 
 test('a blank bank memo is left out', () => {
@@ -239,7 +239,34 @@ test('a blank bank memo is left out', () => {
       bankRows.map(row => row.label),
       ['Date', 'Name', 'Amount', 'Plaid category', 'Maps to'],
     );
-    assert.doesNotMatch(compareModule.renderMatchCompareHtml(compare), /<dt>Memo<\/dt>/);
+    assert.doesNotMatch(compareModule.renderMatchCompareHtml(compare), /<dt>Memo/);
+  }
+});
+
+test('your memo is listed on your side, and left out when blank', () => {
+  const withMemo = { yours: { ...COMPARE.yours, memo: ' Lunch with Sam ' }, bank: COMPARE.bank };
+  const yourRows = plain(compareModule.buildMatchCompareSections(withMemo))[0].rows;
+  assert.deepEqual(yourRows[yourRows.length - 1], { label: 'Memo', kind: 'text', value: 'Lunch with Sam' });
+  for (const memo of ['', '   ', null, undefined]) {
+    const blank = { yours: { ...COMPARE.yours, memo }, bank: COMPARE.bank };
+    const labels = plain(compareModule.buildMatchCompareSections(blank))[0].rows.map(row => row.label);
+    assert.deepEqual(labels, ['Date', 'Name', 'Amount', 'Category']);
+  }
+});
+
+test('a bank row holding an amount you set shows the bank amount first, then yours', () => {
+  const compare = { yours: COMPARE.yours, bank: { ...COMPARE.bank, amount: -73.09, plaid_amount: -63.93 } };
+  const bankRows = plain(compareModule.buildMatchCompareSections(compare))[1].rows;
+  assert.deepEqual(bankRows.slice(2, 4).map(row => [row.label, row.kind, row.value]), [
+    ['Amount', 'amount', -63.93], ['Amount you set', 'amount', -73.09],
+  ]);
+});
+
+test('a bank row at the bank amount lists one amount', () => {
+  for (const plaidAmount of [null, undefined]) {
+    const compare = { yours: COMPARE.yours, bank: { ...COMPARE.bank, plaid_amount: plaidAmount } };
+    const bankRows = plain(compareModule.buildMatchCompareSections(compare))[1].rows;
+    assert.deepEqual(bankRows.filter(row => row.kind === 'amount').map(row => [row.label, row.value]), [['Amount', -41.5]]);
   }
 });
 
@@ -249,7 +276,7 @@ test('the popover HTML formats dates and amounts like the ledger and escapes nam
   assert.match(html, /<dt>Date<\/dt><dd>D\(2026-01-12\)<\/dd>/);
   assert.match(html, /<dt>Amount<\/dt><dd class="ledger-negative">USD -40.00<\/dd>/);
   assert.match(html, /<dd>A &amp; &lt;B&gt;<\/dd>/);
-  assert.match(html, /<dt>Memo<\/dt><dd>Bank memo<\/dd>/);
+  assert.match(html, /<dt>Memo on this row<\/dt><dd>Bank memo<\/dd>/);
   assert.match(html, /Your transaction[\s\S]*Plaid-downloaded transaction/);
 });
 
