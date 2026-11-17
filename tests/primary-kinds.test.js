@@ -112,14 +112,17 @@ test('a pinned primary shows its plain kind label with the reason text', () => {
   assert.match(view.explanations[0], /\*Transfer In → Account Transfer\*/);
   assert.match(view.explanations[0], /money-in half of a transfer/);
   assert.match(view.explanations[0], /always counts as a transfer/);
-  assert.match(view.explanations[0], /follow the new name/);
+  assert.match(view.explanations[0], /fixed label/);
+  assert.match(view.explanations[0], /can't be renamed, moved, merged or deleted/);
+  assert.doesNotMatch(view.explanations[0], /follow the new name|You may rename/);
 });
 
 test('each pinned reason has its own explanation', () => {
   const out = helpers.PINNED_REASON_EXPLANATIONS.unlinked_transfer_out;
   assert.match(out, /\*Transfer Out → Account Transfer\*/);
   assert.match(out, /money-out half of a transfer/);
-  assert.match(out, /follow the new name/);
+  assert.match(out, /fixed label/);
+  assert.doesNotMatch(out, /follow the new name|You may rename/);
   const gain = helpers.describePrimaryKind({ name: 'Adjustments', kind: 'adjustment', kind_is_set: true, pinned_reason: 'investment_gain_loss' });
   assert.equal(gain.mode, 'pinned');
   assert.equal(gain.label, 'Adjustment');

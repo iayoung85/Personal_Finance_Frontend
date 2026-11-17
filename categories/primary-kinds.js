@@ -67,8 +67,8 @@ function indexPrimaryKinds(primaryCategories) {
  * splitEmphasis.
  */
 const PINNED_REASON_EXPLANATIONS = {
-  unlinked_transfer_in: "The app files the money-in half of a transfer here when a transfer pair is unlinked or repaired, using the label your Plaid mapping gives Plaid's *Transfer In → Account Transfer* category. So this primary always counts as a transfer. You may rename it or that label: the mapping, and this role, follow the new name.",
-  unlinked_transfer_out: "The app files the money-out half of a transfer here when a transfer pair is unlinked or repaired, using the label your Plaid mapping gives Plaid's *Transfer Out → Account Transfer* category. So this primary always counts as a transfer. You may rename it or that label: the mapping, and this role, follow the new name.",
+  unlinked_transfer_in: "The app files the money-in half of a transfer here when a transfer pair is unlinked or repaired, using its own fixed label for Plaid's *Transfer In → Account Transfer* category. That label is the app's: it can't be renamed, moved, merged or deleted, and the Plaid category can't be mapped elsewhere. So this primary always counts as a transfer.",
+  unlinked_transfer_out: "The app files the money-out half of a transfer here when a transfer pair is unlinked or repaired, using its own fixed label for Plaid's *Transfer Out → Account Transfer* category. That label is the app's: it can't be renamed, moved, merged or deleted, and the Plaid category can't be mapped elsewhere. So this primary always counts as a transfer.",
   investment_gain_loss: "This label appeared when you converted an investment account or imported investment history: the app writes *Adjustments: Investment Gain/Loss* for those gains and losses. Balances and investment trends find those rows by that exact label, so this primary always counts as an adjustment and that label can't be renamed. Your own labels here can be renamed into another primary, which you can then set to any kind."
 };
 

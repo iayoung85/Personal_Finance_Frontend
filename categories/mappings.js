@@ -32,6 +32,9 @@ function renderMappingsList(filterText = '') {
       const displayNames = getCategoryDisplayNames(taxonomyEntry || { detailed: plaidCat });
       const displayKey = displayNames.full || formatPlaidCategory(plaidCat);
 
+      const lockedKey = findLockedKey(plaidCat, lockedLabels);
+      if (lockedKey) return _buildLockedMappingRow(plaidCat, displayKey, lockedKey);
+
       const options = buildDetailedOptionsForCategory(plaidCat, userLabel);
 
       return `
@@ -45,6 +48,13 @@ function renderMappingsList(filterText = '') {
     .join('');
 
   container.innerHTML = rows || '<div class="empty-state">No mappings match your filter.</div>';
+
+  // A locked key shows its reason on a tap, a click, or keyboard focus.
+  container.querySelectorAll('[data-lock-message]').forEach(element => {
+    const message = element.getAttribute('data-lock-message');
+    element.addEventListener('click', () => showStatus(message, 'warning'));
+    element.addEventListener('focus', () => showStatus(message, 'warning'));
+  });
 
   container.querySelectorAll('.mapping-value').forEach(select => {
     select.addEventListener('change', event => {
@@ -61,6 +71,21 @@ function renderMappingsList(filterText = '') {
       }
     });
   });
+}
+
+/**
+ * One mapping row for a key the app has locked: its label greyed and not
+ * editable, with the API's reason on hover, tap and focus.
+ */
+function _buildLockedMappingRow(plaidCat, displayKey, lockedKey) {
+  const message = escapeHtml(lockedKey.message);
+  return `
+        <div class="mapping-row is-locked" data-plaid-category="${escapeHtml(plaidCat)}">
+          <div class="mapping-key" title="${escapeHtml(plaidCat)}">${escapeHtml(displayKey)}</div>
+          <div class="mapping-locked-value" tabindex="0" role="note" data-lock-message="${message}" title="${message}">${escapeHtml(lockedKey.label)}</div>
+          <button type="button" class="secondary is-locked mapping-clear" data-lock-message="${message}" aria-disabled="true" title="${message}">Clear</button>
+        </div>
+      `;
 }
 
 // ── Primary Mapping List ────────────────────────────────────
@@ -137,6 +162,7 @@ function renderDetailedMappingFilterOptions() {
 // ── Clear & Save ────────────────────────────────────────────
 
 function clearMapping(plaidCategory) {
+  if (findLockedKey(plaidCategory, lockedLabels)) return;
   const row = document.querySelector(`.mapping-row[data-plaid-category="${plaidCategory}"]`);
   if (row) {
     const select = row.querySelector('.mapping-value');
@@ -183,13 +209,16 @@ async function saveCategoryMappings() {
     const previousMappings = await _fetchServerPrimaryMappings();
     // Use the in-memory categoryMappings — ensures ALL mappings are saved,
     // not just the currently visible (filtered) ones
-    const newMappings = {};
+    const editedMappings = {};
     Object.entries(categoryMappings || {}).forEach(([key, value]) => {
       const trimmedValue = (value || '').trim();
       if (trimmedValue) {
-        newMappings[key] = trimmedValue;
+        editedMappings[key] = trimmedValue;
       }
     });
+    // The page never edits a locked key, but the primary pickers rewrite every
+    // key under a Plaid primary, so those values are put back before sending.
+    const newMappings = withLockedMappingsKept(editedMappings, lockedLabels);
 
     const { response, data } = await _putCategoryMappings({ category_mappings: newMappings });
     if (!response.ok) {
@@ -419,6 +448,7 @@ function applyPrimaryMapping(plaidPrimaryDisplay, targetPrimaryDisplay) {
     .forEach(cat => {
       const displayNames = getCategoryDisplayNames(cat);
       const detailed = displayNames.trimmed || '';
+      if (findLockedKey(cat.detailed, lockedLabels)) return;
       const newLabel = detailed ? `${targetPrimary}: ${detailed}` : targetPrimary;
       categoryMappings[cat.detailed] = newLabel;
     });

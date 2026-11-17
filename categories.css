@@ -529,6 +529,39 @@ tr:hover {
   margin-top: 6px;
 }
 
+/* A label the app owns: greyed, its Reassign shown but inert. The button is
+   aria-disabled rather than disabled so it can still show why. */
+.custom-detailed-row.is-locked > span {
+  color: var(--text-muted);
+}
+
+button.is-locked,
+button.is-locked:hover {
+  background: var(--bg-input);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.label-badge-plaid {
+  background: var(--badge-plaid-bg);
+  color: var(--badge-plaid-text);
+  margin-left: 4px;
+  font-weight: 400;
+  cursor: help;
+}
+
+.mapping-locked-value {
+  padding: 6px 8px;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: not-allowed;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .preview-item.disabled {
   cursor: default;
   color: var(--text-muted);

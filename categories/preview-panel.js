@@ -1,7 +1,7 @@
 // ============================================================
 // categories/preview-panel.js — Category Preview Rendering
 // Renders the "Category Output Preview" card and
-// the "Custom Categories" preview (primary + detailed panes).
+// the "Your Categories" preview (primary + detailed panes).
 // ============================================================
 
 // ── Category Output Preview (read-only taxonomy view) ───────
@@ -293,22 +293,16 @@ function _buildDetailedPreviewRows() {
   return { html, count: sorted.length };
 }
 
-// ── Custom Categories Preview ───────────────────────────────
+// ── Your Categories Preview ─────────────────────────────────
+// Lists every label in the user's list, custom or listed only through a
+// Plaid key, with the Reassign buttons.
+
+/** The lists describeLabel and groupListedLabels read, from the page's state. */
+function _currentLabelLists() {
+  return { customCategories, categoryMappings, lockedLabels };
+}
 
 function renderCustomCategories() {
-  if (!customCategories.length) {
-    const primaryContainer = document.getElementById('custom-primary-category-list');
-    const detailedContainer = document.getElementById('custom-detailed-category-list');
-    const primaryCountElement = document.getElementById('custom-primary-selected-count');
-    const detailedCountElement = document.getElementById('custom-detailed-count');
-
-    if (primaryContainer) primaryContainer.innerHTML = '<div class="empty-state">No custom categories yet.</div>';
-    if (detailedContainer) detailedContainer.innerHTML = '<div class="empty-state">No custom categories yet.</div>';
-    if (primaryCountElement) primaryCountElement.textContent = '';
-    if (detailedCountElement) detailedCountElement.textContent = '';
-    return;
-  }
-
   _renderCustomCategoryFiltered();
 }
 
@@ -320,30 +314,22 @@ function _renderCustomCategoryFiltered() {
 
   if (!primaryContainer || !detailedContainer) return;
 
-  // Group custom categories by primary
-  const primaryMap = {};
-  (customCategories || []).forEach(cat => {
-    const parts = parseCategoryName(cat);
-    if (!primaryMap[parts.primary]) {
-      primaryMap[parts.primary] = [];
-    }
-    if (parts.detailed) {
-      primaryMap[parts.primary].push(parts.detailed);
-    }
-  });
-
-  const primaryOptions = Object.keys(primaryMap).sort((a, b) => a.localeCompare(b));
+  const groups = groupListedLabels(_currentLabelLists());
+  const primaryOptions = groups.map(group => group.primary);
 
   if (!primaryOptions.length) {
-    primaryContainer.innerHTML = '<div class="empty-state">No custom categories yet.</div>';
-    detailedContainer.innerHTML = '<div class="empty-state">No custom categories yet.</div>';
+    primaryContainer.innerHTML = '<div class="empty-state">No categories in your list yet.</div>';
+    detailedContainer.innerHTML = '<div class="empty-state">No categories in your list yet.</div>';
     if (primaryCountElement) primaryCountElement.textContent = '';
     if (detailedCountElement) detailedCountElement.textContent = '';
     return;
   }
 
-  // Initialize selection if empty
-  if (!selectedCustomPrimaryCategories || selectedCustomPrimaryCategories.size === 0) {
+  // Drop selections for primaries that have left the list, then make sure one remains.
+  selectedCustomPrimaryCategories = new Set(
+    Array.from(selectedCustomPrimaryCategories || []).filter(key => primaryOptions.includes(key))
+  );
+  if (selectedCustomPrimaryCategories.size === 0) {
     selectedCustomPrimaryCategories = new Set([primaryOptions[0]]);
   }
 
@@ -407,8 +393,9 @@ function _renderCustomCategoryFiltered() {
   });
 
   // Display detailed categories with action buttons
-  const detailedRows = _buildCustomDetailedPreviewRows(primaryMap);
+  const detailedRows = _buildCustomDetailedPreviewRows(groups);
   detailedContainer.innerHTML = detailedRows.html;
+  _wireLabelRowActions(detailedContainer);
 
   if (primaryCountElement) {
     primaryCountElement.textContent = `${primaryOptions.length} total`;
@@ -418,37 +405,60 @@ function _renderCustomCategoryFiltered() {
   }
 }
 
-function _buildCustomDetailedPreviewRows(primaryMap) {
+/** The `#plaid` badge for a label listed only through a Plaid key; '' otherwise. */
+function _plaidBadgeHtml(description) {
+  if (!description || !description.isMappingOnly) return '';
+  return '<span class="pill label-badge-plaid" title="Listed because a Plaid category maps to it">#plaid</span>';
+}
+
+/**
+ * A Reassign or similar action button. A locked one is aria-disabled, not
+ * disabled, so it still takes focus and taps and can show its reason.
+ */
+function _labelActionButton({ action, text, title, small, dataName, dataValue, lockMessage }) {
+  const sizeStyle = small ? 'padding: 3px 8px; font-size: 11px;' : 'padding: 4px 8px; font-size: 12px;';
+  const nameAttr = `data-${dataName}="${escapeHtml(dataValue)}"`;
+  if (lockMessage) {
+    return `<button type="button" class="secondary is-locked" style="${sizeStyle}" data-action="${action}" ${nameAttr} data-lock-message="${escapeHtml(lockMessage)}" aria-disabled="true" title="${escapeHtml(lockMessage)}">${text}</button>`;
+  }
+  return `<button type="button" class="secondary" style="${sizeStyle}" data-action="${action}" ${nameAttr} title="${escapeHtml(title)}">${text}</button>`;
+}
+
+function _buildCustomDetailedPreviewRows(groups) {
   const rows = [];
+  const groupByPrimary = new Map(groups.map(group => [group.primary, group]));
+  let totalDetailed = 0;
 
   Array.from(selectedCustomPrimaryCategories).forEach(selectedPrimary => {
-    if (!primaryMap[selectedPrimary]) return;
+    const group = groupByPrimary.get(selectedPrimary);
+    if (!group) return;
 
-    const detailedList = primaryMap[selectedPrimary];
-    const primary = selectedPrimary;
+    totalDetailed += group.labels.length;
+    const primary = group.primary;
+    const primaryLocked = group.holdsLocked ? group.lockMessage : '';
 
     // Primary row with action buttons
     rows.push(`
       <div class="custom-category-row" style="background: var(--bg-surface-elevated); padding: 8px 12px; margin: 8px 0; border-radius: 4px; border-left: 3px solid var(--accent-primary);">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-weight: 600;">${escapeHtml(primary)}</span>
+          <span style="font-weight: 600;">${escapeHtml(primary)} ${_plaidBadgeHtml(group.primaryOnly)}</span>
           <div style="display: flex; gap: 6px;">
-            <button class="secondary" style="padding: 4px 8px; font-size: 12px;" onclick="startAddDetailsForCategory('${escapeHtml(primary)}')">+ Add Detailed</button>
-            <button class="secondary" style="padding: 4px 8px; font-size: 12px;" onclick="openReassignPrimaryModal('${escapeHtml(primary)}')" title="Move all detailed categories under this primary to another primary. All rules and overrides will follow.">Reassign</button>
+            ${_labelActionButton({ action: 'add-detailed', text: '+ Add Detailed', title: 'Add a detailed category under this primary.', dataName: 'primary', dataValue: primary })}
+            ${_labelActionButton({ action: 'reassign-primary', text: 'Reassign', title: 'Move all detailed categories under this primary to another primary. All rules and overrides will follow.', dataName: 'primary', dataValue: primary, lockMessage: primaryLocked })}
           </div>
         </div>
       </div>
     `);
 
     // Detailed category rows
-    if (detailedList && detailedList.length > 0) {
-      detailedList.forEach(detailed => {
-        const fullCategoryName = `${primary}: ${detailed}`;
+    if (group.labels.length > 0) {
+      group.labels.forEach(entry => {
+        const lockMessage = entry.locked ? entry.lockMessage : '';
         rows.push(`
-          <div class="custom-detailed-row" style="padding: 6px 12px 6px 24px; margin: 4px 0; background: var(--bg-surface); border-radius: 3px; display: flex; justify-content: space-between; align-items: center;">
-            <span>${escapeHtml(detailed)}</span>
+          <div class="custom-detailed-row ${lockMessage ? 'is-locked' : ''}" style="padding: 6px 12px 6px 24px; margin: 4px 0; background: var(--bg-surface); border-radius: 3px; display: flex; justify-content: space-between; align-items: center;">
+            <span>${escapeHtml(entry.detailed)} ${_plaidBadgeHtml(entry)}</span>
             <div style="display: flex; gap: 6px;">
-              <button class="secondary" style="padding: 3px 8px; font-size: 11px;" onclick="openReassignDetailedModal('${escapeHtml(fullCategoryName)}')" title="Move this category to a different primary or consolidate with another detailed category. All rules and overrides will follow.">Reassign</button>
+              ${_labelActionButton({ action: 'reassign-detailed', text: 'Reassign', title: 'Move this category to a different primary or consolidate with another detailed category. All rules and overrides will follow.', small: true, dataName: 'label', dataValue: entry.label, lockMessage })}
             </div>
           </div>
         `);
@@ -463,18 +473,36 @@ function _buildCustomDetailedPreviewRows(primaryMap) {
   });
 
   if (rows.length === 0) {
-    return { html: '<div class="empty-state">No custom categories match your selection.</div>', count: 0 };
+    return { html: '<div class="empty-state">No categories match your selection.</div>', count: 0 };
   }
 
-  // Count total detailed categories
-  let totalDetailed = 0;
-  Array.from(selectedCustomPrimaryCategories).forEach(primary => {
-    if (primaryMap[primary]) {
-      totalDetailed += primaryMap[primary].length;
-    }
-  });
-
   return { html: rows.join(''), count: totalDetailed };
+}
+
+/**
+ * Hook the buttons in the list. The names travel in data attributes, so a
+ * label with a quote in it cannot break the handler. A locked button only
+ * shows its reason, on a tap, a click, or keyboard focus.
+ */
+function _wireLabelRowActions(container) {
+  container.querySelectorAll('button[data-action]').forEach(button => {
+    const lockMessage = button.getAttribute('data-lock-message');
+    if (lockMessage) {
+      button.addEventListener('click', () => showStatus(lockMessage, 'warning'));
+      button.addEventListener('focus', () => showStatus(lockMessage, 'warning'));
+      return;
+    }
+    button.addEventListener('click', () => {
+      const action = button.getAttribute('data-action');
+      if (action === 'add-detailed') {
+        startAddDetailsForCategory(button.getAttribute('data-primary'));
+      } else if (action === 'reassign-primary') {
+        openReassignPrimaryModal(button.getAttribute('data-primary'));
+      } else if (action === 'reassign-detailed') {
+        openReassignDetailedModal(button.getAttribute('data-label'));
+      }
+    });
+  });
 }
 
 // ── Custom Category Form Helpers ────────────────────────────

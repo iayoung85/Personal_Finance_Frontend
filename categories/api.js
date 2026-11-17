@@ -93,6 +93,7 @@ function _saveCatPageCache() {
     const cacheData = {
       categoryMappings,
       customCategories,
+      lockedLabels,
       availableCategories,
       categoryListHash,
       rules,
@@ -147,6 +148,8 @@ async function loadCategorizationData(forceNetwork = false) {
           if (cached && cached.categoryMappings && cachedTax && 'primaryCategories' in cached) {
             categoryMappings = cached.categoryMappings;
             customCategories = cached.customCategories || [];
+            // A copy saved before locked_labels existed has none.
+            lockedLabels = normalizeLockedLabels(cached.lockedLabels);
             availableCategories = cached.availableCategories || [];
             categoryListHash = cached.categoryListHash || null;
             rules = cached.rules || [];
@@ -192,6 +195,7 @@ async function loadCategorizationData(forceNetwork = false) {
 
     categoryMappings = responses[0].ok ? (categoriesData.category_mappings || {}) : {};
     customCategories = responses[0].ok ? (categoriesData.custom_categories || []) : [];
+    lockedLabels = responses[0].ok ? normalizeLockedLabels(categoriesData.locked_labels) : [];
     categoryListHash = responses[0].ok ? (categoriesData.category_list_hash || null) : null;
     primaryCategories = responses[0].ok && Array.isArray(categoriesData.primary_categories)
       ? categoriesData.primary_categories

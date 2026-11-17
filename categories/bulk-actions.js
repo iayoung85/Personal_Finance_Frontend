@@ -254,7 +254,7 @@ async function _confirmReassignPrimary(primaryName) {
     const data = await response.json();
 
     if (!response.ok) {
-      showStatus(`Failed to reassign primary: ${data.error || 'Unknown error'}`, 'error');
+      showStatus(data.error || 'Failed to reassign primary', 'error');
       return;
     }
 
@@ -309,10 +309,12 @@ async function openReassignDetailedModal(categoryName) {
           const p = parseCategoryName(cat);
           if (p.primary === primary && p.detailed) detailedSet.add(p.detailed);
         });
-      allAvailablePrimaries.forEach(cat => {
-        const p = parseCategoryName(cat);
-        if (p.primary === primary && p.detailed) detailedSet.add(p.detailed);
-      });
+      allAvailablePrimaries
+        .filter(cat => cat !== categoryName)
+        .forEach(cat => {
+          const p = parseCategoryName(cat);
+          if (p.primary === primary && p.detailed) detailedSet.add(p.detailed);
+        });
       return Array.from(detailedSet).sort((a, b) => a.localeCompare(b));
     };
 
@@ -498,7 +500,7 @@ async function _confirmReassignDetailed(categoryName) {
     const data = await response.json();
 
     if (!response.ok) {
-      showStatus(`Failed to reassign category: ${data.error || 'Unknown error'}`, 'error');
+      showStatus(data.error || 'Failed to reassign category', 'error');
       return;
     }
 
@@ -649,7 +651,7 @@ function showMigrationsHelp() {
           <li>These operations are permanent and affect all your historical data</li>
           <li>Always backup your data before major migrations</li>
           <li>Check the Audit Log to see what changes were made</li>
-          <li>For moving categories between primaries, use the "Reassign" buttons in Custom Categories instead</li>
+          <li>For moving categories between primaries, use the "Reassign" buttons in Your Categories instead</li>
         </ul>
       </div>
     `,

@@ -7,6 +7,8 @@
 // Core data objects — populated by api.js on page load
 let categoryMappings = {};
 let customCategories = [];
+// Labels the app owns, from the GET's locked_labels: [{label, mapping_key, reason, message}]
+let lockedLabels = [];
 let availableCategories = [];
 let categoryListHash = null;
 let rules = [];
