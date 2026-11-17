@@ -12,7 +12,7 @@ const statePath = path.join(__dirname, '..', 'categories', 'label-state.js');
 function loadHelpers() {
   const sandbox = { module: { exports: {} } };
   const source = `${fs.readFileSync(utilsPath, 'utf8')}\n${fs.readFileSync(statePath, 'utf8')}\n`
-    + 'module.exports = { normalizeLockedLabels, findLockedLabel, findLockedKey, listedLabels, describeLabel, groupListedLabels, withLockedMappingsKept };';
+    + 'module.exports = { normalizeLockedLabels, findLockedLabel, findLockedKey, listedLabels, describeLabel, groupListedLabels, withLockedMappingsKept, lockedKeyUnderPlaidPrimary, normalizePlaidNamedLabels };';
   vm.runInNewContext(source, sandbox, { filename: statePath });
   return sandbox.module.exports;
 }
@@ -172,4 +172,35 @@ test('a locked key a list never had is not added on save', () => {
   const kept = helpers.withLockedMappingsKept({ KEY_X: 'Other: Place' }, LOCKED);
   assert.deepEqual(plain(kept), { KEY_X: 'Other: Place' });
   assert.deepEqual(plain(helpers.withLockedMappingsKept({ KEY_X: 'a' }, undefined)), { KEY_X: 'a' });
+});
+
+const TAXONOMY = [
+  { primary: 'GROUP_A', detailed: 'KEY_A' },
+  { primary: 'GROUP_A', detailed: 'KEY_X' },
+  { primary: 'GROUP_F', detailed: 'KEY_Y' }
+];
+const titleCase = primary => primary.replace('GROUP_', 'Group ');
+
+test('a Plaid primary holding a locked key gives that key\'s entry', () => {
+  const found = helpers.lockedKeyUnderPlaidPrimary('Group A', TAXONOMY, LOCKED, titleCase);
+  assert.equal(found.label, 'Locked A: One');
+});
+
+test('a Plaid primary with no locked key gives nothing', () => {
+  assert.equal(helpers.lockedKeyUnderPlaidPrimary('Group F', TAXONOMY, LOCKED, titleCase), null);
+  assert.equal(helpers.lockedKeyUnderPlaidPrimary('Group A', TAXONOMY, [], titleCase), null);
+  assert.equal(helpers.lockedKeyUnderPlaidPrimary('Group A', undefined, LOCKED, titleCase), null);
+});
+
+test('the badge follows the API\'s plaid_named_labels, not the custom list', () => {
+  const lists = { ...LISTS, plaidNamedLabels: ['Food: Groceries'] };
+  // Custom and Plaid-named: still marked. Mapping-only but named by the user: not.
+  assert.equal(helpers.describeLabel('Food: Groceries', lists).isPlaidNamed, true);
+  assert.equal(helpers.describeLabel('Inflows: Tax Refund', lists).isPlaidNamed, false);
+  assert.equal(helpers.describeLabel('Inflows: Tax Refund', LISTS).isPlaidNamed, false);
+});
+
+test('a missing or malformed plaid_named_labels is an empty list', () => {
+  assert.deepEqual(plain(helpers.normalizePlaidNamedLabels(undefined)), []);
+  assert.deepEqual(plain(helpers.normalizePlaidNamedLabels(['A: B', 7, ''])), ['A: B']);
 });

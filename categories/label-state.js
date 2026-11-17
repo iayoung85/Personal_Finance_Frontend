@@ -29,6 +29,16 @@ function normalizeLockedLabels(raw) {
 }
 
 /**
+ * Clean the API's plaid_named_labels list.
+ * @param {*} raw The GET's plaid_named_labels, or undefined from an older API or cache.
+ * @returns {string[]} Empty when the list is missing or malformed.
+ */
+function normalizePlaidNamedLabels(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(label => typeof label === 'string' && label);
+}
+
+/**
  * The locked entry for a label, if the API locked it.
  * @param {string} label
  * @param {Array} lockedLabels Normalized locked_labels.
@@ -47,6 +57,23 @@ function findLockedLabel(label, lockedLabels) {
 function findLockedKey(mappingKey, lockedLabels) {
   if (!mappingKey) return null;
   return (lockedLabels || []).find(entry => entry.mapping_key === mappingKey) || null;
+}
+
+/**
+ * The locked entry for a key under a Plaid primary, if the primary holds one.
+ * @param {string} plaidPrimaryDisplay The primary as the page shows it.
+ * @param {Array<{primary: string, detailed: string}>} taxonomy Plaid's categories.
+ * @param {Array} lockedLabels Normalized locked_labels.
+ * @param {function(string): string} formatPrimary Turns a taxonomy primary into its display name.
+ * @returns {Object|null}
+ */
+function lockedKeyUnderPlaidPrimary(plaidPrimaryDisplay, taxonomy, lockedLabels, formatPrimary) {
+  for (const entry of taxonomy || []) {
+    if (formatPrimary(entry.primary || '') !== plaidPrimaryDisplay) continue;
+    const lockedKey = findLockedKey(entry.detailed, lockedLabels);
+    if (lockedKey) return lockedKey;
+  }
+  return null;
 }
 
 /**
@@ -72,10 +99,13 @@ function listedLabels(customCategories, categoryMappings) {
 /**
  * What one label is.
  * @param {string} label
- * @param {{customCategories: string[], categoryMappings: Object, lockedLabels: Array}} lists
+ * @param {{customCategories: string[], categoryMappings: Object, lockedLabels: Array,
+ *   plaidNamedLabels: string[]}} lists
  * @returns {{label: string, isListed: boolean, isCustom: boolean, isMappingOnly: boolean,
- *   locked: Object|null, lockMessage: string}}
+ *   isPlaidNamed: boolean, locked: Object|null, lockMessage: string}}
  *   isMappingOnly: listed through a Plaid key and not in the custom list.
+ *   isPlaidNamed: Plaid's own name for a key mapped to it, as the API says;
+ *   this is what the `#plaid` badge marks.
  */
 function describeLabel(label, lists) {
   const customCategories = lists.customCategories || [];
@@ -88,6 +118,7 @@ function describeLabel(label, lists) {
     isListed: isCustom || isMapped,
     isCustom,
     isMappingOnly: isMapped && !isCustom,
+    isPlaidNamed: (lists.plaidNamedLabels || []).includes(label),
     locked,
     lockMessage: locked ? locked.message : ''
   };

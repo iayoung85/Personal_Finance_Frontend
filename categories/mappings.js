@@ -90,6 +90,37 @@ function _buildLockedMappingRow(plaidCat, displayKey, lockedKey) {
 
 // ── Primary Mapping List ────────────────────────────────────
 
+/**
+ * The locked entry for a key under a Plaid primary, if it holds one. Such a
+ * primary cannot be remapped as a whole; its other keys can, one at a time.
+ */
+function _lockedKeyUnderPlaidPrimary(plaidPrimaryDisplay) {
+  return lockedKeyUnderPlaidPrimary(
+    plaidPrimaryDisplay, plaidTaxonomy, lockedLabels, formatPlaidCategory
+  );
+}
+
+/** The sentence a locked Plaid primary's row shows. */
+function _lockedPrimaryMappingMessage(plaidPrimaryDisplay, lockedKey) {
+  return `${plaidPrimaryDisplay} can't be remapped as a whole, because "${lockedKey.label}" is the app's own label and stays where it is. `
+    + `Remap the other ${plaidPrimaryDisplay} categories one at a time in the detailed list.`;
+}
+
+/**
+ * One primary row for a Plaid primary that holds a locked key: greyed and
+ * not editable, with the reason on hover, tap and focus.
+ */
+function _buildLockedPrimaryMappingRow(plaidPrimaryDisplay, lockedKey) {
+  const message = escapeHtml(_lockedPrimaryMappingMessage(plaidPrimaryDisplay, lockedKey));
+  return `
+        <div class="mapping-row is-locked" data-plaid-primary="${escapeHtml(plaidPrimaryDisplay)}">
+          <div class="mapping-key">${escapeHtml(plaidPrimaryDisplay)}</div>
+          <div class="mapping-locked-value" tabindex="0" role="note" data-lock-message="${message}" title="${message}">Set one at a time</div>
+          <button type="button" class="secondary is-locked mapping-clear" data-lock-message="${message}" aria-disabled="true" title="${message}">Clear</button>
+        </div>
+      `;
+}
+
 function renderPrimaryMappingsList() {
   const container = document.getElementById('primary-mappings-list');
   if (!container) return;
@@ -104,6 +135,9 @@ function renderPrimaryMappingsList() {
 
   container.innerHTML = plaidPrimaries
     .map(primary => {
+      const lockedKey = _lockedKeyUnderPlaidPrimary(primary);
+      if (lockedKey) return _buildLockedPrimaryMappingRow(primary, lockedKey);
+
       const selected = primaryCategoryMappings[primary] || '';
       return `
         <div class="mapping-row" data-plaid-primary="${escapeHtml(primary)}">
@@ -116,6 +150,12 @@ function renderPrimaryMappingsList() {
       `;
     })
     .join('');
+
+  container.querySelectorAll('[data-lock-message]').forEach(element => {
+    const message = element.getAttribute('data-lock-message');
+    element.addEventListener('click', () => showStatus(message, 'warning'));
+    element.addEventListener('focus', () => showStatus(message, 'warning'));
+  });
 
   container.querySelectorAll('.mapping-value').forEach(select => {
     select.addEventListener('change', event => {
@@ -174,6 +214,7 @@ function clearMapping(plaidCategory) {
 }
 
 function clearPrimaryMapping(plaidPrimary) {
+  if (_lockedKeyUnderPlaidPrimary(plaidPrimary)) return;
   delete primaryCategoryMappings[plaidPrimary];
   applyPrimaryMapping(plaidPrimary, '');
   renderPrimaryMappingsList();
@@ -441,6 +482,7 @@ function _derivePrimaryMappingsFromMappings(mappings) {
 }
 
 function applyPrimaryMapping(plaidPrimaryDisplay, targetPrimaryDisplay) {
+  if (_lockedKeyUnderPlaidPrimary(plaidPrimaryDisplay)) return;
   const targetPrimary = targetPrimaryDisplay || plaidPrimaryDisplay;
 
   (plaidTaxonomy || [])

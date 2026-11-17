@@ -542,7 +542,8 @@ button.is-locked:hover {
   cursor: not-allowed;
 }
 
-.label-badge-plaid {
+.label-badge-plaid,
+.preview-item .label-badge-plaid {
   background: var(--badge-plaid-bg);
   color: var(--badge-plaid-text);
   margin-left: 4px;

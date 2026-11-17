@@ -286,8 +286,13 @@ function _buildDetailedPreviewRows() {
     return { html: '<div class="empty-state">No detailed categories match your selection.</div>', count: 0 };
   }
 
+  // The badge sits inside the name's span so it stays beside the name.
+  const lists = _currentLabelLists();
   const html = sorted
-    .map(cat => `<div class="preview-item disabled"><span>${escapeHtml(cat)}</span></div>`)
+    .map(cat => {
+      const badge = _plaidBadgeHtml(describeLabel(cat, lists));
+      return `<div class="preview-item disabled"><span>${escapeHtml(cat)}${badge}</span></div>`;
+    })
     .join('');
 
   return { html, count: sorted.length };
@@ -299,7 +304,7 @@ function _buildDetailedPreviewRows() {
 
 /** The lists describeLabel and groupListedLabels read, from the page's state. */
 function _currentLabelLists() {
-  return { customCategories, categoryMappings, lockedLabels };
+  return { customCategories, categoryMappings, lockedLabels, plaidNamedLabels };
 }
 
 function renderCustomCategories() {
@@ -405,10 +410,10 @@ function _renderCustomCategoryFiltered() {
   }
 }
 
-/** The `#plaid` badge for a label listed only through a Plaid key; '' otherwise. */
+/** The `#plaid` badge for a label that is Plaid's own name for a category; '' otherwise. */
 function _plaidBadgeHtml(description) {
-  if (!description || !description.isMappingOnly) return '';
-  return '<span class="pill label-badge-plaid" title="Listed because a Plaid category maps to it">#plaid</span>';
+  if (!description || !description.isPlaidNamed) return '';
+  return '<span class="pill label-badge-plaid" title="Plaid\'s own name for a category you have not renamed">#plaid</span>';
 }
 
 /**
