@@ -141,6 +141,9 @@ function addSplitRow(amount = '', category = '', memo = '', description = '') {
   const rowDiv = document.createElement('div');
   rowDiv.className = 'split-row';
   rowDiv.id = `split-row-${rowIndex}`;
+  // A hidden category already on the piece stays acceptable when the modal is
+  // reopened to edit the split.
+  rowDiv.dataset.heldCategory = category || '';
   
   rowDiv.innerHTML = `
     <div>
@@ -223,7 +226,7 @@ function attachSplitCategoryAutocomplete(rowIndex) {
       } else {
         const currentValue = (this.value || '').trim();
         if (currentValue) {
-          const resolved = _resolveAutocompleteCategory(currentValue);
+          const resolved = _resolveAutocompleteCategory(currentValue, this.closest('.split-row')?.dataset.heldCategory);
           if (!resolved.error) {
             e.preventDefault();
             const memoInput = this.closest('.split-row')?.querySelector('.split-memo-input');
@@ -334,12 +337,19 @@ function updateSplitValidation() {
   const originalAmount = currentSplitTransaction.amount;
   let splitSum = 0;
   let validCount = 0;
+  let hiddenNotice = '';
   
   // Get all split rows with values
   const rowElements = document.querySelectorAll('.split-row');
   rowElements.forEach(row => {
     const amountInput = row.querySelector('.split-amount-input');
     const categoryInput = row.querySelector('.split-category-autocomplete');
+
+    if (categoryInput && !hiddenNotice) {
+      hiddenNotice = hiddenCategoryEntry(
+        categoryInput.value, hiddenCategories, row.dataset.heldCategory
+      ).notice;
+    }
     
     if (amountInput && amountInput.value && categoryInput && categoryInput.value) {
       const amount = _parseSplitAmount(amountInput.value, originalAmount);
@@ -380,7 +390,9 @@ function updateSplitValidation() {
   const errorDiv = document.getElementById('split-validation-error');
   let errorMsg = '';
   
-  if (validCount < 2) {
+  if (hiddenNotice) {
+    errorMsg = hiddenNotice;
+  } else if (validCount < 2) {
     errorMsg = 'Need at least 2 splits with both amount and category.';
   } else if (!isBalanced) {
     errorMsg = `Split amounts don't balance. Difference: ${remainingFormatted}`;
@@ -395,7 +407,7 @@ function updateSplitValidation() {
   
   // Update submit button state
   const submitBtn = document.getElementById('split-submit-btn');
-  submitBtn.disabled = validCount < 2 || !isBalanced;
+  submitBtn.disabled = Boolean(hiddenNotice) || validCount < 2 || !isBalanced;
 }
 
 // Close split modal

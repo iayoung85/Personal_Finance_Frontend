@@ -290,6 +290,7 @@ function logout() {
     window.txnDB.clear().catch(function() {});
   }
   localStorage.removeItem('pf_cached_categories');
+  localStorage.removeItem('pf_cached_hidden_categories');
   localStorage.removeItem('pf_cached_taxonomy');
   localStorage.removeItem('pf_categories_cached_at');
   localStorage.removeItem(BALANCE_HISTORY_CACHE_KEY);

@@ -402,7 +402,15 @@ async function _updateManualTransaction(transactionId, accountId) {
 
   // Category validation: must match an existing category or be a bracket transfer
   if (category && !isTransferCategory(category)) {
-    const isKnownCategory = (availableCategories || []).some(
+    // The row's own hidden category is not in the offered list but must save
+    // unchanged; any other hidden label is refused, not sent to be created.
+    const heldCategory = (transactions.find(findTxn => findTxn.transaction_id === transactionId) || {}).user_category;
+    const hiddenEntry = hiddenCategoryEntry(category, hiddenCategories, heldCategory);
+    if (hiddenEntry.notice) {
+      _showManualTxnError(hiddenEntry.notice);
+      return;
+    }
+    const isKnownCategory = hiddenEntry.held || (availableCategories || []).some(
       knownCat => knownCat.toLowerCase() === category.toLowerCase()
     );
     if (!isKnownCategory) {
@@ -786,6 +794,11 @@ async function saveManualTransaction() {
   // Why: our categorization schema is tightly controlled — arbitrary strings
   // would bypass mappings/rules and create orphan categories.
   if (category && !isTransferCategory(category)) {
+    const hiddenEntry = hiddenCategoryEntry(category, hiddenCategories, '');
+    if (hiddenEntry.notice) {
+      _showManualTxnError(hiddenEntry.notice);
+      return;
+    }
     const isKnownCategory = (availableCategories || []).some(
       knownCat => knownCat.toLowerCase() === category.toLowerCase()
     );

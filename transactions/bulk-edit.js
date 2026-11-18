@@ -343,6 +343,9 @@ function _renderLegalFieldRows(container, legalFields) {
         if (typeof availableCategories !== 'undefined') {
           availableCategories = fresh;
         }
+        if (typeof hiddenCategories !== 'undefined') {
+          hiddenCategories = getHiddenCategories();
+        }
         const liveInput = container.querySelector('#bulk-field-input-user_category');
         const liveList  = container.querySelector('#bulk-field-list-user_category');
         if (liveInput && liveList) {
@@ -477,6 +480,14 @@ async function _onBulkEditApplyClick() {
   const changes = _collectChangesFromModal();
   if (Object.keys(changes).length === 0) {
     showStatus('Check at least one field to apply', 'warning');
+    return;
+  }
+
+  // The field starts empty, so there is no held value to keep: a hidden
+  // label typed here is refused like in every other picker.
+  const hiddenEntry = hiddenCategoryEntry(changes.user_category, hiddenCategories, '');
+  if (hiddenEntry.notice) {
+    showStatus(hiddenEntry.notice, 'warning');
     return;
   }
 

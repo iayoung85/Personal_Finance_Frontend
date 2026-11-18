@@ -45,17 +45,25 @@ function splitInsightEditorCategory(categoryName) {
  * The picker's list: each primary with its detailed categories under it,
  * sorted by name. Members already on a card but missing from the user's
  * categories (renamed or deleted since) are added and flagged `missing`, so
- * they stay visible and removable.
+ * they stay visible and removable. A hidden category is not offered, but one
+ * already on a card is kept and not flagged: hiding is not deleting.
  * @param {string[]} availableNames Names from /api/categorization/categories/available.
  * @param {Array<{primaries: string[], details: string[]}>} cards Current drafts.
+ * @param {string[]} [hiddenNames] Hidden names from the same response.
  * @returns {Array<{primary: string, missing: boolean, details: Array<{label: string, detailed: string, missing: boolean}>}>}
  */
-function buildInsightCategoryTree(availableNames, cards) {
+function buildInsightCategoryTree(availableNames, cards, hiddenNames) {
   const groups = new Map();
+  const hiddenLabels = new Set(Array.isArray(hiddenNames) ? hiddenNames : []);
+  const hiddenPrimaries = new Set(
+    Array.from(hiddenLabels).map(label => splitInsightEditorCategory(label).primary),
+  );
 
   const ensureGroup = (primary, missing) => {
     if (!groups.has(primary)) {
       groups.set(primary, { primary, missing, details: new Map() });
+    } else if (!missing) {
+      groups.get(primary).missing = false;
     }
     return groups.get(primary);
   };
@@ -77,16 +85,17 @@ function buildInsightCategoryTree(availableNames, cards) {
 
   (Array.isArray(cards) ? cards : []).forEach(card => {
     (card.primaries || []).forEach(primary => {
-      ensureGroup(primary, true);
+      ensureGroup(primary, !hiddenPrimaries.has(primary));
     });
     (card.details || []).forEach(label => {
       const { primary, detailed } = splitInsightEditorCategory(label);
       if (!primary || !detailed) {
         return;
       }
-      const group = ensureGroup(primary, true);
+      const isHidden = hiddenLabels.has(label);
+      const group = ensureGroup(primary, !isHidden);
       if (!group.details.has(label)) {
-        group.details.set(label, { label, detailed, missing: true });
+        group.details.set(label, { label, detailed, missing: !isHidden });
       }
     });
   });
@@ -222,6 +231,7 @@ const insightEditorState = {
   savedCards: [],
   drafts: [],
   availableNames: [],
+  hiddenNames: [],
   categoriesLoaded: true,
   tree: [],
   openPickerKeys: new Set(),
@@ -233,7 +243,8 @@ const insightEditorState = {
 
 /**
  * Loads the user's category names for the picker.
- * @returns {Promise<string[]|null>} The names, or null when they could not be loaded.
+ * @returns {Promise<{available: string[], hidden: string[]}|null>} The visible and
+ *   hidden names, or null when they could not be loaded.
  */
 async function fetchInsightEditorCategoryNames() {
   try {
@@ -242,7 +253,10 @@ async function fetchInsightEditorCategoryNames() {
       return null;
     }
     const data = await response.json();
-    return Array.isArray(data.available_categories) ? data.available_categories : [];
+    return {
+      available: Array.isArray(data.available_categories) ? data.available_categories : [],
+      hidden: Array.isArray(data.hidden_categories) ? data.hidden_categories : [],
+    };
   } catch (error) {
     console.warn('Unable to load categories for insight cards:', error.message);
     return null;
@@ -252,13 +266,15 @@ async function fetchInsightEditorCategoryNames() {
 /**
  * Resets the editor to the stored cards. Call before rendering the card.
  * @param {Object} config Merged preferences from the server.
- * @param {string[]|null} availableNames Category names, or null if they failed to load.
+ * @param {{available: string[], hidden: string[]}|null} categoryNames Category
+ *   names, or null if they failed to load.
  */
-function initInsightCardEditor(config, availableNames) {
+function initInsightCardEditor(config, categoryNames) {
   insightEditorState.savedCards = Array.isArray(config.insightCards) ? config.insightCards : [];
   insightEditorState.drafts = createInsightCardDrafts(insightEditorState.savedCards);
-  insightEditorState.availableNames = availableNames || [];
-  insightEditorState.categoriesLoaded = availableNames !== null;
+  insightEditorState.availableNames = categoryNames ? categoryNames.available : [];
+  insightEditorState.hiddenNames = categoryNames ? categoryNames.hidden : [];
+  insightEditorState.categoriesLoaded = categoryNames !== null;
   insightEditorState.openPickerKeys = new Set();
   insightEditorState.filters = {};
   insightEditorState.errors = {};
@@ -270,6 +286,7 @@ function _rebuildInsightCategoryTree() {
   insightEditorState.tree = buildInsightCategoryTree(
     insightEditorState.availableNames,
     insightEditorState.drafts,
+    insightEditorState.hiddenNames,
   );
 }
 

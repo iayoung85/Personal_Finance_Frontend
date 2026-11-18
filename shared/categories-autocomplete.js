@@ -8,6 +8,9 @@
 //
 // Exports (globals):
 //   fetchCategoriesWithCache()
+//   getHiddenCategories()
+//   readCachedCategoryLists(maxAgeMs)
+//   cacheCategoryLists(visible, hidden)
 //   wireUpCategoryAutocomplete(inputEl, listEl, options)
 //   highlightCategoryMatch(text, query)
 //   selectAllOnFocus(inputEl)
@@ -17,6 +20,7 @@
 // ── Cache Constants ──────────────────────────────────────────
 const _CAT_CACHE_KEY   = 'pf_cached_categories';
 const _CAT_TS_KEY      = 'pf_categories_cached_at';
+const _CAT_HIDDEN_KEY  = 'pf_cached_hidden_categories';
 const _CAT_MAX_AGE_MS  = 30 * 60 * 1000; // 30 minutes
 
 // ── Internal Escape (no DOM dependency) ─────────────────────
@@ -103,22 +107,70 @@ function selectAllOnOpen(input) {
 
 // ── Public: Fetch with Cache ─────────────────────────────────
 
+// Hidden labels from the last read of the picker endpoint, for controls that
+// must explain why a typed label is not offered.
+let _hiddenCategoriesInMemory = [];
+
+/**
+ * The hidden category labels from the last fetchCategoriesWithCache call.
+ * @returns {string[]}
+ */
+function getHiddenCategories() {
+  return _hiddenCategoriesInMemory;
+}
+
+/**
+ * The cached visible and hidden lists, or null when the cache is stale,
+ * empty or was written before the hidden list was kept. A missing hidden
+ * key counts as stale so an older copy is refetched, not read as "nothing
+ * is hidden".
+ *
+ * @param {number} maxAgeMs
+ * @returns {{visible: string[], hidden: string[]}|null}
+ */
+function readCachedCategoryLists(maxAgeMs) {
+  try {
+    const cachedAt = localStorage.getItem(_CAT_TS_KEY);
+    const cacheAge = cachedAt ? (Date.now() - parseInt(cachedAt, 10)) : Infinity;
+    if (!(cacheAge < maxAgeMs)) return null;
+    const rawHidden = localStorage.getItem(_CAT_HIDDEN_KEY);
+    if (rawHidden === null) return null;
+    const visible = JSON.parse(localStorage.getItem(_CAT_CACHE_KEY) || '[]');
+    const hidden = JSON.parse(rawHidden);
+    if (!Array.isArray(visible) || !Array.isArray(hidden) || visible.length === 0) return null;
+    return { visible, hidden };
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Save both lists with one timestamp, so they expire together.
+ *
+ * @param {string[]} visible
+ * @param {string[]} hidden
+ */
+function cacheCategoryLists(visible, hidden) {
+  try {
+    localStorage.setItem(_CAT_CACHE_KEY, JSON.stringify(visible));
+    localStorage.setItem(_CAT_HIDDEN_KEY, JSON.stringify(hidden));
+    localStorage.setItem(_CAT_TS_KEY, String(Date.now()));
+  } catch (_) { /* non-critical — storage quota */ }
+}
+
 /**
  * Fetch available user categories from the backend, with 30-min
- * localStorage cache. Returns a plain string array.
+ * localStorage cache. Returns a plain string array of the labels a picker
+ * may offer; hidden labels are left out and read with getHiddenCategories().
  *
  * Requires `authenticatedFetch` and `BACKEND_URL` to be defined
  * as globals by the time this is called (i.e. after page init).
  */
 async function fetchCategoriesWithCache() {
-  const cachedAt = localStorage.getItem(_CAT_TS_KEY);
-  const cacheAge = cachedAt ? (Date.now() - parseInt(cachedAt, 10)) : Infinity;
-
-  if (cacheAge < _CAT_MAX_AGE_MS) {
-    try {
-      const cached = JSON.parse(localStorage.getItem(_CAT_CACHE_KEY) || '[]');
-      if (cached.length > 0) return cached;
-    } catch (_) { /* fall through to network */ }
+  const cached = readCachedCategoryLists(_CAT_MAX_AGE_MS);
+  if (cached) {
+    _hiddenCategoriesInMemory = cached.hidden;
+    return cached.visible;
   }
 
   try {
@@ -128,10 +180,9 @@ async function fetchCategoriesWithCache() {
     if (response && response.ok) {
       const data = await response.json();
       const categories = data.available_categories || [];
-      try {
-        localStorage.setItem(_CAT_CACHE_KEY, JSON.stringify(categories));
-        localStorage.setItem(_CAT_TS_KEY, String(Date.now()));
-      } catch (_) { /* non-critical — storage quota */ }
+      const hidden = data.hidden_categories || [];
+      _hiddenCategoriesInMemory = hidden;
+      cacheCategoryLists(categories, hidden);
       return categories;
     }
   } catch (e) {

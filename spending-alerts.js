@@ -450,6 +450,13 @@ function buildAlertPayload() {
 
   // Validate
   if (!category) return { error: 'Category is required.' };
+  // An alert already on a hidden category keeps it; a hidden label typed in
+  // is refused like in every other picker.
+  const openedAlert = editingAlertId ? allAlerts.find(a => a.alert_id === editingAlertId) : null;
+  const hiddenEntry = hiddenCategoryEntry(
+    category, getHiddenCategories(), openedAlert ? openedAlert.user_category : ''
+  );
+  if (hiddenEntry.notice) return { error: hiddenEntry.notice };
   const threshold = parseFloat(thresholdRaw);
   if (isNaN(threshold) || threshold <= 0) return { error: 'Threshold must be a positive number.' };
   const recipients = parseRecipients(recipientsRaw);

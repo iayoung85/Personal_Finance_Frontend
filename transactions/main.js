@@ -27,20 +27,21 @@ $(document).ready(async function() {
   await Promise.all([loadAccounts(), loadSettings()]);
 
   // Restore last-selected account from previous session, or default to all.
-  // Deep-links with ?search= (e.g. report drill-downs) always show all accounts
+  // Deep-links with ?search= (e.g. report drill-downs) or ?category= (Uses links
+  // on the Categories page) always show all accounts
   // so the filter matches across the full ledger.
-  const hasSearchParam = new URLSearchParams(window.location.search).has('search');
+  const hasDeepLink = parseTransactionsDeepLink(window.location.search).forcesFullLedger;
 
   // Deep-links force "all dates" so historical drilldowns are never hidden by
   // the last-12-months default. Guard against calling toggleDateFilter when the
   // filter is already 'all' — that function has toggle-off semantics and would
   // deactivate the filter, causing alternating behaviour on repeated drilldowns.
-  if (hasSearchParam && localStorage.getItem('pf_date_filter_active') !== 'all') {
+  if (hasDeepLink && localStorage.getItem('pf_date_filter_active') !== 'all') {
     toggleDateFilter('all');
   }
 
   const savedAccountId = localStorage.getItem('pf_selected_account');
-  const savedAccountExists = !hasSearchParam && savedAccountId && accounts.some(a => a.account_id === savedAccountId);
+  const savedAccountExists = !hasDeepLink && savedAccountId && accounts.some(a => a.account_id === savedAccountId);
   if (savedAccountExists) {
     await selectAccount(savedAccountId, true);
   } else {
@@ -109,6 +110,7 @@ $(document).ready(async function() {
   // Load available categories for manual categorization dropdown
   await loadAvailableCategories();
   initCategoryFilterInput();
+  applyCategoryDeepLink();
   initSearchBar();
   renderTransactionTable();
 

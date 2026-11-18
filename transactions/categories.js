@@ -242,6 +242,16 @@ function getCategoryDisplayNames(pfc) {
 
 // ───── Extraction & Validation ─────
 
+/**
+ * Every label that may sit on a row: the visible ones plus the hidden ones.
+ * A hidden label is only left out of what pickers offer; it stays legal, so
+ * a check of an existing value reads this list, not the offered one.
+ */
+function _legalCategoryLabels() {
+  const hidden = typeof hiddenCategories !== 'undefined' ? hiddenCategories : [];
+  return (availableCategories || []).concat(hidden || []);
+}
+
 function resolveTargetCategory(primary, detailed) {
   const normalizedPrimary = normalizeCategoryLabel(primary);
   const normalizedDetailed = normalizeCategoryLabel(detailed);
@@ -253,19 +263,19 @@ function resolveTargetCategory(primary, detailed) {
   const candidate = buildCategoryString(normalizedPrimary, normalizedDetailed);
   const candidateNorm = normalizeCategoryLabel(candidate);
 
-  const matchingAvailable = (availableCategories || []).find(cat => normalizeCategoryLabel(cat) === candidateNorm);
+  const matchingAvailable = _legalCategoryLabels().find(cat => normalizeCategoryLabel(cat) === candidateNorm);
   if (matchingAvailable) {
     return { value: matchingAvailable };
   }
 
   if (!normalizedDetailed) {
-    const matchingPrimary = (availableCategories || []).find(cat => normalizeCategoryLabel(cat) === normalizedPrimary);
+    const matchingPrimary = _legalCategoryLabels().find(cat => normalizeCategoryLabel(cat) === normalizedPrimary);
     if (matchingPrimary) {
       return { value: matchingPrimary };
     }
   }
 
-  const detailedOptions = extractDetailedCategories(availableCategories, normalizedPrimary);
+  const detailedOptions = extractDetailedCategories(_legalCategoryLabels(), normalizedPrimary);
   if (!normalizedDetailed && detailedOptions.length > 0) {
     return { error: 'Please select a detailed category' };
   }
@@ -279,11 +289,11 @@ function validateTargetCategory(targetCategory) {
     return { error: 'Please select a valid category (not Uncategorized)' };
   }
 
-  if (availableCategories && !(availableCategories || []).some(cat => normalizeCategoryLabel(cat) === normalizedTarget)) {
+  if (availableCategories && !_legalCategoryLabels().some(cat => normalizeCategoryLabel(cat) === normalizedTarget)) {
     return { error: 'Selected category is not available. Please choose a valid category.' };
   }
 
-  const matching = (availableCategories || []).find(cat => normalizeCategoryLabel(cat) === normalizedTarget);
+  const matching = _legalCategoryLabels().find(cat => normalizeCategoryLabel(cat) === normalizedTarget);
   return { value: matching || targetCategory };
 }
 
@@ -440,7 +450,7 @@ function attachCategoryDropdownListeners() {
         // Dropdown is closed or empty, check if current input is valid
         const currentValue = (input.value || '').trim();
         if (currentValue) {
-          const resolved = _resolveAutocompleteCategory(currentValue);
+          const resolved = _resolveAutocompleteCategory(currentValue, $(input).data('committedCategoryValue'));
           if (!resolved.error) {
             // Valid category: save this row now and move on without waiting
             // for the answer; a refusal puts the cell back.
@@ -538,7 +548,7 @@ function attachCategoryDropdownListeners() {
     const accountId = input.data('account-id');
     const fullValue = (input.val() || '').trim();
 
-    const resolved = _resolveAutocompleteCategory(fullValue);
+    const resolved = _resolveAutocompleteCategory(fullValue, input.data('committedCategoryValue'));
     if (resolved.error) {
       showStatus(resolved.error, 'warning');
       return;
@@ -573,7 +583,7 @@ function attachCategoryDropdownListeners() {
     const fullValue = (input.val() || '').trim();
 
     // Validate against known categories (or transfer accounts)
-    const resolved = _resolveAutocompleteCategory(fullValue);
+    const resolved = _resolveAutocompleteCategory(fullValue, input.data('committedCategoryValue'));
     if (resolved.error) {
       showStatus(resolved.error, 'warning');
       return;
@@ -607,7 +617,7 @@ function attachCategoryDropdownListeners() {
     const input = $(`.category-autocomplete[data-txn-id="${txnId}"]`);
     const fullValue = (input.val() || '').trim();
 
-    const resolved = _resolveAutocompleteCategory(fullValue);
+    const resolved = _resolveAutocompleteCategory(fullValue, input.data('committedCategoryValue'));
     if (resolved.error) {
       showStatus(resolved.error, 'warning');
       return;
@@ -745,7 +755,9 @@ function _highlightMatch(text, query) {
 }
 
 // Validate that the autocomplete value resolves to a known category
-function _resolveAutocompleteCategory(value) {
+// `heldValue` is what the cell held when it was focused: a hidden category
+// already on the row stays acceptable, any other hidden one is refused.
+function _resolveAutocompleteCategory(value, heldValue) {
   if (!value) {
     return { error: 'Please type or select a category' };
   }
@@ -767,6 +779,16 @@ function _resolveAutocompleteCategory(value) {
     normalizeCategoryLabel(cat) === normalized
   );
   if (exact) return { value: exact };
+
+  // A hidden label is not in the list above. Sending the user to create it
+  // would fail on the Categories page, which already has it.
+  const hiddenEntry = hiddenCategoryEntry(
+    normalized,
+    typeof hiddenCategories !== 'undefined' ? hiddenCategories : [],
+    heldValue
+  );
+  if (hiddenEntry.held) return { value: hiddenEntry.label };
+  if (hiddenEntry.notice) return { error: hiddenEntry.notice };
 
   // Partial match — if only one category matches, use it
   const partial = (availableCategories || []).filter(cat =>
@@ -1241,25 +1263,20 @@ async function _applyCategorizeAndClose(txn, txnId, accountId) {
  * Uses localStorage cache to avoid redundant API calls (categories rarely change).
  */
 async function loadAvailableCategories(forceNetwork = false) {
-  const CAT_CACHE_KEY = 'pf_cached_categories';
   const TAX_CACHE_KEY = 'pf_cached_taxonomy';
-  const CAT_TS_KEY = 'pf_categories_cached_at';
   const CAT_MAX_AGE_MS = 10 * 1000; // 10 seconds — kept ultra-short during development to avoid stale-data confusion
 
   // Try cache first
   if (!forceNetwork) {
-    const cachedAt = localStorage.getItem(CAT_TS_KEY);
-    const cacheAge = cachedAt ? (Date.now() - parseInt(cachedAt)) : Infinity;
-    if (cacheAge < CAT_MAX_AGE_MS) {
+    const cachedLists = readCachedCategoryLists(CAT_MAX_AGE_MS);
+    if (cachedLists) {
       try {
-        const cachedCats = JSON.parse(localStorage.getItem(CAT_CACHE_KEY) || '[]');
         const cachedTax = JSON.parse(localStorage.getItem(TAX_CACHE_KEY) || '[]');
-        if (cachedCats.length > 0) {
-          availableCategories = cachedCats;
-          plaidTaxonomy = cachedTax;
-          console.log(`Loaded ${availableCategories.length} categories and ${plaidTaxonomy.length} taxonomy from cache`);
-          return;
-        }
+        availableCategories = cachedLists.visible;
+        hiddenCategories = cachedLists.hidden;
+        plaidTaxonomy = cachedTax;
+        console.log(`Loaded ${availableCategories.length} categories and ${plaidTaxonomy.length} taxonomy from cache`);
+        return;
       } catch (e) {
         console.warn('Category cache parse error, fetching from server:', e);
       }
@@ -1275,9 +1292,11 @@ async function loadAvailableCategories(forceNetwork = false) {
     if (categoriesRes.ok) {
       const data = await categoriesRes.json();
       availableCategories = data.available_categories || [];
+      hiddenCategories = data.hidden_categories || [];
     } else {
       console.error('Failed to load available categories');
       availableCategories = [];
+      hiddenCategories = [];
     }
 
     if (taxonomyRes.ok) {
@@ -1292,15 +1311,15 @@ async function loadAvailableCategories(forceNetwork = false) {
     
     // Cache for future page loads
     try {
-      localStorage.setItem(CAT_CACHE_KEY, JSON.stringify(availableCategories));
+      cacheCategoryLists(availableCategories, hiddenCategories);
       localStorage.setItem(TAX_CACHE_KEY, JSON.stringify(plaidTaxonomy));
-      localStorage.setItem(CAT_TS_KEY, String(Date.now()));
     } catch (e) {
       console.warn('Could not cache categories to localStorage:', e);
     }
   } catch (error) {
     console.error('Error loading category data:', error);
     availableCategories = [];
+    hiddenCategories = [];
     plaidTaxonomy = [];
   }
 }

@@ -421,3 +421,49 @@ test('Total Spending leaves savings out and Total Outflow sums spending and savi
   assert.match(outflowCard.subtext, /Spending plus savings/);
   assert.match(outflowCard.meta, /^4 /);
 });
+
+// ── Hidden categories ──────────────────────────────────────────
+
+test('a hidden category already on a card is kept and not flagged missing', () => {
+  const tree = E.buildInsightCategoryTree(
+    ['Food: Groceries'],
+    [{ primaries: [], details: ['Food: Dining Out'] }],
+    ['Food: Dining Out'],
+  );
+  const food = tree.find(group => group.primary === 'Food');
+  assert.equal(food.missing, false);
+  assert.equal(food.details.find(detail => detail.label === 'Food: Dining Out').missing, false);
+  assert.equal(food.details.find(detail => detail.label === 'Food: Groceries').missing, false);
+});
+
+test('a hidden category not on any card is not offered', () => {
+  const tree = E.buildInsightCategoryTree(
+    ['Food: Groceries'],
+    [{ primaries: [], details: ['Food: Groceries'] }],
+    ['Food: Dining Out', 'Gifts: Birthday'],
+  );
+  assert.equal(JSON.stringify(tree.map(group => group.primary)), JSON.stringify(['Food']));
+  assert.equal(JSON.stringify(tree[0].details.map(detail => detail.label)), JSON.stringify(['Food: Groceries']));
+});
+
+test('a primary with only hidden categories is not missing when a card holds it or one of its labels', () => {
+  const whole = E.buildInsightCategoryTree(['Food: Groceries'], [{ primaries: ['Gifts'], details: [] }], ['Gifts: Birthday']);
+  assert.equal(whole.find(group => group.primary === 'Gifts').missing, false);
+  const one = E.buildInsightCategoryTree(['Food: Groceries'], [{ primaries: [], details: ['Gifts: Birthday'] }], ['Gifts: Birthday']);
+  const gifts = one.find(group => group.primary === 'Gifts');
+  assert.equal(gifts.missing, false);
+  assert.equal(gifts.details[0].missing, false);
+});
+
+test('a label in neither list is still missing, and the hidden list may be absent', () => {
+  const tree = E.buildInsightCategoryTree(
+    ['Food: Groceries'],
+    [{ primaries: ['Old Primary'], details: ['Food: Gone', 'Gifts: Unknown'] }],
+    ['Food: Dining Out'],
+  );
+  assert.equal(tree.find(group => group.primary === 'Old Primary').missing, true);
+  assert.equal(tree.find(group => group.primary === 'Food').details.find(detail => detail.label === 'Food: Gone').missing, true);
+  assert.equal(tree.find(group => group.primary === 'Gifts').missing, true);
+  const noHidden = E.buildInsightCategoryTree(['Food: Groceries'], [{ primaries: [], details: ['Food: Dining Out'] }]);
+  assert.equal(noHidden[0].details.find(detail => detail.label === 'Food: Dining Out').missing, true);
+});

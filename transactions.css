@@ -3187,6 +3187,17 @@ tr.bank-suspect-row td:first-child {
   text-overflow: ellipsis;
 }
 
+.filter-ac-hidden-tag {
+  margin-left: 8px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  vertical-align: 1px;
+}
+
 .filter-ac-item:last-child {
   border-bottom: none;
 }

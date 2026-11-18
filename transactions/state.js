@@ -9,6 +9,7 @@ let accounts = [];
 let transactions = [];
 let visibleTransactions = []; // Transactions currently shown in the table (post all active filters)
 let availableCategories = [];
+let hiddenCategories = []; // Hidden labels: still legal on a row, never offered by an assignment picker
 let plaidTaxonomy = []; // Plaid PFCv2 category taxonomy for parsing
 
 // Account selection state

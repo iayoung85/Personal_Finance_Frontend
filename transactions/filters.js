@@ -949,50 +949,23 @@ function initCategoryFilterInput() {
 function _showFilterCategoryAutocomplete(query) {
   const list = document.getElementById('filter-category-ac-list');
   if (!list) return;
-  const queryLower = (query || '').trim().toLowerCase();
 
-  if (!queryLower) {
+  const suggestions = buildFilterSuggestions(availableCategories, hiddenCategories, query);
+
+  if (suggestions.isOpeningList) {
     // Show all primaries when input is empty (user sees what's available)
-    const primaries = extractPrimaryCategories(availableCategories);
-    if (primaries.length === 0) { list.innerHTML = ''; list.style.display = 'none'; return; }
+    if (suggestions.primaries.length === 0) { list.innerHTML = ''; list.style.display = 'none'; return; }
     let html = '<div class="filter-ac-section-label">Primary Categories</div>';
-    primaries.forEach((cat, idx) => {
-      html += `<div class="filter-ac-item${idx === 0 ? ' active' : ''}" data-type="primary" data-value="${escapeHtml(cat)}">${escapeHtml(cat)}</div>`;
+    suggestions.primaries.forEach((entry, idx) => {
+      html += `<div class="filter-ac-item${idx === 0 ? ' active' : ''}" data-type="primary" data-value="${escapeHtml(entry.value)}">${escapeHtml(entry.value)}</div>`;
     });
     list.innerHTML = html;
     list.style.display = 'block';
     return;
   }
 
-  // Collect matching primaries
-  const primaries = extractPrimaryCategories(availableCategories);
-  const matchingPrimaries = primaries.filter(cat => cat.toLowerCase().includes(queryLower));
-
-  // Collect matching full categories (Primary: Detailed)
-  let matchingDetailed;
-  if (queryLower.includes(':')) {
-    const [queryPrimary, queryDetailed] = queryLower.split(':').map(segment => segment.trim());
-    matchingDetailed = (availableCategories || []).filter(cat => {
-      const lower = cat.toLowerCase();
-      const parts = lower.split(':').map(segment => segment.trim());
-      const primaryMatch = !queryPrimary || (parts[0] || '').includes(queryPrimary);
-      const detailedMatch = !queryDetailed || (parts[1] || '').includes(queryDetailed);
-      return primaryMatch && detailedMatch;
-    });
-  } else {
-    matchingDetailed = (availableCategories || []).filter(cat =>
-      cat.toLowerCase().includes(queryLower)
-    );
-  }
-
-  // De-duplicate: remove entries that are just primary-only matches already
-  // shown in the primaries section (e.g., "Income" as a full category)
-  const primarySet = new Set(matchingPrimaries.map(p => p.toLowerCase()));
-  const filteredDetailed = matchingDetailed.filter(cat => {
-    const parsed = parseCategoryString(cat);
-    // Keep if it has a detailed component, or it's not already shown as a primary
-    return parsed.detailed || !primarySet.has(parsed.primary.toLowerCase());
-  });
+  const matchingPrimaries = suggestions.primaries;
+  const filteredDetailed = suggestions.detailed;
 
   if (matchingPrimaries.length === 0 && filteredDetailed.length === 0) {
     list.innerHTML = '<div class="filter-ac-empty">No matching categories</div>';
@@ -1000,14 +973,21 @@ function _showFilterCategoryAutocomplete(query) {
     return;
   }
 
+  // Hidden ones are not in the opening list, so the tag says why this one
+  // only turns up once the user types.
+  const itemHtml = (entry, type, isFirst) => {
+    const tag = entry.hidden ? '<span class="filter-ac-hidden-tag">hidden</span>' : '';
+    return `<div class="filter-ac-item${isFirst ? ' active' : ''}" data-type="${type}" data-value="${escapeHtml(entry.value)}">${_highlightFilterMatch(entry.value, query)}${tag}</div>`;
+  };
+
   let html = '';
   let firstItem = true;
 
   // Primaries section
   if (matchingPrimaries.length > 0) {
     html += '<div class="filter-ac-section-label">Primary Categories (shows all under this group)</div>';
-    matchingPrimaries.forEach(cat => {
-      html += `<div class="filter-ac-item${firstItem ? ' active' : ''}" data-type="primary" data-value="${escapeHtml(cat)}">${_highlightFilterMatch(cat, query)}</div>`;
+    matchingPrimaries.forEach(entry => {
+      html += itemHtml(entry, 'primary', firstItem);
       firstItem = false;
     });
   }
@@ -1017,8 +997,8 @@ function _showFilterCategoryAutocomplete(query) {
   const shownDetailed = filteredDetailed.slice(0, maxDetailed);
   if (shownDetailed.length > 0) {
     html += '<div class="filter-ac-section-label">Specific Categories</div>';
-    shownDetailed.forEach(cat => {
-      html += `<div class="filter-ac-item${firstItem ? ' active' : ''}" data-type="detailed" data-value="${escapeHtml(cat)}">${_highlightFilterMatch(cat, query)}</div>`;
+    shownDetailed.forEach(entry => {
+      html += itemHtml(entry, 'detailed', firstItem);
       firstItem = false;
     });
     if (filteredDetailed.length > maxDetailed) {
@@ -1082,40 +1062,26 @@ function _applyCategoryFilterFromText(text) {
     return;
   }
 
-  // Check if it's a known exact primary
-  const primaries = extractPrimaryCategories(availableCategories);
-  const exactPrimary = primaries.find(p => p.toLowerCase() === trimmed.toLowerCase());
-  if (exactPrimary) {
-    filterPrimaryCategory = exactPrimary;
-    filterDetailedCategory = '';
-    if (input) input.value = exactPrimary;
-    renderTransactionTable();
-    return;
-  }
-
-  // Check if it's a known full "Primary: Detailed"
-  const exactFull = (availableCategories || []).find(c => c.toLowerCase() === trimmed.toLowerCase());
-  if (exactFull) {
-    const parsed = parseCategoryString(exactFull);
-    filterPrimaryCategory = parsed.primary;
-    filterDetailedCategory = parsed.detailed;
-    if (input) input.value = exactFull;
-    renderTransactionTable();
-    return;
-  }
-
-  // Fallback: treat entire input as a primary filter (fuzzy)
-  const fuzzyPrimary = primaries.find(p => p.toLowerCase().includes(trimmed.toLowerCase()));
-  if (fuzzyPrimary) {
-    filterPrimaryCategory = fuzzyPrimary;
-    filterDetailedCategory = '';
-    if (input) input.value = fuzzyPrimary;
-  } else {
-    // No match found — set as-is and let table filtering handle it
-    filterPrimaryCategory = trimmed;
-    filterDetailedCategory = '';
-  }
+  // Hidden labels are matched too: a hidden category is not offered when the
+  // box opens, but it can be typed or linked to.
+  const resolved = resolveFilterCategoryText(trimmed, availableCategories, hiddenCategories);
+  filterPrimaryCategory = resolved.primary;
+  filterDetailedCategory = resolved.detailed;
+  if (input && resolved.display !== null) input.value = resolved.display;
   renderTransactionTable();
+}
+
+/**
+ * Fill and apply the Category filter box from a ?category= address
+ * parameter, the same way as typing the text and pressing Enter. Called after
+ * the category lists are loaded, since a hidden label is only known from them.
+ */
+function applyCategoryDeepLink() {
+  const { category } = parseTransactionsDeepLink(window.location.search);
+  if (!category) return;
+  const input = document.getElementById('filter-category-input');
+  if (input) input.value = category;
+  _applyCategoryFilterFromText(category);
 }
 
 /**

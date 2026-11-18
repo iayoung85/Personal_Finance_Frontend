@@ -24,6 +24,8 @@
 //   fetchCategoriesWithCache — shared/categories-autocomplete.js
 //   wireUpCategoryAutocomplete — shared/categories-autocomplete.js
 //   highlightCategoryMatch  — shared/categories-autocomplete.js
+//   getHiddenCategories     — shared/categories-autocomplete.js
+//   hiddenCategoryEntry     — shared/hidden-categories.js
 //   showStatus              — page utility
 //   clearStatus             — page utility
 //
@@ -36,6 +38,10 @@
 let _billModalEditingId = null;
 let _billModalAccounts = [];
 let _billModalCategories = [];
+// Hidden labels stay legal on a bill but are never offered; the main
+// category and each allocation keep the hidden value they opened with.
+let _billModalHiddenCategories = [];
+let _billModalHeldCategory = '';
 let _billModalOnSave = null;
 let _billModalEditData = null;
 let _billModalSplitRowSeq = 0;
@@ -387,6 +393,15 @@ async function openBillModal(billId, options = {}) {
   } else {
     _billModalCategories = await fetchCategoriesWithCache();
   }
+  // The caller's list holds visible labels only, so the hidden ones come
+  // from the same cached read the pickers use.
+  if (Array.isArray(options.hiddenCategories)) {
+    _billModalHiddenCategories = options.hiddenCategories;
+  } else {
+    await fetchCategoriesWithCache();
+    _billModalHiddenCategories = getHiddenCategories();
+  }
+  _billModalHeldCategory = '';
 
   const titleEl = document.getElementById('bill-modal-title');
   const submitBtn = document.getElementById('bill-submit-btn');
@@ -457,6 +472,7 @@ function _billModalApplyPrefill(prefill) {
   }
   if (prefill.user_category) {
     document.getElementById('bill-category').value = prefill.user_category;
+    _billModalHeldCategory = prefill.user_category;
   }
 
   // Seed pattern lists from the originating Plaid transaction so the user
@@ -548,6 +564,7 @@ function _billModalPopulateFromBill(bill) {
   document.getElementById('bill-is-important').checked = !!bill.is_important;
   const categoryInput = document.getElementById('bill-category');
   categoryInput.value = bill.user_category || '';
+  _billModalHeldCategory = bill.user_category || '';
   delete categoryInput.dataset.transferAccountId;
   delete categoryInput.dataset.transferLabel;
   if (bill.transfer_account_id && bill.user_category) {
@@ -1530,6 +1547,12 @@ async function _billModalSave() {
 
   if (!formData.account_id) { _bmShowError('Please select an account.'); return; }
   if (!formData.description) { _bmShowError('Please enter a description.'); return; }
+  const hiddenMainEntry = hiddenCategoryEntry(
+    formData.user_category, _billModalHiddenCategories, _billModalHeldCategory
+  );
+  if (hiddenMainEntry.notice) { _bmShowError(hiddenMainEntry.notice); return; }
+  const hiddenAllocationNotice = _billModalHiddenAllocationNotice();
+  if (hiddenAllocationNotice) { _bmShowError(hiddenAllocationNotice); return; }
   // Variable-amount bills may be saved at $0 so the user isn't tricked into
   // seeing a real pending amount before the bill actually materializes.
   // Fixed-amount bills still need a non-zero amount.
@@ -1807,6 +1830,7 @@ function _billModalAddSplitRow(initial) {
   const row = document.createElement('div');
   row.className = 'split-row';
   row.dataset.rowSeq = seq;
+  row.dataset.heldCategory = data.category || '';
   row.innerHTML = `
     <div>
       <div class="split-row-label">Amount</div>
@@ -1851,6 +1875,20 @@ function _billModalAddSplitRow(initial) {
   });
   liveInput.addEventListener('change', _billModalUpdateSplitsValidation);
   liveInput.addEventListener('input', _billModalUpdateSplitsValidation);
+}
+
+/**
+ * The notice for the first allocation naming a hidden category it did not
+ * open with, or ''.
+ */
+function _billModalHiddenAllocationNotice() {
+  let notice = '';
+  document.querySelectorAll('#bill-split-rows .split-row').forEach(row => {
+    if (notice) return;
+    const typed = row.querySelector('.bill-split-category').value;
+    notice = hiddenCategoryEntry(typed, _billModalHiddenCategories, row.dataset.heldCategory).notice;
+  });
+  return notice;
 }
 
 function _billModalReadSplitRows() {
@@ -1937,6 +1975,8 @@ function _billModalUpdateSplitsValidation() {
     message = 'Every allocation needs a valid amount.';
   } else if (splits.some(s => !s.category)) {
     message = 'Every allocation needs a category.';
+  } else if (_billModalHiddenAllocationNotice()) {
+    message = _billModalHiddenAllocationNotice();
   } else if (!balanced) {
     message = `Allocations don't balance. Remaining: ${fmt(remaining)}.`;
   }
