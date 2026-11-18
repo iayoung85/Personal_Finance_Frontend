@@ -15,8 +15,13 @@
  * page was opened to show a specific slice of the ledger, so it must not be
  * narrowed by the saved date range or account.
  *
+ * A category link comes from a Uses count on the Categories page, which counts
+ * hidden transactions, so the page must show them or the list would not match
+ * the number. A search link comes from a report, which leaves hidden
+ * transactions out, so it does not.
+ *
  * @param {string} queryString The address's query string, with or without "?".
- * @returns {{hasSearch: boolean, search: string, category: string, forcesFullLedger: boolean}}
+ * @returns {{hasSearch: boolean, search: string, category: string, forcesFullLedger: boolean, showsHiddenRows: boolean}}
  */
 function parseTransactionsDeepLink(queryString) {
   const params = new URLSearchParams(queryString || '');
@@ -27,6 +32,7 @@ function parseTransactionsDeepLink(queryString) {
     search: params.get('search') || '',
     category,
     forcesFullLedger: hasSearch || category !== '',
+    showsHiddenRows: category !== '',
   };
 }
 

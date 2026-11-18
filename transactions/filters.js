@@ -1099,13 +1099,36 @@ function _applyCategoryFilterFromText(text) {
 }
 
 /**
+ * Show or hide the batch unhide toolbar to match the show-hidden toggle.
+ */
+function syncBatchUnhideToolbar() {
+  const toggle = document.getElementById('show-hidden-toggle');
+  const toolbar = document.getElementById('batch-unhide-toolbar');
+  if (toggle && toolbar) toolbar.classList.toggle('hidden', !toggle.checked);
+}
+
+/**
+ * Turn the show-hidden toggle on without a click. The toggle is never saved,
+ * so this lasts for the page load and the user can switch it back off.
+ */
+function showHiddenRowsForThisPage() {
+  const toggle = document.getElementById('show-hidden-toggle');
+  if (!toggle || toggle.checked) return;
+  toggle.checked = true;
+  // The toggle's change handler is attached later in start-up, so its
+  // toolbar step is done here; the caller redraws the table.
+  syncBatchUnhideToolbar();
+}
+
+/**
  * Fill and apply the Category filter box from a ?category= address
  * parameter, the same way as typing the text and pressing Enter. Called after
  * the category lists are loaded, since a hidden label is only known from them.
  */
 function applyCategoryDeepLink() {
-  const { category } = parseTransactionsDeepLink(window.location.search);
+  const { category, showsHiddenRows } = parseTransactionsDeepLink(window.location.search);
   if (!category) return;
+  if (showsHiddenRows) showHiddenRowsForThisPage();
   const input = document.getElementById('filter-category-input');
   if (input) input.value = category;
   _applyCategoryFilterFromText(category);

@@ -292,11 +292,7 @@ $(document).ready(async function() {
 
   // Re-render when show-hidden toggle changes and manage batch toolbar visibility
   $(document).on('change', '#show-hidden-toggle', function() {
-    const showHidden = this.checked;
-    const toolbar = document.getElementById('batch-unhide-toolbar');
-    if (toolbar) {
-      toolbar.classList.toggle('hidden', !showHidden);
-    }
+    syncBatchUnhideToolbar();
     renderTransactionTable();
   });
 

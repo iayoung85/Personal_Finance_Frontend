@@ -26,7 +26,7 @@ const F = loadFilter();
 
 test('a primary name in ?category= is read as typed', () => {
   assert.deepEqual(plain(F.parseTransactionsDeepLink('?category=Food')), {
-    hasSearch: false, search: '', category: 'Food', forcesFullLedger: true,
+    hasSearch: false, search: '', category: 'Food', forcesFullLedger: true, showsHiddenRows: true,
   });
 });
 
@@ -42,7 +42,7 @@ test('the address may come without its question mark', () => {
 
 test('an empty or missing ?category= selects nothing and forces nothing', () => {
   assert.deepEqual(plain(F.parseTransactionsDeepLink('?category=')), {
-    hasSearch: false, search: '', category: '', forcesFullLedger: false,
+    hasSearch: false, search: '', category: '', forcesFullLedger: false, showsHiddenRows: false,
   });
   assert.equal(F.parseTransactionsDeepLink('').forcesFullLedger, false);
   assert.equal(F.parseTransactionsDeepLink('?foo=1').category, '');
@@ -56,8 +56,14 @@ test('?search= alone still forces the full ledger, even when empty', () => {
 test('both parameters apply together', () => {
   const link = F.parseTransactionsDeepLink('?search=coffee&category=Food%3A%20Dining%20Out');
   assert.deepEqual(plain(link), {
-    hasSearch: true, search: 'coffee', category: 'Food: Dining Out', forcesFullLedger: true,
+    hasSearch: true, search: 'coffee', category: 'Food: Dining Out', forcesFullLedger: true, showsHiddenRows: true,
   });
+});
+
+test('a category link shows hidden transactions; a search link alone does not', () => {
+  assert.equal(F.parseTransactionsDeepLink('?category=Uncategorized').showsHiddenRows, true);
+  assert.equal(F.parseTransactionsDeepLink('?search=cat%3A%22Food%22').showsHiddenRows, false);
+  assert.equal(F.parseTransactionsDeepLink('').showsHiddenRows, false);
 });
 
 // ── The suggestion list ─────────────────────────────────────
