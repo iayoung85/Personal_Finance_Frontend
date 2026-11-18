@@ -12,7 +12,7 @@ const statePath = path.join(__dirname, '..', 'categories', 'label-state.js');
 function loadHelpers() {
   const sandbox = { module: { exports: {} } };
   const source = `${fs.readFileSync(utilsPath, 'utf8')}\n${fs.readFileSync(statePath, 'utf8')}\n`
-    + 'module.exports = { normalizeLockedLabels, findLockedLabel, findLockedKey, listedLabels, describeLabel, groupListedLabels, withLockedMappingsKept, lockedKeyUnderPlaidPrimary, normalizePlaidNamedLabels };';
+    + 'module.exports = { normalizeLockedLabels, findLockedLabel, findLockedKey, listedLabels, describeLabel, groupListedLabels, withLockedMappingsKept, lockedKeyUnderPlaidPrimary, normalizePlaidNamedLabels, readCatchAll, isCatchAllEntry, isCatchAllKey, catchAllMergeMove, catchAllRemapMove, catchAllMergeWarning, catchAllRemapBody, catchAllEntryIn, catchAllPrimaryNoteParagraphs, CATCH_ALL_PRIMARY_NOTE_HEADING, CATCH_ALL_TAG_HOVER, CATCH_ALL_NOTE_HEADING, CATCH_ALL_NOTE_INTRO, CATCH_ALL_NOTE_REASONS, CATCH_ALL_NOTE_CLOSING, CATCH_ALL_MAPPING_NOTE, CATCH_ALL_REMAP_TITLE, CATCH_ALL_REMAP_CONFIRM_LABEL };';
   vm.runInNewContext(source, sandbox, { filename: statePath });
   return sandbox.module.exports;
 }
@@ -203,4 +203,110 @@ test('the badge follows the API\'s plaid_named_labels, not the custom list', () 
 test('a missing or malformed plaid_named_labels is an empty list', () => {
   assert.deepEqual(plain(helpers.normalizePlaidNamedLabels(undefined)), []);
   assert.deepEqual(plain(helpers.normalizePlaidNamedLabels(['A: B', 7, ''])), ['A: B']);
+});
+
+// ── The catch-all category ──────────────────────────────────
+
+const CATCH_ALL = { plaidKey: 'OTHER_OTHER', label: 'Uncategorized: Uncategorized' };
+
+test('readCatchAll takes the API values and falls back to the given key', () => {
+  assert.deepEqual(plain(helpers.readCatchAll(
+    { catch_all_plaid_key: 'OTHER_OTHER', catch_all_label: 'Other: Other' }, 'FALLBACK'
+  )), { plaidKey: 'OTHER_OTHER', label: 'Other: Other' });
+  assert.deepEqual(plain(helpers.readCatchAll({ catch_all_label: 'Other: Other' }, 'FALLBACK')),
+    { plaidKey: 'FALLBACK', label: 'Other: Other' });
+});
+
+test('readCatchAll leaves the label empty for an older API', () => {
+  assert.equal(helpers.readCatchAll({}, 'OTHER_OTHER').label, '');
+  assert.equal(helpers.readCatchAll(undefined, 'OTHER_OTHER').label, '');
+  assert.equal(helpers.readCatchAll({ catch_all_label: 5 }, 'OTHER_OTHER').label, '');
+});
+
+test('isCatchAllEntry is true only for catch_all === true', () => {
+  assert.equal(helpers.isCatchAllEntry({ label: 'A: B', catch_all: true }), true);
+  assert.equal(helpers.isCatchAllEntry({ label: 'A: B', catch_all: false }), false);
+  assert.equal(helpers.isCatchAllEntry({ label: 'A: B' }), false);
+  assert.equal(helpers.isCatchAllEntry({ label: 'A: B', catch_all: 'true' }), false);
+  assert.equal(helpers.isCatchAllEntry(null), false);
+});
+
+test('isCatchAllKey matches the key only when the API named a label', () => {
+  assert.equal(helpers.isCatchAllKey('OTHER_OTHER', CATCH_ALL), true);
+  assert.equal(helpers.isCatchAllKey('FOOD_AND_DRINK_COFFEE', CATCH_ALL), false);
+  assert.equal(helpers.isCatchAllKey('OTHER_OTHER', { plaidKey: 'OTHER_OTHER', label: '' }), false);
+});
+
+test('catchAllMergeMove names the catch-all source and the target', () => {
+  const selected = [
+    { label: 'Uncategorized: Uncategorized', catch_all: true },
+    { label: 'Food: Groceries', catch_all: false }
+  ];
+  assert.deepEqual(plain(helpers.catchAllMergeMove(selected, 'Food: Groceries')),
+    { source: 'Uncategorized: Uncategorized', target: 'Food: Groceries' });
+});
+
+test('catchAllMergeMove is null when the catch-all is the target or absent', () => {
+  const selected = [
+    { label: 'Uncategorized: Uncategorized', catch_all: true },
+    { label: 'Food: Groceries' }
+  ];
+  assert.equal(helpers.catchAllMergeMove(selected, 'Uncategorized: Uncategorized'), null);
+  assert.equal(helpers.catchAllMergeMove([{ label: 'A: B' }, { label: 'C: D' }], 'A: B'), null);
+  assert.equal(helpers.catchAllMergeMove(undefined, 'A: B'), null);
+});
+
+test('catchAllRemapMove reports a different label on the catch-all key', () => {
+  assert.deepEqual(plain(helpers.catchAllRemapMove({ OTHER_OTHER: 'Shopping: Misc' }, CATCH_ALL)),
+    { from: 'Uncategorized: Uncategorized', to: 'Shopping: Misc' });
+  assert.deepEqual(plain(helpers.catchAllRemapMove({ OTHER_OTHER: '  Shopping: Misc ' }, CATCH_ALL)),
+    { from: 'Uncategorized: Uncategorized', to: 'Shopping: Misc' });
+});
+
+test('catchAllRemapMove is null when nothing moves', () => {
+  assert.equal(helpers.catchAllRemapMove({ OTHER_OTHER: 'Uncategorized: Uncategorized' }, CATCH_ALL), null);
+  assert.equal(helpers.catchAllRemapMove({ OTHER_OTHER: '' }, CATCH_ALL), null);
+  assert.equal(helpers.catchAllRemapMove({ FOOD: 'Food: Groceries' }, CATCH_ALL), null);
+  assert.equal(helpers.catchAllRemapMove({ OTHER_OTHER: 'Shopping: Misc' }, { plaidKey: 'OTHER_OTHER', label: '' }), null);
+  assert.equal(helpers.catchAllRemapMove(undefined, CATCH_ALL), null);
+});
+
+test('catchAllEntryIn finds the catch-all among a primary\'s categories', () => {
+  const catchAllEntry = { label: 'Uncategorized: Uncategorized', catch_all: true };
+  assert.equal(helpers.catchAllEntryIn([{ label: 'Uncategorized: Misc', catch_all: false }, catchAllEntry]), catchAllEntry);
+  assert.equal(helpers.catchAllEntryIn([{ label: 'Food: Dining' }]), null);
+  assert.equal(helpers.catchAllEntryIn(undefined), null);
+});
+
+test('the primary note advises on the kind only when the kind can be changed', () => {
+  const opening = 'Uncategorized: Uncategorized sits under this primary. It collects the bank transactions the app can\'t place, and most of them are real purchases nobody has sorted yet.';
+  const kindAdvice = 'Keep the kind as Spending, so they count in your totals until you sort them. A kind like Adjustment or Transfer leaves them out of every total, and money goes uncounted without your knowing what it was.';
+  const nameAdvice = 'Renaming the primary renames that category too. A name like "Uncategorized" says what it is.';
+  assert.equal(helpers.CATCH_ALL_PRIMARY_NOTE_HEADING, 'This primary holds your catch-all category');
+  assert.deepEqual(plain(helpers.catchAllPrimaryNoteParagraphs('Uncategorized: Uncategorized', true)),
+    [opening, kindAdvice, nameAdvice]);
+  assert.deepEqual(plain(helpers.catchAllPrimaryNoteParagraphs('Uncategorized: Uncategorized', false)),
+    [opening, nameAdvice]);
+});
+
+test('the catch-all wording is the agreed text', () => {
+  assert.equal(helpers.CATCH_ALL_TAG_HOVER,
+    'Bank transactions the app can\'t place land here. It means "not categorized yet". Open Edit for the details.');
+  assert.equal(helpers.CATCH_ALL_NOTE_HEADING, 'This is your catch-all category');
+  assert.equal(helpers.CATCH_ALL_NOTE_INTRO, 'Bank transactions land here when the app can\'t tell what they are:');
+  assert.deepEqual(plain(helpers.CATCH_ALL_NOTE_REASONS), [
+    'Plaid wasn\'t sure of its own category, and none of your rules matched.',
+    'Plaid sent a category you haven\'t mapped.'
+  ]);
+  assert.equal(helpers.CATCH_ALL_NOTE_CLOSING,
+    'The app treats everything in it as not categorized yet. Renaming it changes the name only: the same transactions keep landing here. '
+    + 'A name like "Uncategorized" says what it is. '
+    + 'A name like "Shopping: Misc" would fill a spending category with transactions nobody has sorted.');
+  assert.equal(helpers.CATCH_ALL_MAPPING_NOTE, 'Catch-all: transactions the app can\'t place go to this category.');
+  assert.equal(helpers.CATCH_ALL_REMAP_TITLE, 'Move the catch-all?');
+  assert.equal(helpers.CATCH_ALL_REMAP_CONFIRM_LABEL, 'Save mappings');
+  assert.equal(helpers.catchAllMergeWarning('A: One', 'B: Two'),
+    'A: One is your catch-all category. After this merge, B: Two becomes the catch-all: bank transactions the app can\'t place will land in it, and the app will treat everything in it as not categorized yet.');
+  assert.equal(helpers.catchAllRemapBody('A: One', 'B: Two'),
+    'A: One is your catch-all category. Saving makes B: Two the catch-all: bank transactions the app can\'t place will land in it, and the app will treat everything in it as not categorized yet.');
 });

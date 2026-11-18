@@ -267,6 +267,7 @@ function _openCategoryForm(options) {
   };
 
   const bodyHtml = `
+    ${isCatchAllEntry(entry) ? _catchAllNoteHtml() : ''}
     <div class="cat-form-section-title">General</div>
     <div class="cat-form-panel">
       ${_formRow('<label for="cat-edit-name">Name</label>',
@@ -316,6 +317,18 @@ function _openCategoryForm(options) {
   const nameInput = dialog.querySelector('#cat-edit-name');
   nameInput.focus();
   if (!isCreate) nameInput.select();
+}
+
+/** The explanation the Edit dialog shows above the name fields on the catch-all. */
+function _catchAllNoteHtml() {
+  const reasons = CATCH_ALL_NOTE_REASONS.map(reason => `<li>${escapeHtml(reason)}</li>`).join('');
+  return `
+    <div class="cat-catch-all-note" role="note">
+      <h4>${escapeHtml(CATCH_ALL_NOTE_HEADING)}</h4>
+      <p>${escapeHtml(CATCH_ALL_NOTE_INTRO)}</p>
+      <ul>${reasons}</ul>
+      <p>${escapeHtml(CATCH_ALL_NOTE_CLOSING)}</p>
+    </div>`;
 }
 
 /** Enter in a one-line field saves, as the default button would. */
@@ -461,6 +474,24 @@ function _primaryKindRowHtml(group, draftKind) {
   return '<span class="cat-kind-text is-muted">Not set</span>';
 }
 
+/**
+ * The note the primary's Edit dialog shows above its fields when one of its
+ * categories is the catch-all; '' for any other primary.
+ */
+function _catchAllPrimaryNoteHtml(group) {
+  const catchAllEntry = catchAllEntryIn(group.children);
+  if (!catchAllEntry) return '';
+  const kindIsEditable = group.kindView.mode === 'picker';
+  const paragraphs = catchAllPrimaryNoteParagraphs(catchAllEntry.label, kindIsEditable)
+    .map(text => `<p>${escapeHtml(text)}</p>`)
+    .join('');
+  return `
+    <div class="cat-catch-all-note" role="note">
+      <h4>${escapeHtml(CATCH_ALL_PRIMARY_NOTE_HEADING)}</h4>
+      ${paragraphs}
+    </div>`;
+}
+
 function _openPrimaryEditor(options) {
   const group = findCategoryGroup(options.primary);
   if (!group) {
@@ -473,6 +504,7 @@ function _openPrimaryEditor(options) {
   const name = draft ? draft.name : group.primary;
 
   const bodyHtml = `
+    ${_catchAllPrimaryNoteHtml(group)}
     <div class="cat-form-section-title">General</div>
     <div class="cat-form-panel">
       ${_formRow('<label for="cat-edit-name">Name</label>',
@@ -646,10 +678,16 @@ function openMergeConfirm(selectedEntries, targetLabel) {
       <td class="cat-num">${row.uses.toLocaleString()}</td>
     </tr>`).join('');
 
+  const roleMove = catchAllMergeMove(selectedEntries, targetLabel);
+  const roleWarning = roleMove
+    ? `<p class="cat-confirm-lead cat-confirm-warning">${escapeHtml(catchAllMergeWarning(roleMove.source, roleMove.target))}</p>`
+    : '';
+
   const bodyHtml = `
     <p class="cat-confirm-lead">Everything on these categories lands on <strong>${escapeHtml(summary.target)}</strong>:
       transactions, rules, overrides, bills, alerts and the Plaid categories that point at them.
       The others leave your list. This can't be undone.</p>
+    ${roleWarning}
     <table class="cat-merge-table">
       <thead><tr><th>Category</th><th class="cat-num">Transactions</th></tr></thead>
       <tbody>${rows}</tbody>

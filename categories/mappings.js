@@ -32,8 +32,12 @@ function renderMappingsList(filterText = '') {
       const displayNames = getCategoryDisplayNames(taxonomyEntry || { detailed: plaidCat });
       const displayKey = displayNames.full || formatPlaidCategory(plaidCat);
 
+      const catchAllNote = isCatchAllKey(plaidCat, catchAllState)
+        ? `<div class="mapping-catch-all-note">${escapeHtml(CATCH_ALL_MAPPING_NOTE)}</div>`
+        : '';
+
       const lockedKey = findLockedKey(plaidCat, lockedLabels);
-      if (lockedKey) return _buildLockedMappingRow(plaidCat, displayKey, lockedKey);
+      if (lockedKey) return _buildLockedMappingRow(plaidCat, displayKey, lockedKey, catchAllNote);
 
       const options = buildDetailedOptionsForCategory(plaidCat, userLabel);
 
@@ -42,6 +46,7 @@ function renderMappingsList(filterText = '') {
           <div class="mapping-key" title="${escapeHtml(plaidCat)}">${escapeHtml(displayKey)}</div>
           <select class="mapping-value" data-plaid-category="${escapeHtml(plaidCat)}">${options}</select>
           <button class="secondary mapping-clear" onclick="clearMapping('${escapeHtml(plaidCat)}')">Clear</button>
+          ${catchAllNote}
         </div>
       `;
     })
@@ -77,13 +82,14 @@ function renderMappingsList(filterText = '') {
  * One mapping row for a key the app has locked: its label greyed and not
  * editable, with the API's reason on hover, tap and focus.
  */
-function _buildLockedMappingRow(plaidCat, displayKey, lockedKey) {
+function _buildLockedMappingRow(plaidCat, displayKey, lockedKey, catchAllNote = '') {
   const message = escapeHtml(lockedKey.message);
   return `
         <div class="mapping-row is-locked" data-plaid-category="${escapeHtml(plaidCat)}">
           <div class="mapping-key" title="${escapeHtml(plaidCat)}">${escapeHtml(displayKey)}</div>
           <div class="mapping-locked-value" tabindex="0" role="note" data-lock-message="${message}" title="${message}">${escapeHtml(lockedKey.label)}</div>
           <button type="button" class="secondary is-locked mapping-clear" data-lock-message="${message}" aria-disabled="true" title="${message}">Clear</button>
+          ${catchAllNote}
         </div>
       `;
 }
@@ -265,6 +271,46 @@ async function saveCategoryMappings() {
     // key under a Plaid primary, so those values are put back before sending.
     const newMappings = withLockedMappingsKept(editedMappings, lockedLabels);
 
+    // The primary pickers can rewrite this key too, so the check is here at
+    // save and not when one select changes.
+    const roleMove = catchAllRemapMove(newMappings, catchAllState);
+    if (roleMove) {
+      _confirmCatchAllRemap(roleMove, () => _sendCategoryMappings(newMappings));
+      return;
+    }
+    await _sendCategoryMappings(newMappings);
+  } catch (networkError) {
+    showStatus(`Failed to save mappings: ${networkError.message}`, 'error');
+  }
+}
+
+/**
+ * Ask before a save that moves the catch-all role. Cancel leaves the editor
+ * as it is, unsaved.
+ * @param {{from: string, to: string}} roleMove
+ * @param {function(): void} onConfirm Runs the save.
+ */
+function _confirmCatchAllRemap(roleMove, onConfirm) {
+  _openCategoryDialog({
+    title: CATCH_ALL_REMAP_TITLE,
+    bodyHtml: `<p class="cat-confirm-lead">${escapeHtml(catchAllRemapBody(roleMove.from, roleMove.to))}</p>`,
+    actions: [
+      { label: 'Cancel', kind: 'secondary', onClick: () => closeCategoryDialog() },
+      {
+        label: CATCH_ALL_REMAP_CONFIRM_LABEL,
+        kind: 'primary',
+        isDefault: true,
+        onClick: () => {
+          closeCategoryDialog();
+          onConfirm();
+        }
+      }
+    ]
+  });
+}
+
+async function _sendCategoryMappings(newMappings) {
+  try {
     const { response, data } = await _putCategoryMappings({ category_mappings: newMappings });
     if (!response.ok) {
       const questions = readMappingQuestions(data);

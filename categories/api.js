@@ -94,6 +94,7 @@ function _saveCatPageCache() {
       categoryMappings,
       customCategories,
       lockedLabels,
+      catchAllState,
       plaidNamedLabels,
       availableCategories,
       categoryLabels,
@@ -159,6 +160,11 @@ async function loadCategorizationData(forceNetwork = false) {
             customCategories = cached.customCategories || [];
             // A copy saved before locked_labels existed has none.
             lockedLabels = normalizeLockedLabels(cached.lockedLabels);
+            // A copy saved before the catch-all fields existed has none.
+            catchAllState = readCatchAll(
+              { catch_all_plaid_key: (cached.catchAllState || {}).plaidKey, catch_all_label: (cached.catchAllState || {}).label },
+              CATCH_ALL_PLAID_KEY
+            );
             plaidNamedLabels = normalizePlaidNamedLabels(cached.plaidNamedLabels);
             availableCategories = cached.availableCategories || [];
             categoryLabels = Array.isArray(cached.categoryLabels) ? cached.categoryLabels : [];
@@ -210,6 +216,7 @@ async function loadCategorizationData(forceNetwork = false) {
     categoryMappings = responses[0].ok ? (categoriesData.category_mappings || {}) : {};
     customCategories = responses[0].ok ? (categoriesData.custom_categories || []) : [];
     lockedLabels = responses[0].ok ? normalizeLockedLabels(categoriesData.locked_labels) : [];
+    catchAllState = readCatchAll(responses[0].ok ? categoriesData : {}, CATCH_ALL_PLAID_KEY);
     plaidNamedLabels = responses[0].ok ? normalizePlaidNamedLabels(categoriesData.plaid_named_labels) : [];
     categoryListHash = responses[0].ok ? (categoriesData.category_list_hash || null) : null;
     categoryLabelsMissing = responses[0].ok && !Array.isArray(categoriesData.labels);

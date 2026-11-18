@@ -183,3 +183,140 @@ function withLockedMappingsKept(mappings, lockedLabels) {
   });
   return kept;
 }
+
+// ── The catch-all category ──────────────────────────────────
+// The API says which label holds the role and which Plaid key it follows.
+// Nothing here works the role out from the mappings.
+
+const CATCH_ALL_TAG_HOVER = 'Bank transactions the app can\'t place land here. It means "not categorized yet". Open Edit for the details.';
+const CATCH_ALL_NOTE_HEADING = 'This is your catch-all category';
+const CATCH_ALL_NOTE_INTRO = 'Bank transactions land here when the app can\'t tell what they are:';
+const CATCH_ALL_NOTE_REASONS = [
+  'Plaid wasn\'t sure of its own category, and none of your rules matched.',
+  'Plaid sent a category you haven\'t mapped.'
+];
+const CATCH_ALL_NOTE_CLOSING = 'The app treats everything in it as not categorized yet. '
+  + 'Renaming it changes the name only: the same transactions keep landing here. '
+  + 'A name like "Uncategorized" says what it is. '
+  + 'A name like "Shopping: Misc" would fill a spending category with transactions nobody has sorted.';
+const CATCH_ALL_PRIMARY_NOTE_HEADING = 'This primary holds your catch-all category';
+const CATCH_ALL_PRIMARY_KIND_ADVICE = 'Keep the kind as Spending, so they count in your totals until you sort them. '
+  + 'A kind like Adjustment or Transfer leaves them out of every total, '
+  + 'and money goes uncounted without your knowing what it was.';
+const CATCH_ALL_PRIMARY_NAME_ADVICE = 'Renaming the primary renames that category too. '
+  + 'A name like "Uncategorized" says what it is.';
+const CATCH_ALL_MAPPING_NOTE = 'Catch-all: transactions the app can\'t place go to this category.';
+const CATCH_ALL_REMAP_TITLE = 'Move the catch-all?';
+const CATCH_ALL_REMAP_CONFIRM_LABEL = 'Save mappings';
+
+/**
+ * Read the catch-all fields from the categories GET.
+ * @param {Object} data The GET's body.
+ * @param {string} fallbackKey The key to use when an API sends a label but no key.
+ * @returns {{plaidKey: string, label: string}} An empty label means the API
+ *   did not say, as an older API does not, and nothing catch-all shows.
+ */
+function readCatchAll(data, fallbackKey) {
+  const body = data || {};
+  const label = typeof body.catch_all_label === 'string' ? body.catch_all_label : '';
+  const sentKey = typeof body.catch_all_plaid_key === 'string' ? body.catch_all_plaid_key : '';
+  return { plaidKey: sentKey || fallbackKey || '', label };
+}
+
+/**
+ * Whether a labels entry is the catch-all.
+ * @param {Object|null|undefined} entry A `labels` entry from the GET.
+ * @returns {boolean}
+ */
+function isCatchAllEntry(entry) {
+  return Boolean(entry) && entry.catch_all === true;
+}
+
+/**
+ * The catch-all among a primary's categories.
+ * @param {Array|null|undefined} entries The primary's `labels` entries.
+ * @returns {Object|null} The entry, or null when the primary does not hold it.
+ */
+function catchAllEntryIn(entries) {
+  return (entries || []).find(isCatchAllEntry) || null;
+}
+
+/**
+ * What the Edit dialog of the primary holding the catch-all says, one string
+ * per paragraph. The advice on the kind is left out when the kind cannot be
+ * changed there, since it could not be followed.
+ * @param {string} catchAllLabel The catch-all category's label.
+ * @param {boolean} kindIsEditable Whether the dialog offers a kind picker.
+ * @returns {string[]}
+ */
+function catchAllPrimaryNoteParagraphs(catchAllLabel, kindIsEditable) {
+  const paragraphs = [
+    `${catchAllLabel} sits under this primary. It collects the bank transactions the app can't place, `
+      + 'and most of them are real purchases nobody has sorted yet.'
+  ];
+  if (kindIsEditable) paragraphs.push(CATCH_ALL_PRIMARY_KIND_ADVICE);
+  paragraphs.push(CATCH_ALL_PRIMARY_NAME_ADVICE);
+  return paragraphs;
+}
+
+/**
+ * Whether a Plaid key is the one the catch-all follows.
+ * @param {string} plaidKey
+ * @param {{plaidKey: string, label: string}} catchAll From readCatchAll.
+ * @returns {boolean} False when the API did not name a catch-all label.
+ */
+function isCatchAllKey(plaidKey, catchAll) {
+  return Boolean(catchAll && catchAll.label) && plaidKey === catchAll.plaidKey;
+}
+
+/**
+ * Whether a merge hands the catch-all role to another category.
+ * @param {Array<Object>} selectedEntries The selected `labels` entries.
+ * @param {string} targetLabel The category that survives.
+ * @returns {{source: string, target: string}|null} Null when the catch-all
+ *   is not among the merged-away categories, or is the one that survives.
+ */
+function catchAllMergeMove(selectedEntries, targetLabel) {
+  const source = (selectedEntries || []).find(
+    entry => isCatchAllEntry(entry) && entry.label !== targetLabel
+  );
+  return source ? { source: source.label, target: targetLabel } : null;
+}
+
+/**
+ * Whether saving these mappings points the catch-all key at another label.
+ * @param {Object<string, string>} mappings What the save would send.
+ * @param {{plaidKey: string, label: string}} catchAll As last loaded.
+ * @returns {{from: string, to: string}|null} Null when the API named no
+ *   catch-all, the key is unmapped, or its label is the one already holding the role.
+ */
+function catchAllRemapMove(mappings, catchAll) {
+  if (!catchAll || !catchAll.label || !catchAll.plaidKey) return null;
+  const sent = ((mappings || {})[catchAll.plaidKey] || '').trim();
+  if (!sent || sent === catchAll.label) return null;
+  return { from: catchAll.label, to: sent };
+}
+
+/**
+ * The merge confirm's warning.
+ * @param {string} source The catch-all being merged away.
+ * @param {string} target The category that survives.
+ * @returns {string} Plain text; the caller escapes it.
+ */
+function catchAllMergeWarning(source, target) {
+  return `${source} is your catch-all category. After this merge, ${target} becomes the catch-all: `
+    + 'bank transactions the app can\'t place will land in it, '
+    + 'and the app will treat everything in it as not categorized yet.';
+}
+
+/**
+ * The remap confirm's body.
+ * @param {string} from The label holding the role now.
+ * @param {string} to The label the save would give it to.
+ * @returns {string} Plain text; the caller escapes it.
+ */
+function catchAllRemapBody(from, to) {
+  return `${from} is your catch-all category. Saving makes ${to} the catch-all: `
+    + 'bank transactions the app can\'t place will land in it, '
+    + 'and the app will treat everything in it as not categorized yet.';
+}

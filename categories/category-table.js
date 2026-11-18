@@ -132,6 +132,9 @@ function _detailedRowHtml(group, entry, stripe) {
   const lockedTag = entry.locked
     ? `<span class="cat-tag" title="${escapeHtml(entry.locked_message || LOCKED_FALLBACK_REASON)}">Locked</span>`
     : '';
+  const catchAllTag = isCatchAllEntry(entry)
+    ? `<span class="cat-tag" title="${escapeHtml(CATCH_ALL_TAG_HOVER)}">Catch-all</span>`
+    : '';
   const bareTag = entry.detailed ? '' : '<span class="cat-tag" title="This label has no detailed name. Edit it to give it one.">No detailed name</span>';
   const kindText = group.kindView.mode === 'none' ? '—' : group.kindView.label;
   return `
@@ -139,7 +142,7 @@ function _detailedRowHtml(group, entry, stripe) {
         data-row-key="${escapeHtml(key)}" data-label="${label}" data-primary="${escapeHtml(group.primary)}"
         aria-selected="${isSelected}" tabindex="-1">
       <td class="cat-cell-name"${nameTitle}>
-        <span class="cat-name-text${descriptionClass}">${escapeHtml(rowName)}</span>${lockedTag}${bareTag}
+        <span class="cat-name-text${descriptionClass}">${escapeHtml(rowName)}</span>${lockedTag}${catchAllTag}${bareTag}
       </td>
       <td class="cat-cell-kind"><span class="cat-kind-inherited">${escapeHtml(kindText)}</span></td>
       <td class="cat-cell-uses">${_usesCellHtml(Number(entry.uses) || 0, entry.label, entry.label)}</td>

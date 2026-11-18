@@ -9,6 +9,9 @@ let categoryMappings = {};
 let customCategories = [];
 // Labels the app owns, from the GET's locked_labels: [{label, mapping_key, reason, message}]
 let lockedLabels = [];
+// The catch-all role as the GET last said it: the Plaid key it follows and the label holding it.
+// An empty label means the API did not say (an older API).
+let catchAllState = { plaidKey: '', label: '' };
 // Labels that are Plaid's own name for a key mapped to them, from the GET's plaid_named_labels
 let plaidNamedLabels = [];
 let availableCategories = [];
