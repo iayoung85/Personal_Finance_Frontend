@@ -240,7 +240,6 @@ async function _finishMappingsSave(message) {
     // toast before the user reads what moved.
     showResultBanner(message);
   }
-  await _ensureCustomCategoriesForPrimaryMappings(primaryCategoryMappings);
   await loadCategorizationData(true);
   setTimeout(() => clearStatus(), 2000);
 }
@@ -470,64 +469,4 @@ function applyPrimaryMapping(plaidPrimaryDisplay, targetPrimaryDisplay) {
       const newLabel = detailed ? `${targetPrimary}: ${detailed}` : targetPrimary;
       categoryMappings[cat.detailed] = newLabel;
     });
-}
-
-// ── Custom categories a primary mapping needs ───────────────
-
-/**
- * Add the custom detailed categories each primary mapping needs. Nothing is
- * removed here: a category leaves the list only when the person moves it.
- * @param {Object<string, string>} primaryMappings Plaid primary to the person's primary.
- */
-async function _ensureCustomCategoriesForPrimaryMappings(primaryMappings) {
-  for (const [plaidPrimaryDisplay, targetPrimaryDisplay] of Object.entries(primaryMappings || {})) {
-    await _ensureCustomDetailedCategoriesForPrimaryMapping(plaidPrimaryDisplay, targetPrimaryDisplay);
-  }
-}
-
-async function _ensureCustomDetailedCategoriesForPrimaryMapping(plaidPrimaryDisplay, targetPrimaryDisplay) {
-  if (!targetPrimaryDisplay || targetPrimaryDisplay === plaidPrimaryDisplay) return;
-  if (!isCustomPrimary(targetPrimaryDisplay)) return;
-
-  const existing = new Set(customCategories || []);
-  const toCreate = [];
-
-  (plaidTaxonomy || [])
-    .filter(cat => formatPlaidCategory(cat.primary || '') === plaidPrimaryDisplay)
-    .forEach(cat => {
-      const displayNames = getCategoryDisplayNames(cat);
-      const detailed = displayNames.trimmed || '';
-      if (!detailed) return;
-      const label = `${targetPrimaryDisplay}: ${detailed}`;
-      if (!existing.has(label)) {
-        existing.add(label);
-        toCreate.push(label);
-      }
-    });
-
-  if (!toCreate.length) return;
-
-  for (const categoryName of toCreate) {
-    try {
-      const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/custom`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category_name: categoryName })
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        console.warn('Failed to add custom category:', data.error || categoryName);
-        continue;
-      }
-      customCategories.push(categoryName);
-      if (!availableCategories.includes(categoryName)) {
-        availableCategories.push(categoryName);
-      }
-    } catch (networkError) {
-      console.warn('Failed to add custom category:', networkError);
-    }
-  }
-
-  renderCustomCategories();
-  renderRuleFormOptions();
 }

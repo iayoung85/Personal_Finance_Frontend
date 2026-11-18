@@ -42,69 +42,25 @@
           <div id="preview" class="categories-panel active">
             <div class="panel-header">
               <h2>My Categories</h2>
-              <p>Live view of your primary and detailed categories</p>
+              <p>Every category in your list, under its primary. Right-click a row to edit, hide, merge or delete it.</p>
             </div>
 
-            <div class="card category-preview">
-              <div class="card-header">
-                <h3>Category Output Preview</h3>
-                <span class="panel-note">Instantly see the final categories users will get.</span>
-              </div>
-              <div class="preview-grid">
-                <div class="preview-pane">
-                  <div class="preview-header">
-                    <span>Primary categories</span>
-                    <span id="primary-selected-count" class="preview-count"></span>
-                  </div>
-                  <div id="primary-category-list" class="preview-list"></div>
+            <div class="card cat-card" id="categories-card">
+              <div class="cat-card-header">
+                <div class="cat-card-title">
+                  <h3>Categories</h3>
+                  <span id="category-table-count" class="cat-card-count"></span>
                 </div>
-                <div class="preview-pane">
-                  <div class="preview-header">
-                    <span>Detailed categories</span>
-                    <span id="detailed-count" class="preview-count"></span>
-                  </div>
-                  <div id="detailed-category-list" class="preview-list"></div>
+                <div class="cat-toolbar" role="toolbar" aria-label="Category actions">
+                  <button type="button" id="cat-new-btn" class="cat-button cat-button-primary">+ New</button>
+                  <span class="cat-toolbar-gap" aria-hidden="true"></span>
+                  <button type="button" id="cat-expand-btn" class="cat-button cat-button-secondary">Expand all</button>
+                  <button type="button" id="cat-collapse-btn" class="cat-button cat-button-secondary">Collapse all</button>
+                  <button type="button" id="cat-remove-unused-btn" class="cat-button cat-button-secondary">Remove unused categories</button>
                 </div>
               </div>
-            </div>
-
-            <!-- Custom Categories -->
-            <div class="card" id="custom-categories-card">
-              <div class="card-header">
-                <h3>Your Categories</h3>
-                <span class="panel-note">Add your own primary + detailed categories, and move any label in your list</span>
-              </div>
-              <div class="custom-category-form">
-                <div class="custom-field">
-                  <label for="custom-primary-input">Create New Primary category</label>
-                  <input id="custom-primary-input" type="text" placeholder="e.g., Home Services">
-                </div>
-                <div class="custom-field detailed-categories-container">
-                  <div class="detailed-categories-header">
-                    <label>Detailed categories (required)</label>
-                    <button type="button" class="secondary add-detailed-btn" onclick="addDetailedCategoryField()">+ Add Detailed</button>
-                  </div>
-                  <div id="detailed-categories-list" class="detailed-categories-list"></div>
-                </div>
-                <button type="button" onclick="addCustomCategoryGroup()">Add Categories</button>
-              </div>
-
-              <div class="preview-grid" style="margin-top: 20px;">
-                <div class="preview-pane">
-                  <div class="preview-header">
-                    <span>Primary categories</span>
-                    <span id="custom-primary-selected-count" class="preview-count"></span>
-                  </div>
-                  <div id="custom-primary-category-list" class="preview-list"></div>
-                </div>
-                <div class="preview-pane">
-                  <div class="preview-header">
-                    <span>Detailed categories</span>
-                    <span id="custom-detailed-count" class="preview-count"></span>
-                  </div>
-                  <div id="custom-detailed-category-list" class="preview-list"></div>
-                </div>
-              </div>
+              <div id="category-table" class="cat-table-wrap"></div>
+              <p class="cat-table-footnote">Click to select, Cmd-click or Shift-click to add rows, and right-click for actions. Double-click a row to edit it.</p>
             </div>
           </div>
 
@@ -222,40 +178,19 @@
           </div>
 
           <!-- ═══════════════════════════════════════════════
-               Panel 5: Bulk Actions
+               Panel 5: Audit Log (the id stays bulk-actions so old links work)
                ═══════════════════════════════════════════════ -->
           <div id="bulk-actions" class="categories-panel hidden">
             <div class="panel-header">
-              <h2>Bulk Actions</h2>
-              <p>Recategorize transactions, rename or merge categories, and view the audit log</p>
+              <h2>Audit Log</h2>
+              <p>What changed in your categories and mappings, newest first</p>
             </div>
 
             <!-- Recategorize All is hidden until CAT-007 teaches the pipeline to leave user-set categories alone. The API answers 503 meanwhile. -->
 
-            <div class="card" id="migrations-card">
-              <div class="card-header">
-                <h3>Category Migrations</h3>
-                <button class="secondary" onclick="showMigrationsHelp()" style="font-size: 12px; padding: 4px 8px;">Help</button>
-              </div>
-              <div class="migration-grid">
-                <div class="migration-box">
-                  <h4>Rename</h4>
-                  <select id="rename-old"></select>
-                  <input id="rename-new" type="text" placeholder="New category">
-                  <button class="secondary" onclick="confirmRename()">Rename</button>
-                </div>
-                <div class="migration-box">
-                  <h4>Merge</h4>
-                  <div id="merge-source-list" class="merge-list"></div>
-                  <select id="merge-target"></select>
-                  <button class="secondary" onclick="confirmMerge()">Merge</button>
-                </div>
-              </div>
-            </div>
-
             <div class="card" id="audit-card">
               <div class="card-header">
-                <h3>Audit Log</h3>
+                <h3>Changes</h3>
                 <button class="secondary" onclick="refreshMigrationLog()">Refresh</button>
               </div>
               <div id="audit-log" class="audit-log"></div>
@@ -400,7 +335,12 @@
   <script src="categories/utils.js"></script>
   <script src="categories/label-state.js"></script>
   <script src="categories/primary-kinds.js"></script>
-  <script src="categories/preview-panel.js"></script>
+  <script src="categories/category-tree.js"></script>
+  <script src="categories/audit-log-text.js"></script>
+  <script src="categories/category-table.js"></script>
+  <script src="categories/category-menu.js"></script>
+  <script src="categories/category-modal.js"></script>
+  <script src="categories/pending-category-return.js"></script>
   <script src="categories/label-answers.js"></script>
   <script src="categories/mappings.js"></script>
   <script src="categories/rules-engine.js"></script>

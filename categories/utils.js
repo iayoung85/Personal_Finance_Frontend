@@ -153,10 +153,6 @@ function getPrimaryDisplayForDetailed(plaidDetailed, taxonomyEntry) {
   return formatPlaidCategory(primaryRaw);
 }
 
-function isCustomPrimary(primaryDisplay) {
-  return (customCategories || []).some(cat => parseCategoryName(cat).primary === primaryDisplay);
-}
-
 // ── Status Messages ─────────────────────────────────────────
 
 function showStatus(message, type = 'info') {

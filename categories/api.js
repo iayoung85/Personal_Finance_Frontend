@@ -96,6 +96,7 @@ function _saveCatPageCache() {
       lockedLabels,
       plaidNamedLabels,
       availableCategories,
+      categoryLabels,
       categoryListHash,
       rules,
       migrationLog,
@@ -145,14 +146,15 @@ async function loadCategorizationData(forceNetwork = false) {
         try {
           const cached = JSON.parse(localStorage.getItem(CAT_PAGE_CACHE_KEY) || 'null');
           const cachedTax = _loadCachedTaxonomy();
-          // A copy saved before primary_categories existed counts as a miss.
-          if (cached && cached.categoryMappings && cachedTax && 'primaryCategories' in cached) {
+          // A copy saved before primary_categories or labels existed counts as a miss.
+          if (cached && cached.categoryMappings && cachedTax && 'primaryCategories' in cached && 'categoryLabels' in cached) {
             categoryMappings = cached.categoryMappings;
             customCategories = cached.customCategories || [];
             // A copy saved before locked_labels existed has none.
             lockedLabels = normalizeLockedLabels(cached.lockedLabels);
             plaidNamedLabels = normalizePlaidNamedLabels(cached.plaidNamedLabels);
             availableCategories = cached.availableCategories || [];
+            categoryLabels = Array.isArray(cached.categoryLabels) ? cached.categoryLabels : [];
             categoryListHash = cached.categoryListHash || null;
             rules = cached.rules || [];
             migrationLog = cached.migrationLog || [];
@@ -200,6 +202,8 @@ async function loadCategorizationData(forceNetwork = false) {
     lockedLabels = responses[0].ok ? normalizeLockedLabels(categoriesData.locked_labels) : [];
     plaidNamedLabels = responses[0].ok ? normalizePlaidNamedLabels(categoriesData.plaid_named_labels) : [];
     categoryListHash = responses[0].ok ? (categoriesData.category_list_hash || null) : null;
+    categoryLabelsMissing = responses[0].ok && !Array.isArray(categoriesData.labels);
+    categoryLabels = responses[0].ok && Array.isArray(categoriesData.labels) ? categoriesData.labels : [];
     primaryCategories = responses[0].ok && Array.isArray(categoriesData.primary_categories)
       ? categoriesData.primary_categories
       : null;
@@ -239,7 +243,9 @@ async function loadCategorizationData(forceNetwork = false) {
       plaidTaxonomy = cachedTaxonomy;
     }
 
-    // Derive availableCategories locally (eliminates /categories/available call)
+    // This page's own pickers (rules, overrides, mappings) offer every listed
+    // label, hidden ones included, so the list is derived here rather than
+    // read from /available, which leaves hidden labels out.
     availableCategories = _deriveAvailableCategories();
 
     // Ensure all Plaid categories are in categoryMappings
@@ -253,39 +259,15 @@ async function loadCategorizationData(forceNetwork = false) {
     // Update cache
     _saveCatPageCache();
 
-    // Also update the shared category caches used by transactions page
-    try {
-      localStorage.setItem('pf_cached_categories', JSON.stringify(availableCategories));
-      localStorage.setItem('pf_cached_taxonomy', JSON.stringify(plaidTaxonomy));
-      localStorage.setItem('pf_categories_cached_at', String(Date.now()));
-    } catch (storageError) { /* non-fatal */ }
+    // The list above holds hidden labels, so it must not reach the other
+    // pages' pickers; expiring their copy makes them ask /available again.
+    expireSharedCategoryPickerCache();
 
     renderAllCategoryViews();
   } catch (loadError) {
     console.error('loadCategorizationData error:', loadError);
     showStatus(`Failed to load categorization data: ${loadError.message}`, 'error');
   }
-}
-
-/**
- * Set how a primary category counts.
- * @param {string} primary The primary's name.
- * @param {string} kind One of the seven kinds (income, retirement_income, other_inflow, spending, savings, transfer, adjustment).
- * @returns {Promise<{ok: boolean, data: Object|null}>} data is the parsed body
- *   ({primary_category} on success, {error} on a refusal).
- */
-async function setPrimaryKind(primary, kind) {
-  await window.BACKEND_URL_PROMISE;
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/categories/primary-kind`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ primary, kind })
-  });
-  let data = null;
-  try {
-    data = await response.json();
-  } catch (parseError) { /* body was not JSON */ }
-  return { ok: response.ok, data };
 }
 
 function refreshCategorizationData() {
@@ -300,13 +282,79 @@ function renderAllCategoryViews() {
   renderMappingsList();
   derivePrimaryMappingsFromDetailedMappings();
   renderPrimaryMappingsList();
-  renderCustomCategories();
+  renderCategoryTable();
   renderRulesTable();
   renderOverridesTable();
   renderRuleFormOptions();
-  renderMigrationSelectors();
   renderMigrationLog();
   renderDetailedMappingFilterOptions();
-  renderAvailableCategoriesPreview();
   updateCategoryHashDisplay();
+}
+
+/**
+ * Make the other pages' category pickers fetch /available on their next
+ * load instead of trusting a copy saved before a change made here.
+ */
+function expireSharedCategoryPickerCache() {
+  try {
+    localStorage.removeItem('pf_categories_cached_at');
+  } catch (storageError) { /* non-fatal */ }
+}
+
+// ── The Categories table's calls ────────────────────────────
+// Each resolves to {ok, status, data}: data is the parsed body, which on a
+// refusal is {error, reason, ...}. A network failure rejects.
+
+async function _categoryTableCall(method, path, body) {
+  await window.BACKEND_URL_PROMISE;
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  let data = null;
+  try {
+    data = await response.json();
+  } catch (parseError) { /* body was not JSON */ }
+  return { ok: response.ok, status: response.status, data };
+}
+
+/** @param {{labels: string[], hidden: boolean}} body */
+function setCategoriesHidden(body) {
+  return _categoryTableCall('PUT', '/categories/hidden', body);
+}
+
+/** @param {{label: string, description: string}} body Blank clears it. */
+function setCategoryDescription(body) {
+  return _categoryTableCall('PUT', '/categories/description', body);
+}
+
+/** @param {{label: string, primary: string, detailed: string, kind?: string}} body */
+function editCategoryLabel(body) {
+  return _categoryTableCall('PUT', '/categories/label', body);
+}
+
+/** @param {{primary: string, new_primary: string, kind?: string}} body */
+function renameCategoryPrimary(body) {
+  return _categoryTableCall('PUT', '/categories/primary', body);
+}
+
+/** @param {{category_name: string, kind?: string}} body */
+function createCategoryLabel(body) {
+  return _categoryTableCall('POST', '/categories/custom', body);
+}
+
+/** @param {string[]} sources @param {string} target */
+function mergeCategoryLabels(sources, target) {
+  return _categoryTableCall('POST', '/categories/merge-labels', { sources, target });
+}
+
+/** @param {string} label */
+function deleteCategoryLabel(label) {
+  return _categoryTableCall('POST', '/categories/delete-label', { label });
+}
+
+/** @param {boolean} dryRun */
+function removeUnusedCategories(dryRun) {
+  return _categoryTableCall('POST', '/categories/remove-unused', { dry_run: dryRun });
 }

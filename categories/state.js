@@ -20,8 +20,11 @@ let overrides = []; // Overrides summary: [{category_name, transaction_count}]
 
 // How each primary counts: the GET's primary_categories, or null when the API sends none
 let primaryCategories = null;
-// Primaries whose kind is being saved; their picker stays disabled meanwhile
-const primaryKindsSaving = new Set();
+
+// One entry per listed label, from the GET's labels: the Categories table's rows
+let categoryLabels = [];
+// True when the API answered without labels (an API older than the table)
+let categoryLabelsMissing = false;
 
 // Normalized names of pinned primaries whose explanation is open, so a redraw keeps it open.
 const pinnedNotesOpen = new Set();
@@ -35,14 +38,15 @@ let primaryCategoryMappings = {};
 // Rule editing state
 let currentRuleEditId = null;
 
-// Preview panel selection state
-let selectedPrimaryCategories = new Set(['__all__']);
-let lastSelectedPrimaryIndex = null;
+// Detailed-mappings list filter
 let selectedDetailedPrimaryFilter = '__all__';
 
-// Custom categories preview selection state
-let selectedCustomPrimaryCategories = new Set();
-let lastSelectedCustomPrimaryIndex = null;
+// Categories table: primaries the user folded (every primary opens expanded),
+// the selected category labels with the Shift-click anchor, and the primary
+// row selected by itself, which never joins a Merge.
+const collapsedPrimaries = new Set();
+let categorySelection = { labels: [], anchor: null };
+let selectedPrimaryRow = null;
 
 // Auth state
 let token = localStorage.getItem('authToken');

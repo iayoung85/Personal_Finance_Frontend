@@ -34,7 +34,7 @@ const NAV_SIDEBAR_ITEMS = [
       { id: 'cat-mappings',   label: 'Mappings',           section: 'mappings' },
       { id: 'cat-rules',      label: 'Rules Engine',       section: 'rules' },
       { id: 'cat-overrides',  label: 'Overrides',          section: 'overrides' },
-      { id: 'cat-bulk',       label: 'Bulk Actions',       section: 'bulk-actions' },
+      { id: 'cat-bulk',       label: 'Audit Log',          section: 'bulk-actions' },
       { id: 'cat-advanced',   label: 'Advanced / CSV',     section: 'advanced' },
     ]
   },

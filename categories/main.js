@@ -5,16 +5,12 @@
 
 /**
  * Called by nav-sidebar.js _switchPanel() whenever the user
- * clicks a sub-nav item.  Lets us lazy-render content that
- * only makes sense when a panel is visible.
+ * clicks a sub-nav item. No panel needs lazy work today; the hook
+ * stays so the sidebar's call has somewhere to land.
  */
 function loadSectionContent(section) {
-  // Panels that need a one-detailed-field guarantee
-  if (section === 'preview') {
-    if (getDetailedCategoryValues().length === 0) {
-      addDetailedCategoryField();
-    }
-  }
+  // Leaving the table's panel closes its menu, which would float over another panel.
+  if (section !== 'preview' && typeof closeCategoryMenu === 'function') closeCategoryMenu(false);
 }
 
 document.addEventListener('DOMContentLoaded', async function initCategoriesPage() {
@@ -34,13 +30,10 @@ document.addEventListener('DOMContentLoaded', async function initCategoriesPage(
     return;
   }
 
+  initCategoryTable();
+
   // Load all categorization data (cache-first, then network)
   await loadCategorizationData();
-
-  // Ensure at least one detailed-category input row exists
-  if (getDetailedCategoryValues().length === 0) {
-    addDetailedCategoryField();
-  }
 
   // Wire up CSV file-input listener (advanced mode)
   _initCSVFileInput();
@@ -58,7 +51,7 @@ document.addEventListener('DOMContentLoaded', async function initCategoriesPage(
   _activateInitialPanel(initialSection);
 
   // If another page (e.g. transactions manual-txn modal) sent us a category
-  // to pre-create, populate the custom category form with it.
+  // to pre-create, open the create modal with it.
   _applyPrefillCustomCategory();
 
   // If redirected from transactions page Rule button, pre-fill the rule form
@@ -91,10 +84,9 @@ function _activateInitialPanel(section) {
 }
 
 /**
- * If sessionStorage contains a prefill category (set by another page),
- * populate the Custom Category form on the "My Categories" panel.
- * Handles both "Primary: Detailed" and bare strings gracefully —
- * bare strings go into the primary field with a hint to add details.
+ * If another page left a category to create in sessionStorage, open the
+ * create modal with it filled in. Saving it hands it back to the waiting
+ * transaction (see pending-category-return.js).
  */
 function _applyPrefillCustomCategory() {
   const rawCategory = sessionStorage.getItem('pf_prefill_custom_category');
@@ -102,25 +94,14 @@ function _applyPrefillCustomCategory() {
   sessionStorage.removeItem('pf_prefill_custom_category');
 
   const parts = parseCategoryName(rawCategory);
-  const primaryInput = document.getElementById('custom-primary-input');
-  if (!primaryInput) return;
-
-  if (parts.primary) {
-    primaryInput.value = parts.primary;
-  }
-
-  // Clear existing detailed fields and add the prefilled one (or an empty row)
-  clearDetailedCategoryFields();
-  if (parts.detailed) {
-    addDetailedCategoryField(parts.detailed);
-  } else {
-    addDetailedCategoryField();
-    showStatus('Category must be "Primary: Detailed" format — enter a detailed name below.', 'warning');
-  }
-
-  // Scroll the custom-categories card into view so the user sees the prefilled form
-  const customCard = document.getElementById('custom-categories-card');
-  if (customCard) {
-    customCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (window.location.hash.replace('#', '') !== 'preview') _activateInitialPanel('preview');
+  openCategoryEditor({
+    mode: 'create',
+    parent: parts.primary || '',
+    name: parts.detailed || '',
+    kindSourcePrimary: parts.primary || ''
+  });
+  if (!parts.detailed) {
+    _setDialogMessage('A category needs a detailed name under its primary. Enter one in Name.', 'warning');
   }
 }

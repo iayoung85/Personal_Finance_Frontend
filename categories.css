@@ -381,176 +381,6 @@ tr:hover {
   margin-top: 0;
 }
 
-/* ── Preview Panel (My Categories) ─────────────────────────── */
-.category-preview {
-  margin-bottom: 16px;
-  background: var(--bg-surface-elevated);
-}
-
-.preview-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.preview-pane {
-  display: flex;
-  flex-direction: column;
-  min-height: 160px;
-}
-
-.preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
-
-.preview-count {
-  font-size: 12px;
-  color: var(--text-secondary);
-  background: var(--bg-selected);
-  padding: 2px 8px;
-  border-radius: 999px;
-}
-
-/* FIX #3: Lock preview list height so the panel never causes
-   page-level scrolling.  Lists scroll internally instead. */
-.preview-list {
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  background: var(--bg-surface);
-  overflow-y: auto;
-  max-height: 200px;
-}
-
-.preview-item {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 13px;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.preview-item:last-child {
-  border-bottom: none;
-}
-
-.preview-item.selected {
-  background: var(--bg-selected);
-  color: var(--accent-link);
-  font-weight: 600;
-}
-
-.preview-item .pill {
-  background: var(--badge-info-bg);
-  color: rgba(99,102,241,0.8);
-}
-
-.preview-item .primary-kind-select {
-  padding: 2px 6px;
-  font-size: 11px;
-  max-width: 170px;
-}
-
-.preview-item .primary-kind-select:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-.preview-item {
-  flex-wrap: wrap;
-}
-
-.preview-item .primary-kind-fixed {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.preview-item .primary-kind-info {
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border-primary);
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1;
-  font-weight: 400;
-  cursor: pointer;
-}
-
-.preview-item .primary-kind-info:hover,
-.preview-item .primary-kind-info[aria-expanded="true"] {
-  color: var(--accent-link);
-  border-color: var(--accent-link);
-  background: var(--bg-hover);
-}
-
-.preview-item .primary-kind-info:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--accent-focus);
-  border-color: var(--accent-link);
-}
-
-.preview-item .primary-kind-note {
-  flex-basis: 100%;
-  margin-top: 4px;
-  padding: 8px 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  background: var(--bg-inset);
-  color: var(--text-primary);
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.45;
-  cursor: default;
-}
-
-.preview-item .primary-kind-note[hidden] {
-  display: none;
-}
-
-.preview-item .primary-kind-note p {
-  margin: 0;
-}
-
-.preview-item .primary-kind-note p + p {
-  margin-top: 6px;
-}
-
-/* A label the app owns: greyed, its Reassign shown but inert. The button is
-   aria-disabled rather than disabled so it can still show why. */
-.custom-detailed-row.is-locked > span {
-  color: var(--text-muted);
-}
-
-button.is-locked,
-button.is-locked:hover {
-  background: var(--bg-input);
-  color: var(--text-muted);
-  cursor: not-allowed;
-}
-
-.label-badge-plaid,
-.preview-item .label-badge-plaid {
-  background: var(--badge-plaid-bg);
-  color: var(--badge-plaid-text);
-  margin-left: 4px;
-  font-weight: 400;
-  cursor: help;
-}
-
 .mapping-locked-value {
   padding: 6px 8px;
   border: 1px dashed var(--border-subtle);
@@ -561,11 +391,6 @@ button.is-locked:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.preview-item.disabled {
-  cursor: default;
-  color: var(--text-muted);
 }
 
 /* ── Mapping Panel ─────────────────────────────────────────── */
@@ -657,108 +482,6 @@ button.is-locked:hover {
 .mapping-add select,
 .mapping-add input {
   flex: 1 1 220px;
-}
-
-/* ── Custom Categories Form ────────────────────────────────── */
-.custom-category-form {
-  display: grid;
-  grid-template-columns: minmax(200px, 1fr) minmax(300px, 2fr) auto;
-  align-items: start;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.custom-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.custom-field label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.custom-field input {
-  padding: 8px;
-  border: 1px solid var(--border-primary);
-  border-radius: 4px;
-  font-size: 13px;
-}
-
-.detailed-categories-container {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.detailed-categories-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.add-detailed-btn {
-  padding: 4px 10px;
-  font-size: 12px;
-  background: var(--bg-hover);
-  border: 1px solid var(--border-primary);
-}
-
-.add-detailed-btn:hover {
-  background: var(--bg-hover);
-}
-
-.detailed-categories-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.detailed-field-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.detailed-field-row input {
-  flex: 1;
-  padding: 7px;
-  border: 1px solid var(--border-primary);
-  border-radius: 4px;
-  font-size: 13px;
-}
-
-.remove-detailed-btn {
-  padding: 4px 10px;
-  font-size: 16px;
-  line-height: 1;
-  background: var(--color-danger);
-  color: white;
-  border: none;
-  min-width: 32px;
-}
-
-.remove-detailed-btn:hover {
-  background: var(--color-danger-muted);
-}
-
-.custom-category-form > button {
-  align-self: start;
-  margin-top: 22px;
-}
-
-@media (max-width: 900px) {
-  .custom-category-form {
-    grid-template-columns: 1fr;
-  }
-
-  .custom-category-form > button {
-    width: 100%;
-    margin-top: 0;
-  }
 }
 
 /* ── Rules Engine ──────────────────────────────────────────── */
@@ -1077,50 +800,9 @@ button.is-locked:hover {
   text-align: center;
 }
 
-/* ── Bulk Actions ──────────────────────────────────────────── */
-.migration-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 12px;
-}
-
-.migration-box {
-  border: 1px dashed var(--border-primary);
-  padding: 12px;
-  border-radius: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.migration-box select {
-  width: 100%;
-  margin-bottom: 8px;
-}
-
-.migration-box input[type="text"] {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.merge-list {
-  max-height: 140px;
-  overflow: auto;
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  padding: 6px;
-  background: var(--bg-surface-elevated);
-}
-
-.merge-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-}
-
+/* ── Audit Log ─────────────────────────────────────────────── */
 .audit-log {
-  max-height: 240px;
+  max-height: 70vh;
   overflow: auto;
 }
 
@@ -1456,10 +1138,6 @@ button.is-locked:hover {
 
 /* ── Responsive: stack category layouts on narrow screens ──── */
 @media (max-width: 1100px) {
-  .preview-grid {
-    grid-template-columns: 1fr;
-  }
-
   .mapping-split-grid {
     grid-template-columns: 1fr;
   }
@@ -1586,4 +1264,955 @@ button.is-locked:hover {
   font-size: 1.3em;
   line-height: 1;
   cursor: pointer;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Categories table (My Categories panel)
+   ══════════════════════════════════════════════════════════════ */
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Shared compact buttons ────────────────────────────────── */
+.cat-button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.cat-button-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+}
+
+.cat-button-secondary:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.cat-button-danger {
+  background: var(--color-danger-muted);
+}
+
+.cat-button-danger:hover {
+  background: var(--color-danger);
+}
+
+.cat-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+.cat-button:disabled,
+.cat-button:disabled:hover {
+  background: var(--bg-input);
+  border-color: transparent;
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* ── Card and toolbar ──────────────────────────────────────── */
+.cat-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin-bottom: 14px;
+}
+
+.cat-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cat-card-title h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-heading);
+}
+
+.cat-card-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.cat-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cat-toolbar-gap {
+  width: 6px;
+}
+
+.cat-table-footnote {
+  margin: 10px 2px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── The table ─────────────────────────────────────────────── */
+.cat-table-wrap {
+  border: 1px solid var(--table-border);
+  border-radius: 8px;
+  /* clip, not hidden: it rounds the corners without making a scroll box, so the header can stick */
+  overflow: clip;
+}
+
+.cat-table {
+  width: 100%;
+  margin-top: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: 13px;
+}
+
+.cat-col-kind { width: 210px; }
+.cat-col-uses { width: 96px; }
+.cat-col-hidden { width: 78px; }
+
+.cat-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 12px;
+  background: var(--table-header-bg);
+  border-bottom: 1px solid var(--table-border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.cat-table .cat-head-name {
+  padding-left: 38px;
+}
+
+.cat-table .cat-head-uses {
+  text-align: right;
+}
+
+.cat-table .cat-head-hidden {
+  text-align: center;
+}
+
+.cat-table td {
+  padding: 0 12px;
+  height: 34px;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.cat-table .cat-row {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: default;
+  user-select: none;
+}
+
+.cat-table .cat-row.is-alt {
+  background: var(--table-row-alt);
+}
+
+.cat-table .cat-row:hover {
+  background: var(--table-row-hover);
+}
+
+.cat-table .cat-row.is-selected,
+.cat-table .cat-row.is-selected:hover {
+  background: var(--bg-selected);
+  color: var(--text-bright);
+  box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+
+.cat-row:focus {
+  outline: none;
+}
+
+.cat-row:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: -2px;
+}
+
+/* The last row's line would double the frame's border. */
+.cat-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Primary rows */
+.cat-row-primary .cat-name-text {
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.cat-row-primary.is-selected .cat-name-text {
+  color: var(--text-bright);
+}
+
+.cat-chevron {
+  width: 20px;
+  height: 20px;
+  margin: 0 6px 0 -2px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: transform 0.15s ease;
+}
+
+.cat-chevron:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cat-chevron.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.cat-child-count {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* The count says what a folded primary holds; open, the rows say it. */
+.cat-row-primary[aria-expanded="true"] .cat-child-count {
+  display: none;
+}
+
+/* Category rows start a step past the primary's name, so they read as its subcategories. */
+.cat-table .cat-row-detailed .cat-cell-name {
+  padding-left: 60px;
+}
+
+.cat-name-text {
+  vertical-align: middle;
+}
+
+.cat-name-text.has-description {
+  border-bottom: 1px dotted var(--border-strong);
+  cursor: help;
+}
+
+.cat-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--badge-plaid-bg);
+  color: var(--badge-plaid-text);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  vertical-align: middle;
+  cursor: help;
+}
+
+.cat-tag-keep {
+  background: var(--badge-success-bg);
+  color: var(--badge-success-text);
+  cursor: default;
+}
+
+/* Kind */
+.cat-kind-text {
+  color: var(--text-primary);
+}
+
+.cat-row.is-selected .cat-kind-text {
+  color: var(--text-bright);
+}
+
+.cat-kind-text.is-by-name {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.cat-kind-inherited,
+.cat-kind-none {
+  color: var(--text-muted);
+}
+
+.cat-row.is-selected .cat-kind-inherited {
+  color: var(--text-secondary);
+}
+
+.primary-kind-info {
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  border: 1px solid var(--border-primary);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.primary-kind-info:hover,
+.primary-kind-info[aria-expanded="true"] {
+  color: var(--accent-link);
+  border-color: var(--accent-link);
+  background: var(--bg-hover);
+}
+
+.primary-kind-info:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus);
+  border-color: var(--accent-link);
+}
+
+.cat-table .cat-note-row td {
+  height: auto;
+  padding: 0 12px 10px 38px;
+  white-space: normal;
+  background: var(--bg-surface);
+}
+
+.primary-kind-note {
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-inset);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.primary-kind-note p {
+  margin: 0;
+}
+
+.primary-kind-note p + p {
+  margin-top: 6px;
+}
+
+/* Uses */
+.cat-cell-uses {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cat-uses-link {
+  color: var(--accent-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cat-uses-link:hover {
+  color: var(--accent-primary-hover);
+}
+
+.cat-uses-link:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.cat-uses-zero {
+  color: var(--text-muted);
+}
+
+/* Hidden */
+.cat-cell-hidden {
+  text-align: center;
+}
+
+.cat-hidden-box {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  vertical-align: middle;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.cat-hidden-box:disabled {
+  cursor: wait;
+}
+
+/* A hidden row reads as set aside but stays fully usable; its box stays at full strength. */
+.cat-row.is-hidden .cat-cell-name,
+.cat-row.is-hidden .cat-cell-kind,
+.cat-row.is-hidden .cat-cell-uses {
+  opacity: 0.5;
+}
+
+.cat-row.is-hidden.is-selected .cat-cell-name,
+.cat-row.is-hidden.is-selected .cat-cell-kind,
+.cat-row.is-hidden.is-selected .cat-cell-uses {
+  opacity: 0.7;
+}
+
+/* ── Right-click menu ──────────────────────────────────────── */
+.cat-menu {
+  position: fixed;
+  z-index: 1100;
+  min-width: 230px;
+  padding: 5px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 9px;
+  box-shadow: var(--shadow-lg);
+}
+
+.cat-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.cat-menu-item:hover,
+.cat-menu-item:focus {
+  outline: none;
+  background: var(--bg-selected);
+  color: var(--text-bright);
+}
+
+.cat-menu-item[aria-disabled="true"],
+.cat-menu-item[aria-disabled="true"]:hover {
+  background: transparent;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.cat-menu-item[aria-disabled="true"]:focus {
+  background: var(--bg-hover);
+}
+
+.cat-menu-divider {
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--border-subtle);
+}
+
+/* ── Dialogs ───────────────────────────────────────────────── */
+body.cat-dialog-open {
+  overflow: hidden;
+}
+
+.cat-dialog-overlay {
+  z-index: 1050;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.cat-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.cat-dialog.is-wide {
+  width: min(640px, 100%);
+}
+
+.cat-dialog-header {
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cat-dialog-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.cat-dialog-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cat-dialog-body {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 24px 20px;
+  overflow-y: auto;
+}
+
+.cat-dialog-message {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-danger-border);
+  border-radius: 8px;
+  background: var(--color-danger-bg);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cat-dialog-message.is-warning {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-bg);
+}
+
+.cat-dialog-message[hidden] {
+  display: none;
+}
+
+.cat-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cat-dialog-footer-left,
+.cat-dialog-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cat-dialog-footer-right .cat-button {
+  min-width: 84px;
+}
+
+/* Form */
+.cat-form-section-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.cat-form-panel + .cat-form-section-title {
+  margin-top: 20px;
+}
+
+.cat-form-panel {
+  padding: 2px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-surface-elevated);
+}
+
+.cat-form-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cat-form-row:last-child {
+  border-bottom: none;
+}
+
+.cat-form-row.is-top {
+  align-items: start;
+}
+
+.cat-form-row.is-top .cat-form-label {
+  padding-top: 8px;
+}
+
+.cat-form-label,
+.cat-form-label label {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.cat-form-control .modal-input {
+  border-radius: 6px;
+}
+
+.cat-form-control textarea.modal-input {
+  min-height: 72px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.cat-form-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.cat-form-hint:empty {
+  display: none;
+}
+
+.cat-new-badge {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--badge-info-bg);
+  color: var(--badge-info-text);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.cat-kind-slot {
+  min-height: 20px;
+}
+
+.cat-kind-text.is-muted {
+  color: var(--text-muted);
+}
+
+.cat-kind-note {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.cat-kind-note p {
+  margin: 0;
+}
+
+.cat-kind-note p + p {
+  margin-top: 6px;
+}
+
+/* Plaid section */
+.cat-plaid-panel {
+  padding: 12px 16px;
+}
+
+.cat-plaid-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cat-plaid-heading {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.cat-plaid-heading.is-empty {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.cat-plaid-link {
+  font-size: 12px;
+  color: var(--accent-link);
+  white-space: nowrap;
+}
+
+.cat-plaid-default {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.cat-plaid-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cat-plaid-list li {
+  padding: 4px 0;
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+
+.cat-plaid-list li + li {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cat-plaid-toggle {
+  margin-top: 8px;
+  padding: 0;
+  background: transparent;
+  color: var(--accent-link);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cat-plaid-toggle:hover {
+  background: transparent;
+  color: var(--accent-primary-hover);
+}
+
+.cat-plaid-groups {
+  margin-top: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cat-plaid-groups[hidden] {
+  display: none;
+}
+
+.cat-plaid-group-name {
+  margin: 10px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.cat-plaid-group-count {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.cat-plaid-group .cat-plaid-list {
+  margin-top: 2px;
+}
+
+/* Footer: Hide */
+.cat-hide-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.cat-hide-toggle input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent-primary);
+}
+
+.cat-help-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  font-family: Georgia, serif;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 700;
+  cursor: help;
+}
+
+.cat-help-dot:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+/* Confirms */
+.cat-confirm-lead {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.cat-confirm-heading {
+  margin: 18px 0 6px;
+  font-size: 13px;
+  color: var(--text-heading);
+}
+
+.cat-confirm-note {
+  margin: 6px 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.cat-confirm-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cat-confirm-list li {
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.cat-confirm-list li:nth-child(even) {
+  background: var(--table-row-alt);
+}
+
+.cat-confirm-scroll {
+  max-height: 240px;
+  overflow-y: auto;
+  border-radius: 8px;
+}
+
+.cat-kept-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cat-kept-reason {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.cat-merge-table {
+  width: 100%;
+  margin-top: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.cat-merge-table tr,
+.cat-merge-table tr:hover {
+  background: transparent;
+}
+
+.cat-merge-table th {
+  padding: 7px 10px;
+  border-bottom: none;
+  background: var(--table-header-bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.cat-merge-table td {
+  padding: 7px 10px;
+  border-bottom: none;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.cat-merge-table tr.is-target td,
+.cat-merge-table tfoot td {
+  font-weight: 600;
+}
+
+.cat-merge-table tfoot td {
+  background: var(--bg-surface-elevated);
+}
+
+.cat-merge-table .cat-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cat-pick-list {
+  padding: 4px 16px;
+}
+
+.cat-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 9px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cat-pick-row:last-child {
+  border-bottom: none;
+}
+
+.cat-pick-row input {
+  margin: 0;
+  accent-color: var(--accent-primary);
+}
+
+/* ── Narrow screens ────────────────────────────────────────── */
+@media (max-width: 700px) {
+  .cat-col-kind,
+  .cat-cell-kind,
+  .cat-head-kind {
+    display: none;
+  }
+
+  .cat-col-uses { width: 70px; }
+  .cat-col-hidden { width: 64px; }
+
+  .cat-form-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .cat-form-row.is-top .cat-form-label {
+    padding-top: 0;
+  }
+
+  .cat-dialog-header,
+  .cat-dialog-body,
+  .cat-dialog-footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .cat-dialog-footer {
+    flex-wrap: wrap;
+  }
 }
