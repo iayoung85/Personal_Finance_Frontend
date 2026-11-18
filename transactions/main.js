@@ -30,22 +30,25 @@ $(document).ready(async function() {
   // Deep-links with ?search= (e.g. report drill-downs) or ?category= (Uses links
   // on the Categories page) always show all accounts
   // so the filter matches across the full ledger.
-  const hasDeepLink = parseTransactionsDeepLink(window.location.search).forcesFullLedger;
-
   // Deep-links force "all dates" so historical drilldowns are never hidden by
-  // the last-12-months default. Guard against calling toggleDateFilter when the
-  // filter is already 'all' — that function has toggle-off semantics and would
-  // deactivate the filter, causing alternating behaviour on repeated drilldowns.
-  if (hasDeepLink && localStorage.getItem('pf_date_filter_active') !== 'all') {
-    toggleDateFilter('all');
+  // the last-12-months default, but only in this tab: the saved filter and
+  // account are shared with the user's other tabs.
+  const savedAccountId = localStorage.getItem('pf_selected_account');
+  const startupPlan = transactionsStartupPlan(
+    parseTransactionsDeepLink(window.location.search),
+    localStorage.getItem('pf_date_filter_active'),
+    savedAccountId,
+    Boolean(savedAccountId) && accounts.some(a => a.account_id === savedAccountId),
+  );
+
+  if (startupPlan.showAllDatesForPage) {
+    showAllDatesForThisPage();
   }
 
-  const savedAccountId = localStorage.getItem('pf_selected_account');
-  const savedAccountExists = !hasDeepLink && savedAccountId && accounts.some(a => a.account_id === savedAccountId);
-  if (savedAccountExists) {
-    await selectAccount(savedAccountId, true);
+  if (startupPlan.restoreAccountId) {
+    await selectAccount(startupPlan.restoreAccountId, true);
   } else {
-    localStorage.removeItem('pf_selected_account');
+    if (startupPlan.forgetSavedAccount) localStorage.removeItem('pf_selected_account');
     selectAllAccounts();
   }
 

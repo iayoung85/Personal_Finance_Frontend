@@ -1760,6 +1760,17 @@ tr:hover {
   cursor: wait;
 }
 
+/* Still being sent: it stays clickable, so further clicks can queue behind it. */
+.cat-hidden-box.is-pending {
+  opacity: 0.55;
+  outline: 1px dashed var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.cat-retry-btn {
+  margin-left: 8px;
+}
+
 /* A hidden row reads as set aside but stays fully usable; its box stays at full strength. */
 .cat-row.is-hidden .cat-cell-name,
 .cat-row.is-hidden .cat-cell-kind,

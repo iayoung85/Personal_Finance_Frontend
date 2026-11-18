@@ -58,7 +58,8 @@ function hiddenCategoryNotice(label) {
  *
  * @param {string} typed What the user typed or picked.
  * @param {string[]} hiddenCategories Labels the API reports as hidden.
- * @param {string} [heldValue] The value the control held when it opened.
+ * @param {string|string[]} [heldValue] The value the control held when it
+ *   opened, or several when more than one counts as already held.
  * @returns {{label: string, held: boolean, notice: string}} `label` is ''
  *   when the text names no hidden category. `held` is true when it is the
  *   value the control already held. `notice` is set only when it must be
@@ -67,7 +68,8 @@ function hiddenCategoryNotice(label) {
 function hiddenCategoryEntry(typed, hiddenCategories, heldValue) {
   const label = findHiddenCategory(typed, hiddenCategories);
   if (!label) return { label: '', held: false, notice: '' };
-  if (hiddenCategoryKey(heldValue) === hiddenCategoryKey(label)) {
+  const heldValues = Array.isArray(heldValue) ? heldValue : [heldValue];
+  if (heldValues.some(value => hiddenCategoryKey(value) === hiddenCategoryKey(label))) {
     return { label, held: true, notice: '' };
   }
   return { label, held: false, notice: hiddenCategoryNotice(label) };

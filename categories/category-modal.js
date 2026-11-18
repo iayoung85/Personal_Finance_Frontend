@@ -16,10 +16,11 @@ const HIDE_HELP_TEXT = 'A hidden category leaves the category pickers on every o
  * Open a dialog, replacing any open one.
  * @param {{title: string, subtitle?: string, bodyHtml: string, footerLeftHtml?: string,
  *   actions: Array<{label: string, kind?: string, onClick: function(): void, isDefault?: boolean}>,
- *   size?: string}} options kind is 'primary', 'danger' or 'secondary'.
+ *   size?: string, onClose?: function(): void}} options kind is 'primary', 'danger' or 'secondary'.
+ *   onClose runs however the dialog is left, unless the code closing it clears it first.
  * @returns {HTMLElement} The dialog element.
  */
-function _openCategoryDialog({ title, subtitle, bodyHtml, footerLeftHtml, actions, size }) {
+function _openCategoryDialog({ title, subtitle, bodyHtml, footerLeftHtml, actions, size, onClose }) {
   closeCategoryDialog();
   closeCategoryMenu(false);
 
@@ -53,7 +54,7 @@ function _openCategoryDialog({ title, subtitle, bodyHtml, footerLeftHtml, action
     right.appendChild(button);
   });
 
-  const state = { overlay, dialog, busy: false, returnFocusTo: document.activeElement };
+  const state = { overlay, dialog, busy: false, returnFocusTo: document.activeElement, onClose: onClose || null };
   _categoryDialog = state;
 
   overlay.addEventListener('click', event => {
@@ -99,6 +100,13 @@ function closeCategoryDialog() {
   if (target && document.contains(target) && typeof target.focus === 'function') {
     target.focus({ preventScroll: true });
   }
+  if (state.onClose) state.onClose();
+}
+
+/** Close the open dialog without its onClose, for a save that settles the outcome itself. */
+function _closeCategoryDialogHandled() {
+  if (_categoryDialog) _categoryDialog.onClose = null;
+  closeCategoryDialog();
 }
 
 /**
@@ -279,7 +287,13 @@ function _openCategoryForm(options) {
     <span class="cat-help-dot" tabindex="0" role="img" aria-label="${escapeHtml(HIDE_HELP_TEXT)}" title="${escapeHtml(HIDE_HELP_TEXT)}">i</span>`;
 
   const context = { isCreate, original, entry, tree, formState, handBackOnSave: Boolean(options.handBackOnSave) };
+  // The category already exists, so leaving by Cancel, Escape or a Save with
+  // nothing owed must still return it to the waiting transaction.
+  const handBackOnLeave = context.handBackOnSave && !isCreate
+    ? () => _handlePendingTxnAfterCategoryCreate([original.label])
+    : null;
   const dialog = _openCategoryDialog({
+    onClose: handBackOnLeave,
     title: isCreate ? 'New Category' : 'Edit Category',
     subtitle: isCreate ? '' : original.label,
     bodyHtml,
@@ -402,7 +416,7 @@ async function _saveCategoryForm(context) {
   const outcome = await runCategorySaveSteps(steps, { label: context.original.label || undefined }, _categorySaveApi());
 
   if (outcome.ok) {
-    closeCategoryDialog();
+    _closeCategoryDialogHandled();
     const message = context.isCreate ? `Added ${outcome.label}.` : `Saved ${outcome.label}.`;
     await refreshAfterCategoryChange(message, { selectLabels: [outcome.label] });
     if (context.isCreate || context.handBackOnSave) _handlePendingTxnAfterCategoryCreate([outcome.label]);
@@ -417,7 +431,7 @@ async function _saveCategoryForm(context) {
 
   // Part of the save landed. Reload, then reopen on the label as it now is,
   // with what was typed, so a second Save sends only what is still owed.
-  closeCategoryDialog();
+  _closeCategoryDialogHandled();
   await refreshAfterCategoryChange('', { selectLabels: [outcome.label] });
   openCategoryEditor({
     mode: 'edit',
@@ -732,7 +746,7 @@ async function startRemoveUnused(button) {
         label: `Delete ${summary.deleted.length === 1 ? '1 category' : `${summary.deleted.length} categories`}`,
         kind: 'danger',
         isDefault: true,
-        onClick: () => _runRemoveUnused()
+        onClick: () => _runRemoveUnused(summary.deleted.slice())
       }
     ];
 
@@ -750,13 +764,14 @@ async function startRemoveUnused(button) {
   }
 }
 
-async function _runRemoveUnused() {
+/** @param {string[]} listed The categories the confirm listed. */
+async function _runRemoveUnused(listed) {
   if (!_categoryDialog || _categoryDialog.busy) return;
   _setDialogMessage('');
   _setDialogBusy(true, 'Deleting…');
   let result;
   try {
-    result = await removeUnusedCategories(false);
+    result = await removeUnusedCategories(false, listed);
   } catch (networkError) {
     result = { ok: false, data: { error: `Could not reach the server: ${networkError.message}` } };
   }
@@ -766,9 +781,13 @@ async function _runRemoveUnused() {
     return;
   }
   closeCategoryDialog();
-  const deleted = (result.data && result.data.deleted) || [];
-  const message = deleted.length === 1
-    ? `Deleted ${deleted[0]}.`
-    : `Deleted ${deleted.length} unused categories.`;
-  await refreshAfterCategoryChange(message);
+  const deleted = (result.data && Array.isArray(result.data.deleted)) ? result.data.deleted : [];
+  const outcome = removeUnusedResultMessage(listed, deleted);
+  if (outcome.tone === 'success') {
+    await refreshAfterCategoryChange(outcome.text);
+    return;
+  }
+  // A mismatch must stay on screen, not fade like a success line.
+  const loaded = await refreshAfterCategoryChange('');
+  showStatus(loaded === false ? `${outcome.text} The list could not be refreshed; use Retry.` : outcome.text, 'warning');
 }

@@ -31,6 +31,37 @@ function parseTransactionsDeepLink(queryString) {
 }
 
 /**
+ * What the page shows and what it saves on load. A deep link shows every
+ * date and every account for this load only: the saved date filter and
+ * account are shared with the user's other tabs, so they are left as they are.
+ *
+ * @param {{forcesFullLedger: boolean}} deepLink From parseTransactionsDeepLink.
+ * @param {string|null} savedDateFilter The saved date filter's name.
+ * @param {string|null} savedAccountId The saved account.
+ * @param {boolean} savedAccountExists Whether that account is still listed.
+ * @returns {{showAllDatesForPage: boolean, restoreAccountId: string|null, forgetSavedAccount: boolean}}
+ *   showAllDatesForPage is false when "all" is already the saved filter, since
+ *   there is nothing to change. forgetSavedAccount is true only on an ordinary
+ *   load whose saved account is gone.
+ */
+function transactionsStartupPlan(deepLink, savedDateFilter, savedAccountId, savedAccountExists) {
+  const isDeepLink = Boolean(deepLink && deepLink.forcesFullLedger);
+  if (isDeepLink) {
+    return {
+      showAllDatesForPage: savedDateFilter !== 'all',
+      restoreAccountId: null,
+      forgetSavedAccount: false,
+    };
+  }
+  const canRestore = Boolean(savedAccountId) && Boolean(savedAccountExists);
+  return {
+    showAllDatesForPage: false,
+    restoreAccountId: canRestore ? savedAccountId : null,
+    forgetSavedAccount: !canRestore,
+  };
+}
+
+/**
  * Whether a label matches typed filter text. A text with a colon matches the
  * primary and the detailed part separately; otherwise it matches anywhere.
  */

@@ -25,6 +25,9 @@ let primaryCategories = null;
 let categoryLabels = [];
 // True when the API answered without labels (an API older than the table)
 let categoryLabelsMissing = false;
+// True when the last try at loading the category list failed, so the table
+// offers Retry instead of reading as an empty list.
+let categoryLoadFailed = false;
 
 // Normalized names of pinned primaries whose explanation is open, so a redraw keeps it open.
 const pinnedNotesOpen = new Set();

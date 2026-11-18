@@ -182,13 +182,24 @@ function renderCategoryTable() {
   const container = document.getElementById('category-table');
   if (!container) return;
 
-  const tree = buildCategoryTree(categoryLabels, primaryCategories);
+  _setCategoryToolbarEnabled(!categoryLoadFailed);
+  if (categoryLoadFailed) {
+    renderedCategoryTree = [];
+    renderedViewRows = [];
+    const countElement = document.getElementById('category-table-count');
+    if (countElement) countElement.textContent = '';
+    container.innerHTML = '<div class="empty-state">Your categories could not be loaded. '
+      + '<button type="button" class="cat-button cat-button-secondary cat-retry-btn">Retry</button></div>';
+    return;
+  }
+
+  const tree = buildCategoryTree(labelsWithPendingHidden(categoryLabels, pendingHiddenChanges), primaryCategories);
   renderedCategoryTree = tree;
   _pruneCategoryTableState(tree);
 
   const viewRows = applyCategoryView(tree, categoryViewState);
   renderedViewRows = viewRows;
-  const kept = pruneSelectionToView(categorySelection, selectedPrimaryRow, viewRows);
+  const kept = pruneSelectionToView(categorySelection, selectedPrimaryRow, viewRows, _foldsInForce());
   categorySelection = kept.selection;
   selectedPrimaryRow = kept.selectedPrimary;
 
@@ -249,7 +260,34 @@ function renderCategoryTable() {
   container.querySelectorAll('.cat-hidden-box[data-indeterminate="true"]').forEach(box => {
     box.indeterminate = true;
   });
+  _markPendingHiddenBoxes(container);
   _applyRovingTabStop(container, hadFocus);
+}
+
+/** The toolbar's change buttons need a loaded list to act on. */
+function _setCategoryToolbarEnabled(enabled) {
+  ['cat-new-btn', 'cat-remove-unused-btn'].forEach(id => {
+    const button = document.getElementById(id);
+    if (button) button.disabled = !enabled;
+  });
+}
+
+/** Show which boxes still wait on the server, so a queued click reads as taken. */
+function _markPendingHiddenBoxes(container) {
+  if (!pendingHiddenChanges.size) return;
+  container.querySelectorAll('.cat-hidden-box').forEach(box => {
+    const label = box.getAttribute('data-hide-label');
+    let pending = false;
+    if (label) {
+      pending = pendingHiddenChanges.has(label);
+    } else {
+      const group = findCategoryGroup(box.getAttribute('data-hide-primary'));
+      pending = Boolean(group) && group.children.some(entry => pendingHiddenChanges.has(entry.label));
+    }
+    if (!pending) return;
+    box.classList.add('is-pending');
+    box.setAttribute('aria-busy', 'true');
+  });
 }
 
 /** Give one row the table's tab stop, and put focus back on it after a redraw. */
@@ -390,34 +428,43 @@ function runCategoryMenuAction(id, context) {
 
 // ── Hidden ──────────────────────────────────────────────────
 
+// label -> hidden asked for, until the queue that sends it has settled.
+const pendingHiddenChanges = new Map();
+
+const _hiddenChangeQueue = createHiddenChangeQueue({
+  send: async change => {
+    const result = await setCategoriesHidden(change);
+    if (result.ok) return { ok: true };
+    return { ok: false, error: (result.data && result.data.error) || 'The server did not change it.' };
+  },
+  settle: async report => {
+    // Cleared before the reload, so the redraw shows what the server holds.
+    pendingHiddenChanges.clear();
+    const outcome = hiddenQueueMessage(report);
+    if (outcome.tone === 'error') {
+      await refreshAfterCategoryChange('');
+      showStatus(outcome.text, 'error');
+      return;
+    }
+    await refreshAfterCategoryChange(outcome.text);
+  }
+});
+
 /**
- * Hide or unhide labels, then reload.
+ * Hide or unhide labels. Changes queue behind any still being sent, and the
+ * table reloads once the last of them settles.
  * @param {string[]} labels
  * @param {boolean} hidden
  */
-async function applyCategoriesHidden(labels, hidden) {
+function applyCategoriesHidden(labels, hidden) {
   if (!labels.length) return;
-  try {
-    const result = await setCategoriesHidden({ labels, hidden });
-    if (!result.ok) {
-      showStatus((result.data && result.data.error) || 'Could not change Hidden.', 'error');
-      renderCategoryTable();
-      return;
-    }
-    const subject = labels.length === 1 ? labels[0] : `${labels.length} categories`;
-    const message = hidden
-      ? `Hid ${subject}. It stays on its transactions and leaves the pickers on other pages.`
-      : `${subject} ${labels.length === 1 ? 'is' : 'are'} back in the pickers.`;
-    await refreshAfterCategoryChange(message);
-  } catch (networkError) {
-    showStatus(`Could not change Hidden: ${networkError.message}`, 'error');
-    renderCategoryTable();
-  }
+  labels.forEach(label => pendingHiddenChanges.set(label, hidden));
+  renderCategoryTable();
+  _hiddenChangeQueue.enqueue({ labels: labels.slice(), hidden });
 }
 
 function _onHiddenBoxChange(box) {
   const hidden = box.checked;
-  box.disabled = true;
   const label = box.getAttribute('data-hide-label');
   if (label) {
     applyCategoriesHidden([label], hidden);
@@ -435,7 +482,9 @@ function _onHiddenBoxChange(box) {
  * the scroll position and, when given, a new selection. Marks the
  * transactions page's cache stale and expires the shared picker cache.
  * @param {string} message Shown once the reload is done; '' for none.
- * @param {{selectLabels?: string[]}} [options]
+ * @param {{selectLabels?: string[], selectPrimary?: string}} [options]
+ * @returns {Promise<boolean>} Whether the list reloaded. The change itself
+ *   succeeded either way, so the message still shows, with the failure.
  */
 async function refreshAfterCategoryChange(message, options = {}) {
   markTransactionCacheStale();
@@ -452,13 +501,17 @@ async function refreshAfterCategoryChange(message, options = {}) {
   }
   const scrollX = window.scrollX;
   const scrollY = window.scrollY;
-  await loadCategorizationData(true);
+  const loaded = await loadCategorizationData(true);
   window.scrollTo(scrollX, scrollY);
-  if (message) {
-    // After the reload, which posts its own rule-check status.
-    showStatus(message, 'success');
-    setTimeout(() => clearStatus(), 3500);
+  if (!message) return loaded;
+  // After the reload, which posts its own rule-check status.
+  if (!loaded) {
+    showStatus(`${message} The list could not be refreshed; use Retry.`, 'warning');
+    return loaded;
   }
+  showStatus(message, 'success');
+  setTimeout(() => clearStatus(), 3500);
+  return loaded;
 }
 
 // ── Pinned notes ────────────────────────────────────────────
@@ -564,6 +617,12 @@ function initCategoryTable() {
   });
 
   container.addEventListener('click', event => {
+    const retryButton = event.target.closest('.cat-retry-btn');
+    if (retryButton) {
+      retryButton.disabled = true;
+      loadCategorizationData(true);
+      return;
+    }
     const sortButton = event.target.closest('.cat-sort-btn');
     if (sortButton) {
       _sortBy(sortButton.getAttribute('data-sort'));
@@ -619,8 +678,6 @@ function initCategoryTable() {
   });
   bind('cat-collapse-btn', () => {
     renderedViewRows.forEach(row => collapsedPrimaries.add(row.primary));
-    // Folded rows cannot stay selected out of sight; during a search nothing folds on screen.
-    if (!categorySearchActive(categoryViewState)) categorySelection = { labels: [], anchor: null };
     renderCategoryTable();
   });
   bind('cat-remove-unused-btn', event => startRemoveUnused(event.currentTarget));

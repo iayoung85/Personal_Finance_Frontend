@@ -560,3 +560,131 @@ function removeUnusedSummary(dryRun) {
     : 'There is nothing to remove: every category is in use or held by something.';
   return { deleted, nothingToRemove: deleted.length === 0, keptForPlaid, keptOther, keptInUse, headline };
 }
+
+/**
+ * Compare what Remove unused deleted with what its confirm listed. The API
+ * decides again at click time, so the two can differ when another tab or
+ * device changed a category while the confirm was open.
+ * @param {string[]} listed The dry run's `deleted`, as the confirm showed it.
+ * @param {string[]} deleted The real run's `deleted`.
+ * @returns {{matches: boolean, deletedUnlisted: string[], listedKept: string[]}}
+ */
+function compareRemoveUnusedRun(listed, deleted) {
+  const listedSet = new Set(listed || []);
+  const deletedSet = new Set(deleted || []);
+  const deletedUnlisted = Array.from(deletedSet).filter(label => !listedSet.has(label));
+  const listedKept = Array.from(listedSet).filter(label => !deletedSet.has(label));
+  return {
+    matches: deletedUnlisted.length === 0 && listedKept.length === 0,
+    deletedUnlisted,
+    listedKept
+  };
+}
+
+/**
+ * The status line after Remove unused.
+ * @param {string[]} listed The dry run's `deleted`.
+ * @param {string[]} deleted The real run's `deleted`.
+ * @returns {{text: string, tone: 'success'|'warning'}}
+ */
+function removeUnusedResultMessage(listed, deleted) {
+  const done = deleted || [];
+  const comparison = compareRemoveUnusedRun(listed, done);
+  const lead = done.length === 1
+    ? `Deleted ${done[0]}.`
+    : `Deleted ${done.length} unused ${done.length === 1 ? 'category' : 'categories'}.`;
+  if (comparison.matches) return { text: lead, tone: 'success' };
+  const parts = [lead];
+  if (comparison.deletedUnlisted.length) {
+    parts.push(`Also deleted, though the confirm did not list ${comparison.deletedUnlisted.length === 1 ? 'it' : 'them'}: ${comparison.deletedUnlisted.join(', ')}.`);
+  }
+  if (comparison.listedKept.length) {
+    parts.push(`Listed but kept, because something now uses or holds ${comparison.listedKept.length === 1 ? 'it' : 'them'}: ${comparison.listedKept.join(', ')}.`);
+  }
+  return { text: parts.join(' '), tone: 'warning' };
+}
+
+// ── Hidden changes ──────────────────────────────────────────
+
+/**
+ * The labels with the Hidden state the user has asked for but the API has
+ * not yet confirmed, so a redraw while changes are queued shows them.
+ * @param {Array<Object>} labels The GET's `labels` entries.
+ * @param {Map<string, boolean>} pendingHidden label -> hidden asked for.
+ * @returns {Array<Object>} The same entries where nothing is pending; copies otherwise.
+ */
+function labelsWithPendingHidden(labels, pendingHidden) {
+  if (!pendingHidden || !pendingHidden.size) return labels || [];
+  return (labels || []).map(entry => (
+    pendingHidden.has(entry.label) ? { ...entry, hidden: pendingHidden.get(entry.label) } : entry
+  ));
+}
+
+/**
+ * A queue that sends Hidden changes strictly one after another: each change
+ * rewrites the same stored list on the server, so two at once can lose one.
+ * When the last queued change settles, `settle` runs once with every outcome
+ * since the queue was last idle; changes queued while it runs wait for it.
+ * @param {{send: function(Object): Promise<{ok: boolean, error?: string}>,
+ *   settle: function({done: Array<Object>, errors: string[]}): Promise<void>|void}} handlers
+ *   send may also reject; its message counts as the error.
+ * @returns {{enqueue: function(Object): Promise<void>, size: function(): number}}
+ */
+function createHiddenChangeQueue({ send, settle }) {
+  let tail = Promise.resolve();
+  let waiting = 0;
+  let done = [];
+  let errors = [];
+
+  async function runOne(change) {
+    try {
+      const outcome = await send(change);
+      if (outcome && outcome.ok) done.push(change);
+      else errors.push((outcome && outcome.error) || 'The server did not change it.');
+    } catch (sendError) {
+      errors.push((sendError && sendError.message) || String(sendError));
+    }
+    waiting -= 1;
+    if (waiting > 0) return;
+    const report = { done, errors };
+    done = [];
+    errors = [];
+    try {
+      await settle(report);
+    } catch (settleError) { /* settle reports its own failures */ }
+  }
+
+  return {
+    enqueue(change) {
+      waiting += 1;
+      tail = tail.then(() => runOne(change));
+      return tail;
+    },
+    size() {
+      return waiting;
+    }
+  };
+}
+
+/**
+ * The status line once the Hidden queue is idle.
+ * @param {{done: Array<{labels: string[], hidden: boolean}>, errors: string[]}} report
+ * @returns {{text: string, tone: 'success'|'error'}}
+ */
+function hiddenQueueMessage(report) {
+  const done = report.done || [];
+  const errors = report.errors || [];
+  if (errors.length) {
+    const more = errors.length > 1 ? ` (${errors.length} changes failed)` : '';
+    return { text: `Could not change Hidden: ${errors[0]}${more}`, tone: 'error' };
+  }
+  if (done.length !== 1) {
+    return { text: `Saved ${done.length} Hidden changes.`, tone: 'success' };
+  }
+  const { labels, hidden } = done[0];
+  const subject = labels.length === 1 ? labels[0] : `${labels.length} categories`;
+  const text = hidden
+    ? `Hid ${subject}. It stays on its transactions and leaves the pickers on other pages.`
+    : `${subject} ${labels.length === 1 ? 'is' : 'are'} back in the pickers.`;
+  return { text, tone: 'success' };
+}

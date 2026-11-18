@@ -13,7 +13,7 @@ const plain = value => JSON.parse(JSON.stringify(value));
 function loadFilter() {
   const sandbox = { module: { exports: {} }, console, URLSearchParams, plaidTaxonomy: [] };
   vm.runInNewContext(
-    `${read('transactions/categories.js')}\n${read('transactions/category-filter.js')}\nmodule.exports = { parseTransactionsDeepLink, buildFilterSuggestions, resolveFilterCategoryText };`,
+    `${read('transactions/categories.js')}\n${read('transactions/category-filter.js')}\nmodule.exports = { parseTransactionsDeepLink, transactionsStartupPlan, buildFilterSuggestions, resolveFilterCategoryText };`,
     sandbox,
     { filename: 'transactions/category-filter.js' },
   );
@@ -152,4 +152,31 @@ test('a partial primary name falls back to the first matching primary, hidden on
 test('text that matches nothing is kept as typed', () => {
   assert.deepEqual(plain(F.resolveFilterCategoryText('Mystery', VISIBLE, HIDDEN)),
     { primary: 'Mystery', detailed: '', display: null });
+});
+
+// ── What a load shows and saves ─────────────────────────────
+
+test('a deep link shows all dates and accounts for this load and saves nothing', () => {
+  const link = F.parseTransactionsDeepLink('?category=Food');
+  assert.deepEqual(plain(F.transactionsStartupPlan(link, 'last_12_months', 'acct-1', true)), {
+    showAllDatesForPage: true, restoreAccountId: null, forgetSavedAccount: false,
+  });
+  const search = F.parseTransactionsDeepLink('?search=coffee');
+  assert.equal(F.transactionsStartupPlan(search, 'ytd', null, false).forgetSavedAccount, false);
+});
+
+test('a deep link with "all" already saved leaves the date filter alone', () => {
+  const link = F.parseTransactionsDeepLink('?category=Food');
+  assert.equal(F.transactionsStartupPlan(link, 'all', null, false).showAllDatesForPage, false);
+});
+
+test('an ordinary load restores the saved account, or forgets one that is gone', () => {
+  const plainLoad = F.parseTransactionsDeepLink('');
+  assert.deepEqual(plain(F.transactionsStartupPlan(plainLoad, 'ytd', 'acct-1', true)), {
+    showAllDatesForPage: false, restoreAccountId: 'acct-1', forgetSavedAccount: false,
+  });
+  assert.deepEqual(plain(F.transactionsStartupPlan(plainLoad, 'ytd', 'acct-9', false)), {
+    showAllDatesForPage: false, restoreAccountId: null, forgetSavedAccount: true,
+  });
+  assert.equal(F.transactionsStartupPlan(plainLoad, null, null, false).forgetSavedAccount, true);
 });

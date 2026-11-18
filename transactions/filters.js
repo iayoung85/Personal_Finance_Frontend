@@ -15,6 +15,9 @@ const DATE_FILTER_STALE_AFTER_MS = 60 * 60 * 1000;
 // Activity listeners write localStorage at most this often.
 const DATE_FILTER_ACTIVITY_WRITE_INTERVAL_MS = 60 * 1000;
 let _lastDateFilterActivityWriteMs = 0;
+// A filter in force for this page load only, set by a deep link; null when
+// the saved one applies. The saved one is shared with the user's other tabs.
+let _pageOnlyDateFilter = null;
 // For custom range, remember user-entered start/end
 const DATE_FILTER_CUSTOM_START_KEY = 'pf_date_filter_custom_start';
 const DATE_FILTER_CUSTOM_END_KEY = 'pf_date_filter_custom_end';
@@ -22,6 +25,30 @@ const DATE_FILTER_CUSTOM_END_KEY = 'pf_date_filter_custom_end';
 const DATE_FILTER_MONTH_KEY = 'pf_date_filter_month';
 const DEFAULT_FORECAST_HORIZON_DAYS = 90;
 const MAX_FORECAST_HORIZON_DAYS = 365;
+
+/** The date filter in force: this load's own, else the saved one. */
+function _activeDateFilterName() {
+  if (_pageOnlyDateFilter !== null) return _pageOnlyDateFilter;
+  return localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+}
+
+/** Save a filter the user chose; it replaces any page-only one. */
+function _saveActiveDateFilter(filterName) {
+  _pageOnlyDateFilter = null;
+  localStorage.setItem(DATE_FILTER_ACTIVE_KEY, filterName);
+}
+
+/**
+ * Show every date for this page load without saving it, so a deep link does
+ * not change what the user's other tabs open on. A filter picked by hand
+ * afterwards is saved as usual.
+ */
+function showAllDatesForThisPage() {
+  _hideCustomRangeInputs();
+  _applyAllTimeDates();
+  _setActiveToggle('btn-date-all');
+  _pageOnlyDateFilter = 'all';
+}
 
 function _formatDateLocal(date) {
   return toISODateStr(date);
@@ -88,7 +115,7 @@ function _isFutureTxnPastForecastHorizon(txn, txnType, todayDateStr, forecastEnd
 }
 
 function _refreshDateFilterWindowForForecastHorizon() {
-  const activeFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  const activeFilter = _activeDateFilterName();
 
   if (activeFilter === 'all') {
     _applyAllTimeDates();
@@ -258,14 +285,14 @@ function _refreshFiscalChips() {
  */
 function refreshFiscalDateFilter() {
   _refreshFiscalChips();
-  const storedFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  const storedFilter = _activeDateFilterName();
   if (storedFilter !== 'fiscal_ytd' && storedFilter !== 'last_fiscal_year') return;
 
   // The fresh month may be January, which hides the fiscal chips; the
   // filter then moves to its calendar twin so a visible chip is lit.
   const resolvedFilter = _resolveDateFilterName(storedFilter, getFiscalStartMonth());
   if (resolvedFilter !== storedFilter) {
-    localStorage.setItem(DATE_FILTER_ACTIVE_KEY, resolvedFilter);
+    _saveActiveDateFilter(resolvedFilter);
   }
   _restoreSavedToggleFilter(resolvedFilter);
 }
@@ -351,7 +378,7 @@ function _setActiveYearButton(year) {
  * at a time.
  */
 function toggleDateFilter(filterName) {
-  const currentActive = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  const currentActive = _activeDateFilterName();
 
   // Clicking the same filter again → deactivate (back to default 12-month view)
   if (currentActive === filterName) {
@@ -390,7 +417,7 @@ function toggleDateFilter(filterName) {
     _setActiveToggle('btn-date-custom');
   }
 
-  localStorage.setItem(DATE_FILTER_ACTIVE_KEY, filterName);
+  _saveActiveDateFilter(filterName);
   _recordDateFilterActivity(true);
   renderTransactionTable();
 }
@@ -400,7 +427,7 @@ function toggleDateFilter(filterName) {
  */
 function toggleMonthFilter(year, month) {
   const monthKey = `month_${year}_${month}`;
-  const currentActive = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  const currentActive = _activeDateFilterName();
 
   if (currentActive === monthKey) {
     _deactivateDateFilter();
@@ -410,7 +437,7 @@ function toggleMonthFilter(year, month) {
   _applyMonth(year, month);
   _setActiveMonthButton(year, month);
   _hideCustomRangeInputs();
-  localStorage.setItem(DATE_FILTER_ACTIVE_KEY, monthKey);
+  _saveActiveDateFilter(monthKey);
   localStorage.setItem(DATE_FILTER_MONTH_KEY, `${year}_${month}`);
   _recordDateFilterActivity(true);
   renderTransactionTable();
@@ -418,7 +445,7 @@ function toggleMonthFilter(year, month) {
 
 function toggleYearFilter(year) {
   const yearKey = `year_${year}`;
-  const currentActive = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  const currentActive = _activeDateFilterName();
 
   if (currentActive === yearKey) {
     _deactivateDateFilter();
@@ -428,7 +455,7 @@ function toggleYearFilter(year) {
   _applyYear(year);
   _setActiveYearButton(year);
   _hideCustomRangeInputs();
-  localStorage.setItem(DATE_FILTER_ACTIVE_KEY, yearKey);
+  _saveActiveDateFilter(yearKey);
   _recordDateFilterActivity(true);
   renderTransactionTable();
 }
@@ -439,7 +466,7 @@ function _deactivateDateFilter() {
   // Default baseline is now last 12 months (not all-time)
   _applyLast12Months();
   _setActiveToggle('btn-date-last-12-months');
-  localStorage.setItem(DATE_FILTER_ACTIVE_KEY, 'last_12_months');
+  _saveActiveDateFilter('last_12_months');
   _recordDateFilterActivity(true);
   renderTransactionTable();
 }
@@ -501,7 +528,7 @@ function showLedgerFromDate(startIso) {
   const endIso = document.getElementById('end-date').value || _futureEndDateStr();
   localStorage.setItem(DATE_FILTER_CUSTOM_START_KEY, startIso);
   localStorage.setItem(DATE_FILTER_CUSTOM_END_KEY, endIso);
-  localStorage.setItem(DATE_FILTER_ACTIVE_KEY, 'custom');
+  _saveActiveDateFilter('custom');
   _recordDateFilterActivity(true);
   _activateCustomRange();
   _setActiveToggle('btn-date-custom');
@@ -569,7 +596,7 @@ function setDefaultDates() {
   _refreshFiscalChips();
 
   const fiscalStartMonth = getFiscalStartMonth();
-  const storedFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  const storedFilter = _activeDateFilterName();
   const shouldRestore = _shouldRestoreSavedDateFilter(
     storedFilter,
     localStorage.getItem(DATE_FILTER_LAST_ACTIVITY_KEY),
@@ -583,13 +610,13 @@ function setDefaultDates() {
     const mapped = _mapConfigRangeToFilter(configRange);
     mapped.apply();
     if (mapped.buttonId) _setActiveToggle(mapped.buttonId);
-    localStorage.setItem(DATE_FILTER_ACTIVE_KEY, mapped.filterName);
+    _saveActiveDateFilter(mapped.filterName);
     return;
   }
 
   const savedFilter = _resolveDateFilterName(storedFilter, fiscalStartMonth);
   if (savedFilter !== storedFilter) {
-    localStorage.setItem(DATE_FILTER_ACTIVE_KEY, savedFilter);
+    _saveActiveDateFilter(savedFilter);
   }
   _restoreSavedToggleFilter(savedFilter);
 }
@@ -681,7 +708,7 @@ function autoExtendEndDateForScheduled() {
 
   // When "Show All Dates" is active, snap start-date to real earliest txn.
   // Otherwise the default (last_12_months) handles itself.
-  const activeFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  const activeFilter = _activeDateFilterName();
   if (activeFilter === 'all') {
     document.getElementById('start-date').value = _allTimeStartDate();
   }
@@ -811,7 +838,7 @@ function renderDynamicPeriodButtons() {
   container.innerHTML = html;
 
   // Restore active month highlight if one was saved
-  const savedFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  const savedFilter = _activeDateFilterName();
   if (savedFilter && savedFilter.startsWith('month_')) {
     const savedMonth = localStorage.getItem(DATE_FILTER_MONTH_KEY);
     if (savedMonth) {
@@ -844,7 +871,7 @@ function _renderDynamicYearButtons() {
   container.innerHTML = html;
 
   // Restore active year highlight if one was saved
-  const savedFilter = localStorage.getItem(DATE_FILTER_ACTIVE_KEY);
+  const savedFilter = _activeDateFilterName();
   if (savedFilter && savedFilter.startsWith('year_')) {
     const yearStr = savedFilter.replace('year_', '');
     _setActiveYearButton(parseInt(yearStr, 10));

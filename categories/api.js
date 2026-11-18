@@ -131,7 +131,14 @@ function _loadCachedTaxonomy() {
 
 // ── Main Data Loader ────────────────────────────────────────
 
+/**
+ * Load the page's data, from the short-lived cache or the network.
+ * @param {boolean} [forceNetwork]
+ * @returns {Promise<boolean>} Whether the category list loaded. When it did
+ *   not, categoryLoadFailed is set and the table says so.
+ */
 async function loadCategorizationData(forceNetwork = false) {
+  let categoriesLoaded = false;
   try {
     await window.BACKEND_URL_PROMISE;
 
@@ -160,11 +167,13 @@ async function loadCategorizationData(forceNetwork = false) {
             migrationLog = cached.migrationLog || [];
             primaryCategories = cached.primaryCategories;
             plaidTaxonomy = cachedTax;
+            categoryLoadFailed = false;
+            categoriesLoaded = true;
 
             console.log(`Loaded categories page from cache (age: ${Math.round(cacheAge / 1000)}s)`);
             renderAllCategoryViews();
             checkBrokenRulesLocally();
-            return;
+            return true;
           }
         } catch (parseError) {
           console.warn('Category cache parse error, fetching from server:', parseError);
@@ -190,7 +199,8 @@ async function loadCategorizationData(forceNetwork = false) {
 
     const responses = await Promise.all(fetches);
 
-    const categoriesData = await responses[0].json();
+    // An error page may not be JSON; a failed list is reported below, not thrown.
+    const categoriesData = responses[0].ok ? await responses[0].json() : {};
     const rulesData = await responses[1].json();
     const logData = await responses[2].json();
     const brokenRulesData = await responses[3].json();
@@ -207,6 +217,8 @@ async function loadCategorizationData(forceNetwork = false) {
     primaryCategories = responses[0].ok && Array.isArray(categoriesData.primary_categories)
       ? categoriesData.primary_categories
       : null;
+    categoryLoadFailed = !responses[0].ok;
+    categoriesLoaded = responses[0].ok;
     rules = responses[1].ok ? (rulesData.rules || []) : [];
     migrationLog = responses[2].ok ? (logData.migrations || []) : [];
     overrides = responses[4].ok ? (overridesData.overrides_by_category || []) : [];
@@ -256,17 +268,24 @@ async function loadCategorizationData(forceNetwork = false) {
       }
     });
 
-    // Update cache
-    _saveCatPageCache();
+    // A failed list must not be saved, or the next visit would show it as empty.
+    if (!categoryLoadFailed) _saveCatPageCache();
 
     // The list above holds hidden labels, so it must not reach the other
     // pages' pickers; expiring their copy makes them ask /available again.
     expireSharedCategoryPickerCache();
 
     renderAllCategoryViews();
+    if (categoryLoadFailed) showStatus('Could not load your categories.', 'error');
+    return categoriesLoaded;
   } catch (loadError) {
     console.error('loadCategorizationData error:', loadError);
     showStatus(`Failed to load categorization data: ${loadError.message}`, 'error');
+    if (!categoriesLoaded) {
+      categoryLoadFailed = true;
+      renderCategoryTable();
+    }
+    return false;
   }
 }
 
@@ -354,7 +373,13 @@ function deleteCategoryLabel(label) {
   return _categoryTableCall('POST', '/categories/delete-label', { label });
 }
 
-/** @param {boolean} dryRun */
-function removeUnusedCategories(dryRun) {
-  return _categoryTableCall('POST', '/categories/remove-unused', { dry_run: dryRun });
+/**
+ * @param {boolean} dryRun
+ * @param {string[]} [labels] On the real run, the dry run's list, so a category
+ *   that became unused while the confirm was open is not deleted unseen.
+ */
+function removeUnusedCategories(dryRun, labels) {
+  const body = { dry_run: dryRun };
+  if (Array.isArray(labels)) body.labels = labels;
+  return _categoryTableCall('POST', '/categories/remove-unused', body);
 }

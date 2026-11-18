@@ -32,6 +32,34 @@ function _parseSplitAmount(rawValue, parentAmount) {
   return parentAmount < 0 ? -magnitude : magnitude;
 }
 
+/**
+ * The categories a split piece may keep even when hidden: its own, and the
+ * category of the transaction being split, which a first split's blank
+ * pieces would otherwise be refused.
+ * @param {string} parentCategory The split transaction's category as its row shows it.
+ * @param {string} pieceCategory The piece's category when the modal opened.
+ * @returns {string[]}
+ */
+function splitPieceHeldCategories(parentCategory, pieceCategory) {
+  return [pieceCategory, parentCategory].filter(Boolean);
+}
+
+/** The transaction's category as its row shows it: the user's, else Plaid's mapped name. */
+function _splitParentCategory(txn) {
+  if (!txn) return '';
+  if (txn.user_category) return txn.user_category;
+  if (!txn.personal_finance_category) return '';
+  const displayNames = getCategoryDisplayNames(txn.personal_finance_category);
+  return buildCategoryString(displayNames.primary, displayNames.trimmed);
+}
+
+function _splitRowHeldCategories(row) {
+  return splitPieceHeldCategories(
+    _splitParentCategory(currentSplitTransaction),
+    row ? row.dataset.heldCategory : ''
+  );
+}
+
 // Open split modal for creating a new split
 function openSplitModal(txn) {
   currentSplitTransaction = txn;
@@ -226,7 +254,7 @@ function attachSplitCategoryAutocomplete(rowIndex) {
       } else {
         const currentValue = (this.value || '').trim();
         if (currentValue) {
-          const resolved = _resolveAutocompleteCategory(currentValue, this.closest('.split-row')?.dataset.heldCategory);
+          const resolved = _resolveAutocompleteCategory(currentValue, _splitRowHeldCategories(this.closest('.split-row')));
           if (!resolved.error) {
             e.preventDefault();
             const memoInput = this.closest('.split-row')?.querySelector('.split-memo-input');
@@ -347,7 +375,7 @@ function updateSplitValidation() {
 
     if (categoryInput && !hiddenNotice) {
       hiddenNotice = hiddenCategoryEntry(
-        categoryInput.value, hiddenCategories, row.dataset.heldCategory
+        categoryInput.value, hiddenCategories, _splitRowHeldCategories(row)
       ).notice;
     }
     

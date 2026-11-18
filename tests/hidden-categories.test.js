@@ -167,3 +167,46 @@ test('removing the timestamp, as the Categories page does after a change, forces
   delete storage.pf_categories_cached_at;
   assert.equal(cache.readCachedCategoryLists(10000), null);
 });
+
+// ── The split modal ─────────────────────────────────────────
+
+function loadSplitHeld() {
+  const sandbox = { module: { exports: {} }, console, document: { addEventListener() {}, getElementById: () => null }, window: {} };
+  vm.runInNewContext(
+    `${read('shared/hidden-categories.js')}\n${read('transactions/split-transactions.js')}\nmodule.exports = { hiddenCategoryEntry, splitPieceHeldCategories };`,
+    sandbox,
+    { filename: 'transactions/split-transactions.js' },
+  );
+  return sandbox.module.exports;
+}
+
+test('several held values: any one of them keeps a hidden label acceptable', () => {
+  const { hiddenCategoryEntry } = loadShared();
+  assert.equal(hiddenCategoryEntry('Gifts: Birthday', HIDDEN, ['', 'gifts: birthday']).held, true);
+  assert.equal(hiddenCategoryEntry('Gifts: Birthday', HIDDEN, ['Food: Dining Out']).notice.length > 0, true);
+  assert.equal(hiddenCategoryEntry('Gifts: Birthday', HIDDEN, []).held, false);
+});
+
+test('a first split keeps the split transaction\'s hidden category on a blank piece', () => {
+  const { hiddenCategoryEntry, splitPieceHeldCategories } = loadSplitHeld();
+  const held = splitPieceHeldCategories('Food: Dining Out', '');
+  assert.deepEqual(plain(hiddenCategoryEntry('food: dining out', HIDDEN, held)), {
+    label: 'Food: Dining Out', held: true, notice: '',
+  });
+});
+
+test('a split piece refuses a hidden category that is neither its own nor the transaction\'s', () => {
+  const { hiddenCategoryEntry, splitPieceHeldCategories } = loadSplitHeld();
+  const held = splitPieceHeldCategories('Food: Dining Out', '');
+  assert.equal(
+    hiddenCategoryEntry('Gifts: Birthday', HIDDEN, held).notice,
+    'Gifts: Birthday is hidden. Unhide it on the Categories page to use it.',
+  );
+});
+
+test('an existing piece keeps its own hidden category as well as the transaction\'s', () => {
+  const { hiddenCategoryEntry, splitPieceHeldCategories } = loadSplitHeld();
+  const held = splitPieceHeldCategories('Food: Groceries', 'Gifts: Birthday');
+  assert.equal(hiddenCategoryEntry('Gifts: Birthday', HIDDEN, held).held, true);
+  assert.equal(hiddenCategoryEntry('Food: Dining Out', HIDDEN, held).notice.length > 0, true);
+});

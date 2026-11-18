@@ -209,18 +209,23 @@ function applyCategoryView(tree, viewState) {
 }
 
 /**
- * Keep only the selection that is still in view, so Merge, Hide and Delete
- * cannot act on a row the user cannot see.
+ * Keep only the selection that is still on screen, so Merge, Hide and Delete
+ * cannot act on a row the user cannot see: a row search or filter dropped,
+ * or a row under a folded primary.
  * @param {{labels: string[], anchor: string|null}} selection
  * @param {string|null} selectedPrimary The primary row selected by itself.
  * @param {Array<Object>} viewRows From applyCategoryView.
+ * @param {Set<string>} [foldedPrimaries] The folds in force, from
+ *   effectiveCollapsedPrimaries. A folded primary's own row stays on screen.
  * @returns {{selection: {labels: string[], anchor: string|null}, selectedPrimary: string|null}}
  */
-function pruneSelectionToView(selection, selectedPrimary, viewRows) {
+function pruneSelectionToView(selection, selectedPrimary, viewRows, foldedPrimaries) {
+  const folded = foldedPrimaries || new Set();
   const inView = new Set();
   const primariesInView = new Set();
   (viewRows || []).forEach(row => {
     primariesInView.add(row.primary);
+    if (folded.has(row.primary)) return;
     row.children.forEach(entry => inView.add(entry.label));
   });
   const current = (selection && selection.labels) || [];

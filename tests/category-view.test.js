@@ -326,3 +326,39 @@ test('a selection wholly in view is returned as it was', () => {
   const selection = { labels: ['Food: Coffee', 'Travel: Flights'], anchor: 'Food: Coffee' };
   assert.deepEqual(plain(helpers.pruneSelectionToView(selection, null, rows).selection), selection);
 });
+
+test('rows under a folded primary leave the selection; the primary row itself stays', () => {
+  const rows = helpers.applyCategoryView(TREE, view());
+  const result = helpers.pruneSelectionToView(
+    { labels: ['Food: Coffee', 'Travel: Flights'], anchor: 'Food: Coffee' },
+    'Food',
+    rows,
+    new Set(['Food'])
+  );
+  assert.deepEqual(plain(result.selection), { labels: ['Travel: Flights'], anchor: null });
+  assert.equal(result.selectedPrimary, 'Food');
+});
+
+test('a fold combines with filter: either one takes a row out of the selection', () => {
+  const rows = helpers.applyCategoryView(TREE, view({ filter: 'unused' }));
+  const result = helpers.pruneSelectionToView(
+    { labels: ['Food: Coffee', 'Food: Groceries', 'Travel: Hotels'], anchor: 'Travel: Hotels' },
+    null,
+    rows,
+    new Set(['Food'])
+  );
+  assert.deepEqual(plain(result.selection), { labels: ['Travel: Hotels'], anchor: 'Travel: Hotels' });
+});
+
+test('during a search the stored folds are not in force, so nothing is dropped for them', () => {
+  const searching = view({ searchText: 'o' });
+  const rows = helpers.applyCategoryView(TREE, searching);
+  const folds = helpers.effectiveCollapsedPrimaries(searching, new Set(['Food']));
+  const result = helpers.pruneSelectionToView(
+    { labels: ['Food: Coffee'], anchor: 'Food: Coffee' },
+    null,
+    rows,
+    folds
+  );
+  assert.deepEqual(plain(result.selection), { labels: ['Food: Coffee'], anchor: 'Food: Coffee' });
+});

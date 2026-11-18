@@ -12,7 +12,7 @@ function loadHelpers() {
   const sandbox = { module: { exports: {} } };
   vm.runInNewContext(fs.readFileSync(kindsPath, 'utf8'), sandbox, { filename: kindsPath });
   vm.runInNewContext(
-    `${fs.readFileSync(treePath, 'utf8')}\nmodule.exports = { buildCategoryTree, categoryRowName, sumPrimaryUses, primaryHiddenState, visibleCategoryLabels, categoryUsesHref, selectionAfterClick, selectionAfterRightClick, categoryMenuEntries, primaryMenuEntries, isNewPrimaryName, findPrimaryGroup, defaultKindForNewPrimary, planCategoryEditSteps, planPrimaryEditSteps, planCategoryCreateSteps, runCategorySaveSteps, describePartialSave, plaidMappingView, mergeSummary, removeUnusedSummary };`,
+    `${fs.readFileSync(treePath, 'utf8')}\nmodule.exports = { buildCategoryTree, categoryRowName, sumPrimaryUses, primaryHiddenState, visibleCategoryLabels, categoryUsesHref, selectionAfterClick, selectionAfterRightClick, categoryMenuEntries, primaryMenuEntries, isNewPrimaryName, findPrimaryGroup, defaultKindForNewPrimary, planCategoryEditSteps, planPrimaryEditSteps, planCategoryCreateSteps, runCategorySaveSteps, describePartialSave, plaidMappingView, mergeSummary, removeUnusedSummary, compareRemoveUnusedRun, removeUnusedResultMessage, labelsWithPendingHidden, createHiddenChangeQueue, hiddenQueueMessage };`,
     sandbox,
     { filename: treePath }
   );
@@ -495,4 +495,166 @@ test('the Remove unused confirm splits kept categories by why', () => {
   const empty = helpers.removeUnusedSummary({ deleted: [], kept: [], kept_in_use: 3 });
   assert.equal(empty.nothingToRemove, true);
   assert.match(empty.headline, /nothing to remove/);
+});
+
+// ── Remove unused: what was deleted against what the confirm listed ──
+
+test('a real run that deletes exactly what the confirm listed reads as plain success', () => {
+  const comparison = helpers.compareRemoveUnusedRun(['A: One', 'B: Two'], ['B: Two', 'A: One']);
+  assert.deepEqual(plain(comparison), { matches: true, deletedUnlisted: [], listedKept: [] });
+  assert.deepEqual(plain(helpers.removeUnusedResultMessage(['A: One', 'B: Two'], ['A: One', 'B: Two'])), {
+    text: 'Deleted 2 unused categories.', tone: 'success'
+  });
+  assert.equal(helpers.removeUnusedResultMessage(['A: One'], ['A: One']).text, 'Deleted A: One.');
+});
+
+test('a category deleted though the confirm did not list it is named', () => {
+  const comparison = helpers.compareRemoveUnusedRun(['A: One'], ['A: One', 'C: Three']);
+  assert.deepEqual(plain(comparison), { matches: false, deletedUnlisted: ['C: Three'], listedKept: [] });
+  const message = helpers.removeUnusedResultMessage(['A: One'], ['A: One', 'C: Three']);
+  assert.equal(message.tone, 'warning');
+  assert.match(message.text, /^Deleted 2 unused categories\. Also deleted, though the confirm did not list it: C: Three\.$/);
+});
+
+test('a category listed but kept is named', () => {
+  const comparison = helpers.compareRemoveUnusedRun(['A: One', 'B: Two'], ['A: One']);
+  assert.deepEqual(plain(comparison), { matches: false, deletedUnlisted: [], listedKept: ['B: Two'] });
+  const message = helpers.removeUnusedResultMessage(['A: One', 'B: Two'], ['A: One']);
+  assert.equal(message.tone, 'warning');
+  assert.match(message.text, /Listed but kept, because something now uses or holds it: B: Two\./);
+  assert.doesNotMatch(message.text, /Also deleted/);
+});
+
+test('both differences at once are both named', () => {
+  const message = helpers.removeUnusedResultMessage(['A: One', 'B: Two'], ['A: One', 'C: Three', 'D: Four']);
+  assert.equal(message.tone, 'warning');
+  assert.match(message.text, /Also deleted, though the confirm did not list them: C: Three, D: Four\./);
+  assert.match(message.text, /Listed but kept, because something now uses or holds it: B: Two\./);
+});
+
+test('nothing deleted when the confirm listed some names every listed one as kept', () => {
+  const message = helpers.removeUnusedResultMessage(['A: One'], []);
+  assert.equal(message.tone, 'warning');
+  assert.match(message.text, /^Deleted 0 unused categories\. Listed but kept/);
+});
+
+// ── Hidden changes ──────────────────────────────────────────
+
+test('pending Hidden choices show over the loaded labels without changing them', () => {
+  const labels = [entry('Food: Coffee'), entry('Food: Dining', { hidden: true })];
+  const pending = new Map([['Food: Coffee', true], ['Food: Dining', false]]);
+  const shown = helpers.labelsWithPendingHidden(labels, pending);
+  assert.deepEqual(plain(shown.map(item => item.hidden)), [true, false]);
+  assert.equal(labels[0].hidden, false, 'the loaded labels are untouched');
+  assert.equal(helpers.labelsWithPendingHidden(labels, new Map()), labels);
+});
+
+/** A send that resolves only when the test says so, recording the order it was called in. */
+function controlledSend() {
+  const calls = [];
+  const waiting = [];
+  const send = change => new Promise(resolve => {
+    calls.push(change);
+    waiting.push(resolve);
+  });
+  const finishNext = outcome => waiting.shift()(outcome);
+  return { send, calls, finishNext };
+}
+
+const tick = () => new Promise(resolve => setImmediate(resolve));
+
+test('Hidden changes are sent one at a time, in click order, and settle once', async () => {
+  const sender = controlledSend();
+  const settled = [];
+  const queue = helpers.createHiddenChangeQueue({ send: sender.send, settle: report => { settled.push(report); } });
+
+  queue.enqueue({ labels: ['A'], hidden: true });
+  queue.enqueue({ labels: ['B'], hidden: true });
+  queue.enqueue({ labels: ['A'], hidden: false });
+  await tick();
+  assert.equal(sender.calls.length, 1, 'the second waits for the first');
+  assert.equal(queue.size(), 3);
+
+  sender.finishNext({ ok: true });
+  await tick();
+  assert.equal(sender.calls.length, 2);
+  assert.equal(settled.length, 0, 'no reload while changes are still queued');
+
+  sender.finishNext({ ok: true });
+  await tick();
+  sender.finishNext({ ok: true });
+  await tick();
+
+  assert.deepEqual(plain(sender.calls.map(call => [call.labels[0], call.hidden])), [['A', true], ['B', true], ['A', false]]);
+  assert.equal(settled.length, 1, 'one reload after the last change');
+  assert.equal(settled[0].done.length, 3);
+  assert.deepEqual(plain(settled[0].errors), []);
+  assert.equal(queue.size(), 0);
+});
+
+test('a failure in the queue is reported once, and the later changes still go', async () => {
+  const sender = controlledSend();
+  const settled = [];
+  const queue = helpers.createHiddenChangeQueue({ send: sender.send, settle: report => { settled.push(report); } });
+
+  queue.enqueue({ labels: ['A'], hidden: true });
+  queue.enqueue({ labels: ['B'], hidden: true });
+  await tick();
+  sender.finishNext({ ok: false, error: 'No such category.' });
+  await tick();
+  sender.finishNext({ ok: true });
+  await tick();
+
+  assert.equal(settled.length, 1);
+  assert.deepEqual(plain(settled[0].errors), ['No such category.']);
+  assert.deepEqual(plain(helpers.hiddenQueueMessage(settled[0])), {
+    text: 'Could not change Hidden: No such category.', tone: 'error'
+  });
+});
+
+test('a send that rejects counts as a failure and does not stop the queue', async () => {
+  const settled = [];
+  const queue = helpers.createHiddenChangeQueue({
+    send: async change => {
+      if (change.labels[0] === 'A') throw new Error('offline');
+      return { ok: true };
+    },
+    settle: report => { settled.push(report); }
+  });
+  queue.enqueue({ labels: ['A'], hidden: true });
+  await queue.enqueue({ labels: ['B'], hidden: true });
+  assert.equal(settled.length, 1);
+  assert.deepEqual(plain(settled[0].errors), ['offline']);
+  assert.equal(settled[0].done.length, 1);
+});
+
+test('a change queued while the reload runs waits for it, then settles on its own', async () => {
+  const order = [];
+  let finishReload;
+  const queue = helpers.createHiddenChangeQueue({
+    send: async change => { order.push(`send ${change.labels[0]}`); return { ok: true }; },
+    settle: report => {
+      order.push(`settle ${report.done.length}`);
+      if (order.length === 2) return new Promise(resolve => { finishReload = resolve; });
+      return undefined;
+    }
+  });
+  queue.enqueue({ labels: ['A'], hidden: true });
+  await tick();
+  const second = queue.enqueue({ labels: ['B'], hidden: true });
+  await tick();
+  assert.deepEqual(order, ['send A', 'settle 1'], 'B waits for the first reload');
+  finishReload();
+  await second;
+  assert.deepEqual(order, ['send A', 'settle 1', 'send B', 'settle 1']);
+});
+
+test('the queue message keeps the single-change wording and counts several', () => {
+  assert.equal(helpers.hiddenQueueMessage({ done: [{ labels: ['A: One'], hidden: true }], errors: [] }).text,
+    'Hid A: One. It stays on its transactions and leaves the pickers on other pages.');
+  assert.equal(helpers.hiddenQueueMessage({ done: [{ labels: ['A', 'B'], hidden: false }], errors: [] }).text,
+    '2 categories are back in the pickers.');
+  assert.equal(helpers.hiddenQueueMessage({ done: [{ labels: ['A'], hidden: true }, { labels: ['B'], hidden: true }], errors: [] }).text,
+    'Saved 2 Hidden changes.');
+  assert.match(helpers.hiddenQueueMessage({ done: [], errors: ['x', 'y'] }).text, /\(2 changes failed\)$/);
 });
