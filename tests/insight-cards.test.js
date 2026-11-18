@@ -200,8 +200,14 @@ const insightsSandbox = {
 const I = load(['transactions/analytics.js', 'transactions/insights.js'], [
   '_buildInsightCardInsight', 'getAnalyticsAverageDisplayAmount',
   'getAnalyticsDisplayModeForEntries', 'getAnalyticsDisplayTotal', 'formatAnalyticsCurrency',
-  'ANALYTICS_DISPLAY_MODE', '_renderInsightCard',
+  'ANALYTICS_DISPLAY_MODE', '_renderInsightCard', 'liveLedgerCountText',
 ].join(', '), insightsSandbox);
+
+test('the Live Result count line names the hidden rows it leaves out', () => {
+  assert.equal(I.liveLedgerCountText(663, 0), '663 displayed transactions');
+  assert.equal(I.liveLedgerCountText(663, 57), '663 transactions, 57 hidden not counted');
+  assert.equal(I.liveLedgerCountText(0, 9), '0 transactions, 9 hidden not counted');
+});
 
 /** The card exactly as the single-primary card used to build it. */
 function oldSinglePrimaryCard(primary, entries) {

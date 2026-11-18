@@ -354,7 +354,14 @@ function getInsightCardFlowSummary(entries) {
   };
 }
 
-function _shouldSkipLedgerParentForAnalytics(txn) {
+/**
+ * Whether a ledger row stays out of the analytics entries.
+ * @param {Object} txn A row of the current ledger view.
+ * @param {boolean} [countsHidden=false] True asks only about the other
+ *   reasons, for counting the hidden rows the totals leave out.
+ * @returns {boolean}
+ */
+function _shouldSkipLedgerParentForAnalytics(txn, countsHidden = false) {
   if (!txn) {
     return true;
   }
@@ -366,7 +373,7 @@ function _shouldSkipLedgerParentForAnalytics(txn) {
   // Show Hidden puts hidden rows back in the table, not back in the totals:
   // the API's reports and the phone leave them out, and the totals must agree.
   // A hidden split parent takes its pieces with it.
-  if (txn.is_hidden) {
+  if (txn.is_hidden && !countsHidden) {
     return true;
   }
 
@@ -415,6 +422,26 @@ function _buildAnalyticsEntry(txn, parentTxn = null) {
   };
 }
 
+/**
+ * The rows one ledger row counts as: its pieces in view when it is split,
+ * otherwise itself.
+ * @param {Object} txn A row of the current ledger view.
+ * @returns {Array<{row: Object, parent: Object|null}>}
+ */
+function _analyticsRowsOfLedgerRow(txn) {
+  if (txn.is_split && txn.transaction_id && txn.transaction_id.includes('_split_')) {
+    return [];
+  }
+
+  if (txn.is_split && Array.isArray(txn.splits) && txn.splits.length > 0) {
+    return txn.splits
+      .filter(split => _splitMatchesSearch(txn, split) && _splitMatchesCategoryFilter(split))
+      .map(split => ({ row: split, parent: txn }));
+  }
+
+  return [{ row: txn, parent: null }];
+}
+
 function _collectVisibleLedgerAnalyticsEntries() {
   const ledgerEntries = [];
   const parentRows = Array.isArray(visibleTransactions) ? visibleTransactions : [];
@@ -424,25 +451,35 @@ function _collectVisibleLedgerAnalyticsEntries() {
       return;
     }
 
-    if (txn.is_split && txn.transaction_id && txn.transaction_id.includes('_split_')) {
-      return;
-    }
-
-    if (txn.is_split && Array.isArray(txn.splits) && txn.splits.length > 0) {
-      const visibleSplitRows = txn.splits.filter(split => (
-        _splitMatchesSearch(txn, split) && _splitMatchesCategoryFilter(split)
-      ));
-
-      visibleSplitRows.forEach(split => {
-        ledgerEntries.push(_buildAnalyticsEntry(split, txn));
-      });
-      return;
-    }
-
-    ledgerEntries.push(_buildAnalyticsEntry(txn));
+    _analyticsRowsOfLedgerRow(txn).forEach(({ row, parent }) => {
+      ledgerEntries.push(parent ? _buildAnalyticsEntry(row, parent) : _buildAnalyticsEntry(row));
+    });
   });
 
   return ledgerEntries;
+}
+
+/**
+ * How many rows in view the totals leave out only because they are hidden.
+ * Counted the way the entries are, pieces and not their parent, so this plus
+ * the entry count is the number of transactions the ledger view holds.
+ * @returns {number}
+ */
+function _countHiddenLedgerRowsInView() {
+  const parentRows = Array.isArray(visibleTransactions) ? visibleTransactions : [];
+  let hiddenRowCount = 0;
+
+  parentRows.forEach(txn => {
+    if (!txn || !txn.is_hidden) {
+      return;
+    }
+    if (_shouldSkipLedgerParentForAnalytics(txn, true)) {
+      return;
+    }
+    hiddenRowCount += _analyticsRowsOfLedgerRow(txn).length;
+  });
+
+  return hiddenRowCount;
 }
 
 function buildNormalizedAnalyticsSlice() {
@@ -458,6 +495,7 @@ function buildNormalizedAnalyticsSlice() {
 
   return {
     ledgerEntries,
+    hiddenRowCount: _countHiddenLedgerRowsInView(),
     trackableEntries,
     spendingEntries,
     savingsEntries,

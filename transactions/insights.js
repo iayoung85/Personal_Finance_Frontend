@@ -81,6 +81,21 @@ function _buildInsightCardInsight(card, analyticsView) {
   };
 }
 
+/**
+ * The Live Result card's count line. Hidden rows shown by Show Hidden are in
+ * the table but not in the totals, so the line says how many were left out
+ * and the two numbers add up to what the table lists.
+ * @param {number} countedCount Rows the totals include.
+ * @param {number} hiddenCount Rows in view left out because they are hidden.
+ * @returns {string}
+ */
+function liveLedgerCountText(countedCount, hiddenCount) {
+  if (!hiddenCount) {
+    return `${countedCount} displayed transactions`;
+  }
+  return `${countedCount} transactions, ${hiddenCount} hidden not counted`;
+}
+
 function _buildLiveLedgerInsight(analyticsView) {
   const ledgerNetAmount = analyticsView.ledgerEntries.reduce((sum, entry) => sum + entry.amount, 0);
 
@@ -88,7 +103,7 @@ function _buildLiveLedgerInsight(analyticsView) {
     icon: '🔎',
     label: 'Live Result',
     value: _insightMoney(ledgerNetAmount),
-    meta: `${analyticsView.ledgerEntries.length} displayed transactions`,
+    meta: liveLedgerCountText(analyticsView.ledgerEntries.length, analyticsView.hiddenRowCount),
     subtext: 'Signed net sum of the current ledger view',
   };
 }
@@ -109,7 +124,9 @@ function _buildCategorySummaryInsight() {
 function generateSpendingInsights() {
   const analyticsView = buildNormalizedAnalyticsSlice();
 
-  if (!analyticsView.ledgerEntries.length) {
+  // A view holding only hidden rows still shows its cards, so the count line
+  // can say how many rows the table lists.
+  if (!analyticsView.ledgerEntries.length && !analyticsView.hiddenRowCount) {
     return null;
   }
 
