@@ -245,6 +245,12 @@ async function _finishMappingsSave(message) {
 }
 
 async function saveCategoryMappings() {
+  // After a failed load the editor holds Plaid's default name for every key,
+  // not the user's mappings; saving that would replace the real ones.
+  if (categoryLoadFailed) {
+    showStatus('Your categories could not be loaded, so mappings cannot be saved. Reload the page and try again.', 'error');
+    return;
+  }
   try {
     // Use the in-memory categoryMappings — ensures ALL mappings are saved,
     // not just the currently visible (filtered) ones

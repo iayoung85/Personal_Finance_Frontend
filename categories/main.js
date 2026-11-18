@@ -91,6 +91,10 @@ function _activateInitialPanel(section) {
 function _applyPrefillCustomCategory() {
   const rawCategory = sessionStorage.getItem('pf_prefill_custom_category');
   if (!rawCategory) return;
+  // The create dialog reads the loaded list to tell a new primary from a
+  // listed one; without it the save would send a kind the API refuses. The
+  // request stays in place so a reload picks it up.
+  if (categoryLoadFailed) return;
   sessionStorage.removeItem('pf_prefill_custom_category');
 
   const parts = parseCategoryName(rawCategory);
