@@ -57,6 +57,13 @@
                   <button type="button" id="cat-expand-btn" class="cat-button cat-button-secondary">Expand all</button>
                   <button type="button" id="cat-collapse-btn" class="cat-button cat-button-secondary">Collapse all</button>
                   <button type="button" id="cat-remove-unused-btn" class="cat-button cat-button-secondary">Remove unused categories</button>
+                  <span class="cat-toolbar-gap" aria-hidden="true"></span>
+                  <div class="cat-search">
+                    <input type="text" id="cat-search-input" class="cat-search-input" placeholder="Search categories"
+                           aria-label="Search categories" autocomplete="off" spellcheck="false">
+                    <button type="button" id="cat-search-clear" class="cat-search-clear" aria-label="Clear search" hidden>&times;</button>
+                  </div>
+                  <select id="cat-filter-select" class="cat-filter-select" aria-label="Filter categories"></select>
                 </div>
               </div>
               <div id="category-table" class="cat-table-wrap"></div>
@@ -336,6 +343,7 @@
   <script src="categories/label-state.js"></script>
   <script src="categories/primary-kinds.js"></script>
   <script src="categories/category-tree.js"></script>
+  <script src="categories/category-view.js"></script>
   <script src="categories/audit-log-text.js"></script>
   <script src="categories/category-table.js"></script>
   <script src="categories/category-menu.js"></script>

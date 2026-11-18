@@ -48,6 +48,10 @@ const collapsedPrimaries = new Set();
 let categorySelection = { labels: [], anchor: null };
 let selectedPrimaryRow = null;
 
+// Categories table view: sort, search text and filter. Kept here, not in storage,
+// so they outlive the reload after a change and start fresh with the page.
+let categoryViewState = { sortColumn: 'name', sortDirection: 'asc', searchText: '', filter: 'all' };
+
 // Auth state
 let token = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');

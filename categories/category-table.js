@@ -5,10 +5,17 @@
 // Hidden boxes. The rules it applies live in category-tree.js.
 // ============================================================
 
-// The tree the table last drew, so handlers read the same rows the user sees.
+// The whole tree the table last built, so menus act on every category a primary holds.
 let renderedCategoryTree = [];
+// The rows the table last drew after search, filter and sort, in screen order.
+let renderedViewRows = [];
 // The row that keeps the table's one tab stop, as its data-row-key.
 let categoryFocusRowKey = null;
+
+const CATEGORY_SORT_ARROW_SVG = {
+  asc: '<svg class="cat-sort-arrow" viewBox="0 0 10 10" width="9" height="9" aria-hidden="true" focusable="false"><path d="M5 2l4 6H1z" fill="currentColor"/></svg>',
+  desc: '<svg class="cat-sort-arrow" viewBox="0 0 10 10" width="9" height="9" aria-hidden="true" focusable="false"><path d="M5 8L1 2h8z" fill="currentColor"/></svg>'
+};
 
 const CATEGORY_CHEVRON_SVG = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -91,7 +98,9 @@ function _primaryRowHtml(group, isCollapsed, stripe) {
   const isSelected = selectedPrimaryRow === group.primary;
   const hiddenClass = group.hiddenState === 'all' ? ' is-hidden' : '';
   const boxState = group.hiddenState === 'all' ? 'checked' : '';
-  const countText = group.children.length === 1 ? '1 category' : `${group.children.length} categories`;
+  const total = group.totalCount;
+  const noun = total === 1 ? 'category' : 'categories';
+  const countText = group.children.length === total ? `${total} ${noun}` : `${group.children.length} of ${total} ${noun}`;
   return `
     <tr class="cat-row cat-row-primary${hiddenClass}${isSelected ? ' is-selected' : ''}${stripe ? ' is-alt' : ''}"
         data-row-key="${escapeHtml(key)}" data-primary="${name}" aria-selected="${isSelected}"
@@ -153,6 +162,22 @@ function _pruneCategoryTableState(tree) {
   });
 }
 
+/** The folds in force right now: a search opens every primary it shows. */
+function _foldsInForce() {
+  return effectiveCollapsedPrimaries(categoryViewState, collapsedPrimaries);
+}
+
+/** One sortable column header; the active one shows its direction. */
+function _sortHeadHtml(column, label, className, title) {
+  const isActive = categoryViewState.sortColumn === column;
+  const direction = categoryViewState.sortDirection === 'desc' ? 'desc' : 'asc';
+  const ariaSort = isActive ? ` aria-sort="${direction === 'desc' ? 'descending' : 'ascending'}"` : '';
+  const arrow = isActive ? CATEGORY_SORT_ARROW_SVG[direction] : '';
+  const titleAttribute = title ? ` title="${escapeHtml(title)}"` : '';
+  return `<th scope="col" class="${className}"${ariaSort}>`
+    + `<button type="button" class="cat-sort-btn" data-sort="${column}"${titleAttribute}>${label}${arrow}</button></th>`;
+}
+
 function renderCategoryTable() {
   const container = document.getElementById('category-table');
   if (!container) return;
@@ -161,12 +186,21 @@ function renderCategoryTable() {
   renderedCategoryTree = tree;
   _pruneCategoryTableState(tree);
 
+  const viewRows = applyCategoryView(tree, categoryViewState);
+  renderedViewRows = viewRows;
+  const kept = pruneSelectionToView(categorySelection, selectedPrimaryRow, viewRows);
+  categorySelection = kept.selection;
+  selectedPrimaryRow = kept.selectedPrimary;
+
   const countElement = document.getElementById('category-table-count');
   if (countElement) {
     const total = categoryLabels.length;
     const hiddenCount = categoryLabels.filter(entry => entry.hidden).length;
     const parts = [`${total} ${total === 1 ? 'category' : 'categories'} under ${tree.length} ${tree.length === 1 ? 'primary' : 'primaries'}`];
     if (hiddenCount) parts.push(`${hiddenCount} hidden`);
+    if (categoryViewNarrows(categoryViewState)) {
+      parts.push(`${viewRows.reduce((sum, row) => sum + row.children.length, 0)} shown`);
+    }
     countElement.textContent = total ? parts.join(' · ') : '';
   }
 
@@ -178,11 +212,14 @@ function renderCategoryTable() {
     return;
   }
 
-  const hadFocus = container.contains(document.activeElement);
+  // A header button that had focus is refocused by its own handler; only a row needs it here.
+  const hadFocus = Boolean(document.activeElement && container.contains(document.activeElement)
+    && document.activeElement.closest('tr.cat-row'));
+  const folds = _foldsInForce();
   const rows = [];
   let stripe = false;
-  tree.forEach(group => {
-    const isCollapsed = collapsedPrimaries.has(group.primary);
+  viewRows.forEach(group => {
+    const isCollapsed = folds.has(group.primary);
     rows.push(_primaryRowHtml(group, isCollapsed, stripe));
     stripe = !stripe;
     rows.push(_pinnedNoteRowHtml(group));
@@ -200,13 +237,13 @@ function renderCategoryTable() {
       </colgroup>
       <thead>
         <tr>
-          <th scope="col" class="cat-head-name">Name</th>
-          <th scope="col" class="cat-head-kind">Kind</th>
-          <th scope="col" class="cat-head-uses" title="Transactions on each category, as the transactions list shows them">Uses</th>
-          <th scope="col" class="cat-head-hidden" title="Hidden categories leave the category pickers on every other page">Hidden</th>
+          ${_sortHeadHtml('name', 'Name', 'cat-head-name', '')}
+          ${_sortHeadHtml('kind', 'Kind', 'cat-head-kind', '')}
+          ${_sortHeadHtml('uses', 'Uses', 'cat-head-uses', 'Transactions on each category, as the transactions list shows them')}
+          ${_sortHeadHtml('hidden', 'Hidden', 'cat-head-hidden', 'Hidden categories leave the category pickers on every other page')}
         </tr>
       </thead>
-      <tbody>${rows.join('')}</tbody>
+      <tbody>${rows.length ? rows.join('') : '<tr class="cat-empty-row"><td colspan="4">No categories match</td></tr>'}</tbody>
     </table>`;
 
   container.querySelectorAll('.cat-hidden-box[data-indeterminate="true"]').forEach(box => {
@@ -244,7 +281,7 @@ function _paintCategorySelection() {
 function _selectRow(row, modifiers) {
   const label = row.getAttribute('data-label');
   if (label) {
-    const ordered = visibleCategoryLabels(renderedCategoryTree, collapsedPrimaries);
+    const ordered = visibleCategoryLabels(renderedViewRows, _foldsInForce());
     categorySelection = selectionAfterClick(categorySelection, label, modifiers, ordered);
     selectedPrimaryRow = null;
   } else {
@@ -469,6 +506,8 @@ function _isOnRowControl(target) {
 }
 
 function _toggleCollapsed(primary) {
+  // While a search is open every primary shows expanded; a stored fold would change nothing on screen.
+  if (categorySearchActive(categoryViewState)) return;
   if (collapsedPrimaries.has(primary)) collapsedPrimaries.delete(primary);
   else collapsedPrimaries.add(primary);
   categoryFocusRowKey = _primaryRowKey(primary);
@@ -491,7 +530,7 @@ function _onTableKeydown(event) {
     const primary = row.getAttribute('data-label') ? null : row.getAttribute('data-primary');
     if (!primary) return;
     const shouldCollapse = event.key === 'ArrowLeft';
-    if (shouldCollapse !== collapsedPrimaries.has(primary)) {
+    if (shouldCollapse !== _foldsInForce().has(primary)) {
       event.preventDefault();
       _toggleCollapsed(primary);
     }
@@ -525,6 +564,11 @@ function initCategoryTable() {
   });
 
   container.addEventListener('click', event => {
+    const sortButton = event.target.closest('.cat-sort-btn');
+    if (sortButton) {
+      _sortBy(sortButton.getAttribute('data-sort'));
+      return;
+    }
     const chevron = event.target.closest('.cat-chevron');
     if (chevron) {
       _toggleCollapsed(chevron.closest('tr').getAttribute('data-primary'));
@@ -568,15 +612,73 @@ function initCategoryTable() {
     if (button) button.addEventListener('click', handler);
   };
   bind('cat-new-btn', () => openCategoryEditor({ mode: 'create' }));
+  // Both act on the primaries in view; the ones a search or filter hides keep their fold.
   bind('cat-expand-btn', () => {
-    collapsedPrimaries.clear();
+    renderedViewRows.forEach(row => collapsedPrimaries.delete(row.primary));
     renderCategoryTable();
   });
   bind('cat-collapse-btn', () => {
-    renderedCategoryTree.forEach(group => collapsedPrimaries.add(group.primary));
-    // Folded rows cannot stay selected out of sight.
-    categorySelection = { labels: [], anchor: null };
+    renderedViewRows.forEach(row => collapsedPrimaries.add(row.primary));
+    // Folded rows cannot stay selected out of sight; during a search nothing folds on screen.
+    if (!categorySearchActive(categoryViewState)) categorySelection = { labels: [], anchor: null };
     renderCategoryTable();
   });
   bind('cat-remove-unused-btn', event => startRemoveUnused(event.currentTarget));
+  _initCategoryViewControls();
+}
+
+// ── Sort, search and filter ─────────────────────────────────
+
+/** Sort by a header, keeping keyboard focus on it through the redraw. */
+function _sortBy(column) {
+  const next = nextCategorySort(categoryViewState, column);
+  categoryViewState = { ...categoryViewState, ...next };
+  renderCategoryTable();
+  const button = document.querySelector(`#category-table .cat-sort-btn[data-sort="${column}"]`);
+  if (button) button.focus({ preventScroll: true });
+}
+
+function _setCategorySearch(text) {
+  categoryViewState = { ...categoryViewState, searchText: text };
+  const clear = document.getElementById('cat-search-clear');
+  if (clear) clear.hidden = text === '';
+  renderCategoryTable();
+}
+
+/** Fill the filter list and wire the search box, its clear button and the filter. */
+function _initCategoryViewControls() {
+  const input = document.getElementById('cat-search-input');
+  const clear = document.getElementById('cat-search-clear');
+  const select = document.getElementById('cat-filter-select');
+
+  if (select) {
+    select.innerHTML = categoryFilterOptions()
+      .map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
+      .join('');
+    select.value = categoryViewState.filter;
+    select.addEventListener('change', () => {
+      categoryViewState = { ...categoryViewState, filter: select.value };
+      renderCategoryTable();
+    });
+  }
+  if (input) {
+    input.value = categoryViewState.searchText;
+    input.addEventListener('input', () => _setCategorySearch(input.value));
+    input.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || input.value === '') return;
+      event.preventDefault();
+      input.value = '';
+      _setCategorySearch('');
+    });
+  }
+  if (clear) {
+    clear.hidden = categoryViewState.searchText === '';
+    clear.addEventListener('click', () => {
+      if (input) {
+        input.value = '';
+        input.focus();
+      }
+      _setCategorySearch('');
+    });
+  }
 }

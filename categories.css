@@ -1364,6 +1364,62 @@ tr:hover {
   width: 6px;
 }
 
+/* Search box and filter share the toolbar buttons' height and radius. */
+.cat-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 160px;
+  min-width: 140px;
+  max-width: 240px;
+}
+
+.cat-search .cat-search-input {
+  width: 100%;
+  padding: 6px 28px 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.cat-search-clear {
+  position: absolute;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.cat-search-clear[hidden] {
+  display: none;
+}
+
+.cat-search-clear:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cat-search-clear:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+.cat-filter-select {
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
 .cat-table-footnote {
   margin: 10px 2px 0;
   font-size: 12px;
@@ -1413,6 +1469,46 @@ tr:hover {
 }
 
 .cat-table .cat-head-hidden {
+  text-align: center;
+}
+
+/* Sortable headers */
+.cat-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: -2px -4px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cat-sort-btn:hover {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.cat-sort-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+.cat-table thead th[aria-sort] .cat-sort-btn {
+  color: var(--text-heading);
+}
+
+.cat-sort-arrow {
+  flex: none;
+}
+
+.cat-table .cat-empty-row td {
+  height: auto;
+  padding: 24px 12px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
   text-align: center;
 }
 
