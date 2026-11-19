@@ -160,7 +160,7 @@ test('a manual cleared source is only offered Plaid cleared targets', () => {
 function loadAnalytics(visible) {
   return load(
     ['transactions/transaction-types.js', 'transactions/analytics.js'],
-    '_collectVisibleLedgerAnalyticsEntries, _countHiddenLedgerRowsInView',
+    '_collectVisibleLedgerAnalyticsEntries',
     {
       visibleTransactions: visible,
       selectedAccountMode: 'single',
@@ -189,39 +189,33 @@ test('a normal split counts its pieces', () => {
   assert.deepEqual(plain(entries.map(entry => entry.amount)), [-60, -40]);
 });
 
-test('a hidden row shown by Show Hidden stays out of the totals', () => {
+// The table filter decides whether a hidden row is listed (Show hidden); the
+// totals count whatever it lists, so these rows are in visibleTransactions.
+test('a hidden row the table lists is counted with the rest', () => {
   const shown = plaidRow('shown', { amount: -25, analytics_class: 'spending' });
   const hidden = plaidRow('hidden', { amount: -70, analytics_class: 'spending', is_hidden: true });
   const entries = loadAnalytics([shown, hidden]).api._collectVisibleLedgerAnalyticsEntries();
-  assert.deepEqual(plain(entries.map(entry => entry.transaction_id)), ['shown']);
+  assert.deepEqual(plain(entries.map(entry => entry.transaction_id)), ['shown', 'hidden']);
 });
 
-test('a hidden split parent keeps its pieces out of the totals', () => {
+test('a hidden split parent the table lists counts its pieces, not itself', () => {
   const hiddenSplit = parentOf('plaid', 'cleared', {
+    amount: -100,
     is_hidden: true,
     splits: [piece('p1_split_0', -60, { analytics_class: 'spending' }), piece('p1_split_1', -40, { analytics_class: 'spending' })],
   });
   const entries = loadAnalytics([hiddenSplit]).api._collectVisibleLedgerAnalyticsEntries();
-  assert.equal(entries.length, 0);
+  assert.deepEqual(plain(entries.map(entry => entry.amount)), [-60, -40]);
+  assert.deepEqual(plain(entries.map(entry => entry.txn_type)), ['SPLIT_CHILD', 'SPLIT_CHILD']);
 });
 
-test('hidden rows in view are counted apart, a hidden split by its pieces', () => {
-  const shown = plaidRow('shown', { amount: -25, analytics_class: 'spending' });
-  const hidden = plaidRow('hidden', { amount: -70, analytics_class: 'spending', is_hidden: true });
-  const hiddenSplit = parentOf('plaid', 'cleared', {
-    is_hidden: true,
-    splits: [piece('p1_split_0', -60, { analytics_class: 'spending' }), piece('p1_split_1', -40, { analytics_class: 'spending' })],
+test('a manual row hidden by its match stays out even though hidden rows count', () => {
+  const hiddenByMatch = plaidRow('matched', {
+    amount: -70, analytics_class: 'spending', is_hidden: true, hidden_by_match: true,
   });
-  const { api } = loadAnalytics([shown, hidden, hiddenSplit]);
-  assert.equal(api._collectVisibleLedgerAnalyticsEntries().length, 1);
-  assert.equal(api._countHiddenLedgerRowsInView(), 3);
-});
-
-test('a hidden row the totals would skip anyway is not counted as hidden', () => {
-  const hiddenByMatch = plaidRow('matched', { amount: -70, is_hidden: true, hidden_by_match: true });
   const shown = plaidRow('shown', { amount: -25, analytics_class: 'spending' });
-  const { api } = loadAnalytics([shown, hiddenByMatch]);
-  assert.equal(api._countHiddenLedgerRowsInView(), 0);
+  const entries = loadAnalytics([shown, hiddenByMatch]).api._collectVisibleLedgerAnalyticsEntries();
+  assert.deepEqual(plain(entries.map(entry => entry.transaction_id)), ['shown']);
 });
 
 // ── Inspect normalization ──────────────────────────────────────

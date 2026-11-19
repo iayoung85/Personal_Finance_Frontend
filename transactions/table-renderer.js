@@ -164,8 +164,24 @@ function _splitMatchesCategoryFilter(splitTxn) {
 function _isUnmatchedPlaidLedgerRow(txn) {
   const txnType = getTransactionType(txn);
   return (txnType === TXN_TYPE.PLAID_CLEARED || txnType === TXN_TYPE.PLAID_PENDING)
-    && !txn.match_info
-    && !txn.matched_transaction_id;
+    && !isMatchedLedgerRow(txn);
+}
+
+// Rows the table drops after filtering, so they are not part of the ledger
+// the user sees and must not count toward the unmatched share.
+function _isRowOmittedFromLedger(txn, txnType, isAllAccounts) {
+  if (txn.hidden_by_match) return true;
+  if (isAllAccounts && isSystemType(txnType)) return true;
+  return txnType === TXN_TYPE.MANUAL_ORPHANED;
+}
+
+// Show or hide the whole "Show unmatched" label, not just the input, so no
+// empty gap is left in the toggle row.
+function _syncUnmatchedToggleVisibility(totalRows, notMatchedRows) {
+  const label = document.getElementById('show-unmatched-label');
+  if (!label) return;
+  const isTicked = !!document.getElementById('show-unmatched-toggle')?.checked;
+  label.classList.toggle('hidden', !shouldShowUnmatchedToggle(totalRows, notMatchedRows, isTicked));
 }
 
 
@@ -460,6 +476,7 @@ function renderTransactionTable() {
     container.innerHTML = '<div class="empty-state">No transactions found. Sync transactions first.</div>';
     document.getElementById('export-buttons').classList.add('hidden');
     document.getElementById('pending-table-container').innerHTML = '';
+    _syncUnmatchedToggleVisibility(0, 0);
     renderInsightsPanel(); // Still render empty insights
     _lastRenderedScrollCacheKey = scrollCacheKey;
     return;
@@ -483,8 +500,9 @@ function renderTransactionTable() {
     optionalFields.push($(this).val());
   });
   
-  // Apply all filters to transactions array
-  const filteredTransactions = transactions.filter(txn => {
+  // Apply every filter except the unmatched narrowing, so the matched share
+  // can be read off the ledger the user would see with the box unticked.
+  const ledgerCandidates = transactions.filter(txn => {
     const txnType = getTransactionType(txn);
 
     if (_isFutureTxnPastForecastHorizon(txn, txnType, todayDateStr, forecastEndDateStr)) {
@@ -524,18 +542,7 @@ function renderTransactionTable() {
       }
     }
 
-    // Filter by overrides only if requested
-    const showOverridesOnly = document.getElementById('show-overrides-only').checked;
-    if (showOverridesOnly && !txn.is_override) {
-      return false;
-    }
 
-    // Narrow the ledger to only unmatched plaid rows when reconciliation
-    // review mode is active. This is intentionally table-only.
-    if (showUnmatchedOnlyEnabled && !_isUnmatchedPlaidLedgerRow(txn)) {
-      return false;
-    }
-    
     // Filter by search query (broad text + advanced operators)
     if (searchTokens && searchTokens.length > 0) {
       if (txn.is_split && Array.isArray(txn.splits) && txn.splits.length > 0) {
@@ -578,6 +585,22 @@ function renderTransactionTable() {
     
     return true;
   });
+
+  const isAllAccounts = selectedAccountMode === 'all';
+  let ledgerRowCount = 0;
+  let notMatchedRowCount = 0;
+  ledgerCandidates.forEach(txn => {
+    if (_isRowOmittedFromLedger(txn, getTransactionType(txn), isAllAccounts)) return;
+    ledgerRowCount += 1;
+    if (!isMatchedLedgerRow(txn)) notMatchedRowCount += 1;
+  });
+  _syncUnmatchedToggleVisibility(ledgerRowCount, notMatchedRowCount);
+
+  // Narrow the ledger to only unmatched plaid rows when reconciliation
+  // review mode is active. This is intentionally table-only.
+  const filteredTransactions = showUnmatchedOnlyEnabled
+    ? ledgerCandidates.filter(_isUnmatchedPlaidLedgerRow)
+    : ledgerCandidates;
   
   if (filteredTransactions.length === 0) {
     visibleTransactions = [];
@@ -599,8 +622,6 @@ function renderTransactionTable() {
   // 3. Cleared/posted (everything else, including BILL_MISSING and MANUAL_MISSING inline)
   // MANUAL_ORPHANED is excluded entirely — only accessible via Resolution Center.
   // In All Accounts view: hide OB, MOB, reconciliation
-  const isAllAccounts = selectedAccountMode === 'all';
-
   const scheduledFuture = [];
   const pendingTransactions = [];
   const postedTransactions = [];
@@ -618,16 +639,11 @@ function renderTransactionTable() {
     // counterpart by the backend — skip them entirely.
     if (txn.hidden_by_match) return;
 
-    // All Accounts view: hide system rows always
-    if (isAllAccounts) {
-      const txnType = getTransactionType(txn);
-      if (isSystemType(txnType)) return;
-    }
-
+    // Orphaned rows are excluded from the ledger entirely — they are only
+    // accessible via the Resolution Center after re-link events. In the
+    // All Accounts view system rows are hidden too.
     const txnType = getTransactionType(txn);
-    // Orphaned transactions are excluded from the ledger entirely —
-    // they are only accessible via the Resolution Center after re-link events.
-    if (txnType === TXN_TYPE.MANUAL_ORPHANED) return;
+    if (_isRowOmittedFromLedger(txn, txnType, isAllAccounts)) return;
 
     if (txn.source === 'scheduled' && txn.status === 'future') {
       scheduledFuture.push(txn);

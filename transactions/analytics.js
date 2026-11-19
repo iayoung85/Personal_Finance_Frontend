@@ -242,26 +242,101 @@ function getInsightCards() {
 }
 
 /**
- * Rows that belong to an insight card: the row's primary is a whole-primary
- * member, or its "Primary: Detailed" label is a detail member. Filtering (not
- * concatenating per member) means a row matching both counts once.
- * @param {Array<{primary_category: string, detailed_category: string}>} entries
+ * Whether rows of this class can count on a custom card: every counted class
+ * except investment trend, which has its own stat card.
+ * @param {string|null} analyticsClass
+ * @returns {boolean}
+ */
+function isInsightCardTrackableClass(analyticsClass) {
+  return isAnalyticsCountedClass(analyticsClass) && analyticsClass !== 'investment_trend';
+}
+
+/**
+ * Whether a custom card counts one row: its class is one the card can count,
+ * and the row's primary is a whole-primary member or its "Primary: Detailed"
+ * label is a detail member. This is the single membership rule, used by the
+ * card's own number and by the card: search operator. It says nothing about
+ * which ledger rows reach the analytics slice (future, system and hidden-by-
+ * match rows are the slice's concern).
+ * @param {{primaries: string[], details: string[]}} card
+ * @param {{primary_category: string, detailed_category: string, analytics_class: string|null}} entry
+ * @returns {boolean}
+ */
+function insightCardCountsEntry(card, entry) {
+  if (!isInsightCardTrackableClass(entry.analytics_class)) {
+    return false;
+  }
+  if ((card.primaries || []).includes(entry.primary_category)) {
+    return true;
+  }
+  if (!entry.detailed_category) {
+    return false;
+  }
+  return (card.details || []).includes(`${entry.primary_category}: ${entry.detailed_category}`);
+}
+
+/**
+ * Rows that belong to an insight card. Filtering (not concatenating per
+ * member) means a row matching both a primary and a detail counts once.
+ * @param {Array<{primary_category: string, detailed_category: string, analytics_class: string|null}>} entries
  * @param {{primaries: string[], details: string[]}} card
  * @returns {Array} The matching entries, in their original order.
  */
 function filterEntriesForInsightCard(entries, card) {
-  const primaries = new Set(card.primaries || []);
-  const details = new Set(card.details || []);
+  return (entries || []).filter(entry => insightCardCountsEntry(card, entry));
+}
 
-  return (entries || []).filter(entry => {
-    if (primaries.has(entry.primary_category)) {
-      return true;
-    }
-    if (!entry.detailed_category) {
-      return false;
-    }
-    return details.has(`${entry.primary_category}: ${entry.detailed_category}`);
-  });
+/**
+ * A card name as the search compares it: double quotes removed (the search
+ * grammar cannot carry one inside a quoted value), trimmed, lowercased.
+ * @param {*} name
+ * @returns {string}
+ */
+function normalizeInsightCardSearchName(name) {
+  return typeof name === 'string' ? name.replace(/"/g, '').trim().toLowerCase() : '';
+}
+
+// The card search tests every row of a long ledger, and the config is parsed
+// from storage on each read, so the cards are read once and kept briefly.
+const INSIGHT_CARD_LOOKUP_TTL_MS = 1000;
+let _insightCardLookupCache = { at: 0, cards: [] };
+
+/**
+ * The custom card a card: search term names, or null. A blank name, or a name
+ * no card has, finds nothing; when two cards share a name the first wins.
+ * @param {string} name
+ * @returns {{name: string, primaries: string[], details: string[]}|null}
+ */
+function findInsightCardByName(name) {
+  const wanted = normalizeInsightCardSearchName(name);
+  if (!wanted) {
+    return null;
+  }
+
+  const now = Date.now();
+  if (now - _insightCardLookupCache.at > INSIGHT_CARD_LOOKUP_TTL_MS || now < _insightCardLookupCache.at) {
+    _insightCardLookupCache = { at: now, cards: getInsightCards() };
+  }
+  return _insightCardLookupCache.cards.find(card => normalizeInsightCardSearchName(card.name) === wanted) || null;
+}
+
+/**
+ * Drops the kept cards so the next lookup reads the config again.
+ */
+function resetInsightCardLookup() {
+  _insightCardLookupCache = { at: 0, cards: [] };
+}
+
+/**
+ * Whether a custom card counts a ledger row, as the card: search operator asks.
+ * Unknown card names count nothing.
+ * @param {string} cardName
+ * @param {Object} txn A ledger row or a split piece.
+ * @returns {boolean}
+ */
+function insightCardNamedCountsRow(cardName, txn) {
+  const card = findInsightCardByName(cardName);
+  return !!card && insightCardCountsEntry(card, _analyticsCategoryFields(txn));
 }
 
 function _meanAbsoluteAmount(entries) {
@@ -356,24 +431,22 @@ function getInsightCardFlowSummary(entries) {
 
 /**
  * Whether a ledger row stays out of the analytics entries.
+ *
+ * A hidden row is not skipped here. The cards, the category summary and its
+ * export count what the table lists, so Show hidden decides through the table
+ * filter alone: a hidden row the table lists is counted, a split one by its
+ * pieces, and one it leaves out never reaches this slice. A second hidden rule
+ * here would make a card disagree with the rows under it.
  * @param {Object} txn A row of the current ledger view.
- * @param {boolean} [countsHidden=false] True asks only about the other
- *   reasons, for counting the hidden rows the totals leave out.
  * @returns {boolean}
  */
-function _shouldSkipLedgerParentForAnalytics(txn, countsHidden = false) {
+function _shouldSkipLedgerParentForAnalytics(txn) {
   if (!txn) {
     return true;
   }
 
+  // A manual row matched to a bank row is counted once, through the bank row.
   if (txn.hidden_by_match) {
-    return true;
-  }
-
-  // Show Hidden puts hidden rows back in the table, not back in the totals:
-  // the API's reports and the phone leave them out, and the totals must agree.
-  // A hidden split parent takes its pieces with it.
-  if (txn.is_hidden && !countsHidden) {
     return true;
   }
 
@@ -402,20 +475,38 @@ function _shouldSkipLedgerParentForAnalytics(txn, countsHidden = false) {
   return txnType === TXN_TYPE.MANUAL_ORPHANED;
 }
 
-function _buildAnalyticsEntry(txn, parentTxn = null) {
-  const txnType = parentTxn ? TXN_TYPE.SPLIT_CHILD : getTransactionType(txn);
+/**
+ * The category fields an analytics entry carries for a row. One derivation
+ * for the entries the cards sum and for the card search, so a row lands in the
+ * same primary and detailed category in both.
+ * @param {Object} txn A ledger row or a split piece.
+ * @returns {{category_label: string, primary_category: string,
+ *   detailed_category: string, analytics_class: string|null}}
+ */
+function _analyticsCategoryFields(txn) {
   const analyticsClass = txn.analytics_class || null;
   const categoryLabel = getAnalyticsCategoryLabel(txn, analyticsClass);
   const parsedCategory = parseCategoryString(categoryLabel);
-  const primaryCategory = parsedCategory.primary || categoryLabel || 'Uncategorized';
-  const detailedCategory = parsedCategory.detailed || '';
+
+  return {
+    category_label: categoryLabel,
+    primary_category: parsedCategory.primary || categoryLabel || 'Uncategorized',
+    detailed_category: parsedCategory.detailed || '',
+    analytics_class: analyticsClass,
+  };
+}
+
+function _buildAnalyticsEntry(txn, parentTxn = null) {
+  const txnType = parentTxn ? TXN_TYPE.SPLIT_CHILD : getTransactionType(txn);
+  const categoryFields = _analyticsCategoryFields(txn);
+  const analyticsClass = categoryFields.analytics_class;
 
   return {
     transaction_id: txn.transaction_id || parentTxn?.transaction_id || '',
     amount: Number(txn.amount || 0),
-    category_label: categoryLabel,
-    primary_category: primaryCategory,
-    detailed_category: detailedCategory,
+    category_label: categoryFields.category_label,
+    primary_category: categoryFields.primary_category,
+    detailed_category: categoryFields.detailed_category,
     analytics_class: analyticsClass,
     display_mode: getAnalyticsModeForClass(analyticsClass),
     txn_type: txnType,
@@ -459,33 +550,10 @@ function _collectVisibleLedgerAnalyticsEntries() {
   return ledgerEntries;
 }
 
-/**
- * How many rows in view the totals leave out only because they are hidden.
- * Counted the way the entries are, pieces and not their parent, so this plus
- * the entry count is the number of transactions the ledger view holds.
- * @returns {number}
- */
-function _countHiddenLedgerRowsInView() {
-  const parentRows = Array.isArray(visibleTransactions) ? visibleTransactions : [];
-  let hiddenRowCount = 0;
-
-  parentRows.forEach(txn => {
-    if (!txn || !txn.is_hidden) {
-      return;
-    }
-    if (_shouldSkipLedgerParentForAnalytics(txn, true)) {
-      return;
-    }
-    hiddenRowCount += _analyticsRowsOfLedgerRow(txn).length;
-  });
-
-  return hiddenRowCount;
-}
-
 function buildNormalizedAnalyticsSlice() {
   const ledgerEntries = _collectVisibleLedgerAnalyticsEntries();
   const summaryEntries = ledgerEntries.filter(entry => isAnalyticsCountedClass(entry.analytics_class));
-  const trackableEntries = summaryEntries.filter(entry => entry.analytics_class !== 'investment_trend');
+  const trackableEntries = summaryEntries.filter(entry => isInsightCardTrackableClass(entry.analytics_class));
   const spendingEntries = summaryEntries.filter(entry => entry.analytics_class === 'spending');
   const savingsEntries = summaryEntries.filter(entry => entry.analytics_class === 'savings');
   // Total outflow is what the API defines as spending plus savings.
@@ -495,7 +563,6 @@ function buildNormalizedAnalyticsSlice() {
 
   return {
     ledgerEntries,
-    hiddenRowCount: _countHiddenLedgerRowsInView(),
     trackableEntries,
     spendingEntries,
     savingsEntries,

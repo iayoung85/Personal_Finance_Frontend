@@ -280,11 +280,6 @@ $(document).ready(async function() {
     }, true);
   }
 
-  // Re-render when show-overrides-only toggle changes
-  $(document).on('change', '#show-overrides-only', function() {
-    renderTransactionTable();
-  });
-
   // Re-render when show-pending toggle changes
   $(document).on('change', '#show-pending-toggle', function() {
     renderTransactionTable();

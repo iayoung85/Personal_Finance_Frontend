@@ -97,13 +97,9 @@
                 <input type="checkbox" id="hide-transfers" checked>
                 <span>Hide transfers</span>
               </label>
-              <label class="toggle-label">
+              <label class="toggle-label" id="show-unmatched-label">
                 <input type="checkbox" id="show-unmatched-toggle">
                 <span>Show unmatched</span>
-              </label>
-              <label class="toggle-label">
-                <input type="checkbox" id="show-overrides-only">
-                <span>Overrides only</span>
               </label>
               <label class="toggle-label">
                 <input type="checkbox" id="show-pending-toggle" checked>
@@ -230,6 +226,7 @@
             <tr><td class="search-help-example">confidence:low</td><td>Plaid category confidence level (low, medium, high, very_high)</td></tr>
             <tr><td class="search-help-example">memo:reimbursement</td><td>Search memo notes</td></tr>
             <tr><td class="search-help-example">bank:chase</td><td>Search bank/account name (also: <code>account:</code>)</td></tr>
+            <tr><td class="search-help-example">card:"Eating out"</td><td>Rows one of your insight cards counts, by its name (clicking a card in the row above types this for you)</td></tr>
           </table>
         </div>
 
@@ -615,6 +612,7 @@
   <script src="transactions/insights.js"></script>
   <script src="transactions/category-summary.js"></script>
   <script src="transactions/ledger-forecast.js"></script>
+  <script src="transactions/unmatched-toggle.js"></script>
   <script src="transactions/row-renderers.js"></script>
   <script src="transactions/table-renderer.js"></script>
   <script src="transactions/waiting-match.js"></script>

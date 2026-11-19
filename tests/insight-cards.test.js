@@ -16,7 +16,7 @@ function load(relPaths, exportsList, extraSandbox = {}) {
 
 const A = load('transactions/analytics.js', [
   'normalizeInsightCards', 'normalizeInsightCardDetailLabel',
-  'filterEntriesForInsightCard', 'getInsightCardAverageLines', 'getInsightCardFlowSummary',
+  'filterEntriesForInsightCard', 'insightCardCountsEntry', 'getInsightCardAverageLines', 'getInsightCardFlowSummary',
 ].join(', '));
 
 const row = (primary_category, detailed_category, analytics_class, amount) => ({
@@ -190,27 +190,33 @@ test('a one-sided card is not mixed', () => {
   ]).isMixed, false);
 });
 
-// ── Rendered card: single-mode cards look as they did ──────────
+// ── Card view models and markup ────────────────────────────────
 
 const insightsSandbox = {
   escapeHtml: value => String(value),
   getAppConfig: () => ({}),
   maskMoney: value => value,
+  searchQuery: '',
+  isTransferCategory: () => false,
 };
-const I = load(['transactions/analytics.js', 'transactions/insights.js'], [
-  '_buildInsightCardInsight', 'getAnalyticsAverageDisplayAmount',
+const I = load(['transactions/analytics.js', 'transactions/search.js', 'transactions/insights.js'], [
+  '_buildInsightCardInsight', '_buildTotalOutflowInsight', '_buildLiveLedgerInsight',
+  '_buildCategorySummaryInsight', 'insightCountText', 'insightCategoryCountText', 'getAnalyticsAverageDisplayAmount',
   'getAnalyticsDisplayModeForEntries', 'getAnalyticsDisplayTotal', 'formatAnalyticsCurrency',
-  'ANALYTICS_DISPLAY_MODE', '_renderInsightCard', 'liveLedgerCountText',
+  'ANALYTICS_DISPLAY_MODE', '_renderInsightCard', 'INSIGHT_CARD_SETTINGS_URL',
 ].join(', '), insightsSandbox);
 
-test('the Live Result count line names the hidden rows it leaves out', () => {
-  assert.equal(I.liveLedgerCountText(663, 0), '663 displayed transactions');
-  assert.equal(I.liveLedgerCountText(663, 57), '663 transactions, 57 hidden not counted');
-  assert.equal(I.liveLedgerCountText(0, 9), '0 transactions, 9 hidden not counted');
+const plainJson = value => JSON.stringify(value);
+
+test('every card words its count the same way, singular for one', () => {
+  assert.equal(I.insightCountText(0), '0 transactions');
+  assert.equal(I.insightCountText(1), '1 transaction');
+  assert.equal(I.insightCountText(2), '2 transactions');
+  assert.equal(I.insightCountText(1099), '1099 transactions');
 });
 
-/** The card exactly as the single-primary card used to build it. */
-function oldSinglePrimaryCard(primary, entries) {
+/** The total and average a single-mode card has always shown. */
+function singleModeExpectation(primary, entries) {
   const matching = entries.filter(entry => entry.primary_category === primary);
   const rawTotal = matching.reduce((sum, entry) => sum + entry.amount, 0);
   const average = I.getAnalyticsAverageDisplayAmount(matching);
@@ -218,14 +224,13 @@ function oldSinglePrimaryCard(primary, entries) {
     ? 'Average credit'
     : 'Average debit';
   return {
-    label: primary,
     value: I.formatAnalyticsCurrency(I.getAnalyticsDisplayTotal(rawTotal, matching)),
-    meta: `${matching.length} transactions`,
-    subtext: [average === null ? `${label} —` : `${label} ${I.formatAnalyticsCurrency(average)}`],
+    countText: `${matching.length} transactions`,
+    rows: [{ label, value: average === null ? '—' : I.formatAnalyticsCurrency(average) }],
   };
 }
 
-test('a card whose rows are all one mode renders as the old single-primary card', () => {
+test('a card whose rows are all one mode keeps its total, and its average moves to the details', () => {
   const entries = [
     row('Food', 'Groceries', 'spending', -80),
     row('Food', 'Restaurants', 'spending', -40),
@@ -239,42 +244,57 @@ test('a card whose rows are all one mode renders as the old single-primary card'
       { name: primary, primaries: [primary], details: [] },
       { trackableEntries: entries },
     );
-    const expected = oldSinglePrimaryCard(primary, entries);
-    assert.equal(card.label, expected.label);
+    const expected = singleModeExpectation(primary, entries);
+    assert.equal(card.label, primary);
     assert.equal(card.value, expected.value);
-    assert.equal(card.meta, expected.meta);
-    assert.equal(JSON.stringify(card.subtext), JSON.stringify(expected.subtext));
+    assert.equal(card.countText, expected.countText);
+    assert.equal(plainJson(card.details.rows), plainJson(expected.rows));
   }
 });
 
-test('a total income card sums net income and inflows under its own name', () => {
+test('a custom card lists its categories and links to App configuration', () => {
   const card = I._buildInsightCardInsight(
-    { name: 'Total income', primaries: ['Income', 'Inflows'], details: [] },
+    { name: 'Total income', primaries: ['Income'], details: ['Inflows: Interest'] },
     { trackableEntries: ledger },
   );
   assert.equal(card.label, 'Total income');
   assert.equal(card.value, '$2,015.00');
-  assert.equal(card.meta, '2 transactions');
-  assert.equal(JSON.stringify(card.subtext), JSON.stringify(['Average credit $1,007.50']));
-  const html = I._renderInsightCard(card);
-  assert.equal((html.match(/insight-subtext/g) || []).length, 1);
+  assert.equal(card.countText, '2 transactions');
+  assert.equal(card.details.listTitle, 'Categories');
+  assert.equal(plainJson(card.details.list), plainJson(['Income', 'Inflows: Interest']));
+  assert.equal(card.details.link.href, 'user-settings.html#app-config');
+  assert.equal(card.details.link.href, I.INSIGHT_CARD_SETTINGS_URL);
+  assert.match(card.details.link.text, /App configuration/);
+
+  const html = I._renderInsightCard(card, 1);
+  assert.match(html, /<a class="insight-popover-link" href="user-settings.html#app-config">Change in App configuration<\/a>/);
+  assert.match(html, /<li>Income<\/li><li>Inflows: Interest<\/li>/);
 });
 
-test('a mixed card shows a signed net, money in and out, and both averages', () => {
+test('a one-sided card has no In and Out rows', () => {
+  const card = I._buildInsightCardInsight(
+    { name: 'Total income', primaries: ['Income', 'Inflows'], details: [] },
+    { trackableEntries: ledger },
+  );
+  assert.equal(card.value, '$2,015.00');
+  assert.equal(card.countText, '2 transactions');
+  assert.equal(plainJson(card.details.rows), plainJson([{ label: 'Average credit', value: '$1,007.50' }]));
+});
+
+test('a mixed card shows a signed net, and In, Out and both averages in its details', () => {
   const card = I._buildInsightCardInsight(
     { name: 'Everything', primaries: ['Income', 'Food'], details: [] },
     { trackableEntries: ledger },
   );
   assert.equal(card.value, '+$1,880.00');
   assert.equal(card.valueTone, 'positive');
-  assert.equal(JSON.stringify(card.subtext), JSON.stringify([
-    'In $2,000.00 · Out $120.00',
-    'Average credit $2,000.00',
-    'Average debit $60.00',
+  assert.equal(plainJson(card.details.rows), plainJson([
+    { label: 'In', value: '$2,000.00' },
+    { label: 'Out', value: '$120.00' },
+    { label: 'Average credit', value: '$2,000.00' },
+    { label: 'Average debit', value: '$60.00' },
   ]));
-  const html = I._renderInsightCard(card);
-  assert.equal((html.match(/class="insight-subtext"/g) || []).length, 3);
-  assert.match(html, /class="insight-value tone-positive"/);
+  assert.match(I._renderInsightCard(card, 0), /class="insight-value tone-positive"/);
 });
 
 test('a mixed card that spent more than came in shows a minus', () => {
@@ -282,9 +302,103 @@ test('a mixed card that spent more than came in shows a minus', () => {
     { name: 'Short', primaries: ['Inflows', 'Food', 'Travel'], details: [] },
     { trackableEntries: ledger },
   );
-  assert.equal(card.value, '\u2212$405.00');
+  assert.equal(card.value, '−$405.00');
   assert.equal(card.valueTone, 'negative');
-  assert.equal(card.subtext[0], 'In $15.00 · Out $420.00');
+  assert.equal(plainJson(card.details.rows.slice(0, 2)), plainJson([
+    { label: 'In', value: '$15.00' },
+    { label: 'Out', value: '$420.00' },
+  ]));
+});
+
+test('a card with one matching row says "1 transaction"', () => {
+  const card = I._buildInsightCardInsight(
+    { name: 'Groceries', primaries: [], details: ['Food: Groceries'] },
+    { trackableEntries: ledger },
+  );
+  assert.equal(card.countText, '1 transaction');
+});
+
+test('Live Result and Category Summary give a count line and a details sentence', () => {
+  const view = {
+    ledgerEntries: [row('Food', 'Groceries', 'spending', -80), row('Transfer', 'Out', 'transfer', -500)],
+    summaryEntries: [row('Food', 'Groceries', 'spending', -80)],
+  };
+  const live = I._buildLiveLedgerInsight(view);
+  assert.equal(live.value, '-$580.00');
+  assert.equal(live.countText, '2 transactions');
+  assert.equal(plainJson(live.details.paragraphs), plainJson(['Signed net sum of the current ledger view.']));
+
+  const summary = I._buildCategorySummaryInsight(view);
+  assert.equal(summary.value, 'Open category table');
+  // Its third line counts categories; the transaction count would differ from
+  // Live Result's by every row the table leaves out, so it sits in the details.
+  assert.equal(summary.countText, '1 primary category');
+  assert.match(
+    summary.details.paragraphs.join(' '),
+    /1 of the 2 listed transactions\. Transfers, adjustments and balance anchors are left out/,
+  );
+});
+
+test('the Category Summary card counts primaries that have a row in its table', () => {
+  assert.equal(I.insightCategoryCountText([]), '0 primary categories');
+  assert.equal(I.insightCategoryCountText([
+    row('Food', 'Groceries', 'spending', -80),
+    row('Food', 'Dining', 'spending', -20),
+    row('Pay', 'Salary', 'income', 900),
+  ]), '2 primary categories');
+  // A primary holding only investment trend rows is a stat card, not a table row.
+  assert.equal(I.insightCategoryCountText([
+    row('Food', 'Groceries', 'spending', -80),
+    row('Investments', 'Trending Performance', 'investment_trend', 40),
+  ]), '1 primary category');
+});
+
+test('every card renders as three single lines with an info button and a closed popover', () => {
+  const view = {
+    outflowEntries: [row('Food', 'Groceries', 'spending', -80)],
+    spendingEntries: [row('Food', 'Groceries', 'spending', -80)],
+    savingsEntries: [],
+    trackableEntries: ledger,
+    ledgerEntries: ledger,
+    summaryEntries: ledger,
+  };
+  const cards = [
+    I._buildTotalOutflowInsight(view),
+    I._buildInsightCardInsight({ name: 'Food', primaries: ['Food'], details: [] }, view),
+    I._buildLiveLedgerInsight(view),
+    I._buildCategorySummaryInsight(view),
+  ];
+  cards.forEach((card, index) => {
+    const html = I._renderInsightCard(card, index);
+    assert.equal((html.match(/class="insight-(label|value|meta)[" ]/g) || []).length, 3, card.label);
+    assert.doesNotMatch(html, /insight-subtext|insight-icon/);
+    assert.match(html, new RegExp(`<div class="insight-meta">${card.countText}</div>`));
+    assert.match(html, new RegExp(
+      `<button type="button" class="insight-info-btn" aria-label="Details for ${card.label}"`,
+    ));
+    assert.match(html, new RegExp(`aria-expanded="false" aria-controls="insight-details-${index}"`));
+    assert.match(html, new RegExp(`<div class="insight-popover" id="insight-details-${index}" title="" hidden>`));
+  });
+});
+
+test('a long custom card name keeps the full name in its title', () => {
+  const name = 'Household and recurring subscriptions';
+  const card = I._buildInsightCardInsight({ name, primaries: ['Food'], details: [] }, { trackableEntries: ledger });
+  assert.match(I._renderInsightCard(card, 1), new RegExp(`<div class="insight-label" title="${name}">${name}</div>`));
+});
+
+test('the Category Summary card opens its table except from its info button or details', () => {
+  let opened = 0;
+  const { _onCategorySummaryCardClick } = load(['transactions/analytics.js', 'transactions/insights.js'],
+    '_onCategorySummaryCardClick', { ...insightsSandbox, toggleCategorySummaryModal: () => { opened += 1; } });
+  const clickOn = insideSelector => ({
+    target: { closest: selector => (insideSelector && selector.includes(insideSelector) ? {} : null) },
+  });
+  _onCategorySummaryCardClick(clickOn(null));
+  assert.equal(opened, 1);
+  _onCategorySummaryCardClick(clickOn('.insight-info-btn'));
+  _onCategorySummaryCardClick(clickOn('.insight-popover'));
+  assert.equal(opened, 1);
 });
 
 // ── Settings editor helpers ────────────────────────────────────
@@ -395,37 +509,116 @@ test('a card holding income and savings is mixed, with savings as money out', ()
   assert.equal(flow.outTotal, 350);
 });
 
-// ── Total Spending and Total Outflow cards ─────────────────────
+// ── Total Outflow ──────────────────────────────────────────────
 
-function loadInsightBuilders() {
-  return load(['transactions/privacy.js', 'transactions/analytics.js', 'transactions/insights.js'], [
-    'initPrivacyMode', '_buildTotalSpendingInsight', '_buildTotalOutflowInsight',
-  ].join(', '), {
-    getAppConfig: () => ({}),
-    escapeHtml: s => s,
-    document: { body: { dataset: {} }, getElementById: () => null },
-  });
-}
-
-test('Total Spending leaves savings out and Total Outflow sums spending and savings', () => {
-  const I = loadInsightBuilders();
-  I.initPrivacyMode();
+test('Total Outflow sums spending and savings, and its details split it into the two', () => {
   const spending = [row('Food', 'Groceries', 'spending', -80), row('Food', 'Groceries', 'spending', 30)];
   const savings = [row('Savings', 'Deposit', 'savings', -300), row('Savings', 'Withdrawal', 'savings', 100)];
-  const view = {
+  const card = I._buildTotalOutflowInsight({
     spendingEntries: spending,
     savingsEntries: savings,
     outflowEntries: [...spending, ...savings],
-  };
-  const spendingCard = I._buildTotalSpendingInsight(view);
-  const outflowCard = I._buildTotalOutflowInsight(view);
-  assert.equal(spendingCard.label, 'Total Spending');
-  assert.equal(spendingCard.value, '$50.00');
-  assert.match(spendingCard.subtext, /Savings/);
-  assert.equal(outflowCard.label, 'Total Outflow');
-  assert.equal(outflowCard.value, '$250.00');
-  assert.match(outflowCard.subtext, /Spending plus savings/);
-  assert.match(outflowCard.meta, /^4 /);
+  });
+  assert.equal(card.label, 'Total Outflow');
+  assert.equal(card.value, '$250.00');
+  assert.equal(card.countText, '4 transactions');
+  assert.match(card.details.paragraphs[0], /Spending plus savings/);
+  assert.equal(plainJson(card.details.rows), plainJson([
+    { label: 'Spending', value: '$50.00' },
+    { label: 'Savings', value: '$200.00' },
+  ]));
+  const toNumber = text => Number(text.replace(/[$,]/g, ''));
+  assert.equal(toNumber(card.details.rows[0].value) + toNumber(card.details.rows[1].value), toNumber(card.value));
+});
+
+test('an empty side of Total Outflow reads $0.00, never a negative zero', () => {
+  const spending = [row('Food', 'Groceries', 'spending', -80)];
+  const card = I._buildTotalOutflowInsight({ spendingEntries: spending, savingsEntries: [], outflowEntries: spending });
+  assert.equal(card.details.rows[1].value, '$0.00');
+  const empty = I._buildTotalOutflowInsight({ spendingEntries: [], savingsEntries: [], outflowEntries: [] });
+  assert.equal(empty.value, '$0.00');
+  assert.equal(empty.countText, '0 transactions');
+});
+
+// ── The whole row, from the rows the table lists ───────────────
+
+/**
+ * The panel's builders over a ledger view, with the real slice and type rules.
+ * visibleTransactions stands for what the table lists after its filters.
+ */
+function loadPanel(visibleTransactions, insightCards = []) {
+  return load(['transactions/transaction-types.js', 'transactions/analytics.js', 'transactions/insights.js'],
+    'generateSpendingInsights, buildVisibleCategorySummaryData', {
+      visibleTransactions,
+      selectedAccountMode: 'single',
+      parseCategoryString: label => {
+        const [primary, detailed] = String(label).split(': ');
+        return { primary, detailed: detailed || '' };
+      },
+      getCategoryDisplayNames: () => ({}),
+      getAppConfig: () => ({ insightCards }),
+      maskMoney: value => value,
+      escapeHtml: value => String(value),
+      _splitMatchesSearch: () => true,
+      _splitMatchesCategoryFilter: () => true,
+    });
+}
+
+const ledgerRow = (id, amount, category, analytics_class, extra = {}) => ({
+  transaction_id: id, source: 'plaid', status: 'cleared', amount, user_category: category, analytics_class, ...extra,
+});
+
+const byLabel = (insights, label) => insights.find(insight => insight.label === label);
+
+test('the row is Total Outflow, the custom cards, Live Result, Category Summary', () => {
+  const panel = loadPanel(
+    [ledgerRow('a', -40, 'Food: Groceries', 'spending')],
+    [{ name: 'Food', primaries: ['Food'], details: [] }, { name: 'Pay', primaries: ['Income'], details: [] }],
+  );
+  const labels = panel.generateSpendingInsights().map(insight => insight.label);
+  assert.equal(plainJson(labels), plainJson(['Total Outflow', 'Food', 'Pay', 'Live Result', 'Category Summary']));
+});
+
+test('hidden rows count in every card while the table lists them, and not otherwise', () => {
+  const shown = ledgerRow('shown', -25, 'Food: Groceries', 'spending');
+  const hidden = ledgerRow('hidden', -70, 'Food: Groceries', 'spending', { is_hidden: true });
+  const cards = [{ name: 'Food', primaries: ['Food'], details: [] }];
+
+  const listed = loadPanel([shown, hidden], cards);
+  const withHidden = listed.generateSpendingInsights();
+  assert.equal(byLabel(withHidden, 'Total Outflow').value, '$95.00');
+  assert.equal(byLabel(withHidden, 'Total Outflow').countText, '2 transactions');
+  assert.equal(byLabel(withHidden, 'Food').countText, '2 transactions');
+  assert.equal(byLabel(withHidden, 'Live Result').countText, '2 transactions');
+  assert.equal(byLabel(withHidden, 'Category Summary').countText, '1 primary category');
+  // The category table and the summary export agree with the cards.
+  const summary = listed.buildVisibleCategorySummaryData();
+  assert.equal(summary.transaction_count, 2);
+  assert.equal(summary.spending_total, -95);
+
+  const notListed = loadPanel([shown], cards);
+  const withoutHidden = notListed.generateSpendingInsights();
+  assert.equal(byLabel(withoutHidden, 'Total Outflow').value, '$25.00');
+  assert.equal(byLabel(withoutHidden, 'Live Result').countText, '1 transaction');
+  assert.equal(notListed.buildVisibleCategorySummaryData().transaction_count, 1);
+});
+
+test('a view listing only hidden rows shows its cards; an empty view shows none', () => {
+  const onlyHidden = loadPanel([ledgerRow('h', -10, 'Food: Groceries', 'spending', { is_hidden: true })]);
+  assert.equal(byLabel(onlyHidden.generateSpendingInsights(), 'Live Result').countText, '1 transaction');
+  assert.equal(loadPanel([]).generateSpendingInsights(), null);
+});
+
+test('a pending row counts with the posted ones and no card names it apart', () => {
+  const posted = ledgerRow('posted', -30, 'Food: Groceries', 'spending');
+  const pending = ledgerRow('pending', -20, 'Food: Groceries', 'spending', { status: 'pending', pending: true });
+  const insights = loadPanel([posted, pending], [{ name: 'Food', primaries: ['Food'], details: [] }])
+    .generateSpendingInsights();
+  assert.equal(byLabel(insights, 'Total Outflow').value, '$50.00');
+  assert.equal(byLabel(insights, 'Total Outflow').countText, '2 transactions');
+  assert.equal(byLabel(insights, 'Food').countText, '2 transactions');
+  assert.equal(byLabel(insights, 'Live Result').countText, '2 transactions');
+  assert.doesNotMatch(JSON.stringify(insights), /\bpending\b/i);
 });
 
 // ── Hidden categories ──────────────────────────────────────────
@@ -472,4 +665,216 @@ test('a label in neither list is still missing, and the hidden list may be absen
   assert.equal(tree.find(group => group.primary === 'Gifts').missing, true);
   const noHidden = E.buildInsightCategoryTree(['Food: Groceries'], [{ primaries: [], details: ['Food: Dining Out'] }]);
   assert.equal(noHidden[0].details.find(detail => detail.label === 'Food: Dining Out').missing, true);
+});
+
+// ── Card membership ────────────────────────────────────────────
+
+test('a row counts on a card only when its class counts and its category is a member', () => {
+  const card = { primaries: ['Food'], details: [] };
+  assert.equal(A.insightCardCountsEntry(card, row('Food', 'Groceries', 'spending', -5)), true);
+  assert.equal(A.insightCardCountsEntry(card, row('Food', 'Groceries', 'transfer', -5)), false);
+  assert.equal(A.insightCardCountsEntry(card, row('Food', 'Groceries', 'adjustment', -5)), false);
+  assert.equal(A.insightCardCountsEntry(card, row('Food', 'Groceries', 'investment_trend', -5)), false);
+  assert.equal(A.insightCardCountsEntry(card, row('Food', 'Groceries', null, -5)), false);
+  assert.equal(A.insightCardCountsEntry(card, row('Travel', '', 'spending', -5)), false);
+});
+
+// ── Pressing a custom card ─────────────────────────────────────
+
+/** Renders cards against a fresh page whose search bar holds `query`. */
+function renderWithSearch(query, buildInsights) {
+  const page = load(['transactions/analytics.js', 'transactions/search.js', 'transactions/insights.js'],
+    '_buildInsightCardInsight, _buildTotalOutflowInsight, _buildLiveLedgerInsight, '
+    + '_buildCategorySummaryInsight, _renderInsightCard',
+    { ...insightsSandbox, searchQuery: query });
+  return buildInsights(page).map((insight, index) => page._renderInsightCard(insight, index));
+}
+
+const clickableCard = (name, query = '') => renderWithSearch(query, page => [
+  page._buildInsightCardInsight({ name, primaries: ['Food'], details: [] }, { trackableEntries: ledger }),
+])[0];
+
+test('a custom card is a button that reports whether its term is in the search', () => {
+  const idle = clickableCard('Food');
+  assert.match(idle, /class="insight-card insight-filter-card"/);
+  assert.match(idle, /onclick="_onInsightFilterCardClick\(event\)" role="button" tabindex="0"/);
+  assert.match(idle, /aria-pressed="false"/);
+  assert.match(idle, /data-insight-card-name="Food"/);
+  assert.match(idle, /title="Show the transactions this card counts"/);
+  // The name keeps its own tooltip for when the line truncates it.
+  assert.match(idle, /<div class="insight-label" title="Food">Food<\/div>/);
+
+  assert.match(clickableCard('Food', 'coffee card:"food"'), /aria-pressed="true"/);
+  assert.match(clickableCard('Food', 'card:"Food Bills"'), /aria-pressed="false"/);
+});
+
+test('the other three cards carry no filter wiring', () => {
+  const view = {
+    trackableEntries: ledger, outflowEntries: [], spendingEntries: [], savingsEntries: [],
+    ledgerEntries: ledger, summaryEntries: ledger,
+  };
+  const htmls = renderWithSearch('card:"Total Outflow"', page => [
+    page._buildTotalOutflowInsight(view), page._buildLiveLedgerInsight(view), page._buildCategorySummaryInsight(view),
+  ]);
+  assert.equal(htmls.length, 3);
+  htmls.forEach(html => {
+    assert.doesNotMatch(html, /aria-pressed|insight-filter-card|_onInsightFilterCardClick|data-insight-card-name/);
+  });
+});
+
+test('a card name is escaped into its attribute', () => {
+  const page = load(['transactions/analytics.js', 'transactions/search.js', 'transactions/insights.js'],
+    '_renderInsightCard', {
+      ...insightsSandbox,
+      escapeHtml: value => String(value).replace(/"/g, '&quot;'),
+    });
+  const html = page._renderInsightCard(
+    { label: 'x', value: '$1', countText: '1 transaction', filterCardName: 'a"b' }, 0,
+  );
+  assert.match(html, /data-insight-card-name="a&quot;b"/);
+});
+
+/** The handlers over stubs for the search bar and the page. */
+function loadHandlers() {
+  const toggled = [];
+  const cards = [];
+  const sandboxed = {
+    ...insightsSandbox,
+    toggleCardSearchFilter: name => toggled.push(name),
+    isCardTermInSearch: () => false,
+    document: {
+      activeElement: null,
+      addEventListener: () => {},
+      querySelectorAll: () => cards,
+    },
+  };
+  const handlers = load(['transactions/analytics.js', 'transactions/insights.js'],
+    '_onInsightFilterCardClick, _onInsightDetailsKeydown', sandboxed);
+  return { handlers, toggled, cards, page: sandboxed.document };
+}
+
+const fakeCard = name => ({
+  classList: { contains: className => className === 'insight-filter-card' },
+  getAttribute: attribute => (attribute === 'data-insight-card-name' ? name : null),
+  focused: 0,
+  focus() { this.focused += 1; },
+});
+
+test('pressing a custom card toggles its filter, but not from the info button or details', () => {
+  const { handlers, toggled } = loadHandlers();
+  const card = fakeCard('Food');
+  const pressOn = insideSelector => ({
+    currentTarget: card,
+    target: { closest: selector => (insideSelector && selector.includes(insideSelector) ? {} : null) },
+  });
+  handlers._onInsightFilterCardClick(pressOn(null));
+  assert.equal(JSON.stringify(toggled), JSON.stringify(['Food']));
+  handlers._onInsightFilterCardClick(pressOn('.insight-info-btn'));
+  handlers._onInsightFilterCardClick(pressOn('.insight-popover'));
+  assert.equal(toggled.length, 1);
+});
+
+test('Enter and Space on a focused custom card toggle it; other keys and targets do not', () => {
+  const { handlers, toggled } = loadHandlers();
+  const card = fakeCard('Food');
+  let prevented = 0;
+  const key = (keyName, target, extra = {}) => ({
+    key: keyName, target, preventDefault: () => { prevented += 1; }, ...extra,
+  });
+
+  handlers._onInsightDetailsKeydown(key('Enter', card));
+  handlers._onInsightDetailsKeydown(key(' ', card));
+  assert.equal(toggled.length, 2);
+  assert.equal(prevented, 2);
+
+  handlers._onInsightDetailsKeydown(key('a', card));
+  handlers._onInsightDetailsKeydown(key('Enter', card, { repeat: true }));
+  // The info button inside a card acts on Enter itself.
+  handlers._onInsightDetailsKeydown(key('Enter', { classList: { contains: () => false } }));
+  assert.equal(toggled.length, 2);
+});
+
+test('a keyboard press puts focus back on the redrawn card', () => {
+  const { handlers, cards, page } = loadHandlers();
+  const before = fakeCard('Food');
+  const after = fakeCard('Food');
+  cards.push(fakeCard('Pay'), after);
+  page.activeElement = before;
+  handlers._onInsightDetailsKeydown({ key: 'Enter', target: before, preventDefault: () => {} });
+  assert.equal(after.focused, 1);
+});
+
+// ── A card's number while its term narrows the ledger ──────────
+
+test('a split group listed through a matching piece counts only that piece on the card', () => {
+  const split = {
+    transaction_id: 's1', source: 'plaid', status: 'cleared', amount: -50, is_split: true,
+    user_category: 'Split', analytics_class: 'excluded',
+    splits: [
+      { transaction_id: 's1_split_0', amount: -30, user_category: 'Food: Groceries', analytics_class: 'spending' },
+      { transaction_id: 's1_split_1', amount: -20, user_category: 'Travel: Flights', analytics_class: 'spending' },
+    ],
+  };
+  const cards = [{ name: 'Food', primaries: ['Food'], details: [] }];
+  const sandboxed = {
+    visibleTransactions: [split],
+    selectedAccountMode: 'single',
+    insightCards: cards,
+    searchTokens: [],
+    isTransferCategory: () => false,
+    parseCategoryString: label => {
+      const [primary, detailed] = String(label).split(': ');
+      return { primary, detailed: detailed || '' };
+    },
+    getCategoryDisplayNames: () => ({}),
+    getAppConfig: () => ({ insightCards: cards }),
+    maskMoney: value => value,
+    escapeHtml: value => String(value),
+    _splitMatchesSearch: (parent, piece) => (
+      sandboxed.searchTokens.length === 0
+      || sandboxed.transactionMatchesSearch({ ...parent, ...piece }, sandboxed.searchTokens)
+    ),
+    _splitMatchesCategoryFilter: () => true,
+  };
+  const panel = load(
+    ['transactions/transaction-types.js', 'transactions/analytics.js', 'transactions/search.js', 'transactions/insights.js'],
+    'generateSpendingInsights, parseSearchQuery, transactionMatchesSearch', sandboxed);
+  sandboxed.transactionMatchesSearch = panel.transactionMatchesSearch;
+
+  sandboxed.searchTokens = panel.parseSearchQuery('card:Food');
+  const food = panel.generateSpendingInsights().find(insight => insight.label === 'Food');
+  assert.equal(food.value, '$30.00');
+  assert.equal(food.countText, '1 transaction');
+});
+
+test('a card filter that lists nothing still shows the row, with the card pressed', () => {
+  const cards = [{ name: 'Food', primaries: ['Food'], details: [] }];
+  // The search text is read when the scripts load, so each case loads its own panel.
+  const loadEmptyLedgerPanel = searchQuery => load(
+    ['transactions/transaction-types.js', 'transactions/analytics.js', 'transactions/search.js', 'transactions/insights.js'],
+    'generateSpendingInsights, _renderInsightCard', {
+      visibleTransactions: [],
+      selectedAccountMode: 'single',
+      searchQuery,
+      searchTokens: [],
+      isTransferCategory: () => false,
+      parseCategoryString: label => {
+        const [primary, detailed] = String(label).split(': ');
+        return { primary, detailed: detailed || '' };
+      },
+      getCategoryDisplayNames: () => ({}),
+      getAppConfig: () => ({ insightCards: cards }),
+      maskMoney: value => value,
+      escapeHtml: value => String(value),
+      _splitMatchesSearch: () => true,
+      _splitMatchesCategoryFilter: () => true,
+    });
+
+  const filtered = loadEmptyLedgerPanel('Paycheck card:"Food"');
+  const food = filtered.generateSpendingInsights().find(insight => insight.label === 'Food');
+  assert.equal(food.countText, '0 transactions');
+  assert.match(filtered._renderInsightCard(food, 1), /aria-pressed="true"/);
+
+  // The same empty ledger with no card in the search keeps the empty state.
+  assert.equal(loadEmptyLedgerPanel('Paycheck').generateSpendingInsights(), null);
 });

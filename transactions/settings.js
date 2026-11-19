@@ -31,7 +31,6 @@ async function saveSettings() {
     });
     const timezone = document.getElementById('timezone').value;
     const hideTransfers = document.getElementById('hide-transfers').checked;
-    const showOverridesOnly = document.getElementById('show-overrides-only').checked;
     setShowUnmatchedOnlyEnabled(document.getElementById('show-unmatched-toggle')?.checked);
     
     const settings = {
@@ -39,7 +38,6 @@ async function saveSettings() {
       field_order: ['datetime', 'bank_account', 'description', 'amount', ...optionalFields],
       timezone: timezone,
       hide_transfers: hideTransfers,
-      show_overrides_only: showOverridesOnly,
       show_pending: document.getElementById('show-pending-toggle').checked,
       bills_future_days: _getForecastHorizonDays()
     };
@@ -114,10 +112,6 @@ function applySettings(settings) {
   // Apply hide_transfers setting (default to false if not set)
   const hideTransfers = resolvedSettings.hide_transfers !== undefined ? resolvedSettings.hide_transfers : false;
   document.getElementById('hide-transfers').checked = hideTransfers;
-
-  // Apply show_overrides_only setting (default to false if not set)
-  const showOverridesOnly = resolvedSettings.show_overrides_only !== undefined ? resolvedSettings.show_overrides_only : false;
-  document.getElementById('show-overrides-only').checked = showOverridesOnly;
 
   // Apply show_pending setting (default to true if not set)
   const showPending = resolvedSettings.show_pending !== undefined ? resolvedSettings.show_pending : true;

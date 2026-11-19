@@ -288,10 +288,13 @@ function loadAnalytics(visible) {
 }
 
 test('a waiting split payload counts its pieces and not the hidden manual row', () => {
+  // is_hidden alone no longer keeps a listed row out of the totals, so this
+  // row is held out by hidden_by_match, the flag a matched manual row carries.
   const hiddenManual = {
     transaction_id: 'manual-1',
     source: 'manual',
     status: 'matched',
+    is_hidden: true,
     hidden_by_match: true,
     amount: -100,
     analytics_class: 'spending',

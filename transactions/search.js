@@ -38,6 +38,8 @@
  *   txn, id               → transaction_id
  *   plaid, plaid_id       → plaid_transaction_id
  *   account_id, acct_id   → account_id (account: is the display name)
+ *   card                  → rows a custom insight card counts, by card name (case-insensitive;
+ *                           an unknown name matches nothing). Clicking a card writes this term.
  *
  * Returns an array of token objects:
  *   { type: 'text'|'field', negate: bool, field?: string, value: string,
@@ -48,43 +50,14 @@ function parseSearchQuery(queryString) {
   const tokens = [];
   if (!queryString || !queryString.trim()) return tokens;
 
-  const raw = queryString.trim();
-  let position = 0;
-
-  while (position < raw.length) {
-    // Skip whitespace
-    if (raw[position] === ' ') { position++; continue; }
-
-    let negate = false;
-    if (raw[position] === '-' && position + 1 < raw.length && raw[position + 1] !== ' ') {
-      negate = true;
-      position++;
+  _scanSearchTerms(queryString.trim()).forEach(term => {
+    if (term.kind === 'phrase') {
+      tokens.push({ type: 'text', negate: term.negate, value: term.body });
+      return;
     }
 
-    // Check for quoted phrase
-    if (raw[position] === '"') {
-      const closeQuote = raw.indexOf('"', position + 1);
-      if (closeQuote !== -1) {
-        tokens.push({ type: 'text', negate, value: raw.substring(position + 1, closeQuote) });
-        position = closeQuote + 1;
-        continue;
-      }
-    }
-
-    // Extract next word/token (up to space or end)
-    let endOfToken = position;
-    // Handle field:"quoted value" by tracking quote state
-    let insideQuotes = false;
-    while (endOfToken < raw.length) {
-      if (raw[endOfToken] === '"') {
-        insideQuotes = !insideQuotes;
-      } else if (raw[endOfToken] === ' ' && !insideQuotes) {
-        break;
-      }
-      endOfToken++;
-    }
-    const tokenStr = raw.substring(position, endOfToken);
-    position = endOfToken;
+    const tokenStr = term.body;
+    const negate = term.negate;
 
     // Check for field:value pattern
     const colonIndex = tokenStr.indexOf(':');
@@ -115,7 +88,7 @@ function parseSearchQuery(queryString) {
         }
 
         tokens.push(token);
-        continue;
+        return;
       }
     }
 
@@ -124,9 +97,72 @@ function parseSearchQuery(queryString) {
     if (cleanValue) {
       tokens.push({ type: 'text', negate, value: cleanValue });
     }
-  }
+  });
 
   return tokens;
+}
+
+/**
+ * Split a query into its terms, with the position of each in the text. The
+ * parser and the card-term edits both read terms through this one scan, so
+ * what the edit calls a term is what the parser would.
+ *
+ * Terms are separated by spaces outside double quotes. A leading "-" marks
+ * negation. kind is 'phrase' for a bare "quoted phrase" and 'word' for anything
+ * else; body is the phrase without its quotes, or the word without its "-".
+ * @param {string} raw
+ * @returns {Array<{start: number, end: number, negate: boolean,
+ *   kind: 'phrase'|'word', body: string}>}
+ */
+function _scanSearchTerms(raw) {
+  const terms = [];
+  let position = 0;
+
+  while (position < raw.length) {
+    // Skip whitespace
+    if (raw[position] === ' ') { position++; continue; }
+
+    const start = position;
+    let negate = false;
+    if (raw[position] === '-' && position + 1 < raw.length && raw[position + 1] !== ' ') {
+      negate = true;
+      position++;
+    }
+
+    // Check for quoted phrase
+    if (raw[position] === '"') {
+      const closeQuote = raw.indexOf('"', position + 1);
+      if (closeQuote !== -1) {
+        terms.push({
+          start, end: closeQuote + 1, negate, kind: 'phrase',
+          body: raw.substring(position + 1, closeQuote),
+        });
+        position = closeQuote + 1;
+        continue;
+      }
+    }
+
+    // Extract next word/token (up to space or end)
+    const bodyStart = position;
+    let endOfToken = position;
+    // Handle field:"quoted value" by tracking quote state
+    let insideQuotes = false;
+    while (endOfToken < raw.length) {
+      if (raw[endOfToken] === '"') {
+        insideQuotes = !insideQuotes;
+      } else if (raw[endOfToken] === ' ' && !insideQuotes) {
+        break;
+      }
+      endOfToken++;
+    }
+    terms.push({
+      start, end: endOfToken, negate, kind: 'word',
+      body: raw.substring(bodyStart, endOfToken),
+    });
+    position = endOfToken;
+  }
+
+  return terms;
 }
 
 /**
@@ -160,6 +196,7 @@ function _normalizeFieldName(name) {
     plaid_transaction_id: 'plaid_transaction_id',
     account_id: 'account_id',
     acct_id: 'account_id',
+    card: 'card',
   };
   return FIELD_ALIASES[name] || null;
 }
@@ -338,6 +375,13 @@ function _matchFieldToken(txn, token) {
       return _matchIsToken(txn, valueLower);
     }
 
+    case 'card': {
+      // The same rule the card's own number uses, read over the row's own
+      // category and class. A split group is listed through its pieces by the
+      // table, like any other field, and the card counts only those pieces.
+      return insightCardNamedCountsRow(token.value, txn);
+    }
+
     case 'bill_id':
     case 'transaction_id':
     case 'plaid_transaction_id':
@@ -443,6 +487,10 @@ function _matchIsToken(txn, flagName) {
  * Initialize the search bar: attach input listeners with debounce,
  * clear button behavior, and help modal toggle.
  */
+// Held at file level so setSearchText and clearSearch can cancel a pending
+// keystroke, which would otherwise write the old text back over theirs.
+let _searchDebounceTimer = null;
+
 function initSearchBar() {
   const searchInput = document.getElementById('search-input');
   if (!searchInput) return;
@@ -463,17 +511,15 @@ function initSearchBar() {
     console.warn('Ignoring malformed ?search= parameter:', urlParseError);
   }
 
-  let debounceTimer = null;
-
   searchInput.addEventListener('input', function() {
-    clearTimeout(debounceTimer);
+    clearTimeout(_searchDebounceTimer);
     const query = this.value;
 
     // Show/hide clear button based on input content
     _toggleSearchClearButton(query);
 
     // Debounce: wait 250ms after user stops typing before filtering
-    debounceTimer = setTimeout(() => {
+    _searchDebounceTimer = setTimeout(() => {
       searchQuery = query;
       searchTokens = parseSearchQuery(query);
       renderTransactionTable();
@@ -520,15 +566,145 @@ function _toggleSearchClearButton(query) {
 }
 
 /**
+ * Put new text in the search bar and apply it the way typing does: input
+ * value, parsed tokens, clear button, table re-render, without the debounce.
+ * @param {string} text
+ */
+function setSearchText(text) {
+  clearTimeout(_searchDebounceTimer);
+  const searchInput = document.getElementById('search-input');
+  if (searchInput) searchInput.value = text;
+  searchQuery = text;
+  searchTokens = parseSearchQuery(text);
+  _toggleSearchClearButton(text);
+  renderTransactionTable();
+}
+
+/**
  * Clear the search input, reset state, and re-render.
  */
 function clearSearch() {
+  setSearchText('');
+}
+
+// ===== Card terms in the search text =====
+// Clicking a custom insight card edits the card: term in the search bar. The
+// edits are pure text functions so everything else the user typed is left as
+// typed.
+
+/**
+ * The card: term for a card name. A double quote cannot be written inside a
+ * quoted value, so it is dropped from the name; the matcher drops it from
+ * card names the same way.
+ * @param {string} cardName
+ * @returns {string} For example card:"Eating out".
+ */
+function buildCardSearchTerm(cardName) {
+  return `card:"${String(cardName).replace(/"/g, '').trim()}"`;
+}
+
+/**
+ * The positive card: terms in a search text, with where each sits. A negated
+ * -card: term is another filter and is not one of these.
+ * @param {string} text
+ * @returns {Array<{start: number, end: number, name: string}>} name is as
+ *   typed, quotes removed.
+ */
+function _findCardTermsInSearchText(text) {
+  const found = [];
+  _scanSearchTerms(text || '').forEach(term => {
+    if (term.kind !== 'word' || term.negate) return;
+    const colonIndex = term.body.indexOf(':');
+    if (colonIndex <= 0) return;
+    if (_normalizeFieldName(term.body.substring(0, colonIndex).toLowerCase()) !== 'card') return;
+    found.push({
+      start: term.start,
+      end: term.end,
+      name: term.body.substring(colonIndex + 1).replace(/"/g, ''),
+    });
+  });
+  return found;
+}
+
+/**
+ * Whether a search text holds the term for this card, quoted or not, in any
+ * letter case.
+ * @param {string} text
+ * @param {string} cardName
+ * @returns {boolean}
+ */
+function isCardTermInSearch(text, cardName) {
+  const wanted = normalizeInsightCardSearchName(cardName);
+  return _findCardTermsInSearchText(text)
+    .some(term => normalizeInsightCardSearchName(term.name) === wanted);
+}
+
+/**
+ * Cut the given spans out of a text, with the spaces that separated each from
+ * its neighbour, so no gap is left behind.
+ */
+function _removeSearchTextSpans(text, spans) {
+  let result = text;
+  [...spans].sort((spanA, spanB) => spanB.start - spanA.start).forEach(span => {
+    let start = span.start;
+    let end = span.end;
+    if (result[end] === ' ') {
+      while (result[end] === ' ') end++;
+    } else {
+      while (start > 0 && result[start - 1] === ' ') start--;
+    }
+    result = result.substring(0, start) + result.substring(end);
+  });
+  return result;
+}
+
+/**
+ * The search text after a click on a card. The card's term is removed when it
+ * is there. Otherwise it replaces any other card's term, in the same place,
+ * or is added after whatever is typed. Two cards in one search would AND and
+ * usually list nothing, so a click never leaves two.
+ * @param {string} text The search text as typed.
+ * @param {string} cardName
+ * @returns {string}
+ */
+function toggleCardTermInSearchText(text, cardName) {
+  const current = text || '';
+  const terms = _findCardTermsInSearchText(current);
+  const wanted = normalizeInsightCardSearchName(cardName);
+  const own = terms.filter(term => normalizeInsightCardSearchName(term.name) === wanted);
+
+  if (own.length > 0) {
+    return _removeSearchTextSpans(current, own);
+  }
+
+  const newTerm = buildCardSearchTerm(cardName);
+  if (terms.length === 0) {
+    const typedText = current.replace(/ +$/, '');
+    return typedText ? `${typedText} ${newTerm}` : newTerm;
+  }
+
+  const [first, ...others] = terms;
+  const replaced = current.substring(0, first.start) + newTerm + current.substring(first.end);
+  if (others.length === 0) return replaced;
+
+  // Offsets after the replaced term moved; find the extra card terms again.
+  const shift = newTerm.length - (first.end - first.start);
+  return _removeSearchTextSpans(replaced, others.map(term => ({
+    start: term.start + shift,
+    end: term.end + shift,
+  })));
+}
+
+/**
+ * Click on a card: toggle its term in the search bar and apply it. The edit
+ * starts from what is in the input, which can be ahead of the applied search
+ * by the typing debounce.
+ * @param {string} cardName
+ */
+function toggleCardSearchFilter(cardName) {
   const searchInput = document.getElementById('search-input');
-  if (searchInput) searchInput.value = '';
-  searchQuery = '';
-  searchTokens = [];
-  _toggleSearchClearButton('');
-  renderTransactionTable();
+  const typed = searchInput ? searchInput.value : searchQuery;
+  setSearchText(toggleCardTermInSearchText(typed, cardName));
 }
 
 /**

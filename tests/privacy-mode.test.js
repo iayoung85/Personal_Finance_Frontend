@@ -69,38 +69,46 @@ test('the button reflects the mode', () => {
   assert.match(P.privacyToggleButtonHtml(), / active/);
 });
 
-test('insight cards mask their totals, averages and in/out lines', () => {
+test('insight cards mask their totals and every amount in their details', () => {
   const I = load(['transactions/privacy.js', 'transactions/analytics.js', 'transactions/insights.js'], [
     'initPrivacyMode', 'togglePrivacyMode',
-    '_buildTotalSpendingInsight', '_buildInsightCardInsight', '_buildLiveLedgerInsight',
+    '_buildTotalOutflowInsight', '_buildInsightCardInsight', '_buildLiveLedgerInsight',
   ].join(', '), {
     getAppConfig: () => ({ transactionsPrivacyByDefault: true }),
     escapeHtml: (s) => s,
     document: { body: { dataset: {} }, getElementById: () => null },
   });
   const spending = { amount: -40, analytics_class: 'spending', primary_category: 'Food', detailed_category: 'Coffee' };
+  const savings = { amount: -10, analytics_class: 'savings', primary_category: 'Savings', detailed_category: 'Deposit' };
   const income = { amount: 100, analytics_class: 'income', primary_category: 'Income', detailed_category: 'Pay' };
   const view = {
     spendingEntries: [spending],
-    trackableEntries: [spending, income],
-    ledgerEntries: [spending, income],
+    savingsEntries: [savings],
+    outflowEntries: [spending, savings],
+    trackableEntries: [spending, savings, income],
+    ledgerEntries: [spending, savings, income],
   };
-  const mixedCard = { name: 'Mixed', primaries: ['food', 'income'], details: [] };
+  // Holds both sides, so its details carry In, Out and two averages.
+  const mixedCard = { name: 'Mixed', primaries: ['Food', 'Income'], details: [] };
 
   I.initPrivacyMode();
   const cards = [
-    I._buildTotalSpendingInsight(view),
+    I._buildTotalOutflowInsight(view),
     I._buildInsightCardInsight(mixedCard, view),
     I._buildLiveLedgerInsight(view),
   ];
+  assert.equal(cards[1].details.rows.length, 4);
   for (const card of cards) {
     assert.equal(card.value, '$**.**', card.label);
-    const lines = Array.isArray(card.subtext) ? card.subtext : [card.subtext];
-    for (const line of lines) assert.doesNotMatch(String(line), /\$\d/, `${card.label}: ${line}`);
+    for (const detailRow of card.details.rows || []) {
+      assert.doesNotMatch(String(detailRow.value), /\$\d/, `${card.label}: ${detailRow.label}`);
+    }
   }
 
   I.togglePrivacyMode();
-  assert.equal(I._buildTotalSpendingInsight(view).value, '$40.00');
+  const outflow = I._buildTotalOutflowInsight(view);
+  assert.equal(outflow.value, '$50.00');
+  assert.equal(outflow.details.rows[0].value, '$40.00');
   assert.match(I._buildInsightCardInsight(mixedCard, view).value, /\$\d/);
-  assert.equal(I._buildLiveLedgerInsight(view).value, '$60.00');
+  assert.equal(I._buildLiveLedgerInsight(view).value, '$50.00');
 });
