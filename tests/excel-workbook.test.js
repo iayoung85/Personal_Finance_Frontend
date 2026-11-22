@@ -145,12 +145,12 @@ function fakeExcel(sheets, selection) {
 function loadWorkbook(excel) {
   const files = [
     'shared/fiscal-year.js', 'shared/report-grid.js', 'excel/constants.js', 'excel/cells.js',
-    'excel/sheet-extent.js', 'excel/default-range.js', 'excel/checks.js', 'excel/workbook.js',
+    'excel/sheet-extent.js', 'excel/default-range.js', 'excel/checks.js', 'excel/targets.js', 'excel/workbook.js',
   ].map(relPath => path.join(__dirname, '..', relPath));
   const source = files.map(file => fs.readFileSync(file, 'utf8')).join('\n');
   const sandbox = { module: { exports: {} }, console, Excel: excel.Excel };
   vm.runInNewContext(
-    `${source}\nmodule.exports = { runWorkbookCheck, pasteGridAtSelection, buildBalanceReportGrid, buildCategoryReportGrid };`,
+    `${source}\nmodule.exports = { runWorkbookCheck, pasteGridAtSelection, buildBalanceReportGrid, buildCategoryReportGrid, readTargetsSheetValues, writeTargetsWorkbook, targetsSheetFromYear, buildTargetsCheckSheetRows };`,
     sandbox,
     { filename: files[files.length - 1] },
   );
@@ -274,4 +274,57 @@ test('paste at the selected cell writes the typed grid there and nothing else', 
   assert.equal(scratch.valueAt(4, 4), 46053);
   assert.equal(scratch.valueAt(7, 3), 5747);
   assert.equal(excel.byName.has('PF_CHECK'), false);
+});
+
+// ── Targets ──────────────────────────────────────────────────
+
+const TARGET_CATEGORIES = [{ primary: 'Food', kind: 'spending', labels: ['Food: Groceries'] }];
+const TARGET_YEAR = {
+  fiscal_year: 2026, label: 'FY2026', start: '2025-11-01', end: '2026-10-31',
+  targets: [{ category: 'Food: Groceries', cadence: 'monthly', amount: 412.5 }],
+};
+
+test('pull writes PF_TARGETS whole, over what was there, and touches no other sheet', async () => {
+  const stale = new FakeSheet('PF_TARGETS', [['old'], ['old'], ['old'], ['old'], ['old'], ['old'], ['old'], ['old'], ['old'], ['old']]);
+  const budget = new FakeSheet('Budget plan', [['mine']]);
+  const excel = fakeExcel([stale, budget], null);
+  const workbook = loadWorkbook(excel);
+
+  const built = workbook.targetsSheetFromYear(TARGET_YEAR, TARGET_CATEGORIES);
+  await workbook.writeTargetsWorkbook({ targetsSheet: built });
+
+  assert.deepEqual(stale.rows(1, 3)[0], ['Fiscal year', 2026, 'FY2026']);
+  assert.deepEqual(stale.rows(built.rowCount + 1, 5)[built.headerRowIndex], ['Primary', 'Category', 'Kind', 'Monthly target', 'Annual target']);
+  assert.deepEqual(stale.rows(built.rowCount + 1, 5)[built.rowCount - 1], ['Food', 'Food: Groceries', 'spending', 412.5, '']);
+  assert.equal(stale.valueAt(built.rowCount, 0), '', 'rows past the new table are cleared');
+  assert.equal(stale.formats.get(`${built.rowCount - 1},1`), '@');
+  assert.equal(stale.formats.get(`${built.rowCount - 1},3`), '#,##0.00');
+  assert.equal(budget.writes, 0);
+  assert.equal(excel.byName.has('PF_CHECK'), false, 'a pull alone does not write PF_CHECK');
+});
+
+test('a pull makes the sheet when the workbook has none, and reading it back gives the same values', async () => {
+  const excel = fakeExcel([], null);
+  const workbook = loadWorkbook(excel);
+  assert.equal(await workbook.readTargetsSheetValues(), null);
+
+  const built = workbook.targetsSheetFromYear(TARGET_YEAR, TARGET_CATEGORIES);
+  await workbook.writeTargetsWorkbook({ targetsSheet: built });
+  const read = await workbook.readTargetsSheetValues();
+  assert.equal(read.length, built.rowCount);
+  assert.deepEqual(JSON.parse(JSON.stringify(read[built.rowCount - 1])), ['Food', 'Food: Groceries', 'spending', 412.5, '']);
+});
+
+test('a targets check writes PF_CHECK and leaves PF_TARGETS alone', async () => {
+  const targets = new FakeSheet('PF_TARGETS', [['edited by hand']]);
+  const excel = fakeExcel([targets], null);
+  const workbook = loadWorkbook(excel);
+
+  const rows = workbook.buildTargetsCheckSheetRows({
+    checkedAt: new Date(2026, 10, 21, 9, 5), yearText: 'FY2026', outcome: 'Targets checked', findings: [],
+  });
+  await workbook.writeTargetsWorkbook({ checkRows: rows });
+
+  assert.equal(targets.writes, 0);
+  assert.match(excel.byName.get('PF_CHECK').valueAt(0, 0), /^Targets checked 2026-11-21 09:05, fiscal year FY2026\./);
 });

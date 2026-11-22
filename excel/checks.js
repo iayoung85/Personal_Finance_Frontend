@@ -660,10 +660,26 @@ function _formatCheckTime(date) {
  * @returns {string[][]}
  */
 function buildCheckSheetRows({ checkedAt, startMonth, endMonth, outcome, findings }) {
+  const scope = `months ${monthKeyLabel(startMonth)} to ${monthKeyLabel(endMonth)}`;
+  return buildScopedCheckSheetRows({ checkedAt, scope, outcome, findings });
+}
+
+/**
+ * The same sheet rows for a run whose scope is not a month range, such as a
+ * targets check. The first line reads "<outcome> <time>, <scope>. <counts>".
+ *
+ * @param {Object} input
+ * @param {Date} input.checkedAt
+ * @param {string} input.scope - what the run covered, e.g. "fiscal year FY2026"
+ * @param {string} input.outcome
+ * @param {Array<Object>} input.findings
+ * @returns {string[][]}
+ */
+function buildScopedCheckSheetRows({ checkedAt, scope, outcome, findings }) {
   const width = EXCEL_CHECK_COLUMNS.length;
   const pad = cells => [...cells, ...Array(Math.max(0, width - cells.length)).fill('')];
   const counts = countFindings(findings);
-  const summary = `${outcome} ${_formatCheckTime(checkedAt)}, months ${monthKeyLabel(startMonth)} to ${monthKeyLabel(endMonth)}. `
+  const summary = `${outcome} ${_formatCheckTime(checkedAt)}, ${scope}. `
     + `${counts.fix} to fix, ${counts.info} ${counts.info === 1 ? 'note' : 'notes'}.`;
 
   const rows = [pad([summary]), pad([]), [...EXCEL_CHECK_COLUMNS]];

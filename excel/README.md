@@ -2,6 +2,8 @@
 
 A task pane for the budget workbook. It fetches the account-balance and category-summary reports for a month range, writes them to `PF_BALANCES` and `MYAPP Categories` in the layout the web client's report copy produces, and writes what the workbook's lookups will miss to `PF_CHECK`. It can also paste either report at the selected cell. It never writes to the `Accounts` or `Categories` sheets.
 
+The Targets card moves the app's budget targets through `PF_TARGETS`. Pull targets rewrites that sheet for the picked fiscal year: the year and its dates at the top, then one row per category the app lets take a target, each primary above its detailed categories. Edit only the Monthly target and Annual target cells; a blank cell means no target. Check targets writes what would change (added, changed, removed) to `PF_CHECK` and turns Send on. Send re-reads the sheet, refuses if it no longer matches the check, replaces the year's targets in the app, and rewrites `PF_TARGETS` from the app's answer. A send replaces the whole year: a category with no amount on the sheet loses its target. Pace settings are not on the sheet and are left as the app has them.
+
 Two manifests, the same panel:
 
 | File | Panel served from | API | Name in Excel |

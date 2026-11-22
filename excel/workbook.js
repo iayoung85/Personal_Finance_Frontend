@@ -269,3 +269,66 @@ async function pasteGridAtSelection(grid) {
     return target.address;
   });
 }
+
+// ── Targets ──────────────────────────────────────────────────
+
+/**
+ * Everything in use on PF_TARGETS, from A1, as the sheet holds it now.
+ *
+ * @returns {Promise<Array<Array<*>>|null>} null when the sheet does not exist
+ */
+async function readTargetsSheetValues() {
+  return Excel.run(async context => {
+    const sheet = _excelSheetOrNull(context, EXCEL_SHEET_NAMES.targets);
+    await context.sync();
+    if (sheet.isNullObject) return null;
+
+    const usedRange = sheet.getUsedRangeOrNullObject(true);
+    usedRange.load('rowIndex,columnIndex,rowCount,columnCount');
+    await context.sync();
+
+    const holder = _queueValuesFromA1(sheet, usedRange);
+    await context.sync();
+    return holder.range ? holder.range.values : [];
+  });
+}
+
+/** Queue the rewrite of PF_TARGETS: cleared whole, then formats, then values. */
+function _queueTargetsSheet(context, existingSheet, built) {
+  const sheet = existingSheet.isNullObject
+    ? context.workbook.worksheets.add(EXCEL_SHEET_NAMES.targets)
+    : existingSheet;
+  // The sheet is the add-in's own, so a pull replaces everything on it.
+  sheet.getRange().clear(Excel.ClearApplyTo.all);
+
+  const block = sheet.getRange(excelBlockAddress(built.rowCount, built.columnCount));
+  block.numberFormat = built.formats;
+  block.values = built.values;
+
+  const lastColumn = excelColumnLetter(built.columnCount - 1);
+  const headerRowNumber = built.headerRowIndex + 1;
+  sheet.getRange('A1:A3').format.font.bold = true;
+  sheet.getRange(`A${headerRowNumber}:${lastColumn}${headerRowNumber}`).format.font.bold = true;
+  // Only the table is fitted: the note above it is a long line meant to run across.
+  sheet.getRange(`A${headerRowNumber}:${lastColumn}${built.rowCount}`).format.autofitColumns();
+}
+
+/**
+ * Rewrite PF_TARGETS, PF_CHECK, or both, each whole, in one batch.
+ *
+ * @param {Object} input
+ * @param {Object} [input.targetsSheet] - from targetsSheetFromYear
+ * @param {string[][]} [input.checkRows] - from buildTargetsCheckSheetRows
+ * @returns {Promise<void>}
+ */
+async function writeTargetsWorkbook({ targetsSheet, checkRows }) {
+  return Excel.run(async context => {
+    const targets = _excelSheetOrNull(context, EXCEL_SHEET_NAMES.targets);
+    const check = _excelSheetOrNull(context, EXCEL_SHEET_NAMES.check);
+    await context.sync();
+
+    if (targetsSheet) _queueTargetsSheet(context, targets, targetsSheet);
+    if (checkRows) _queueCheckSheet(context, check, checkRows);
+    await context.sync();
+  });
+}

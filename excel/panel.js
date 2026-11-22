@@ -7,7 +7,7 @@
 //
 // Dependencies: excel/constants.js, excel/default-range.js,
 // excel/checks.js (describeWorkbookRun), excel/api.js,
-// excel/workbook.js, shared/report-grid.js, config-helpers.js
+// excel/workbook.js, excel/targets.js, shared/report-grid.js, config-helpers.js
 // (initAppConfig, getAppConfig, applyTheme), shared/fiscal-year.js.
 // ============================================================
 
@@ -15,6 +15,8 @@ const _excelPanelState = {
   inExcel: false,
   busy: false,
   awaitingCode: false,
+  // The last targets check that found something to send and nothing to fix.
+  targetsCheck: null,
 };
 
 const _EXCEL_NOT_IN_EXCEL = 'Open this panel from Excel to read or write the workbook.';
@@ -108,6 +110,8 @@ async function excelEnterPanel(isDev) {
   _excelFillMonthSelect(_excelElement('xl-start-month'), options, range.startMonth);
   _excelFillMonthSelect(_excelElement('xl-end-month'), options, range.endMonth);
 
+  await _excelLoadTargetYears();
+
   _excelElement('xl-signin').classList.add('hidden');
   _excelElement('xl-main').classList.remove('hidden');
   _excelElement('xl-signout').classList.toggle('hidden', isDev);
@@ -128,10 +132,11 @@ async function excelEnterPanel(isDev) {
 function _excelSetBusy(busy) {
   _excelPanelState.busy = busy;
   const workbookButtonsOff = busy || !_excelPanelState.inExcel;
-  for (const id of ['xl-check', 'xl-paste-both', 'xl-paste-selection']) {
+  for (const id of ['xl-check', 'xl-paste-both', 'xl-paste-selection', 'xl-targets-pull', 'xl-targets-check']) {
     _excelElement(id).disabled = workbookButtonsOff;
   }
-  for (const id of ['xl-start-month', 'xl-end-month', 'xl-selection-report']) {
+  _excelElement('xl-targets-send').disabled = workbookButtonsOff || !_excelPanelState.targetsCheck;
+  for (const id of ['xl-start-month', 'xl-end-month', 'xl-selection-report', 'xl-targets-year']) {
     _excelElement(id).disabled = busy;
   }
 }
@@ -205,6 +210,119 @@ function _excelPasteAtSelection() {
   });
 }
 
+// ── Targets ──────────────────────────────────────────────────
+
+/** Put the years the app says are editable in the picker, keeping the pick when it is still offered. */
+function _excelFillTargetYears(data) {
+  const selectEl = _excelElement('xl-targets-year');
+  const previous = selectEl.value;
+  const years = data.years || [];
+  selectEl.replaceChildren(...years.map(year => new Option(year.label, String(year.fiscal_year))));
+  const stillOffered = years.some(year => String(year.fiscal_year) === previous);
+  const firstEditable = (data.editable_fiscal_years || [])[0];
+  selectEl.value = stillOffered ? previous : String(firstEditable === undefined ? '' : firstEditable);
+}
+
+async function _excelLoadTargetYears() {
+  try {
+    _excelFillTargetYears(await fetchExcelTargets());
+  } catch (loadError) {
+    // Pull targets asks again, so a failure here is not worth the status line.
+    console.warn('[excel] Could not load the editable fiscal years:', loadError);
+  }
+}
+
+function _excelPickedTargetYear() {
+  const year = Number(_excelElement('xl-targets-year').value);
+  return Number.isInteger(year) && year > 0 ? year : null;
+}
+
+function _excelPullTargets() {
+  return _excelRunAction(async () => {
+    excelSetStatus("Fetching the app's targets…", 'busy');
+    const data = await fetchExcelTargets();
+    _excelFillTargetYears(data);
+    const picked = _excelPickedTargetYear();
+    const year = (data.years || []).find(candidate => candidate.fiscal_year === picked);
+    if (!year) {
+      excelSetStatus('The app lists no fiscal year to pull targets for.', 'error');
+      return;
+    }
+    await writeTargetsWorkbook({ targetsSheet: targetsSheetFromYear(year, data.categories) });
+    _excelPanelState.targetsCheck = null;
+    excelSetStatus(
+      `Pulled ${year.label}: ${year.targets.length} ${year.targets.length === 1 ? 'target' : 'targets'} on ${EXCEL_SHEET_NAMES.targets}.`,
+      'success',
+    );
+  });
+}
+
+function _excelCheckTargets() {
+  return _excelRunAction(async () => {
+    _excelPanelState.targetsCheck = null;
+    excelSetStatus('Reading the sheet and the app\'s targets…', 'busy');
+    const [values, data] = await Promise.all([readTargetsSheetValues(), fetchExcelTargets()]);
+    const result = checkTargetsSheet({ values, targetsResponse: data, pickedFiscalYear: _excelPickedTargetYear() });
+    await writeTargetsWorkbook({
+      checkRows: buildTargetsCheckSheetRows({
+        checkedAt: new Date(),
+        yearText: targetsYearText(result),
+        outcome: 'Targets checked',
+        findings: result.findings,
+      }),
+    });
+    if (result.canSend) _excelPanelState.targetsCheck = result;
+    const { message, tone } = describeTargetsCheck(result);
+    excelSetStatus(message, tone);
+  });
+}
+
+function _excelSendTargets() {
+  return _excelRunAction(async () => {
+    const checked = _excelPanelState.targetsCheck;
+    _excelPanelState.targetsCheck = null;
+    if (!checked) {
+      excelSetStatus('Press Check targets first.', 'warning');
+      return;
+    }
+    excelSetStatus('Reading the sheet again…', 'busy');
+    const [values, data] = await Promise.all([readTargetsSheetValues(), fetchExcelTargets()]);
+    const plan = planTargetsSend({ values, targetsResponse: data, pickedFiscalYear: _excelPickedTargetYear(), checked });
+    if (!plan.ok) {
+      excelSetStatus(plan.message, 'warning');
+      return;
+    }
+
+    excelSetStatus(`Sending ${plan.body.targets.length} targets…`, 'busy');
+    const answer = await saveExcelTargets(plan.fiscalYear, plan.body.targets);
+    const yearText = targetsYearText(plan.check);
+
+    if (isTargetsRefusal(answer.status, answer.body)) {
+      const findings = findingsFromTargetsRefusal(answer.body, plan.sent);
+      await writeTargetsWorkbook({
+        checkRows: buildTargetsCheckSheetRows({ checkedAt: new Date(), yearText, outcome: 'Targets refused', findings }),
+      });
+      excelSetStatus(`The app refused the targets and nothing was saved. See ${EXCEL_SHEET_NAMES.check}.`, 'error');
+      return;
+    }
+    if (!answer.ok) throw new Error(answer.body.error || `Server error (${answer.status})`);
+
+    await writeTargetsWorkbook({
+      targetsSheet: targetsSheetFromYear(answer.body, data.categories),
+      checkRows: buildTargetsCheckSheetRows({
+        checkedAt: new Date(),
+        yearText,
+        outcome: 'Targets sent',
+        findings: findingsFromTargetsDiff(plan.check.diff),
+      }),
+    });
+    excelSetStatus(
+      `Sent ${plan.body.targets.length} targets for ${yearText}. ${EXCEL_SHEET_NAMES.targets} now shows what the app holds.`,
+      'success',
+    );
+  });
+}
+
 // ── Sign-in ──────────────────────────────────────────────────
 
 async function _excelSubmitSignIn(submitEvent) {
@@ -273,4 +391,12 @@ function initExcelPanel(inExcel) {
   _excelElement('xl-check').addEventListener('click', () => _excelCheckOrPaste(false));
   _excelElement('xl-paste-both').addEventListener('click', () => _excelCheckOrPaste(true));
   _excelElement('xl-paste-selection').addEventListener('click', _excelPasteAtSelection);
+  _excelElement('xl-targets-pull').addEventListener('click', _excelPullTargets);
+  _excelElement('xl-targets-check').addEventListener('click', _excelCheckTargets);
+  _excelElement('xl-targets-send').addEventListener('click', _excelSendTargets);
+  _excelElement('xl-targets-year').addEventListener('change', () => {
+    // A check belongs to the year it was made for.
+    _excelPanelState.targetsCheck = null;
+    _excelSetBusy(_excelPanelState.busy);
+  });
 }

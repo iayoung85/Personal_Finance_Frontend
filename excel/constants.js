@@ -57,3 +57,21 @@ const EXCEL_CHECK_COLUMNS = ['Sheet', 'Level', 'Problem', 'Key', 'Name', 'Detail
 
 const EXCEL_LEVEL_FIX = 'fix';
 const EXCEL_LEVEL_INFO = 'info';
+
+// The PF_TARGETS sheet. The first block names the year; the table under it
+// is found by its headings, so only these words matter, not row numbers.
+const EXCEL_TARGETS_HEADERS = {
+  primary: 'Primary',
+  category: 'Category',
+  kind: 'Kind',
+  monthly: 'Monthly target',
+  annual: 'Annual target',
+};
+const EXCEL_TARGETS_YEAR_LABEL = 'Fiscal year';
+const EXCEL_TARGETS_START_LABEL = 'Starts';
+const EXCEL_TARGETS_END_LABEL = 'Ends';
+const EXCEL_TARGETS_AMOUNT_FORMAT = '#,##0.00';
+// How far down the sheet the table's heading row is looked for.
+const EXCEL_TARGETS_HEADER_SEARCH_ROWS = 20;
+// The cadences the app accepts, in the order the sheet's columns run.
+const EXCEL_TARGET_CADENCES = ['monthly', 'annual'];

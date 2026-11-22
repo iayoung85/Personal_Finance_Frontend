@@ -139,3 +139,32 @@ function fetchExcelCategoryReport(startMonth, endMonth) {
     include_transfers: String(EXCEL_REPORT_OPTIONS.includeTransfers),
   });
 }
+
+/**
+ * GET /api/budget/targets: the editable years, each year's targets, and the
+ * categories that can take one.
+ *
+ * @returns {Promise<Object>}
+ */
+function fetchExcelTargets() {
+  return _excelGetReport('/api/budget/targets', {});
+}
+
+/**
+ * PUT /api/budget/targets/<fiscalYear>. The body replaces the year's whole set.
+ *
+ * @param {number} fiscalYear
+ * @param {Array<{category: string, cadence: string, amount: string}>} targets
+ * @returns {Promise<{ok: boolean, status: number, body: Object}>} body is the saved year, or the refusal
+ */
+async function saveExcelTargets(fiscalYear, targets) {
+  const response = await authenticatedFetch(
+    `${BACKEND_URL}/api/budget/targets/${encodeURIComponent(fiscalYear)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targets }),
+    },
+  );
+  return { ok: response.ok, status: response.status, body: await _excelReadJson(response) };
+}

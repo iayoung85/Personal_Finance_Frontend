@@ -78,6 +78,25 @@
           </div>
         </div>
       </section>
+
+      <section class="xl-card" aria-labelledby="xl-targets-title">
+        <h2 id="xl-targets-title" class="xl-card-title">Targets</h2>
+        <p class="xl-hint">
+          Pull writes the app's targets to <span class="xl-sheet" data-sheet="targets"></span>. Edit the amounts there,
+          Check targets lists what would change on <span class="xl-sheet" data-sheet="check"></span>, then Send.
+        </p>
+
+        <label class="xl-field">
+          <span class="xl-label">Fiscal year</span>
+          <select id="xl-targets-year" class="xl-input"></select>
+        </label>
+
+        <div class="xl-actions">
+          <button id="xl-targets-pull" class="xl-button" type="button">Pull targets</button>
+          <button id="xl-targets-check" class="xl-button" type="button">Check targets</button>
+        </div>
+        <button id="xl-targets-send" class="xl-button xl-button-primary xl-button-full" type="button" disabled>Send to the app</button>
+      </section>
       <!-- Each further feature is its own .xl-card below this one. -->
     </main>
 
@@ -98,6 +117,7 @@
   <script src="sheet-extent.js"></script>
   <script src="default-range.js"></script>
   <script src="checks.js"></script>
+  <script src="targets.js"></script>
   <script src="api.js"></script>
   <script src="workbook.js"></script>
   <script src="panel.js"></script>
