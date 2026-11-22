@@ -1,0 +1,406 @@
+/* ============================================================
+   shared/budget-report.css — the Budget report, as drawn by
+   shared/budget-report.js on the Budget page and in the
+   Transactions modal. Every color is a theme.css token.
+   ============================================================ */
+
+.bt-report {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  color: var(--text-primary);
+}
+
+.bt-asof {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Section ──────────────────────────────────────────────── */
+.bt-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.bt-section-head h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.bt-section-empty {
+  margin: 6px 0 0;
+  padding: 14px 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-inset);
+  border: 1px dashed var(--border-primary);
+  border-radius: 8px;
+}
+
+.bt-section-empty a,
+.bt-key a {
+  color: var(--accent-link);
+}
+
+/* One-line key under the Monthly heading */
+.bt-key {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.bt-key-swatch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border-subtle);
+}
+
+.bt-key-tick {
+  position: absolute;
+  left: 60%;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text-bright);
+}
+
+/* ── Grid ─────────────────────────────────────────────────── */
+.bt-grid {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.bt-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.15fr) minmax(190px, 1fr) minmax(190px, 1fr);
+  column-gap: 28px;
+  align-items: center;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.bt-row:first-child {
+  border-top: none;
+}
+
+.bt-row-line:hover {
+  background: var(--table-row-hover);
+}
+
+.bt-row-head {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  background: var(--table-header-bg);
+}
+
+.bt-col-head {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.bt-col-note {
+  margin-left: 4px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-muted);
+}
+
+.bt-row-kind {
+  display: block;
+  padding: 7px 16px;
+  background: var(--bg-surface-elevated);
+}
+
+.bt-kind-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bt-row-heading {
+  display: block;
+  padding-top: 12px;
+  padding-bottom: 4px;
+}
+
+.bt-row-heading .bt-name,
+.bt-row-primary .bt-name {
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.bt-row-heading + .bt-row {
+  border-top: none;
+}
+
+.bt-name {
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A detail under a primary hangs from a thin guide */
+.bt-depth-1 .bt-name {
+  position: relative;
+  padding-left: 20px;
+}
+
+.bt-depth-1 .bt-name::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: -10px;
+  bottom: 50%;
+  width: 8px;
+  border-left: 1px solid var(--border-primary);
+  border-bottom: 1px solid var(--border-primary);
+  border-bottom-left-radius: 4px;
+}
+
+/* ── Period cell ──────────────────────────────────────────── */
+.bt-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bt-cell-text {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+.bt-summary {
+  color: var(--text-bright);
+  font-weight: 600;
+}
+
+.bt-detail {
+  color: var(--text-secondary);
+}
+
+.bt-cell-over .bt-summary,
+.bt-cell-over .bt-detail {
+  color: var(--color-danger);
+}
+
+.bt-cell-over .bt-detail {
+  font-weight: 600;
+}
+
+.bt-cell-pace-over .bt-detail {
+  color: var(--color-pace-over);
+}
+
+.bt-cell-met .bt-detail {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.bt-cell-empty {
+  justify-content: center;
+}
+
+.bt-no-target {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+/* ── Bar: a fixed grey track that fills from the left ─────── */
+.bt-bar {
+  position: relative;
+  width: 100%;
+  max-width: 280px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border-subtle);
+}
+
+.bt-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  max-width: 100%;
+  border-radius: 4px;
+  background: var(--accent-primary);
+  transition: width 0.3s ease;
+}
+
+.bt-tone-pace-over .bt-fill {
+  background: var(--color-pace-over);
+}
+
+.bt-tone-over .bt-fill {
+  background: var(--color-danger);
+}
+
+.bt-tone-savings .bt-fill {
+  background: var(--color-success);
+}
+
+.bt-tick {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text-bright);
+  box-shadow: 0 0 0 1px var(--bg-surface);
+}
+
+/* ── Empty, loading, error ────────────────────────────────── */
+.bt-empty {
+  max-width: 460px;
+  margin: 12px auto;
+  padding: 36px 24px;
+  text-align: center;
+  border: 1px dashed var(--border-primary);
+  border-radius: 12px;
+  background: var(--bg-inset);
+}
+
+.bt-empty-compact {
+  max-width: none;
+  padding: 24px;
+}
+
+.bt-empty-icon {
+  font-size: 34px;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+
+.bt-empty h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: var(--text-heading);
+}
+
+.bt-empty p {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.bt-empty-compact p {
+  margin-bottom: 0;
+}
+
+.bt-empty a:not(.bt-empty-action) {
+  color: var(--accent-link);
+}
+
+.bt-empty-action {
+  display: inline-block;
+  padding: 8px 18px;
+  border-radius: 4px;
+  background: var(--accent-primary);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bt-empty-action:hover {
+  background: var(--accent-primary-hover);
+}
+
+.bt-loading {
+  padding: 40px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.bt-error {
+  padding: 16px;
+  border: 1px solid var(--color-danger-border);
+  border-radius: 8px;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  font-size: 13px;
+}
+
+.bt-error p {
+  margin: 0 0 10px;
+  color: var(--color-danger);
+}
+
+/* ── Narrow: each period stacks under the name ────────────── */
+@media (max-width: 720px) {
+  .bt-row {
+    grid-template-columns: 1fr;
+    row-gap: 10px;
+    padding: 12px;
+  }
+
+  .bt-row-head {
+    display: none;
+  }
+
+  .bt-row-head + .bt-row {
+    border-top: none;
+  }
+
+  .bt-name {
+    white-space: normal;
+  }
+
+  .bt-cell::before {
+    content: attr(data-period);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .bt-row.bt-depth-1 {
+    padding-left: 30px;
+  }
+
+  .bt-depth-1 .bt-name {
+    padding-left: 0;
+  }
+
+  .bt-depth-1 .bt-name::before {
+    display: none;
+  }
+
+  .bt-bar {
+    max-width: none;
+  }
+}

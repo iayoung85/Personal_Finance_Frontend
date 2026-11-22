@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Budget - Personal Finance</title>
+  <link rel="icon" type="image/png" href="IAY favicon.png">
+  <script src="theme-loader.js"></script>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="nav-sidebar.css">
+  <link rel="stylesheet" href="budget.css">
+  <link rel="stylesheet" href="shared/budget-report.css">
+</head>
+<body data-nav-mode="persistent" data-nav-page="budget">
+  <div class="app-container">
+    <main class="main-content">
+
+      <div class="page-header">
+        <h1>Budget</h1>
+        <p class="page-subtitle">Targets by category, and how this month and this fiscal year are tracking against them</p>
+      </div>
+
+      <div id="budget-status" class="budget-status hidden" role="status" aria-live="polite"></div>
+
+      <!-- ═══ Panel: Report ═══ -->
+      <div id="report" class="budget-panel active">
+        <div class="panel-header panel-header-split">
+          <div>
+            <h2>Report</h2>
+            <p>Each target beside what has been spent or saved against it.</p>
+          </div>
+          <div class="panel-header-actions">
+            <button type="button" id="budget-report-refresh" class="secondary">Refresh</button>
+            <a href="#targets" class="budget-link-btn" data-budget-action="targets">Edit targets</a>
+          </div>
+        </div>
+        <div class="card budget-card">
+          <div id="budget-report-container"></div>
+        </div>
+      </div>
+
+      <!-- ═══ Panel: Targets ═══ -->
+      <div id="targets" class="budget-panel hidden">
+        <div class="panel-header">
+          <h2>Targets</h2>
+          <p>A monthly or annual target for each spending or savings category, for this fiscal year and last.</p>
+        </div>
+
+        <div class="card budget-card bt-editor">
+          <div class="bt-editor-toolbar">
+            <div id="bt-year-switch" class="bt-year-switch" role="tablist" aria-label="Fiscal year"></div>
+            <span id="bt-year-dates" class="bt-year-dates"></span>
+            <span class="bt-toolbar-spacer"></span>
+            <button type="button" id="bt-copy-btn" class="secondary" disabled>Copy from last year</button>
+          </div>
+
+          <div class="bt-editor-filters">
+            <input type="search" id="bt-search-input" class="bt-search-input" placeholder="Find a category"
+                   aria-label="Find a category" autocomplete="off" spellcheck="false">
+            <label class="bt-check-label">
+              <input type="checkbox" id="bt-only-set">
+              <span>Only categories with a target</span>
+            </label>
+          </div>
+
+          <div id="bt-form-banner" class="bt-form-banner" role="alert" hidden></div>
+          <div id="bt-form-body"></div>
+
+          <div id="bt-savebar" class="bt-savebar">
+            <span id="bt-dirty-note" class="bt-dirty-note"></span>
+            <span class="bt-toolbar-spacer"></span>
+            <button type="button" id="bt-undo-btn" class="secondary" disabled>Undo changes</button>
+            <button type="button" id="bt-save-btn" class="bt-save-btn" disabled>Save</button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="shared/auth-session.js"></script>
+  <script src="shared/history-return.js"></script>
+  <script src="config-helpers.js"></script>
+  <script src="date-helpers.js"></script>
+  <script src="nav-sidebar.js"></script>
+  <script src="shared/budget-report.js"></script>
+  <script src="shared/budget-alert-link.js"></script>
+  <script src="budget/state.js"></script>
+  <script src="budget/api.js"></script>
+  <script src="budget/targets-form.js"></script>
+  <script src="budget/report.js"></script>
+  <script src="budget/targets.js"></script>
+  <script src="budget/main.js"></script>
+</body>
+</html>

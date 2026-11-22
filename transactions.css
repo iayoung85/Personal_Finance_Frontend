@@ -2790,6 +2790,47 @@ tr.bank-suspect-row td:first-child {
   min-height: 0;
 }
 
+/* ── Budget Modal (report drawn by shared/budget-report.js) ── */
+
+.modal-budget {
+  width: min(95vw, 1100px);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-budget .modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-heading);
+}
+
+.modal-budget .modal-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding: 18px 20px 22px;
+}
+
+.modal-budget-footer {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.budget-modal-link {
+  font-size: 13px;
+  color: var(--accent-link);
+  text-decoration: none;
+}
+
+.budget-modal-link:hover {
+  text-decoration: underline;
+}
+
+.budget-modal-spacer {
+  flex: 1;
+}
+
 .reports-form-row {
   margin-bottom: 12px;
 }

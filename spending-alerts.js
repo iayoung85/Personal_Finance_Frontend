@@ -631,6 +631,32 @@ async function init() {
 
   loading.style.display = 'none';
   renderAlerts();
+  _openPrefilledAlertFromAddress();
+}
+
+/**
+ * When the Budget page's Set alert opened this tab, open the create form
+ * holding the target's category, amount and period. The user adds the
+ * recipients and saves; nothing is created before that.
+ */
+function _openPrefilledAlertFromAddress() {
+  const prefill = readAlertPrefill(window.location.search);
+  if (!prefill) return;
+
+  openAlertModal();
+  document.getElementById('sa-category').value  = prefill.category;
+  document.getElementById('sa-threshold').value = prefill.amount;
+  document.getElementById('sa-period').value    = prefill.period;
+  if (prefill.period === 'yearly') {
+    document.getElementById('sa-yearly-month').value = prefill.resetMonth;
+    document.getElementById('sa-yearly-day').value   = prefill.resetDay;
+  }
+  onPeriodChange();
+  document.getElementById('sa-recipients').focus();
+
+  // A reload should show the page as usual, not reopen the form.
+  const cleanAddress = `${window.location.pathname}${searchWithoutAlertPrefill(window.location.search)}${window.location.hash}`;
+  history.replaceState(null, '', cleanAddress);
 }
 
 init();

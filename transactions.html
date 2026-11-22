@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="transactions.css">
   <link rel="stylesheet" href="bill-modal.css">
   <link rel="stylesheet" href="import-wizard.css">
+  <link rel="stylesheet" href="shared/budget-report.css">
 </head>
 <body data-nav-mode="collapsed" data-nav-page="transactions">
   <div class="container">
@@ -132,6 +133,7 @@
             <button onclick="syncTransactions()" class="btn-action btn-sync">⟳ Re-sync</button>
             <button onclick="openAddManualTransactionModal()" class="btn-action btn-manual-txn" title="Add a manual transaction. For Plaid accounts, use this only for historical transactions that occurred before the earliest Plaid-downloaded entry. Hotkey: Ctrl+M (Control+M on Mac)">+ Manual Txn</button>
             <button onclick="openReportsModal()" class="btn-action btn-reports" title="Generate balance and category reports">📊 Reports</button>
+            <button onclick="openBudgetModal()" class="btn-action btn-budget" title="See how this month and this fiscal year are tracking against your budget targets">🎯 Budget</button>
             <button onclick="openBackupRestoreModal()" class="btn-action btn-backup-restore" title="Import or export transaction data">📦 Backup / Restore</button>
             <button onclick="openConfigModal()" class="btn-action btn-config" title="Settings">⚙</button>
             <span id="plaid-balance-indicator" class="plaid-balance-indicator hidden"></span>
@@ -479,6 +481,25 @@
     </div>
   </div>
 
+  <!-- ═══ Budget Modal ═══ -->
+  <div id="budget-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeBudgetModal()">
+    <div class="modal modal-budget" role="dialog" aria-modal="true" aria-labelledby="budget-modal-title">
+      <div class="modal-header">
+        <h2 id="budget-modal-title">🎯 Budget</h2>
+        <button id="budget-modal-close" class="modal-close" onclick="closeBudgetModal()" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="budget-modal-container"></div>
+      </div>
+      <div class="modal-footer modal-budget-footer">
+        <a href="budget.html#targets" target="_blank" rel="noopener" class="budget-modal-link">Set up targets ↗</a>
+        <a href="budget.html" target="_blank" rel="noopener" class="budget-modal-link">Open the Budget page ↗</a>
+        <span class="budget-modal-spacer"></span>
+        <button class="secondary" onclick="closeBudgetModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══ Reports Modal ═══ -->
   <div id="reports-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeReportsModal()">
     <div class="modal modal-reports">
@@ -638,6 +659,8 @@
   <script src="transactions/import/review.js"></script>
   <script src="transactions/import/report.js"></script>
   <script src="transactions/reports.js"></script>
+  <script src="shared/budget-report.js"></script>
+  <script src="transactions/budget-modal.js"></script>
   <script src="transactions/main.js"></script>
 </body>
 </html>

@@ -8,6 +8,8 @@
 //
 // Pages with sub-navigation (e.g. User Settings) declare
 // child items that expand/collapse beneath the parent link.
+// A parent marked alwaysOpen is instead a link of its own, with
+// its children always shown beneath it.
 // ============================================================
 
 /**
@@ -23,6 +25,19 @@ const NAV_SIDEBAR_ITEMS = [
   { id: 'investments',  label: 'Investments',  icon: '📈', href: 'investments.html' },
   { id: 'accounts',     label: 'Accounts',     icon: '🏦', href: 'accounts.html' },
   { id: 'bills',        label: 'Bills',        icon: '📋', href: 'bills.html' },
+  {
+    id: 'budget',
+    label: 'Budget',
+    icon: '🎯',
+    href: 'budget.html',
+    // Why: one click opens the report, and Targets stays one click away
+    // from any page, so this row navigates instead of toggling.
+    alwaysOpen: true,
+    section: 'report',
+    children: [
+      { id: 'budget-targets', label: 'Targets', section: 'targets' },
+    ]
+  },
   { id: 'spending-alerts', label: 'Spending Alerts', icon: '🔔', href: 'spending-alerts.html' },
   {
     id: 'categories',
@@ -76,6 +91,7 @@ function _detectCurrentPage() {
     'investments.html':   'investments',
     'accounts.html':      'accounts',
     'bills.html':              'bills',
+    'budget.html':            'budget',
     'spending-alerts.html':   'spending-alerts',
     'categories.html':        'categories',
     'user-settings.html': 'user-settings',
@@ -97,7 +113,9 @@ function _buildNavLink(item, currentPage) {
 
   let html = '';
 
-  if (hasChildren) {
+  if (hasChildren && item.alwaysOpen) {
+    html += _buildAlwaysOpenNavLink(item, currentPage);
+  } else if (hasChildren) {
     const expandedClass = isParentActive ? ' expanded' : '';
     const activeClass = isParentActive ? ' active' : '';
 
@@ -138,6 +156,34 @@ function _buildNavLink(item, currentPage) {
 }
 
 /**
+ * A parent row that is a link itself, with its children always shown.
+ * It carries no data-has-children, so a click navigates (or, on its own
+ * page, switches to its section) instead of toggling the list.
+ */
+function _buildAlwaysOpenNavLink(item, currentPage) {
+  const isOnPage = item.id === currentPage;
+  let html = `<li>`;
+  html += `<a class="nav-sidebar-link nav-sidebar-link-open${isOnPage ? ' active' : ''}" `;
+  html += `data-nav-id="${item.id}" data-section="${item.section}" data-parent-page="${item.id}" `;
+  html += `href="${item.href}">`;
+  html += `<span class="nav-icon">${item.icon}</span>`;
+  html += `<span>${item.label}</span>`;
+  html += `</a>`;
+  html += `<ul class="nav-sidebar-subnav expanded">`;
+  for (const child of item.children) {
+    const isChildActive = isOnPage && _getActiveSection(currentPage) === child.section;
+    html += `<li>`;
+    html += `<a class="nav-sidebar-link${isChildActive ? ' active' : ''}" `;
+    html += `data-nav-id="${child.id}" data-section="${child.section}" data-parent-page="${item.id}" `;
+    html += `href="${item.href}#${child.section}">`;
+    html += `<span>${child.label}</span>`;
+    html += `</a></li>`;
+  }
+  html += `</ul></li>`;
+  return html;
+}
+
+/**
  * Maps each page that has sub-nav panels to its default section.
  * Why: lets us detect the active child without hard-coding page
  * names in every helper.
@@ -145,6 +191,7 @@ function _buildNavLink(item, currentPage) {
 const _PANEL_PAGE_DEFAULTS = {
   'user-settings': 'profile',
   'categories':    'preview',
+  'budget':        'report',
 };
 
 /**
@@ -375,6 +422,7 @@ function _switchPanel(section, pageId) {
   const panelClassMap = {
     'user-settings': '.settings-panel',
     'categories':    '.categories-panel',
+    'budget':        '.budget-panel',
   };
   const panelSelector = panelClassMap[pageId] || '.settings-panel';
 

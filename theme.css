@@ -71,6 +71,9 @@
   --color-info-bg:        rgba(55, 148, 255, 0.12);
   --color-info-border:    rgba(55, 148, 255, 0.30);
 
+  /* Ahead of an even spread, but not yet over: softer than danger */
+  --color-pace-over:      #d18a4b;
+
   /* ── Money (gain / loss) ─────────────────────────────────── */
   --color-positive:       #4ec9b0;
   --color-negative:       #f44747;
@@ -167,6 +170,8 @@
   --color-info-bg:        rgba(38, 139, 210, 0.10);
   --color-info-border:    rgba(38, 139, 210, 0.25);
 
+  --color-pace-over:      #e0904f;
+
   --color-positive:       #859900;
   --color-negative:       #dc322f;
 
@@ -256,6 +261,8 @@
     --color-info:           #268bd2;
     --color-info-bg:        rgba(38, 139, 210, 0.10);
     --color-info-border:    rgba(38, 139, 210, 0.25);
+
+    --color-pace-over:      #e0904f;
 
     --color-positive:       #859900;
     --color-negative:       #dc322f;
@@ -379,6 +386,7 @@
 :root[data-theme="light"] .btn-sync,
 :root[data-theme="light"] .btn-manual-txn,
 :root[data-theme="light"] .btn-reports,
+:root[data-theme="light"] .btn-budget,
 :root[data-theme="light"] .btn-backup-restore,
 :root[data-theme="light"] .btn-check,
 :root[data-theme="light"] .btn-recategorize,
@@ -403,6 +411,7 @@
   :root[data-theme="auto"] .btn-sync,
   :root[data-theme="auto"] .btn-manual-txn,
   :root[data-theme="auto"] .btn-reports,
+  :root[data-theme="auto"] .btn-budget,
   :root[data-theme="auto"] .btn-backup-restore,
   :root[data-theme="auto"] .btn-check,
   :root[data-theme="auto"] .btn-recategorize,
