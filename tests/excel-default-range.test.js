@@ -14,7 +14,7 @@ function loadFiles(relPaths, exportsList) {
 
 const R = loadFiles(
   ['shared/fiscal-year.js', 'excel/cells.js', 'excel/default-range.js'],
-  'defaultPasteRange, firstMonthOnSheet, monthRangeToDates, monthPickerOptions, monthKeyLabel, monthRangeProblem',
+  'defaultPasteRange, firstMonthOnSheet, monthRangeToDates, monthPickerOptions, monthKeyLabel, monthRangeProblem, describeDefaultRange',
 );
 
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -62,4 +62,28 @@ test('a range out of order is refused before any request', () => {
   assert.equal(R.monthRangeProblem('2026-01', '2025-12'), 'The start month is after the end month.');
   assert.equal(R.monthRangeProblem('', '2025-12'), 'Pick a start and an end month.');
   assert.equal(R.monthRangeProblem('2025-11', '2025-11'), null);
+});
+
+test('the ready line says why the range starts where it does', () => {
+  const now = new Date(2026, 10, 21);
+  const describe = headerRow => R.describeDefaultRange({
+    sheetName: 'PF_BALANCES',
+    headerRow,
+    firstMonthColumn: FIRST_MONTH_COLUMN,
+    range: R.defaultPasteRange(now, NOVEMBER, headerRow, FIRST_MONTH_COLUMN),
+  });
+  assert.equal(describe(['Account', 'Mask', 45991]), 'Ready. The range starts on Nov 2025, the first month on PF_BALANCES.');
+  assert.equal(describe(['Account', 'Mask']), 'Ready. PF_BALANCES has no months yet, so the range starts on Nov 2025, the start of last fiscal year.');
+  assert.equal(describe(null), 'Ready. There is no PF_BALANCES sheet yet, so the range starts on Nov 2025, the start of last fiscal year.');
+});
+
+test('a first month later than this month is named, not called missing', () => {
+  const now = new Date(2026, 10, 21);
+  const headerRow = ['Account', 'Mask', '2027-01-31'];
+  const range = R.defaultPasteRange(now, NOVEMBER, headerRow, FIRST_MONTH_COLUMN);
+  assert.deepEqual(plain(range), { startMonth: '2025-11', endMonth: '2026-11' });
+  assert.equal(
+    R.describeDefaultRange({ sheetName: 'PF_BALANCES', headerRow, firstMonthColumn: FIRST_MONTH_COLUMN, range }),
+    'Ready. The first month on PF_BALANCES is Jan 2027, after this month, so the range starts on Nov 2025, the start of last fiscal year.',
+  );
 });

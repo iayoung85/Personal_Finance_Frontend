@@ -200,16 +200,30 @@ function missingColumnFinding(sheetName, headerText) {
 }
 
 /**
- * The finding for a paste that would write over the user's own rows.
+ * The finding for a paste that was refused to keep the user's own rows safe.
+ * The blocker's reason says why (see findPasteBlocker): the new grid would
+ * cover a filled cell, would leave fewer than two blank rows above one, or the
+ * sheet already has only one blank row between the grid and the rows below.
  *
  * @param {string} sheetName
- * @param {{address: string, rowIndex: number}} blocker
+ * @param {{address: string, rowIndex: number, reason: string}} blocker
  * @returns {Object}
  */
 function pasteBlockedFinding(sheetName, blocker) {
+  const rowNumber = blocker.rowIndex + 1;
+  if (blocker.reason === 'gap') {
+    return _finding(sheetName, EXCEL_LEVEL_FIX, 'Only one blank row under the grid', blocker.address, '',
+      `Row ${rowNumber} is the only blank row between the pasted grid and the rows below it, so the add-in cannot tell where the grid ends. Nothing was pasted.`,
+      `Insert a second blank row at row ${rowNumber}, so two blank rows sit between the grid and your rows.`);
+  }
+  if (blocker.reason === 'guard') {
+    return _finding(sheetName, EXCEL_LEVEL_FIX, 'No room for two blank rows under the grid', blocker.address, '',
+      `The new grid would end on row ${rowNumber - 1} or just above it, and cell ${blocker.address} holds something. Two blank rows must stay under the grid, or the next paste cannot tell your rows from it. Nothing was pasted.`,
+      `Move your rows down so at least two blank rows sit under the grid's new end, or clear row ${rowNumber}.`);
+  }
   return _finding(sheetName, EXCEL_LEVEL_FIX, 'Paste would overwrite your rows', blocker.address, '',
     `The new grid reaches cell ${blocker.address}, which holds something that is not part of the last paste. Nothing was pasted.`,
-    `Move your rows down so at least two blank rows sit under the grid's new end, or clear row ${blocker.rowIndex + 1}.`);
+    `Move your rows down so at least two blank rows sit under the grid's new end, or clear row ${rowNumber}.`);
 }
 
 function _formatAmount(value) {
@@ -632,10 +646,10 @@ function describeWorkbookRun(result, paste) {
 
   if (paste && !result.pasted) {
     const first = result.blocked[0];
-    return {
-      message: `Nothing pasted: ${first.sheet} cell ${first.address} is in the way. See ${EXCEL_SHEET_NAMES.check}.`,
-      tone: 'error',
-    };
+    const why = first.reason === 'gap'
+      ? `${first.sheet} has only one blank row under its grid, at ${first.address}`
+      : `${first.sheet} cell ${first.address} is in the way`;
+    return { message: `Nothing pasted: ${why}. See ${EXCEL_SHEET_NAMES.check}.`, tone: 'error' };
   }
   if (paste) return { message: `Pasted both sheets; ${tally}. See ${EXCEL_SHEET_NAMES.check}.`, tone };
   return { message: `Checked: ${tally}. See ${EXCEL_SHEET_NAMES.check}.`, tone };

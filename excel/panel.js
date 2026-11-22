@@ -121,10 +121,12 @@ async function excelEnterPanel(isDev) {
     excelSetStatus(_EXCEL_NOT_IN_EXCEL, 'warning');
     return;
   }
-  const startsOnSheet = firstMonthOnSheet(headerRow, EXCEL_LAYOUT.balanceFirstMonthColumn) === range.startMonth;
-  excelSetStatus(startsOnSheet
-    ? `Ready. The range starts on ${monthKeyLabel(range.startMonth)}, the first month on ${EXCEL_SHEET_NAMES.balances}.`
-    : `Ready. ${EXCEL_SHEET_NAMES.balances} has no months yet, so the range starts on ${monthKeyLabel(range.startMonth)}.`);
+  excelSetStatus(describeDefaultRange({
+    sheetName: EXCEL_SHEET_NAMES.balances,
+    headerRow,
+    firstMonthColumn: EXCEL_LAYOUT.balanceFirstMonthColumn,
+    range,
+  }));
 }
 
 // ── Busy state ───────────────────────────────────────────────

@@ -12,9 +12,9 @@ function loadFiles(relPaths, exportsList) {
   return sandbox.module.exports;
 }
 
-const { findOldGridExtent, findPasteBlocker, planGridPaste } = loadFiles(
+const { findOldGridExtent, findPasteBlocker, planGridPaste, pasteOccupancy } = loadFiles(
   ['excel/cells.js', 'excel/sheet-extent.js'],
-  'findOldGridExtent, findPasteBlocker, planGridPaste',
+  'findOldGridExtent, findPasteBlocker, planGridPaste, pasteOccupancy',
 );
 
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -33,10 +33,10 @@ const SHEET = [
 ];
 
 test('the old grid ends before the first two blank rows and spans its header', () => {
-  assert.deepEqual(plain(findOldGridExtent(SHEET)), { rowCount: 4, columnCount: 4 });
+  assert.deepEqual(plain(findOldGridExtent(SHEET)), { rowCount: 4, columnCount: 4, gapRowIndex: null });
 });
 
-test('a single blank row inside the grid does not end it', () => {
+test('a single blank row inside the block does not end it, and is named as a gap', () => {
   const sheet = [
     ['Account', 'Mask', 45991],
     ['Assets', '', ''],
@@ -46,7 +46,7 @@ test('a single blank row inside the grid does not end it', () => {
     ['', '', ''],
     ['Audit', '', 1],
   ];
-  assert.deepEqual(plain(findOldGridExtent(sheet)), { rowCount: 4, columnCount: 3 });
+  assert.deepEqual(plain(findOldGridExtent(sheet)), { rowCount: 4, columnCount: 3, gapRowIndex: 2 });
 });
 
 test('the category grid, whose header starts with a blank A1, is as wide as its header', () => {
@@ -55,32 +55,89 @@ test('the category grid, whose header starts with a blank A1, is as wide as its 
     ['Earned Income', '', '', 'January', ''],
     ['', 'Income', 'Wages', 5, 5],
   ];
-  assert.deepEqual(plain(findOldGridExtent(sheet)), { rowCount: 3, columnCount: 5 });
+  assert.deepEqual(plain(findOldGridExtent(sheet)), { rowCount: 3, columnCount: 5, gapRowIndex: null });
 });
 
 test('a grid with nothing under it ends at its last row', () => {
-  assert.deepEqual(plain(findOldGridExtent([['A', 'B'], ['x', 1]])), { rowCount: 2, columnCount: 2 });
+  assert.deepEqual(plain(findOldGridExtent([['A', 'B'], ['x', 1]])), { rowCount: 2, columnCount: 2, gapRowIndex: null });
 });
 
 test('an empty sheet has no old grid', () => {
-  assert.deepEqual(plain(findOldGridExtent([])), { rowCount: 0, columnCount: 0 });
-  assert.deepEqual(plain(findOldGridExtent([['', '']])), { rowCount: 0, columnCount: 0 });
+  assert.deepEqual(plain(findOldGridExtent([])), { rowCount: 0, columnCount: 0, gapRowIndex: null });
+  assert.deepEqual(plain(findOldGridExtent([['', '']])), { rowCount: 0, columnCount: 0, gapRowIndex: null });
 });
 
-test('a new grid that fits above the user rows is not blocked', () => {
-  const plan = planGridPaste(SHEET, 6, 4);
+test('a new grid that ends two rows above the user rows is not blocked', () => {
+  const plan = planGridPaste(SHEET, 4, 4);
   assert.equal(plan.blocker, null);
-  assert.deepEqual(plain(plan.oldExtent), { rowCount: 4, columnCount: 4 });
+  assert.deepEqual(plain(plan.oldExtent), { rowCount: 4, columnCount: 4, gapRowIndex: null });
+});
+
+test('a new grid that would end one row above the user rows is blocked, so two blank rows stay', () => {
+  const plan = planGridPaste(SHEET, 5, 4);
+  assert.deepEqual(plain(plan.blocker), { rowIndex: 6, columnIndex: 0, address: 'A7', reason: 'guard' });
+});
+
+test('a new grid that would end directly above the user rows is blocked', () => {
+  const plan = planGridPaste(SHEET, 6, 4);
+  assert.deepEqual(plain(plan.blocker), { rowIndex: 6, columnIndex: 0, address: 'A7', reason: 'guard' });
 });
 
 test('a new grid that reaches the user rows is blocked at the first one', () => {
   const plan = planGridPaste(SHEET, 7, 4);
-  assert.deepEqual(plain(plan.blocker), { rowIndex: 6, columnIndex: 0, address: 'A7' });
+  assert.deepEqual(plain(plan.blocker), { rowIndex: 6, columnIndex: 0, address: 'A7', reason: 'overlap' });
+});
+
+test('a first paste onto a sheet with one blank row above the user rows is refused', () => {
+  const sheet = [
+    ['Account', 'Mask', 45991],
+    ['Net Worth', '', 5],
+    ['', '', ''],
+    ['Audit', '', '=C2'],
+  ];
+  const plan = planGridPaste(sheet, 2, 3);
+  assert.deepEqual(plain(plan.blocker), { rowIndex: 2, columnIndex: 0, address: 'A3', reason: 'gap' });
+});
+
+test('a shrinking grid clears its old rows and is not blocked by them', () => {
+  const sheet = [
+    ['Account', 'Mask', 45991],
+    ...Array.from({ length: 9 }, (_, index) => [`    Account ${index}`, 1000 + index, index]),
+    ['', '', ''],
+    ['', '', ''],
+    ['Audit', '', 1],
+  ];
+  const plan = planGridPaste(sheet, 4, 3);
+  assert.equal(plan.blocker, null);
+  assert.deepEqual(plain(plan.oldExtent), { rowCount: 10, columnCount: 3, gapRowIndex: null });
+});
+
+test('a row of formulas showing "" under the grid blocks a paste that would reach it', () => {
+  const values = [
+    ['Account', 'Mask', 45991],
+    ['Net Worth', '', 5],
+    ['', '', ''],
+    ['', '', ''],
+    ['', '', ''],
+  ];
+  const formulas = [
+    ['Account', 'Mask', 45991],
+    ['Net Worth', '', 5],
+    ['', '', ''],
+    ['', '', ''],
+    ['=IF(C2>0,"","low")', '', ''],
+  ];
+  assert.equal(planGridPaste(values, 5, 3).blocker, null, 'by values alone the row looks blank');
+  assert.deepEqual(plain(planGridPaste(values, 5, 3, formulas).blocker), { rowIndex: 4, columnIndex: 0, address: 'A5', reason: 'overlap' });
+  assert.deepEqual(plain(planGridPaste(values, 3, 3, formulas).blocker), { rowIndex: 4, columnIndex: 0, address: 'A5', reason: 'guard' });
+  assert.equal(planGridPaste(values, 2, 3, formulas).blocker, null);
+  assert.equal(pasteOccupancy(values, formulas)[4][0], '=IF(C2>0,"","low")');
+  assert.equal(pasteOccupancy(values, undefined), values);
 });
 
 test('a wider new grid is blocked by a note to the right of the old one', () => {
   const extent = findOldGridExtent(SHEET);
-  assert.deepEqual(plain(findPasteBlocker(SHEET, extent, 4, 6)), { rowIndex: 0, columnIndex: 5, address: 'F1' });
+  assert.deepEqual(plain(findPasteBlocker(SHEET, extent, 4, 6)), { rowIndex: 0, columnIndex: 5, address: 'F1', reason: 'overlap' });
   assert.equal(findPasteBlocker(SHEET, extent, 4, 5), null);
 });
 

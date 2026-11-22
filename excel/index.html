@@ -14,11 +14,13 @@
 <body>
   <div class="xl-panel">
     <header class="xl-header">
+      <!-- Excel draws its own info button over the pane's top-right corner,
+           so everything in the header sits at the left. -->
       <div class="xl-brand">
         <img class="xl-logo" src="../IAY%20favicon.png" alt="">
         <span class="xl-title">IAY Financial</span>
+        <span id="xl-env" class="xl-env"></span>
       </div>
-      <span id="xl-env" class="xl-env"></span>
     </header>
 
     <form id="xl-signin" class="xl-card hidden" novalidate>
@@ -106,7 +108,7 @@
     </footer>
   </div>
 
-  <script src="../config.js"></script>
+  <script src="../config.js" data-no-dev-tools></script>
   <script src="../shared/auth-session.js"></script>
   <script src="../config-helpers.js"></script>
   <script src="../shared/fiscal-year.js"></script>

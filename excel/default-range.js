@@ -121,3 +121,28 @@ function monthRangeProblem(startMonth, endMonth) {
   if (startMonth > endMonth) return 'The start month is after the end month.';
   return null;
 }
+
+/**
+ * The panel's "Ready" sentence: where the default range starts, and why.
+ *
+ * @param {Object} input
+ * @param {string} input.sheetName - the balances sheet's name
+ * @param {Array<*>|null} input.headerRow - row 1 of that sheet, or null when it does not exist
+ * @param {number} input.firstMonthColumn - zero-based
+ * @param {{startMonth: string, endMonth: string}} input.range - from defaultPasteRange
+ * @returns {string}
+ */
+function describeDefaultRange({ sheetName, headerRow, firstMonthColumn, range }) {
+  const start = monthKeyLabel(range.startMonth);
+  const onSheet = firstMonthOnSheet(headerRow, firstMonthColumn);
+  if (onSheet && onSheet === range.startMonth) {
+    return `Ready. The range starts on ${start}, the first month on ${sheetName}.`;
+  }
+  if (onSheet) {
+    return `Ready. The first month on ${sheetName} is ${monthKeyLabel(onSheet)}, after this month, so the range starts on ${start}, the start of last fiscal year.`;
+  }
+  if (headerRow === null) {
+    return `Ready. There is no ${sheetName} sheet yet, so the range starts on ${start}, the start of last fiscal year.`;
+  }
+  return `Ready. ${sheetName} has no months yet, so the range starts on ${start}, the start of last fiscal year.`;
+}

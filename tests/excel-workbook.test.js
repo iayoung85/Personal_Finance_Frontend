@@ -41,6 +41,10 @@ class FakeSheet {
     this.isNullObject = false;
     this.cells = new Map();
     this.formats = new Map();
+    // Formulas whose result shows "": they hold no value, so a values-only
+    // used range leaves them out, as Excel's does.
+    this.formulaCells = new Map();
+    this.fitSnapshots = [];
     rows.forEach((row, rowIndex) => row.forEach((value, columnIndex) => {
       if (value !== '') this.cells.set(`${rowIndex},${columnIndex}`, value);
     }));
@@ -75,7 +79,9 @@ class FakeRange {
   constructor(sheet, rect) {
     this.sheet = sheet;
     this.rect = rect;
-    this.format = { font: {}, autofitColumns() {} };
+    // Each fit records row 1 as the sheet holds it then, so a test can see
+    // which lines the fit was sized on.
+    this.format = { font: {}, autofitColumns: () => sheet.fitSnapshots.push(sheet.rows(6, 2)) };
   }
   load() {}
   get rowIndex() { return this.rect.top; }
@@ -88,7 +94,11 @@ class FakeRange {
       (_, columnOffset) => callback(this.rect.top + rowOffset, this.rect.left + columnOffset)));
   }
   get values() { return this._each((row, column) => this.sheet.valueAt(row, column)); }
+  get formulas() {
+    return this._each((row, column) => this.sheet.formulaCells.get(`${row},${column}`) || this.sheet.valueAt(row, column));
+  }
   set values(matrix) {
+    this._each((row, column) => this.sheet.formulaCells.delete(`${row},${column}`));
     this.sheet.writes++;
     this._each((row, column) => {
       const value = matrix[row - this.rect.top][column - this.rect.left];
@@ -103,6 +113,7 @@ class FakeRange {
   }
   clear() {
     this.sheet.writes++;
+    this._each((row, column) => this.sheet.formulaCells.delete(`${row},${column}`));
     this._each((row, column) => this.sheet.cells.delete(`${row},${column}`));
   }
   getCell(rowOffset, columnOffset) {
@@ -150,7 +161,7 @@ function loadWorkbook(excel) {
   const source = files.map(file => fs.readFileSync(file, 'utf8')).join('\n');
   const sandbox = { module: { exports: {} }, console, Excel: excel.Excel };
   vm.runInNewContext(
-    `${source}\nmodule.exports = { runWorkbookCheck, pasteGridAtSelection, buildBalanceReportGrid, buildCategoryReportGrid, readTargetsSheetValues, writeTargetsWorkbook, targetsSheetFromYear, buildTargetsCheckSheetRows };`,
+    `${source}\nmodule.exports = { runWorkbookCheck, pasteGridAtSelection, buildBalanceReportGrid, buildCategoryReportGrid, typeGridForSheet, readTargetsSheetValues, writeTargetsWorkbook, targetsSheetFromYear, buildTargetsCheckSheetRows };`,
     sandbox,
     { filename: files[files.length - 1] },
   );
@@ -241,12 +252,86 @@ test('a paste that would reach the user rows writes neither sheet, only the chec
   const excel = fakeExcel(workbookSheets({ balanceRows: oldBalances(7) }), null);
   const result = await run(excel, true);
   assert.equal(result.pasted, false);
-  assert.deepEqual(JSON.parse(JSON.stringify(result.blocked)), [{ sheet: 'PF_BALANCES', address: 'A7' }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.blocked)), [{ sheet: 'PF_BALANCES', address: 'A7', reason: 'overlap' }]);
   assert.equal(excel.byName.get('PF_BALANCES').writes, 0);
   assert.equal(excel.byName.get('MYAPP Categories').writes, 0);
   const rows = checkRows(excel);
   assert.match(rows[0][0], /^Paste refused /);
   assert.ok(rows.some(row => row[2] === 'Paste would overwrite your rows' && row[3] === 'A7'));
+});
+
+// The categories sheet as the user keeps it: a pasted grid, blank rows, then
+// audit rows of labels and formulas from the given row on.
+function categoryCount(count) {
+  const expenses = {};
+  for (let index = 0; index < count; index++) expenses[`Home: Item ${index}`] = { amounts: [-1, -1], total: -2 };
+  return { ...CATEGORY_DATA, expenses };
+}
+
+function categoriesSheetWith(workbook, count, auditRowNumber) {
+  const rows = workbook.typeGridForSheet(workbook.buildCategoryReportGrid(categoryCount(count))).values
+    .map(row => Array.from(row));
+  const width = rows[0].length;
+  while (rows.length < auditRowNumber - 1) rows.push(Array(width).fill(''));
+  rows.push(['Audit', '', 'Total Spending', '=SUM(D6:D40)', '', '']);
+  rows.push(['Check', '', '', '=D47-D48', '', '']);
+  return new FakeSheet('MYAPP Categories', rows);
+}
+
+async function pasteCategories(excel, workbook, count) {
+  return workbook.runWorkbookCheck({
+    balanceGrid: workbook.buildBalanceReportGrid(BALANCE_DATA, { showMask: true }),
+    categoryGrid: workbook.buildCategoryReportGrid(categoryCount(count)),
+    startMonth: '2026-01', endMonth: '2026-02', now: new Date(2026, 2, 15), paste: true,
+  });
+}
+
+function setupGrowingCategories(auditRowNumber) {
+  const probe = loadWorkbook(fakeExcel([], null));
+  const categories = categoriesSheetWith(probe, 35, auditRowNumber);
+  const sheets = workbookSheets({ balanceRows: oldBalances(10) }).map(sheet => (sheet.name === 'MYAPP Categories' ? categories : sheet));
+  const excel = fakeExcel(sheets, null);
+  return { excel, workbook: loadWorkbook(excel), categories };
+}
+
+test('a 43-row grid with three blank rows above the audit rows refuses to grow to 45, twice, and the audit rows survive', async () => {
+  const { excel, workbook, categories } = setupGrowingCategories(47);
+  assert.equal(workbook.typeGridForSheet(workbook.buildCategoryReportGrid(categoryCount(35))).rowCount, 43);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await pasteCategories(excel, workbook, 37);
+    assert.equal(result.pasted, false);
+    assert.deepEqual(JSON.parse(JSON.stringify(result.blocked)), [{ sheet: 'MYAPP Categories', address: 'A47', reason: 'guard' }]);
+    assert.equal(categories.valueAt(46, 0), 'Audit');
+    assert.equal(categories.valueAt(46, 3), '=SUM(D6:D40)');
+    assert.equal(categories.valueAt(47, 3), '=D47-D48');
+  }
+  assert.ok(excel.byName.get('PF_CHECK').rows(200, 7).some(row => row[2] === 'No room for two blank rows under the grid'));
+});
+
+test('with room for two blank rows the grid grows, and the next paste still finds its end', async () => {
+  const { excel, workbook, categories } = setupGrowingCategories(48);
+  for (const count of [37, 37]) {
+    const result = await pasteCategories(excel, workbook, count);
+    assert.equal(result.pasted, true);
+    assert.equal(categories.valueAt(44, 2), 'Total', 'the 45-row grid ends on row 45');
+    assert.equal(categories.valueAt(45, 0), '');
+    assert.equal(categories.valueAt(46, 0), '');
+    assert.equal(categories.valueAt(47, 0), 'Audit');
+    assert.equal(categories.valueAt(48, 3), '=D47-D48');
+  }
+});
+
+test('a row of formulas showing "" under the grid blocks a paste that would reach it', async () => {
+  const balances = new FakeSheet('PF_BALANCES', oldBalances(10).slice(0, 4));
+  balances.formulaCells.set('6,2', '=IF(C4>0,"","low")');
+  const sheets = workbookSheets({ balanceRows: [] }).map(sheet => (sheet.name === 'PF_BALANCES' ? balances : sheet));
+  const excel = fakeExcel(sheets, null);
+  const result = await run(excel, true);
+  assert.equal(result.pasted, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.blocked)), [{ sheet: 'PF_BALANCES', address: 'C7', reason: 'overlap' }]);
+  assert.equal(balances.formulaCells.get('6,2'), '=IF(C4>0,"","low")');
+  assert.equal(balances.writes, 0);
 });
 
 test('check writes PF_CHECK and nothing else', async () => {
@@ -327,4 +412,29 @@ test('a targets check writes PF_CHECK and leaves PF_TARGETS alone', async () => 
 
   assert.equal(targets.writes, 0);
   assert.match(excel.byName.get('PF_CHECK').valueAt(0, 0), /^Targets checked 2026-11-21 09:05, fiscal year FY2026\./);
+});
+
+// ── Column fitting ───────────────────────────────────────────
+
+test('PF_CHECK columns are fitted before the long summary line is written', async () => {
+  const excel = fakeExcel(workbookSheets({ balanceRows: oldBalances(10) }), null);
+  await run(excel, false);
+  const check = excel.byName.get('PF_CHECK');
+  assert.equal(check.fitSnapshots.length, 1);
+  assert.equal(check.fitSnapshots[0][0][0], '', 'row 1 was blank when the columns were fitted');
+  assert.equal(check.fitSnapshots[0][2][0], 'Sheet');
+  assert.match(check.valueAt(0, 0), /^Checked /);
+});
+
+test('PF_TARGETS fits its year lines and table but not the note above the table', async () => {
+  const excel = fakeExcel([], null);
+  const workbook = loadWorkbook(excel);
+  const built = workbook.targetsSheetFromYear(TARGET_YEAR, TARGET_CATEGORIES);
+  await workbook.writeTargetsWorkbook({ targetsSheet: built });
+  const targets = excel.byName.get('PF_TARGETS');
+  const atFit = targets.fitSnapshots[0];
+  assert.equal(atFit[0][0], 'Fiscal year');
+  assert.equal(atFit[3][0], '', 'the note was held back from the fit');
+  assert.equal(targets.valueAt(3, 0), built.values[3][0]);
+  assert.notEqual(built.values[3][0], '');
 });

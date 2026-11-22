@@ -48,11 +48,14 @@ body {
 
 /* ── Header ──────────────────────────────────────────────── */
 
+/* Excel overlays an info button about 28px wide and 40px tall on the pane's
+   top-right corner; the header keeps clear of it. */
 .xl-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
+  min-height: 28px;
+  padding-right: 36px;
 }
 
 .xl-brand {

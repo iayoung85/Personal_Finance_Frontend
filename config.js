@@ -6,6 +6,14 @@ window.LOCAL_AUTO_LOGIN_ENABLED = false;
 
 const DEV_SERVER_PORT = 5501;
 
+// A page whose config.js tag carries data-no-dev-tools gets no dev tools: the
+// Excel panel lives in a subfolder, where the relative dev-tools.js does not
+// exist, and has no room for them. Read now, while this script is the one
+// running; every other page leaves the attribute off and is unchanged.
+const CONFIG_SKIPS_DEV_TOOLS = typeof document !== 'undefined'
+  && Boolean(document.currentScript)
+  && document.currentScript.hasAttribute('data-no-dev-tools');
+
 function isLocalDevBackend(url) {
   try {
     const parsed = new URL(url);
@@ -86,7 +94,7 @@ window.BACKEND_URL_PROMISE = detectBackendUrl().then(url => {
   console.log('[Backend Detection] Using backend URL:', url);
   console.log('[Backend Detection] Local auto-login enabled:', window.LOCAL_AUTO_LOGIN_ENABLED);
   
-  if (window.LOCAL_AUTO_LOGIN_ENABLED) {
+  if (window.LOCAL_AUTO_LOGIN_ENABLED && !CONFIG_SKIPS_DEV_TOOLS) {
     const s = document.createElement('script');
     s.src = 'dev-tools.js';
     s.onload = () => window.initDevTools && window.initDevTools();

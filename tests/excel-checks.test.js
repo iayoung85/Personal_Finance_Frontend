@@ -403,10 +403,26 @@ test('a check with no findings says so', () => {
 });
 
 test('a blocked paste names the cell in the way', () => {
-  const finding = K.pasteBlockedFinding('PF_BALANCES', { rowIndex: 40, columnIndex: 0, address: 'A41' });
+  const finding = K.pasteBlockedFinding('PF_BALANCES', { rowIndex: 40, columnIndex: 0, address: 'A41', reason: 'overlap' });
   assert.equal(finding.level, 'fix');
   assert.equal(finding.key, 'A41');
+  assert.equal(finding.problem, 'Paste would overwrite your rows');
   assert.match(finding.detail, /Nothing was pasted/);
+});
+
+test('a paste refused for want of two blank rows says two must remain', () => {
+  const finding = K.pasteBlockedFinding('MYAPP Categories', { rowIndex: 46, columnIndex: 0, address: 'A47', reason: 'guard' });
+  assert.equal(finding.problem, 'No room for two blank rows under the grid');
+  assert.equal(finding.key, 'A47');
+  assert.match(finding.detail, /Two blank rows must stay under the grid/);
+  assert.match(finding.action, /clear row 47/);
+});
+
+test('a sheet with one blank row between the grid and the user rows is named as such', () => {
+  const finding = K.pasteBlockedFinding('MYAPP Categories', { rowIndex: 45, columnIndex: 0, address: 'A46', reason: 'gap' });
+  assert.equal(finding.problem, 'Only one blank row under the grid');
+  assert.match(finding.detail, /Row 46 is the only blank row/);
+  assert.match(finding.action, /second blank row at row 46/);
 });
 
 // ── The whole workbook ───────────────────────────────────────
@@ -454,6 +470,9 @@ test('the status line names a blocked paste first, then the tally', () => {
   const info = { level: 'info' };
   assert.deepEqual(plain(describeWorkbookRun({ findings: [fix], pasted: false, blocked: [{ sheet: 'PF_BALANCES', address: 'A41' }] }, true)), {
     message: 'Nothing pasted: PF_BALANCES cell A41 is in the way. See PF_CHECK.', tone: 'error',
+  });
+  assert.deepEqual(plain(describeWorkbookRun({ findings: [fix], pasted: false, blocked: [{ sheet: 'MYAPP Categories', address: 'A46', reason: 'gap' }] }, true)), {
+    message: 'Nothing pasted: MYAPP Categories has only one blank row under its grid, at A46. See PF_CHECK.', tone: 'error',
   });
   assert.deepEqual(plain(describeWorkbookRun({ findings: [fix, info], pasted: true, blocked: [] }, true)), {
     message: 'Pasted both sheets; 1 to fix, 1 note. See PF_CHECK.', tone: 'warning',
