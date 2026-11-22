@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Production manifest: the panel is served from bank.isaacyoung.com and talks to the live API.
+  Add-in-only XML manifest: the one form both Excel on the Mac and a Windows
+  shared-folder catalog accept. Install steps are in README.md beside it.
+-->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+           xsi:type="TaskPaneApp">
+  <Id>caa695e6-b05a-4df3-9303-bd02f635ceb1</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>IAY Financial</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="IAY Financial"/>
+  <Description DefaultValue="Paste the account balance and category summary reports into the budget workbook, and list what its lookups will miss on PF_CHECK."/>
+  <IconUrl DefaultValue="https://bank.isaacyoung.com/IAY%20favicon.png"/>
+  <HighResolutionIconUrl DefaultValue="https://bank.isaacyoung.com/IAY%20favicon.png"/>
+  <SupportUrl DefaultValue="https://bank.isaacyoung.com/"/>
+  <Hosts>
+    <Host Name="Workbook"/>
+  </Hosts>
+  <Requirements>
+    <Sets DefaultMinVersion="1.1">
+      <Set Name="ExcelApi" MinVersion="1.4"/>
+    </Sets>
+  </Requirements>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://bank.isaacyoung.com/excel/index.html"/>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Workbook">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="IAYF.GetStarted.Title"/>
+            <Description resid="IAYF.GetStarted.Description"/>
+            <LearnMoreUrl resid="IAYF.Support.Url"/>
+          </GetStarted>
+          <FunctionFile resid="IAYF.Commands.Url"/>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="IAYF.Group">
+                <Label resid="IAYF.Group.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="IAYF.Icon.16"/>
+                  <bt:Image size="32" resid="IAYF.Icon.32"/>
+                  <bt:Image size="80" resid="IAYF.Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="IAYF.OpenPanel">
+                  <Label resid="IAYF.Button.Label"/>
+                  <Supertip>
+                    <Title resid="IAYF.Button.Label"/>
+                    <Description resid="IAYF.Button.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="IAYF.Icon.16"/>
+                    <bt:Image size="32" resid="IAYF.Icon.32"/>
+                    <bt:Image size="80" resid="IAYF.Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>IAYF.Taskpane</TaskpaneId>
+                    <SourceLocation resid="IAYF.Taskpane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="IAYF.Icon.16" DefaultValue="https://bank.isaacyoung.com/IAY%20favicon.png"/>
+        <bt:Image id="IAYF.Icon.32" DefaultValue="https://bank.isaacyoung.com/IAY%20favicon.png"/>
+        <bt:Image id="IAYF.Icon.80" DefaultValue="https://bank.isaacyoung.com/IAY%20favicon.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="IAYF.Taskpane.Url" DefaultValue="https://bank.isaacyoung.com/excel/index.html"/>
+        <bt:Url id="IAYF.Commands.Url" DefaultValue="https://bank.isaacyoung.com/excel/commands.html"/>
+        <bt:Url id="IAYF.Support.Url" DefaultValue="https://bank.isaacyoung.com/"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="IAYF.Group.Label" DefaultValue="IAY Financial"/>
+        <bt:String id="IAYF.Button.Label" DefaultValue="Reports"/>
+        <bt:String id="IAYF.GetStarted.Title" DefaultValue="IAY Financial is ready"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="IAYF.Button.Tooltip" DefaultValue="Open the panel that pastes the reports and checks the workbook's lookups (live API)."/>
+        <bt:String id="IAYF.GetStarted.Description" DefaultValue="Open it from the Home tab with the Reports button."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

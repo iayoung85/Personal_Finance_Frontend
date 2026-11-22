@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IAY Financial for Excel</title>
+  <link rel="icon" type="image/png" href="../IAY%20favicon.png">
+  <script src="../theme-loader.js"></script>
+  <link rel="stylesheet" href="../theme.css">
+  <link rel="stylesheet" href="panel.css">
+  <!-- Office.js may only be loaded from Microsoft's CDN. -->
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+</head>
+<body>
+  <div class="xl-panel">
+    <header class="xl-header">
+      <div class="xl-brand">
+        <img class="xl-logo" src="../IAY%20favicon.png" alt="">
+        <span class="xl-title">IAY Financial</span>
+      </div>
+      <span id="xl-env" class="xl-env"></span>
+    </header>
+
+    <form id="xl-signin" class="xl-card hidden" novalidate>
+      <h2 class="xl-card-title">Sign in</h2>
+      <label class="xl-field">
+        <span class="xl-label">Email</span>
+        <input id="xl-email" class="xl-input" type="email" autocomplete="username" spellcheck="false">
+      </label>
+      <label class="xl-field">
+        <span class="xl-label">Password</span>
+        <input id="xl-password" class="xl-input" type="password" autocomplete="current-password">
+      </label>
+      <label id="xl-code-field" class="xl-field hidden">
+        <span class="xl-label">Authenticator code</span>
+        <input id="xl-code" class="xl-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+      </label>
+      <button id="xl-signin-button" class="xl-button xl-button-primary xl-button-full" type="submit">Sign in</button>
+    </form>
+
+    <main id="xl-main" class="xl-main hidden">
+      <section class="xl-card" aria-labelledby="xl-reports-title">
+        <h2 id="xl-reports-title" class="xl-card-title">Reports</h2>
+        <p class="xl-hint">
+          Balances go to <span class="xl-sheet" data-sheet="balances"></span>, categories to
+          <span class="xl-sheet" data-sheet="categories"></span>. What the lookups will miss goes to
+          <span class="xl-sheet" data-sheet="check"></span>.
+        </p>
+
+        <div class="xl-row">
+          <label class="xl-field">
+            <span class="xl-label">From</span>
+            <select id="xl-start-month" class="xl-input"></select>
+          </label>
+          <label class="xl-field">
+            <span class="xl-label">Through</span>
+            <select id="xl-end-month" class="xl-input"></select>
+          </label>
+        </div>
+
+        <div class="xl-actions">
+          <button id="xl-check" class="xl-button" type="button">Check</button>
+          <button id="xl-paste-both" class="xl-button xl-button-primary" type="button">Paste both sheets</button>
+        </div>
+
+        <div class="xl-subsection">
+          <h3 class="xl-subtitle">Paste at the selected cell</h3>
+          <p class="xl-hint">Writes one report from the selected cell down and right, over what is there. No checks.</p>
+          <div class="xl-row xl-row-end">
+            <label class="xl-field xl-grow">
+              <span class="xl-label">Report</span>
+              <select id="xl-selection-report" class="xl-input">
+                <option value="balance">Account balances</option>
+                <option value="category">Category summary</option>
+              </select>
+            </label>
+            <button id="xl-paste-selection" class="xl-button" type="button">Paste here</button>
+          </div>
+        </div>
+      </section>
+      <!-- Each further feature is its own .xl-card below this one. -->
+    </main>
+
+    <footer class="xl-footer">
+      <p id="xl-status" class="xl-status" role="status" aria-live="polite" data-tone="busy">Starting…</p>
+      <button id="xl-signout" class="xl-link hidden" type="button">Sign out</button>
+    </footer>
+  </div>
+
+  <script src="../config.js"></script>
+  <script src="../shared/auth-session.js"></script>
+  <script src="../config-helpers.js"></script>
+  <script src="../shared/fiscal-year.js"></script>
+  <script src="../shared/report-grid.js"></script>
+
+  <script src="constants.js"></script>
+  <script src="cells.js"></script>
+  <script src="sheet-extent.js"></script>
+  <script src="default-range.js"></script>
+  <script src="checks.js"></script>
+  <script src="api.js"></script>
+  <script src="workbook.js"></script>
+  <script src="panel.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

@@ -15,6 +15,16 @@ function load(relPath, exportsList, extraSandbox = {}) {
   return sandbox.module.exports;
 }
 
+// The report section helpers live in shared/report-grid.js; the CSV builders in
+// transactions/reports.js call them, so both files load together.
+function loadReportFiles(exportsList, extraSandbox = {}) {
+  const files = ['shared/report-grid.js', 'transactions/reports.js'].map(relPath => path.join(__dirname, '..', relPath));
+  const source = files.map(file => fs.readFileSync(file, 'utf8')).join('\n');
+  const sandbox = { module: { exports: {} }, console, ...extraSandbox };
+  vm.runInNewContext(`${source}\nmodule.exports = { ${exportsList} };`, sandbox, { filename: files[1] });
+  return sandbox.module.exports;
+}
+
 const A = load('transactions/analytics.js', [
   'ANALYTICS_DISPLAY_MODE', 'getAnalyticsModeForClass', 'isAnalyticsCountedClass',
   'getAnalyticsDisplayModeForEntries', 'getAnalyticsDisplayTotal',
@@ -224,21 +234,21 @@ test('an unknown class counts in no total, savings included in none by accident'
 });
 
 test('report savings section hides when empty, carries its subtotal, and follows show-inactive', () => {
-  const { _getReportSavingsSection } = load('transactions/reports.js', '_getReportSavingsSection, _keepReportSectionsWithCategories, _filterReportCategories, _reportCategoryHasActivity');
-  assert.equal(_getReportSavingsSection({ savings: {} }), null);
-  assert.equal(_getReportSavingsSection({}), null);
+  const { getReportSavingsSection } = loadReportFiles('getReportSavingsSection');
+  assert.equal(getReportSavingsSection({ savings: {} }), null);
+  assert.equal(getReportSavingsSection({}), null);
   const data = {
     savings: { 'Savings: Deposit': { amounts: [-100, -50], total: -150 } },
     total_savings_row: [-100, -50],
     total_savings_grand: -150,
   };
-  const found = _getReportSavingsSection(data);
+  const found = getReportSavingsSection(data);
   assert.equal(found.label, 'Savings');
   assert.equal(found.grandTotal, -150);
   assert.equal(found.totalRow.join(','), '-100,-50');
   const idle = { savings: { 'Savings: Deposit': { amounts: [0, 0], total: 0 } } };
-  assert.notEqual(_getReportSavingsSection(idle, true), null);
-  assert.equal(_getReportSavingsSection(idle, false), null);
+  assert.notEqual(getReportSavingsSection(idle, true), null);
+  assert.equal(getReportSavingsSection(idle, false), null);
 });
 
 test('cache schema check', () => {
@@ -251,10 +261,10 @@ test('cache schema check', () => {
 });
 
 test('report separate sections hide when empty', () => {
-  const { _getReportSeparateSections } = load('transactions/reports.js', '_getReportSeparateSections');
-  const none = _getReportSeparateSections({ adjustments: {}, investment_trends: {} });
+  const { getReportSeparateSections } = loadReportFiles('getReportSeparateSections');
+  const none = getReportSeparateSections({ adjustments: {}, investment_trends: {} });
   assert.equal(none.length, 0);
-  const some = _getReportSeparateSections({
+  const some = getReportSeparateSections({
     adjustments: {},
     investment_trends: { 'Investment Trend': { amounts: [1, 2], total: 3 } },
     total_investment_trends_row: [1, 2],
@@ -263,8 +273,8 @@ test('report separate sections hide when empty', () => {
   assert.equal(some.length, 1);
   assert.equal(some[0].label, 'Investment Trend');
   assert.equal(some[0].grandTotal, 3);
-  assert.equal(_getReportSeparateSections({}).length, 0);
-  const withTransfers = _getReportSeparateSections({
+  assert.equal(getReportSeparateSections({}).length, 0);
+  const withTransfers = getReportSeparateSections({
     transfers: { 'Transfer: Out': { amounts: [-5], total: -5 } },
     total_transfers_row: [-5],
     total_transfers_grand: -5,
@@ -274,9 +284,9 @@ test('report separate sections hide when empty', () => {
 });
 
 test('report separate sections put transfers last and include retirement income and excluded', () => {
-  const { _getReportSeparateSections } = load('transactions/reports.js', '_getReportSeparateSections');
+  const { getReportSeparateSections } = loadReportFiles('getReportSeparateSections');
   const section = amounts => ({ 'A: B': { amounts, total: amounts.reduce((a, b) => a + b, 0) } });
-  const labels = _getReportSeparateSections({
+  const labels = getReportSeparateSections({
     excluded: section([1]),
     total_excluded_row: [1],
     total_excluded_grand: 1,
@@ -288,20 +298,20 @@ test('report separate sections put transfers last and include retirement income 
     transfers: section([5]),
   }).map(entry => entry.label);
   assert.equal(labels.join(','), 'Adjustments,Retirement Income,Investment Trend,Excluded,Transfers');
-  const retirement = _getReportSeparateSections({
+  const retirement = getReportSeparateSections({
     retirement_income: section([3]),
     total_retirement_income_row: [3],
     total_retirement_income_grand: 3,
   });
   assert.equal(retirement[0].grandTotal, 3);
-  assert.equal(_getReportSeparateSections({ retirement_income: {}, excluded: {} }).length, 0);
+  assert.equal(getReportSeparateSections({ retirement_income: {}, excluded: {} }).length, 0);
 });
 
 test('report other inflow section hides when empty and carries its subtotal', () => {
-  const { _getReportOtherInflowSection } = load('transactions/reports.js', '_getReportOtherInflowSection, _keepReportSectionsWithCategories');
-  assert.equal(_getReportOtherInflowSection({ other_inflows: {} }), null);
-  assert.equal(_getReportOtherInflowSection({}), null);
-  const found = _getReportOtherInflowSection({
+  const { getReportOtherInflowSection } = loadReportFiles('getReportOtherInflowSection');
+  assert.equal(getReportOtherInflowSection({ other_inflows: {} }), null);
+  assert.equal(getReportOtherInflowSection({}), null);
+  const found = getReportOtherInflowSection({
     other_inflows: { 'Other Inflow: Interest': { amounts: [4, 6], total: 10 } },
     total_other_inflows_row: [4, 6],
     total_other_inflows_grand: 10,
@@ -312,9 +322,7 @@ test('report other inflow section hides when empty and carries its subtotal', ()
 });
 
 test('category report CSV orders earned income, other inflow, total inflows, spending, savings, total outflow, total, then separate sections', () => {
-  const { _generateCategoryCSV } = load('transactions/reports.js', '_generateCategoryCSV', {
-    _csvEscape: value => String(value).replace(/"/g, '""'),
-  });
+  const { _generateCategoryCSV } = loadReportFiles('_generateCategoryCSV');
   const cat = (name, amounts) => ({ [name]: { amounts, total: amounts.reduce((a, b) => a + b, 0) } });
   const csv = _generateCategoryCSV({
     periods: ['11/1/25 - 11/30/25'],
@@ -367,9 +375,7 @@ test('category report CSV orders earned income, other inflow, total inflows, spe
 });
 
 test('category report CSV leaves the Savings section out when empty but keeps Total Outflow', () => {
-  const { _generateCategoryCSV } = load('transactions/reports.js', '_generateCategoryCSV', {
-    _csvEscape: value => String(value).replace(/"/g, '""'),
-  });
+  const { _generateCategoryCSV } = loadReportFiles('_generateCategoryCSV');
   const csv = _generateCategoryCSV({
     periods: ['11/1/25 - 11/30/25'],
     income: {}, total_income_row: [0], total_income_grand: 0,
@@ -394,34 +400,32 @@ test('category report CSV leaves the Savings section out when empty but keeps To
 });
 
 const REPORT_EXPORTS = [
-  '_getReportSavingsSection', '_reportCategoryHasActivity', '_filterReportCategories', '_getReportSeparateSections',
-  '_getReportOtherInflowSection', '_generateCategoryCSV',
+  'getReportSavingsSection', 'reportCategoryHasActivity', 'filterReportCategories', 'getReportSeparateSections',
+  'getReportOtherInflowSection', '_generateCategoryCSV',
 ].join(', ');
-const loadReports = () => load('transactions/reports.js', REPORT_EXPORTS, {
-  _csvEscape: value => String(value).replace(/"/g, '""'),
-});
+const loadReports = () => loadReportFiles(REPORT_EXPORTS);
 
 test('report category filter drops all-zero rows only when inactive categories are hidden', () => {
-  const { _filterReportCategories } = loadReports();
+  const { filterReportCategories } = loadReports();
   const rows = {
     'Food: Groceries': { amounts: [-40, 0], total: -40 },
     'Food: Dining': { amounts: [0, 0], total: 0 },
     'Misc: Nets Out': { amounts: [5, -5], total: 0 },
   };
-  assert.equal(Object.keys(_filterReportCategories(rows, true)).join(','), 'Food: Groceries,Food: Dining,Misc: Nets Out');
-  assert.equal(Object.keys(_filterReportCategories(rows, false)).join(','), 'Food: Groceries,Misc: Nets Out');
-  assert.equal(Object.keys(_filterReportCategories(undefined, false)).length, 0);
+  assert.equal(Object.keys(filterReportCategories(rows, true)).join(','), 'Food: Groceries,Food: Dining,Misc: Nets Out');
+  assert.equal(Object.keys(filterReportCategories(rows, false)).join(','), 'Food: Groceries,Misc: Nets Out');
+  assert.equal(Object.keys(filterReportCategories(undefined, false)).length, 0);
 });
 
 test('report category with any non-zero period counts as active', () => {
-  const { _reportCategoryHasActivity } = loadReports();
-  assert.equal(_reportCategoryHasActivity({ amounts: [0, 0, 3] }), true);
-  assert.equal(_reportCategoryHasActivity({ amounts: [0, 0, 0] }), false);
-  assert.equal(_reportCategoryHasActivity({ amounts: [] }), false);
+  const { reportCategoryHasActivity } = loadReports();
+  assert.equal(reportCategoryHasActivity({ amounts: [0, 0, 3] }), true);
+  assert.equal(reportCategoryHasActivity({ amounts: [0, 0, 0] }), false);
+  assert.equal(reportCategoryHasActivity({ amounts: [] }), false);
 });
 
 test('report section hides when every row is filtered out, and keeps its subtotal otherwise', () => {
-  const { _getReportSeparateSections, _getReportOtherInflowSection } = loadReports();
+  const { getReportSeparateSections, getReportOtherInflowSection } = loadReports();
   const data = {
     adjustments: { 'Adjustments: Fix': { amounts: [0], total: 0 } },
     total_adjustments_row: [0],
@@ -434,15 +438,15 @@ test('report section hides when every row is filtered out, and keeps its subtota
     total_transfers_grand: -9,
     other_inflows: { 'Other Inflow: Interest': { amounts: [0], total: 0 } },
   };
-  assert.equal(_getReportSeparateSections(data, true).map(s => s.label).join(','), 'Adjustments,Transfers');
-  const hidden = _getReportSeparateSections(data, false);
+  assert.equal(getReportSeparateSections(data, true).map(s => s.label).join(','), 'Adjustments,Transfers');
+  const hidden = getReportSeparateSections(data, false);
   assert.equal(hidden.map(s => s.label).join(','), 'Transfers');
   assert.equal(Object.keys(hidden[0].categories).join(','), 'Transfer: Out');
   assert.equal(hidden[0].grandTotal, -9);
   assert.equal(hidden[0].totalRow.join(','), '-9');
-  assert.notEqual(_getReportOtherInflowSection(data, true), null);
-  assert.equal(_getReportOtherInflowSection(data, false), null);
-  assert.equal(_getReportSeparateSections(data).length, 2);
+  assert.notEqual(getReportOtherInflowSection(data, true), null);
+  assert.equal(getReportOtherInflowSection(data, false), null);
+  assert.equal(getReportSeparateSections(data).length, 2);
 });
 
 test('category report CSV follows the show-inactive choice', () => {

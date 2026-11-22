@@ -1,0 +1,341 @@
+/* ============================================================
+   excel/panel.css — the Excel task pane
+   Sized for a pane about 320px wide. Colours come from theme.css
+   only; the one local token picks the readable text colour for
+   the accent fill in each theme.
+   ============================================================ */
+
+:root {
+  --xl-on-accent: var(--text-bright);
+  --xl-gap: 12px;
+  --xl-radius: 6px;
+}
+
+:root[data-theme="light"] {
+  --xl-on-accent: var(--text-inverse);
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="auto"] {
+    --xl-on-accent: var(--text-inverse);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.xl-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--xl-gap);
+  min-height: 100vh;
+  padding: var(--xl-gap);
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+
+.xl-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.xl-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.xl-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  flex: none;
+}
+
+.xl-title {
+  color: var(--text-heading);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.xl-env {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.xl-env[data-env="dev"] {
+  background: var(--badge-warning-bg);
+  color: var(--badge-warning-text);
+}
+
+.xl-env[data-env="live"] {
+  background: var(--badge-success-bg);
+  color: var(--badge-success-text);
+}
+
+.xl-env:empty {
+  display: none;
+}
+
+/* ── Cards ───────────────────────────────────────────────── */
+
+.xl-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--xl-gap);
+}
+
+.xl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--xl-gap);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--xl-radius);
+}
+
+.xl-card-title {
+  margin: 0;
+  color: var(--text-heading);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.xl-subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.xl-subtitle {
+  margin: 0;
+  color: var(--text-heading);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.xl-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.xl-sheet {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--bg-inset);
+  color: var(--text-bright);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* ── Fields ──────────────────────────────────────────────── */
+
+.xl-row {
+  display: flex;
+  gap: 8px;
+}
+
+.xl-row > .xl-field {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.xl-row-end {
+  align-items: flex-end;
+}
+
+.xl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.xl-grow {
+  flex: 1 1 auto;
+}
+
+.xl-label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.xl-input {
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.xl-input:focus {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 1px;
+  border-color: var(--accent-primary);
+}
+
+.xl-input:disabled {
+  opacity: 0.6;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+
+.xl-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.xl-actions > .xl-button {
+  flex: 1 1 auto;
+}
+
+/* The panel prefix outranks theme.css's light-mode rule for every button. */
+.xl-panel .xl-button {
+  min-height: 30px;
+  padding: 5px 12px;
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.xl-panel .xl-button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.xl-panel .xl-button.xl-button-primary {
+  background: var(--accent-primary);
+  color: var(--xl-on-accent);
+  border-color: var(--accent-primary);
+}
+
+.xl-panel .xl-button.xl-button-primary:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
+  border-color: var(--accent-primary-hover);
+}
+
+.xl-panel .xl-button:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 1px;
+}
+
+.xl-panel .xl-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.xl-button-full {
+  width: 100%;
+}
+
+.xl-panel .xl-footer .xl-link {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent-link);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.xl-panel .xl-footer .xl-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Status line ─────────────────────────────────────────── */
+
+.xl-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.xl-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.xl-status::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.xl-status:empty::before {
+  display: none;
+}
+
+.xl-status[data-tone="success"]::before { background: var(--color-success); }
+.xl-status[data-tone="warning"]::before { background: var(--color-warning); }
+.xl-status[data-tone="error"]::before { background: var(--color-danger); }
+.xl-status[data-tone="error"] { color: var(--color-danger); }
+
+.xl-status[data-tone="busy"]::before {
+  background: var(--accent-primary);
+  animation: xl-pulse 1s ease-in-out infinite;
+}
+
+@keyframes xl-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xl-status[data-tone="busy"]::before {
+    animation: none;
+  }
+}
