@@ -83,7 +83,17 @@ class FakeRange {
     // which lines the fit was sized on.
     this.format = { font: {}, autofitColumns: () => sheet.fitSnapshots.push(sheet.rows(6, 2)) };
   }
-  load() {}
+  // Office.js throws when a property is read without being loaded first; the
+  // fake does the same for the cell properties, so a missed load fails here.
+  load(propertyNames) {
+    this.loadedProperties = this.loadedProperties || new Set();
+    for (const name of String(propertyNames || '').split(',')) this.loadedProperties.add(name.trim());
+  }
+  _requireLoaded(name) {
+    if (!this.loadedProperties || !this.loadedProperties.has(name)) {
+      throw new Error(`The property '${name}' is not available. Before reading the property's value, call the load method.`);
+    }
+  }
   get rowIndex() { return this.rect.top; }
   get address() {
     const { top, left, rows, columns } = this.rect;
@@ -93,8 +103,12 @@ class FakeRange {
     return Array.from({ length: this.rect.rows }, (_, rowOffset) => Array.from({ length: this.rect.columns },
       (_, columnOffset) => callback(this.rect.top + rowOffset, this.rect.left + columnOffset)));
   }
-  get values() { return this._each((row, column) => this.sheet.valueAt(row, column)); }
+  get values() {
+    this._requireLoaded('values');
+    return this._each((row, column) => this.sheet.valueAt(row, column));
+  }
   get formulas() {
+    this._requireLoaded('formulas');
     return this._each((row, column) => this.sheet.formulaCells.get(`${row},${column}`) || this.sheet.valueAt(row, column));
   }
   set values(matrix) {
@@ -106,7 +120,10 @@ class FakeRange {
       else this.sheet.cells.set(`${row},${column}`, value);
     });
   }
-  get numberFormat() { return this._each((row, column) => this.sheet.formats.get(`${row},${column}`) || 'General'); }
+  get numberFormat() {
+    this._requireLoaded('numberFormat');
+    return this._each((row, column) => this.sheet.formats.get(`${row},${column}`) || 'General');
+  }
   set numberFormat(matrix) {
     this.sheet.writes++;
     this._each((row, column) => this.sheet.formats.set(`${row},${column}`, matrix[row - this.rect.top][column - this.rect.left]));

@@ -43,7 +43,7 @@ function _queueValuesFromA1(sheet, usedRange, pasteBlock) {
   if (rowCount === 0 || columnCount === 0) return { range: null };
   const range = sheet.getRange(excelBlockAddress(rowCount, columnCount));
   range.load(pasteBlock ? 'values,formulas' : 'values');
-  return { range };
+  return { range, hasFormulas: Boolean(pasteBlock) };
 }
 
 function _queueTableReads(sheet) {
@@ -123,8 +123,10 @@ async function _readWorkbookState(context, pasteSizes) {
     if (sheets[key].isNullObject) return null;
     return reads[key].range ? reads[key].range.values : [];
   };
+  // Office.js throws on a property that was not loaded, and formulas are
+  // loaded only for a paste.
   const formulasOf = key => {
-    if (sheets[key].isNullObject || !reads[key].range) return undefined;
+    if (sheets[key].isNullObject || !reads[key].range || !reads[key].hasFormulas) return undefined;
     return reads[key].range.formulas;
   };
   const tableSheetOf = key => {
