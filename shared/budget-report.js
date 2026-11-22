@@ -23,8 +23,15 @@ const BUDGET_TONE_PACE_OVER = 'pace-over';
 const BUDGET_TONE_OVER = 'over';
 const BUDGET_TONE_SAVINGS = 'savings';
 
+// How far over target, as the API names it. Only the last is an alarm.
+const BUDGET_OVER_FORGIVEN = 'forgiven';
+const BUDGET_OVER_SLIGHT = 'slight';
+const BUDGET_OVER_OVER = 'over';
+
 const BUDGET_PACE_KEY_TEXT =
-  "The box is today's on-pace range: even spending through the month, give or take the line's band.";
+  "The tick is even spending through the month; the box around it is the line's on-pace range.";
+// Said beside the key, since nothing on the report itself shows that pace is a setting.
+const BUDGET_PACE_KEY_HINT = 'Turn pace off for a line, or change its range, in ';
 
 const _BUDGET_MONTH_ABBREVIATIONS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -95,21 +102,23 @@ function budgetTickPercent(periodHeader) {
 /**
  * The on-pace mark's two edges on the track, in percent: the even mark
  * less the line's band to the even mark plus the band, cut off at the
- * ends of the track. A band of zero has no width to show, so it is a
- * single position, drawn as the thin tick.
+ * ends of the track. A band of zero has no width to show, so it has no
+ * box. The even mark itself is always kept: a box cut off at one end of
+ * the track no longer shows where its middle is.
  *
  * @param {number} evenPercent - from budgetTickPercent
  * @param {number} bandPercent - the line's pace_band_percent
- * @returns {{startPercent: number, endPercent: number, isBox: boolean}}
+ * @returns {{evenPercent: number, startPercent: number, endPercent: number, isBox: boolean}}
  */
 function budgetPaceMark(evenPercent, bandPercent) {
   const even = _clampPercent(evenPercent);
   const band = Number(bandPercent);
   if (!Number.isFinite(band) || band <= 0) {
-    return { startPercent: even, endPercent: even, isBox: false };
+    return { evenPercent: even, startPercent: even, endPercent: even, isBox: false };
   }
   // Four places is the band's own precision; it also keeps float noise out of the edges.
   return {
+    evenPercent: even,
     startPercent: _roundPercent(_clampPercent(even - band)),
     endPercent: _roundPercent(_clampPercent(even + band)),
     isBox: true,
@@ -211,12 +220,20 @@ function buildBudgetBar(entry, options) {
 
   if (isOver) {
     const detail = `over by ${formatBudgetGap(remaining)}`;
+    // The words always say it is over. The colour follows how far: none
+    // when forgiven, the caution colour when slight, red beyond that. A
+    // line with no level named reads as fully over.
+    const overLevel = entry.over_level || BUDGET_OVER_OVER;
+    const toneByLevel = {
+      [BUDGET_OVER_FORGIVEN]: BUDGET_TONE_NORMAL,
+      [BUDGET_OVER_SLIGHT]: BUDGET_TONE_PACE_OVER,
+    };
     return {
-      tone: BUDGET_TONE_OVER,
+      tone: toneByLevel[overLevel] || BUDGET_TONE_OVER,
       fillPercent: 100,
       tickPercent,
       paceMark,
-      isOver: true,
+      isOver: overLevel === BUDGET_OVER_OVER,
       isMet: false,
       summary,
       detail,
@@ -363,9 +380,10 @@ function _periodHeadNote(header, cadence, isCurrent) {
 
 function _paceMarkHtml(mark) {
   if (!mark) return '';
-  if (!mark.isBox) return `<span class="bt-tick" style="left:${mark.startPercent.toFixed(2)}%"></span>`;
+  const tick = `<span class="bt-tick" style="left:${mark.evenPercent.toFixed(2)}%"></span>`;
+  if (!mark.isBox) return tick;
   const width = mark.endPercent - mark.startPercent;
-  return `<span class="bt-pace-box" style="left:${mark.startPercent.toFixed(2)}%;width:${width.toFixed(2)}%"></span>`;
+  return `<span class="bt-pace-box" style="left:${mark.startPercent.toFixed(2)}%;width:${width.toFixed(2)}%"></span>${tick}`;
 }
 
 function _barHtml(bar) {
@@ -457,8 +475,10 @@ function _sectionHtml(section, cadence, options) {
 
   if (cadence === 'monthly' && sectionHasPaceMark(section)) {
     html += '<p class="bt-key"><span class="bt-key-swatch" aria-hidden="true">'
-      + '<span class="bt-key-box"></span></span>'
-      + `${escapeBudgetHtml(BUDGET_PACE_KEY_TEXT)}</p>`;
+      + '<span class="bt-key-box"></span><span class="bt-key-tick"></span></span>'
+      + `<span>${escapeBudgetHtml(BUDGET_PACE_KEY_TEXT)} ${escapeBudgetHtml(BUDGET_PACE_KEY_HINT)}`
+      + `<a href="${escapeBudgetHtml(options.targetsHref)}" data-budget-action="targets"${options.targetsLinkAttrs}>`
+      + 'Targets</a>.</span></p>';
   }
 
   html += `<div class="bt-grid" role="table" aria-label="${title} targets">`;

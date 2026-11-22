@@ -364,7 +364,7 @@ input::placeholder {
 
 .bt-form-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(430px, 480px) minmax(230px, 300px);
+  grid-template-columns: minmax(150px, 1fr) minmax(440px, 520px);
   column-gap: 20px;
   align-items: center;
   padding: 7px 14px;
@@ -542,8 +542,9 @@ input::placeholder {
   font-variant-numeric: tabular-nums;
 }
 
+/* Wide enough for a percent worked back from a dollar amount, such as 29.347 */
 .bt-pace-band .bt-pace-percent {
-  width: 52px;
+  width: 64px;
 }
 
 .bt-pace-band .bt-pace-dollars {
@@ -634,10 +635,11 @@ input::placeholder {
   }
 }
 
-/* Narrow desktop: the pace controls wrap under the amount */
-@media (min-width: 761px) and (max-width: 900px) {
+/* Until the window is wide enough for the whole row beside the nav, the
+   pace controls wrap under the amount */
+@media (min-width: 761px) and (max-width: 980px) {
   .bt-form-row {
-    grid-template-columns: minmax(130px, 1fr) minmax(250px, 1.4fr) minmax(200px, 250px);
+    grid-template-columns: minmax(130px, 1fr) minmax(250px, 1.4fr);
   }
 }
 

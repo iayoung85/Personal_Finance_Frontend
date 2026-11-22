@@ -78,6 +78,7 @@ function _budgetFormSections() {
 function renderBudgetTargets() {
   if (!budgetTargetsData) return;
   _renderBudgetYearSwitch();
+  _renderBudgetCadenceSwitch();
   _renderBudgetFormBody();
   _renderBudgetFormBanner();
   _applyBudgetTargetsFilter();
@@ -139,6 +140,26 @@ function _renderBudgetFormBody() {
     + '<p id="bt-filter-empty" class="bt-filter-empty" hidden>No categories match.</p>';
 }
 
+// One cadence at a time keeps a row to one amount and its own controls.
+// The other cadence's amounts stay in the draft and are saved with these.
+function _renderBudgetCadenceSwitch() {
+  const switchEl = document.getElementById('bt-cadence-switch');
+  if (!switchEl) return;
+  switchEl.innerHTML = BUDGET_CADENCES.map(cadence => {
+    const isActive = cadence === budgetEditingCadence;
+    return `<button type="button" role="tab" class="bt-year-tab bt-cadence-tab${isActive ? ' active' : ''}" `
+      + `data-cadence="${cadence}" aria-selected="${isActive}">`
+      + `<span class="bt-year-tab-label">${BUDGET_CADENCE_LABELS[cadence]}</span>`
+      + '<span class="bt-year-tab-note">targets</span></button>';
+  }).join('');
+}
+
+function _onBudgetCadenceSwitch(cadence) {
+  if (!BUDGET_CADENCES.includes(cadence) || cadence === budgetEditingCadence) return;
+  budgetEditingCadence = cadence;
+  renderBudgetTargets();
+}
+
 function _budgetFormSectionHtml(section, draft, refusal) {
   const isSavings = section.kind === 'savings';
   const title = isSavings ? 'Savings' : 'Spending';
@@ -149,7 +170,7 @@ function _budgetFormSectionHtml(section, draft, refusal) {
   html += `<div class="bt-form-section-head"><h3>${title}</h3>${note}</div>`;
   html += '<div class="bt-form-grid">';
   html += '<div class="bt-form-row bt-form-row-head" aria-hidden="true">'
-    + '<div>Category</div><div>Monthly</div><div>Annual</div></div>';
+    + `<div>Category</div><div>${BUDGET_CADENCE_LABELS[budgetEditingCadence]}</div></div>`;
   for (const group of section.groups) {
     html += `<div class="bt-form-group" data-primary="${escapeBudgetHtml(group.primary)}">`;
     for (const row of group.rows) html += _budgetFormItemHtml(row, draft, refusal);
@@ -171,11 +192,10 @@ function _budgetFormItemHtml(row, draft, refusal) {
   html += '<div class="bt-form-row">';
   html += `<div class="bt-form-name"><span class="bt-form-label" title="${escapeBudgetHtml(row.category)}">`
     + `${escapeBudgetHtml(row.name)}</span>${hint}</div>`;
-  for (const cadence of BUDGET_CADENCES) {
-    const isAtCadence = isRefused && refusal.cadence === cadence;
-    const isPaceRefusal = isAtCadence && Boolean(refusal.paceReason);
-    html += _budgetFieldHtml(row, cadence, draft, isAtCadence && !isPaceRefusal, isPaceRefusal);
-  }
+  const cadence = budgetEditingCadence;
+  const isAtCadence = isRefused && refusal.cadence === cadence;
+  const isPaceRefusal = isAtCadence && Boolean(refusal.paceReason);
+  html += _budgetFieldHtml(row, cadence, draft, isAtCadence && !isPaceRefusal, isPaceRefusal);
   html += '</div>';
   html += `<div class="bt-row-error" role="alert"${isRefused ? '' : ' hidden'}>`
     + `${isRefused ? escapeBudgetHtml(refusal.message) : ''}</div>`;
@@ -316,8 +336,9 @@ function _applyBudgetTargetsFilter() {
       let groupShown = false;
       items.forEach((item, position) => {
         const matchesQuery = !query || primaryMatches || item.dataset.search.includes(query);
-        const hasValue = BUDGET_CADENCES.some(cadence =>
-          normalizeTargetInput(draft[targetDraftKey(item.dataset.category, cadence)]) !== '');
+        // "With a target" means a target of the kind being edited.
+        const hasValue = normalizeTargetInput(
+          draft[targetDraftKey(item.dataset.category, budgetEditingCadence)]) !== '';
         const shown = matchesQuery && (!budgetTargetsOnlySet || hasValue);
         item.hidden = !shown && position !== 0;
         if (shown) groupShown = true;
@@ -548,10 +569,15 @@ function _revealBudgetRefusal(refusal) {
     document.getElementById('bt-form-banner').scrollIntoView({ block: 'center', behavior: 'smooth' });
     return;
   }
+  // A refusal about the cadence not on screen brings that cadence up first.
+  if (refusal.cadence && refusal.cadence !== budgetEditingCadence) {
+    budgetEditingCadence = refusal.cadence;
+    renderBudgetTargets();
+  }
   const item = _budgetFormItem(refusal.category);
   if (!item) return;
   item.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  const cadence = refusal.cadence || BUDGET_CADENCES[0];
+  const cadence = refusal.cadence || budgetEditingCadence;
   const paceSelector = refusal.paceReason === 'invalid_track_pace' ? '.bt-pace-toggle' : '.bt-pace-percent';
   const field = refusal.paceReason
     ? item.querySelector(paceSelector)
@@ -606,6 +632,11 @@ function _wireBudgetTargets() {
     if (event.target.classList.contains('bt-target-input')) _onBudgetFieldKeydown(event);
   });
   panel.addEventListener('click', event => {
+    const cadenceTab = event.target.closest('.bt-cadence-tab');
+    if (cadenceTab) {
+      _onBudgetCadenceSwitch(cadenceTab.dataset.cadence);
+      return;
+    }
     const yearTab = event.target.closest('.bt-year-tab');
     if (yearTab) {
       _onBudgetYearSwitch(Number(yearTab.dataset.year));

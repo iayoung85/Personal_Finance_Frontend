@@ -284,10 +284,12 @@ test('the pace mark is drawn on this month spending bars only, and the key follo
     [{ primary: 'Food', kind: 'spending', own: null, lines: [line('Food: Dining', entry(6000, 2000, PACED), entry(6000, 5800, PACED))] }],
   ));
   assert.equal((html.match(/class="bt-pace-box"/g) || []).length, 1);
-  assert.equal((html.match(/class="bt-tick"/g) || []).length, 0);
-  assert.match(html, /class="bt-pace-box" style="left:65\.00%;width:10\.00%"/);
+  // The tick stays in the middle of the box, so a box cut off at an end still shows its centre.
+  assert.equal((html.match(/class="bt-tick"/g) || []).length, 1);
+  assert.match(html, /class="bt-pace-box" style="left:65\.00%;width:10\.00%"><\/span><span class="bt-tick" style="left:70\.00%"/);
   assert.equal((html.match(/class="bt-key"/g) || []).length, 1);
-  assert.match(html, /The box is today&#39;s on-pace range: even spending through the month, give or take the line&#39;s band\./);
+  assert.match(html, /The tick is even spending through the month; the box around it is the line&#39;s on-pace range\./);
+  assert.match(html, /Turn pace off for a line, or change its range, in <a href="budget\.html#targets" data-budget-action="targets">Targets<\/a>\./);
   assert.match(html, /As of Nov 21, 2026/);
 });
 
@@ -336,25 +338,25 @@ test('an over-target line keeps its box where it was', () => {
 // ── The pace box ────────────────────────────────────────────
 
 test('the box runs from the even mark less the band to the even mark plus the band', () => {
-  assert.deepEqual(plain(budgetPaceMark(70, 5)), { startPercent: 65, endPercent: 75, isBox: true });
-  assert.deepEqual(plain(budgetPaceMark(50, 29.347)), { startPercent: 20.653, endPercent: 79.347, isBox: true });
+  assert.deepEqual(plain(budgetPaceMark(70, 5)), { evenPercent: 70, startPercent: 65, endPercent: 75, isBox: true });
+  assert.deepEqual(plain(budgetPaceMark(50, 29.347)), { evenPercent: 50, startPercent: 20.653, endPercent: 79.347, isBox: true });
 });
 
 test('a wide band is cut off at either end of the track', () => {
-  assert.deepEqual(plain(budgetPaceMark(10, 29.347)), { startPercent: 0, endPercent: 39.347, isBox: true });
-  assert.deepEqual(plain(budgetPaceMark(90, 29.347)), { startPercent: 60.653, endPercent: 100, isBox: true });
-  assert.deepEqual(plain(budgetPaceMark(50, 100)), { startPercent: 0, endPercent: 100, isBox: true });
+  assert.deepEqual(plain(budgetPaceMark(10, 29.347)), { evenPercent: 10, startPercent: 0, endPercent: 39.347, isBox: true });
+  assert.deepEqual(plain(budgetPaceMark(90, 29.347)), { evenPercent: 90, startPercent: 60.653, endPercent: 100, isBox: true });
+  assert.deepEqual(plain(budgetPaceMark(50, 100)), { evenPercent: 50, startPercent: 0, endPercent: 100, isBox: true });
 });
 
 test('a zero or missing band is a single position, not a box', () => {
-  assert.deepEqual(plain(budgetPaceMark(70, 0)), { startPercent: 70, endPercent: 70, isBox: false });
-  assert.deepEqual(plain(budgetPaceMark(70, undefined)), { startPercent: 70, endPercent: 70, isBox: false });
+  assert.deepEqual(plain(budgetPaceMark(70, 0)), { evenPercent: 70, startPercent: 70, endPercent: 70, isBox: false });
+  assert.deepEqual(plain(budgetPaceMark(70, undefined)), { evenPercent: 70, startPercent: 70, endPercent: 70, isBox: false });
 });
 
 test('a bar gets a mark only when the API sent pace for the line', () => {
   const withPace = plain(buildBudgetBar(entry(600, 240, PACED), { ...SPENDING, tickPercent: 70 }));
   assert.equal(withPace.tickPercent, 70);
-  assert.deepEqual(withPace.paceMark, { startPercent: 65, endPercent: 75, isBox: true });
+  assert.deepEqual(withPace.paceMark, { evenPercent: 70, startPercent: 65, endPercent: 75, isBox: true });
 
   const off = plain(buildBudgetBar(entry(600, 240), { ...SPENDING, tickPercent: 70 }));
   assert.equal(off.tickPercent, null);
@@ -387,4 +389,41 @@ test('category text is escaped', () => {
 test('the drawn text is in whole dollars', () => {
   const report = reportWith([{ primary: 'Travel', kind: 'spending', own: { current: entry(600, 240.49), previous: null }, lines: [] }]);
   assert.match(buildBudgetReportHtml(report), /\$240 of \$600/);
+});
+
+// ── Over target, by how far ─────────────────────────────────
+
+test('a forgiven overage keeps its words and loses its colour', () => {
+  const bar = plain(buildBudgetBar({ target: 3545, actual: 3557, remaining: -12, over_level: 'forgiven' }, SPENDING));
+  assert.equal(bar.text, '$3,557 of $3,545, over by $12');
+  assert.equal(bar.fillPercent, 100);
+  assert.equal(bar.tone, 'normal');
+  assert.equal(bar.isOver, false);
+});
+
+test('a slight overage is the caution colour, not red', () => {
+  const bar = plain(buildBudgetBar({ target: 600, actual: 624, remaining: -24, over_level: 'slight' }, SPENDING));
+  assert.equal(bar.text, '$624 of $600, over by $24');
+  assert.equal(bar.tone, 'pace-over');
+  assert.equal(bar.isOver, false);
+});
+
+test('a full overage, or one with no level named, is red', () => {
+  const named = plain(buildBudgetBar({ target: 600, actual: 700, remaining: -100, over_level: 'over' }, SPENDING));
+  const unnamed = plain(buildBudgetBar({ target: 600, actual: 700, remaining: -100 }, SPENDING));
+  for (const bar of [named, unnamed]) {
+    assert.equal(bar.tone, 'over');
+    assert.equal(bar.isOver, true);
+  }
+});
+
+test('the drawn cell is red only for a full overage', () => {
+  const html = level => buildBudgetReportHtml(reportWith([{
+    primary: 'Food', kind: 'spending', own: null,
+    lines: [line('Food: Dining', { target: 600, actual: 624, remaining: -24, over_level: level })],
+  }]));
+  assert.doesNotMatch(html('forgiven'), /bt-cell-over|bt-cell-pace-over/);
+  assert.match(html('slight'), /bt-cell-pace-over/);
+  assert.doesNotMatch(html('slight'), /bt-cell-over/);
+  assert.match(html('over'), /bt-cell-over/);
 });

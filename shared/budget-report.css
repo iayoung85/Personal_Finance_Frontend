@@ -280,7 +280,8 @@
   pointer-events: none;
 }
 
-.bt-tick {
+.bt-tick,
+.bt-key-tick {
   position: absolute;
   top: -4px;
   bottom: -4px;
@@ -289,6 +290,10 @@
   border-radius: 1px;
   background: var(--text-bright);
   box-shadow: 0 0 0 1px var(--bg-surface);
+}
+
+.bt-key-tick {
+  left: 55%;
 }
 
 /* ── Empty, loading, error ────────────────────────────────── */

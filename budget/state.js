@@ -16,6 +16,8 @@ let budgetTargetsData = null;
 let budgetTargetsLoading = false;
 // The fiscal year the editor shows.
 let budgetEditingYear = null;
+// The editor shows one cadence's fields at a time; both are kept in the draft and saved together.
+let budgetEditingCadence = 'monthly';
 // {category: {track_pace, pace_band_percent}}: the API's remembered pace
 // settings, what a row with no target in the year being edited starts from.
 let budgetPaceSettings = {};
