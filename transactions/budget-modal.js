@@ -66,7 +66,6 @@ async function _loadBudgetModalReport() {
 
 function _drawBudgetModalReport() {
   renderBudgetReport(document.getElementById('budget-modal-container'), _budgetModalReport, {
-    showCents: getAppConfig().showCents !== false,
     targetsHref: 'budget.html#targets',
     targetsInNewTab: true,
   });

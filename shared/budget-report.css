@@ -139,20 +139,24 @@
   color: var(--text-muted);
 }
 
-.bt-row-heading {
-  display: block;
-  padding-top: 12px;
-  padding-bottom: 4px;
-}
-
-.bt-row-heading .bt-name,
 .bt-row-primary .bt-name {
   font-weight: 600;
   color: var(--text-bright);
 }
 
-.bt-row-heading + .bt-row {
+/* The rows of one primary read as one block: a rail runs down their left
+   edge without a break, and no rule is drawn between them. A rule then
+   always means the next primary. */
+.bt-group-first,
+.bt-group-middle,
+.bt-group-last {
+  box-shadow: inset 3px 0 0 var(--border-strong);
+}
+
+.bt-group-middle,
+.bt-group-last {
   border-top: none;
+  padding-top: 8px;
 }
 
 .bt-name {
@@ -164,22 +168,15 @@
   white-space: nowrap;
 }
 
-/* A detail under a primary hangs from a thin guide */
-.bt-depth-1 .bt-name {
-  position: relative;
-  padding-left: 20px;
+/* The primary's part of a detail's name is quieter, so a column of them
+   scans by the detail while still saying where each belongs. */
+.bt-name-primary {
+  color: var(--text-muted);
 }
 
-.bt-depth-1 .bt-name::before {
-  content: '';
-  position: absolute;
-  left: 6px;
-  top: -10px;
-  bottom: 50%;
-  width: 8px;
-  border-left: 1px solid var(--border-primary);
-  border-bottom: 1px solid var(--border-primary);
-  border-bottom-left-radius: 4px;
+/* A detail under a primary that has its own target steps in under it */
+.bt-depth-1 .bt-name {
+  padding-left: 14px;
 }
 
 /* ── Period cell ──────────────────────────────────────────── */
@@ -231,8 +228,7 @@
 }
 
 .bt-no-target {
-  font-size: 12px;
-  font-style: italic;
+  font-size: 13px;
   color: var(--text-muted);
 }
 
@@ -389,15 +385,11 @@
   }
 
   .bt-row.bt-depth-1 {
-    padding-left: 30px;
+    padding-left: 26px;
   }
 
   .bt-depth-1 .bt-name {
     padding-left: 0;
-  }
-
-  .bt-depth-1 .bt-name::before {
-    display: none;
   }
 
   .bt-bar {

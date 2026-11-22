@@ -232,3 +232,51 @@ function fiscalStartMonthOfYear(yearEntry) {
   const month = Number(String((yearEntry && yearEntry.start) || '').split('-')[1]);
   return Number.isInteger(month) && month >= 1 && month <= 12 ? month : 1;
 }
+
+/**
+ * Which way a key moves between target fields, or null when the key should
+ * do its usual work inside the field. Left and Right leave the field only
+ * from its edge with nothing selected, so they still move the caret through
+ * an amount being corrected.
+ *
+ * @param {string} key - the KeyboardEvent key
+ * @param {number} selectionStart - caret or selection start in the field
+ * @param {number} selectionEnd - caret or selection end in the field
+ * @param {number} valueLength - length of the field's text
+ * @returns {'up'|'down'|'left'|'right'|null}
+ */
+function targetFieldMoveForKey(key, selectionStart, selectionEnd, valueLength) {
+  if (key === 'ArrowUp') return 'up';
+  if (key === 'ArrowDown' || key === 'Enter') return 'down';
+  if (selectionStart !== selectionEnd) return null;
+  if (key === 'ArrowLeft' && selectionStart === 0) return 'left';
+  if (key === 'ArrowRight' && selectionEnd === valueLength) return 'right';
+  return null;
+}
+
+/**
+ * The field a move lands on, counting only the rows on screen. A move off
+ * the edge of the grid lands nowhere, so the caret stays where it is.
+ *
+ * @param {number} rowCount - rows currently shown
+ * @param {number} rowIndex - the focused field's row among them
+ * @param {string} cadence - the focused field's cadence
+ * @param {'up'|'down'|'left'|'right'} move
+ * @returns {{rowIndex: number, cadence: string}|null}
+ */
+function nextTargetFieldPosition(rowCount, rowIndex, cadence, move) {
+  const cadenceIndex = BUDGET_CADENCES.indexOf(cadence);
+  if (rowIndex < 0 || rowIndex >= rowCount || cadenceIndex < 0) return null;
+
+  let nextRow = rowIndex;
+  let nextCadence = cadenceIndex;
+  if (move === 'up') nextRow -= 1;
+  else if (move === 'down') nextRow += 1;
+  else if (move === 'left') nextCadence -= 1;
+  else if (move === 'right') nextCadence += 1;
+  else return null;
+
+  if (nextRow < 0 || nextRow >= rowCount) return null;
+  if (nextCadence < 0 || nextCadence >= BUDGET_CADENCES.length) return null;
+  return { rowIndex: nextRow, cadence: BUDGET_CADENCES[nextCadence] };
+}

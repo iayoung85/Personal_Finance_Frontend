@@ -33,7 +33,6 @@ async function loadBudgetReport(force = false) {
 function renderBudgetReportPanel() {
   const container = document.getElementById('budget-report-container');
   renderBudgetReport(container, budgetReport, {
-    showCents: getAppConfig().showCents !== false,
     targetsHref: '#targets',
   });
 }

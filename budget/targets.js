@@ -200,7 +200,8 @@ function _budgetFieldHtml(row, cadence, draft, isInvalid) {
 }
 
 function _budgetAlertButtonHtml(row, cadence, availability) {
-  return `<button type="button" class="bt-alert-btn" data-budget-action="set-alert" `
+  // Out of the Tab order, so Tab runs Monthly, Annual, then the next row.
+  return `<button type="button" class="bt-alert-btn" tabindex="-1" data-budget-action="set-alert" `
     + `data-category="${escapeBudgetHtml(row.category)}" data-cadence="${cadence}" `
     + `title="${escapeBudgetHtml(availability.reason)}" aria-label="${escapeBudgetHtml(`Set alert: ${availability.reason}`)}"`
     + `${availability.enabled ? '' : ' disabled'}>`
@@ -437,6 +438,34 @@ function _revealBudgetRefusal(refusal) {
   if (field) field.focus({ preventScroll: true });
 }
 
+/**
+ * Arrow keys and Enter move between target fields like cells in a sheet,
+ * over the rows the filter is showing.
+ *
+ * @param {KeyboardEvent} event - a keydown on a target field
+ */
+function _onBudgetFieldKeydown(event) {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
+  const input = event.target;
+  const move = targetFieldMoveForKey(
+    event.key, input.selectionStart, input.selectionEnd, input.value.length);
+  if (!move) return;
+
+  const shownItems = Array.from(document.querySelectorAll('#bt-form-body .bt-form-item'))
+    .filter(item => !item.closest('[hidden]'));
+  const position = nextTargetFieldPosition(
+    shownItems.length, shownItems.indexOf(input.closest('.bt-form-item')), input.dataset.cadence, move);
+  // At the edge of the grid the key keeps its usual meaning inside the field.
+  if (!position) return;
+
+  const nextInput = shownItems[position.rowIndex]
+    .querySelector(`.bt-target-input[data-cadence="${position.cadence}"]`);
+  if (!nextInput) return;
+  event.preventDefault();
+  nextInput.focus();
+  nextInput.select();
+}
+
 function _wireBudgetTargets() {
   if (_budgetTargetsWired) return;
   _budgetTargetsWired = true;
@@ -444,6 +473,9 @@ function _wireBudgetTargets() {
   const panel = document.getElementById('targets');
   panel.addEventListener('input', event => {
     if (event.target.classList.contains('bt-target-input')) _onBudgetFieldInput(event.target);
+  });
+  panel.addEventListener('keydown', event => {
+    if (event.target.classList.contains('bt-target-input')) _onBudgetFieldKeydown(event);
   });
   panel.addEventListener('click', event => {
     const yearTab = event.target.closest('.bt-year-tab');

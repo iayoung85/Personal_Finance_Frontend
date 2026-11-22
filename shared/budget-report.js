@@ -32,26 +32,35 @@ const _BUDGET_MONTH_ABBREVIATIONS = [
 ];
 
 /**
- * A dollar amount as the report prints it. With cents off, a whole
- * amount drops its ".00" and any other amount keeps its cents, which is
- * what the Settings checkbox ("Always show cents") describes.
+ * A dollar amount as the report prints it: whole dollars, always. The
+ * report is read at a glance and nobody checks cents on it, so rounding is
+ * for display only and each figure is rounded on its own.
  *
  * @param {number} amount
- * @param {boolean} showCents - the user's showCents preference
- * @returns {string} e.g. "$1,240.50", "$600", "-$50.00"
+ * @returns {string} e.g. "$1,241", "$600", "-$50"
  */
-function formatBudgetMoney(amount, showCents) {
-  const cents = Math.round((Number(amount) || 0) * 100);
-  // A rounded -0 would print as "-$0.00".
-  const value = cents === 0 ? 0 : cents / 100;
-  const isWhole = cents % 100 === 0;
-  const fractionDigits = (showCents || !isWhole) ? 2 : 0;
+function formatBudgetMoney(amount) {
+  const dollars = Math.round(Number(amount) || 0);
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  }).format(value);
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+    // A rounded -0 would print as "-$0".
+  }).format(dollars === 0 ? 0 : dollars);
+}
+
+/**
+ * A gap between two figures. One that is real but rounds away says so,
+ * since "over by $0" would read as not over at all.
+ *
+ * @param {number} amount - zero or above
+ * @returns {string} e.g. "$141", "less than $1"
+ */
+function formatBudgetGap(amount) {
+  const gap = Math.abs(Number(amount) || 0);
+  if (gap > 0 && Math.round(gap) === 0) return 'less than $1';
+  return formatBudgetMoney(gap);
 }
 
 /**
@@ -89,10 +98,10 @@ function _clampPercent(percent) {
   return percent;
 }
 
-function _paceWords(entry, money) {
+function _paceWords(entry) {
   if (entry.pace === BUDGET_PACE_ON) return 'on pace';
   // The gap's sign is already in the word; -0 only comes with "on".
-  const gap = money(Math.abs(Number(entry.pace_difference) || 0));
+  const gap = formatBudgetGap(entry.pace_difference);
   if (entry.pace === BUDGET_PACE_OVER) return `over pace by ${gap}`;
   if (entry.pace === BUDGET_PACE_UNDER) return `under pace by ${gap}`;
   return '';
@@ -111,14 +120,13 @@ function _paceWords(entry, money) {
  * @param {Object} options
  * @param {string} options.kind - 'spending' or 'savings'
  * @param {number|null} [options.tickPercent]
- * @param {boolean} [options.showCents]
  * @returns {{tone: string, fillPercent: number, tickPercent: number|null,
  *            isOver: boolean, isMet: boolean, summary: string,
  *            detail: string, text: string}}
  */
 function buildBudgetBar(entry, options) {
   const kind = options.kind;
-  const money = amount => formatBudgetMoney(amount, options.showCents);
+  const money = formatBudgetMoney;
   const target = Number(entry.target) || 0;
   const actual = Number(entry.actual) || 0;
   const remaining = Number(entry.remaining) || 0;
@@ -126,9 +134,10 @@ function buildBudgetBar(entry, options) {
 
   if (kind === BUDGET_KIND_SAVINGS) {
     const isMet = remaining <= 0;
-    let detail = `${money(remaining)} to go`;
+    let detail = `${formatBudgetGap(remaining)} to go`;
     if (isMet) {
-      detail = remaining < 0 ? `goal met, ${money(-remaining)} past it` : 'goal met';
+      // Past the goal by under a dollar is simply met.
+      detail = Math.round(-remaining) > 0 ? `goal met, ${money(-remaining)} past it` : 'goal met';
     }
     const summary = `saved ${money(actual)} of ${money(target)}`;
     return {
@@ -150,7 +159,7 @@ function buildBudgetBar(entry, options) {
     : _clampPercent(options.tickPercent);
 
   if (isOver) {
-    const detail = `over by ${money(-remaining)}`;
+    const detail = `over by ${formatBudgetGap(remaining)}`;
     return {
       tone: BUDGET_TONE_OVER,
       fillPercent: 100,
@@ -163,8 +172,8 @@ function buildBudgetBar(entry, options) {
     };
   }
 
-  const words = [`${money(remaining)} left`];
-  const paceWords = _paceWords(entry, money);
+  const words = [`${formatBudgetGap(remaining)} left`];
+  const paceWords = _paceWords(entry);
   if (paceWords) words.push(paceWords);
   const detail = words.join(', ');
   return {
@@ -182,13 +191,15 @@ function buildBudgetBar(entry, options) {
 /**
  * The rows one section draws, in order.
  *
- * A primary with its own target is a line with its details nested under
- * it. With no own target, two or more details sit under a plain heading,
- * and one detail alone is one flat "Primary: Detailed" line. A kind row
- * opens each kind when the section holds both spending and savings.
+ * Every detail reads "Primary: Detailed", whether it stands alone or with
+ * others, so one name never changes shape with what sits beside it. A
+ * primary with its own target is a line above its details. Each row says
+ * where it sits in its primary's group, so the drawing can bind the group
+ * into one block. A kind row opens each kind when the section holds both
+ * spending and savings.
  *
  * @param {{groups: Array}} section - the API's monthly or annual section
- * @returns {Array<Object>} rows of type 'kind', 'heading' or 'line'
+ * @returns {Array<Object>} rows of type 'kind' or 'line'
  */
 function buildBudgetSectionRows(section) {
   const groups = (section && Array.isArray(section.groups)) ? section.groups : [];
@@ -204,8 +215,9 @@ function buildBudgetSectionRows(section) {
     lastKind = group.kind;
     const lines = Array.isArray(group.lines) ? group.lines : [];
 
+    const groupRows = [];
     if (group.own) {
-      rows.push(_budgetLineRow({
+      groupRows.push(_budgetLineRow({
         label: group.primary,
         category: group.primary,
         kind: group.kind,
@@ -214,35 +226,27 @@ function buildBudgetSectionRows(section) {
         current: group.own.current,
         previous: group.own.previous,
       }));
-      for (const line of lines) rows.push(_detailRow(group, line, 1));
-      continue;
     }
+    const detailDepth = group.own ? 1 : 0;
+    for (const line of lines) groupRows.push(_detailRow(group, line, detailDepth));
 
-    if (lines.length === 1) {
-      const line = lines[0];
-      rows.push(_budgetLineRow({
-        label: `${group.primary}: ${line.name}`,
-        category: line.category,
-        kind: group.kind,
-        depth: 0,
-        isPrimary: false,
-        current: line.current,
-        previous: line.previous,
-      }));
-      continue;
-    }
-
-    if (lines.length > 1) {
-      rows.push({ type: 'heading', label: group.primary, kind: group.kind });
-      for (const line of lines) rows.push(_detailRow(group, line, 1));
-    }
+    groupRows.forEach((row, position) => {
+      row.groupPosition = _groupPosition(position, groupRows.length);
+      rows.push(row);
+    });
   }
   return rows;
 }
 
+function _groupPosition(position, groupSize) {
+  if (groupSize === 1) return 'single';
+  if (position === 0) return 'first';
+  return position === groupSize - 1 ? 'last' : 'middle';
+}
+
 function _detailRow(group, line, depth) {
-  return _budgetLineRow({
-    label: line.name,
+  const row = _budgetLineRow({
+    label: `${group.primary}: ${line.name}`,
     category: line.category,
     kind: group.kind,
     depth,
@@ -250,6 +254,10 @@ function _detailRow(group, line, depth) {
     current: line.current,
     previous: line.previous,
   });
+  // Kept apart so the primary's part can be drawn quieter than the detail's.
+  row.primaryPart = group.primary;
+  row.detailPart = line.name;
+  return row;
 }
 
 function _budgetLineRow(fields) {
@@ -312,12 +320,11 @@ function _periodCellHtml(entry, row, periodLabel, options) {
   const labelAttr = ` data-period="${escapeBudgetHtml(periodLabel)}"`;
   if (!entry) {
     return `<div class="bt-cell bt-cell-empty" role="cell"${labelAttr}>`
-      + '<span class="bt-no-target">No target</span></div>';
+      + '<span class="bt-no-target" title="No target" aria-label="No target">—</span></div>';
   }
   const bar = buildBudgetBar(entry, {
     kind: row.kind,
     tickPercent: options.tickPercent,
-    showCents: options.showCents,
   });
   const stateClass = bar.isOver ? ' bt-cell-over' : (bar.isMet ? ' bt-cell-met' : '');
   const paceClass = bar.tone === BUDGET_TONE_PACE_OVER ? ' bt-cell-pace-over' : '';
@@ -333,9 +340,10 @@ function _kindRowHtml(row) {
   return `<div class="bt-row bt-row-kind" role="row"><div class="bt-kind-label" role="cell">${label}</div></div>`;
 }
 
-function _headingRowHtml(row) {
-  return `<div class="bt-row bt-row-heading bt-kind-${escapeBudgetHtml(row.kind)}" role="row">`
-    + `<div class="bt-name" role="rowheader">${escapeBudgetHtml(row.label)}</div></div>`;
+function _rowNameHtml(row) {
+  if (!row.primaryPart) return escapeBudgetHtml(row.label);
+  return `<span class="bt-name-primary">${escapeBudgetHtml(row.primaryPart)}:</span> `
+    + escapeBudgetHtml(row.detailPart);
 }
 
 function _lineRowHtml(row, section, cadence, options) {
@@ -343,17 +351,18 @@ function _lineRowHtml(row, section, cadence, options) {
   const currentTick = cadence === 'monthly' && isSpending
     ? budgetTickPercent(section.current)
     : null;
-  const classes = ['bt-row', 'bt-row-line', `bt-depth-${row.depth}`, `bt-kind-${escapeBudgetHtml(row.kind)}`];
+  const classes = [
+    'bt-row', 'bt-row-line', `bt-depth-${row.depth}`, `bt-group-${row.groupPosition}`,
+    `bt-kind-${escapeBudgetHtml(row.kind)}`,
+  ];
   if (row.isPrimary) classes.push('bt-row-primary');
   return `<div class="${classes.join(' ')}" role="row">`
-    + `<div class="bt-name" role="rowheader" title="${escapeBudgetHtml(row.category)}">${escapeBudgetHtml(row.label)}</div>`
+    + `<div class="bt-name" role="rowheader" title="${escapeBudgetHtml(row.category)}">${_rowNameHtml(row)}</div>`
     + _periodCellHtml(row.current, row, section.current && section.current.label, {
       tickPercent: currentTick,
-      showCents: options.showCents,
     })
     + _periodCellHtml(row.previous, row, section.previous && section.previous.label, {
       tickPercent: null,
-      showCents: options.showCents,
     })
     + '</div>';
 }
@@ -398,7 +407,6 @@ function _sectionHtml(section, cadence, options) {
   html += _sectionHeadRowHtml(section, cadence);
   for (const row of rows) {
     if (row.type === 'kind') html += _kindRowHtml(row);
-    else if (row.type === 'heading') html += _headingRowHtml(row);
     else html += _lineRowHtml(row, section, cadence, options);
   }
   html += '</div>';
@@ -410,14 +418,12 @@ function _sectionHtml(section, cadence, options) {
  *
  * @param {Object} report - the API's GET /api/budget/report body
  * @param {Object} [options]
- * @param {boolean} [options.showCents=true]
  * @param {string} [options.targetsHref='budget.html#targets'] - where "set targets" links go
  * @param {boolean} [options.targetsInNewTab=false] - open those links in a new tab
  * @returns {string}
  */
 function buildBudgetReportHtml(report, options = {}) {
   const resolved = {
-    showCents: options.showCents !== false,
     targetsHref: options.targetsHref || 'budget.html#targets',
     targetsLinkAttrs: options.targetsInNewTab ? ' target="_blank" rel="noopener"' : '',
   };

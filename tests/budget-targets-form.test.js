@@ -16,7 +16,7 @@ function loadForm() {
     `${source}\nmodule.exports = { targetDraftKey, formatTargetFieldValue, draftFromYearTargets, `
       + 'normalizeTargetInput, buildTargetsFormSections, flattenTargetsFormRows, buildTargetsPayload, '
       + 'isTargetsDraftChanged, targetsDraftHasValues, placeTargetsRefusal, setAlertAvailability, '
-      + 'fiscalStartMonthOfYear };',
+      + 'fiscalStartMonthOfYear, targetFieldMoveForKey, nextTargetFieldPosition };',
     sandbox,
     { filename: sourcePath },
   );
@@ -168,4 +168,35 @@ test('the fiscal start month is read off the API year', () => {
   assert.equal(form.fiscalStartMonthOfYear({ start: '2026-11-01' }), 11);
   assert.equal(form.fiscalStartMonthOfYear({ start: '2026-01-01' }), 1);
   assert.equal(form.fiscalStartMonthOfYear(null), 1);
+});
+
+test('up, down and Enter always leave the field; left and right only from its edge', () => {
+  assert.equal(form.targetFieldMoveForKey('ArrowUp', 2, 2, 5), 'up');
+  assert.equal(form.targetFieldMoveForKey('ArrowDown', 2, 2, 5), 'down');
+  assert.equal(form.targetFieldMoveForKey('Enter', 0, 5, 5), 'down');
+
+  assert.equal(form.targetFieldMoveForKey('ArrowLeft', 0, 0, 5), 'left');
+  assert.equal(form.targetFieldMoveForKey('ArrowLeft', 3, 3, 5), null);
+  assert.equal(form.targetFieldMoveForKey('ArrowRight', 5, 5, 5), 'right');
+  assert.equal(form.targetFieldMoveForKey('ArrowRight', 3, 3, 5), null);
+  assert.equal(form.targetFieldMoveForKey('ArrowLeft', 0, 0, 0), 'left');
+  assert.equal(form.targetFieldMoveForKey('ArrowRight', 0, 0, 0), 'right');
+
+  // With text selected the arrow collapses the selection first.
+  assert.equal(form.targetFieldMoveForKey('ArrowLeft', 0, 5, 5), null);
+  assert.equal(form.targetFieldMoveForKey('ArrowRight', 0, 5, 5), null);
+  assert.equal(form.targetFieldMoveForKey('a', 0, 0, 5), null);
+});
+
+test('a move lands on the neighbouring field and nowhere past the edge of the grid', () => {
+  assert.deepEqual(plain(form.nextTargetFieldPosition(3, 1, 'monthly', 'down')), { rowIndex: 2, cadence: 'monthly' });
+  assert.deepEqual(plain(form.nextTargetFieldPosition(3, 1, 'annual', 'up')), { rowIndex: 0, cadence: 'annual' });
+  assert.deepEqual(plain(form.nextTargetFieldPosition(3, 1, 'monthly', 'right')), { rowIndex: 1, cadence: 'annual' });
+  assert.deepEqual(plain(form.nextTargetFieldPosition(3, 1, 'annual', 'left')), { rowIndex: 1, cadence: 'monthly' });
+
+  assert.equal(form.nextTargetFieldPosition(3, 0, 'monthly', 'up'), null);
+  assert.equal(form.nextTargetFieldPosition(3, 2, 'monthly', 'down'), null);
+  assert.equal(form.nextTargetFieldPosition(3, 1, 'monthly', 'left'), null);
+  assert.equal(form.nextTargetFieldPosition(3, 1, 'annual', 'right'), null);
+  assert.equal(form.nextTargetFieldPosition(3, -1, 'monthly', 'down'), null);
 });

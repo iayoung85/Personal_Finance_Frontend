@@ -31,8 +31,8 @@ const {
   buildBudgetReportHtml,
 } = loadReport();
 
-const SPENDING = { kind: 'spending', showCents: false };
-const SAVINGS = { kind: 'savings', showCents: false };
+const SPENDING = { kind: 'spending' };
+const SAVINGS = { kind: 'savings' };
 
 function entry(target, actual, extra = {}) {
   return { target, actual, remaining: Math.round((target - actual) * 100) / 100, ...extra };
@@ -53,17 +53,32 @@ const OCTOBER = {
 
 // ── Money ───────────────────────────────────────────────────
 
-test('money follows the cents setting: whole amounts drop .00 only when cents are off', () => {
-  assert.equal(formatBudgetMoney(600, true), '$600.00');
-  assert.equal(formatBudgetMoney(600, false), '$600');
-  assert.equal(formatBudgetMoney(307.22, false), '$307.22');
-  assert.equal(formatBudgetMoney(1240.5, false), '$1,240.50');
+test('money is whole dollars, rounded for display', () => {
+  assert.equal(formatBudgetMoney(600), '$600');
+  assert.equal(formatBudgetMoney(307.22), '$307');
+  assert.equal(formatBudgetMoney(1240.5), '$1,241');
+  assert.equal(formatBudgetMoney(4037.84), '$4,038');
 });
 
 test('a negative amount keeps its sign, and a rounded zero has none', () => {
-  assert.equal(formatBudgetMoney(-50, true), '-$50.00');
-  assert.equal(formatBudgetMoney(-0, false), '$0');
-  assert.equal(formatBudgetMoney(-0.001, true), '$0.00');
+  assert.equal(formatBudgetMoney(-50), '-$50');
+  assert.equal(formatBudgetMoney(-0), '$0');
+  assert.equal(formatBudgetMoney(-0.4), '$0');
+});
+
+test('a gap that is real but rounds away says less than $1', () => {
+  const barelyOver = plain(buildBudgetBar({ target: 600, actual: 600.4, remaining: -0.4 }, SPENDING));
+  assert.equal(barelyOver.isOver, true);
+  assert.equal(barelyOver.text, '$600 of $600, over by less than $1');
+
+  const barelyLeft = plain(buildBudgetBar({ target: 600, actual: 599.7, remaining: 0.3 }, SPENDING));
+  assert.equal(barelyLeft.text, '$600 of $600, less than $1 left');
+
+  const exactlySpent = plain(buildBudgetBar({ target: 600, actual: 600, remaining: 0 }, SPENDING));
+  assert.equal(exactlySpent.text, '$600 of $600, $0 left');
+
+  const barelyPast = plain(buildBudgetBar({ target: 500, actual: 500.3, remaining: -0.3 }, SAVINGS));
+  assert.equal(barelyPast.text, 'saved $500 of $500, goal met');
 });
 
 test('an ISO date reads as a calendar date', () => {
@@ -99,7 +114,7 @@ test('pace words carry the gap without its sign', () => {
     entry(700, 307.22, { pace: 'under', pace_amount: 490, pace_difference: -182.78 }),
     SPENDING,
   ));
-  assert.equal(under.text, '$307.22 of $700, $392.78 left, under pace by $182.78');
+  assert.equal(under.text, '$307 of $700, $393 left, under pace by $183');
   assert.equal(under.tone, 'normal');
 
   const over = plain(buildBudgetBar(
@@ -163,27 +178,30 @@ test('a primary with its own target is a line with its details nested under it',
       lines: [line('Food And Drink: Dining', entry(600, 240))],
     }],
   }));
-  assert.deepEqual(rows.map(row => [row.type, row.label, row.depth, row.isPrimary]), [
-    ['line', 'Food And Drink', 0, true],
-    ['line', 'Dining', 1, false],
+  assert.deepEqual(rows.map(row => [row.type, row.label, row.depth, row.isPrimary, row.groupPosition]), [
+    ['line', 'Food And Drink', 0, true, 'first'],
+    ['line', 'Food And Drink: Dining', 1, false, 'last'],
   ]);
   assert.equal(rows[0].previous, null);
+  assert.equal(rows[0].primaryPart, undefined);
+  assert.deepEqual([rows[1].primaryPart, rows[1].detailPart], ['Food And Drink', 'Dining']);
 });
 
-test('two details under a primary with no target sit under a plain heading', () => {
+test('details under a primary with no target are one group of full names, with no heading row', () => {
   const rows = plain(buildBudgetSectionRows({
     groups: [{
       primary: 'Food And Drink', kind: 'spending', own: null,
       lines: [
         line('Food And Drink: Dining', entry(600, 240)),
         line('Food And Drink: Groceries', entry(700, 307.22)),
+        line('Food And Drink: Snacks', entry(50, 10)),
       ],
     }],
   }));
-  assert.deepEqual(rows.map(row => [row.type, row.label, row.depth]), [
-    ['heading', 'Food And Drink', undefined],
-    ['line', 'Dining', 1],
-    ['line', 'Groceries', 1],
+  assert.deepEqual(rows.map(row => [row.type, row.label, row.depth, row.groupPosition]), [
+    ['line', 'Food And Drink: Dining', 0, 'first'],
+    ['line', 'Food And Drink: Groceries', 0, 'middle'],
+    ['line', 'Food And Drink: Snacks', 0, 'last'],
   ]);
 });
 
@@ -198,6 +216,7 @@ test('one detail alone is one flat Primary: Detailed line', () => {
   assert.equal(rows[0].type, 'line');
   assert.equal(rows[0].label, 'Travel: Flights');
   assert.equal(rows[0].depth, 0);
+  assert.equal(rows[0].groupPosition, 'single');
   assert.equal(rows[0].current, null);
   assert.equal(rows[0].previous.target, 300);
 });
@@ -239,12 +258,12 @@ test('a report with no target at all draws the empty state with a way to Targets
   assert.match(html, /href="#targets" data-budget-action="targets"/);
 });
 
-test('a period with no target reads No target, and an empty section points to Targets', () => {
+test('a period with no target is a dash labelled No target, and an empty section points to Targets', () => {
   const html = buildBudgetReportHtml(reportWith([{
     primary: 'Travel', kind: 'spending', own: null,
     lines: [line('Travel: Flights', null, entry(300, 120))],
   }]));
-  assert.match(html, /No target/);
+  assert.match(html, /aria-label="No target">—</);
   assert.match(html, /No annual targets/);
   assert.doesNotMatch(html, /No monthly targets/);
 });
@@ -274,8 +293,7 @@ test('category text is escaped', () => {
   assert.match(html, /Fun &lt;b&gt;/);
 });
 
-test('cents setting reaches the drawn text', () => {
-  const report = reportWith([{ primary: 'Travel', kind: 'spending', own: { current: entry(600, 240), previous: null }, lines: [] }]);
-  assert.match(buildBudgetReportHtml(report, { showCents: true }), /\$240\.00 of \$600\.00/);
-  assert.match(buildBudgetReportHtml(report, { showCents: false }), /\$240 of \$600/);
+test('the drawn text is in whole dollars', () => {
+  const report = reportWith([{ primary: 'Travel', kind: 'spending', own: { current: entry(600, 240.49), previous: null }, lines: [] }]);
+  assert.match(buildBudgetReportHtml(report), /\$240 of \$600/);
 });

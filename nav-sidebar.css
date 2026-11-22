@@ -123,6 +123,35 @@
   background: var(--bg-hover);
 }
 
+/* A row that navigates and keeps its child always showing. The child hangs
+   off the parent's icon by an elbow and the pair sits closer than two
+   separate rows, so the two read as one entry and not as a row that lost
+   its icon. */
+.nav-sidebar-link-open {
+  padding-bottom: 6px;
+}
+
+.nav-sidebar-link-open + .nav-sidebar-subnav .nav-sidebar-link {
+  position: relative;
+  padding-top: 5px;
+  padding-bottom: 10px;
+  font-size: 12.5px;
+}
+
+/* The elbow starts under the centre of the parent's icon (3px edge + 18px
+   padding + half of the 22px icon) and stops short of the child's text. */
+.nav-sidebar-link-open + .nav-sidebar-subnav .nav-sidebar-link::before {
+  content: '';
+  position: absolute;
+  left: 31px;
+  top: 0;
+  width: 11px;
+  height: 50%;
+  border-left: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  border-bottom-left-radius: 5px;
+}
+
 /* Chevron indicator on parent items with sub-nav */
 .nav-sidebar-link .nav-chevron {
   margin-left: auto;
