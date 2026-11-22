@@ -30,6 +30,8 @@ const BUDGET_OVER_OVER = 'over';
 
 const BUDGET_PACE_KEY_TEXT =
   "The tick is even spending through the month; the box around it is the line's on-pace range.";
+const BUDGET_PACE_KEY_TEXT_ANNUAL =
+  "The tick is even spending through the year; the box around it is the line's on-pace range.";
 // Said beside the key, since nothing on the report itself shows that pace is a setting.
 const BUDGET_PACE_KEY_HINT = 'Turn pace off for a line, or change its range, in ';
 
@@ -85,8 +87,9 @@ function formatBudgetDate(isoDate) {
 }
 
 /**
- * Where the pace tick sits on this month's bars, as a percent of the
- * track: the share of the month gone, as the API counts days.
+ * Where the pace tick sits on a section's current bars, as a percent of
+ * the track: the share of the month (or the fiscal year) gone, as the API
+ * counts days.
  *
  * @param {{days_elapsed: number, days_total: number}} periodHeader
  * @returns {number|null} 0-100, or null when the header has no days
@@ -140,10 +143,10 @@ function _clampPercent(percent) {
 }
 
 /**
- * Whether any line in the monthly section is drawn with a pace mark, so
- * the key explaining it is shown only when there is something to explain.
+ * Whether any line in a section is drawn with a pace mark, so the key
+ * explaining it is shown only when there is something to explain.
  *
- * @param {{current?: Object, groups: Array}} section
+ * @param {{current?: Object, groups: Array}} section - the monthly or annual section
  * @returns {boolean}
  */
 function sectionHasPaceMark(section) {
@@ -168,7 +171,7 @@ function _paceWords(entry) {
  * Spending fills target-spent over target and never past the track; over
  * target it is full and red, with no pace word. Over pace fills orange.
  * Savings fills green toward the goal and is full at it. The pace mark
- * is drawn only when the caller passes tickPercent (this month's
+ * is drawn only when the caller passes tickPercent (the current period's
  * spending, the even mark) and the API sent pace for the line: a line
  * with track pace off has no pace_amount and no mark.
  *
@@ -424,9 +427,7 @@ function _rowNameHtml(row) {
 
 function _lineRowHtml(row, section, cadence, options) {
   const isSpending = row.kind === BUDGET_KIND_SPENDING;
-  const currentTick = cadence === 'monthly' && isSpending
-    ? budgetTickPercent(section.current)
-    : null;
+  const currentTick = isSpending ? budgetTickPercent(section.current) : null;
   const classes = [
     'bt-row', 'bt-row-line', `bt-depth-${row.depth}`, `bt-group-${row.groupPosition}`,
     `bt-kind-${escapeBudgetHtml(row.kind)}`,
@@ -473,10 +474,11 @@ function _sectionHtml(section, cadence, options) {
     return `${html}</section>`;
   }
 
-  if (cadence === 'monthly' && sectionHasPaceMark(section)) {
+  if (sectionHasPaceMark(section)) {
+    const keyText = cadence === 'monthly' ? BUDGET_PACE_KEY_TEXT : BUDGET_PACE_KEY_TEXT_ANNUAL;
     html += '<p class="bt-key"><span class="bt-key-swatch" aria-hidden="true">'
       + '<span class="bt-key-box"></span><span class="bt-key-tick"></span></span>'
-      + `<span>${escapeBudgetHtml(BUDGET_PACE_KEY_TEXT)} ${escapeBudgetHtml(BUDGET_PACE_KEY_HINT)}`
+      + `<span>${escapeBudgetHtml(keyText)} ${escapeBudgetHtml(BUDGET_PACE_KEY_HINT)}`
       + `<a href="${escapeBudgetHtml(options.targetsHref)}" data-budget-action="targets"${options.targetsLinkAttrs}>`
       + 'Targets</a>.</span></p>';
   }

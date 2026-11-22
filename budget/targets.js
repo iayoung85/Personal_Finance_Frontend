@@ -25,6 +25,7 @@ async function loadBudgetTargets(force = false) {
   try {
     budgetTargetsData = await fetchBudgetTargets();
     budgetPaceSettings = budgetTargetsData.pace_settings || {};
+    budgetPaceDefaults = budgetTargetsData.pace_defaults || {};
     budgetDrafts = {};
     budgetRefusals = {};
     for (const year of budgetTargetsData.years || []) {
@@ -209,7 +210,7 @@ function _budgetFieldHtml(row, cadence, draft, isInvalid, isPaceInvalid) {
   const label = BUDGET_CADENCE_LABELS[cadence];
   const availability = setAlertAvailability(row, cadence, value);
   const inputId = `bt-input-${cadence}-${_budgetIdFragment(row.category)}`;
-  const hasPace = cadence === 'monthly' && row.kind === 'spending';
+  const hasPace = row.kind === 'spending';
   return `<div class="bt-form-field${hasPace ? ' bt-form-field-paced' : ''}" data-cadence="${cadence}">`
     + `<label class="bt-field-label" for="${inputId}">${label}</label>`
     + `<span class="bt-input-wrap${isInvalid ? ' bt-input-invalid' : ''}">`
@@ -219,15 +220,15 @@ function _budgetFieldHtml(row, cadence, draft, isInvalid, isPaceInvalid) {
     + `data-cadence="${cadence}" value="${escapeBudgetHtml(value)}" placeholder="—" `
     + `aria-label="${escapeBudgetHtml(`${label} target for ${row.category}`)}"${isInvalid ? ' aria-invalid="true"' : ''}>`
     + '</span>'
-    + (hasPace ? _budgetPaceHtml(row, draft, isPaceInvalid) : '')
+    + (hasPace ? _budgetPaceHtml(row, cadence, draft, isPaceInvalid) : '')
     + _budgetAlertButtonHtml(row, cadence, availability)
     + '</div>';
 }
 
-function _budgetPaceHtml(row, draft, isInvalid) {
+function _budgetPaceHtml(row, cadence, draft, isInvalid) {
   const category = escapeBudgetHtml(row.category);
-  const pace = resolveRowPace(draft, row.category, budgetPaceSettings);
-  const state = paceControlState(row, draft[targetDraftKey(row.category, 'monthly')], pace);
+  const pace = resolveRowPace(draft, row.category, cadence, budgetPaceSettings, budgetPaceDefaults);
+  const state = paceControlState(row, cadence, draft[targetDraftKey(row.category, cadence)], pace);
   const bandDisabled = state.bandDisabled ? ' disabled' : '';
   const invalid = isInvalid ? ' aria-invalid="true"' : '';
   // Out of the Tab order and not .bt-target-input, so Tab and the arrow keys
@@ -243,13 +244,13 @@ function _budgetPaceHtml(row, draft, isInvalid) {
     + '<input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" tabindex="-1" '
     + `class="bt-pace-percent" data-category="${category}" value="${escapeBudgetHtml(pace.bandText)}" `
     + `title="${escapeBudgetHtml(state.percentTitle)}" `
-    + `aria-label="${escapeBudgetHtml(`On-pace band, percent, for ${row.category}`)}"${bandDisabled}${invalid}>`
+    + `aria-label="${escapeBudgetHtml(`${BUDGET_CADENCE_LABELS[cadence]} on-pace band, percent, for ${row.category}`)}"${bandDisabled}${invalid}>`
     + '<span class="bt-pace-sign" aria-hidden="true">% =</span>'
     + '<span class="bt-pace-sign" aria-hidden="true">$</span>'
     + '<input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" tabindex="-1" '
     + `class="bt-pace-dollars" data-category="${category}" value="${escapeBudgetHtml(state.dollarsText)}" `
     + `title="${escapeBudgetHtml(state.dollarsTitle)}" `
-    + `aria-label="${escapeBudgetHtml(`On-pace band, dollars, for ${row.category}`)}"${bandDisabled}${invalid}>`
+    + `aria-label="${escapeBudgetHtml(`${BUDGET_CADENCE_LABELS[cadence]} on-pace band, dollars, for ${row.category}`)}"${bandDisabled}${invalid}>`
     + '</span></span>';
 }
 
@@ -383,8 +384,8 @@ function _onBudgetFieldInput(input) {
   button.title = availability.reason;
   button.setAttribute('aria-label', `Set alert: ${availability.reason}`);
 
-  // The percent holds and the dollars follow the new monthly amount.
-  if (input.dataset.cadence === 'monthly') _syncBudgetPaceControls(item);
+  // The percent holds and the dollars follow the new amount.
+  _syncBudgetPaceControls(item);
   _updateBudgetSaveBar();
 }
 
@@ -412,9 +413,10 @@ function _syncBudgetPaceControls(item) {
   if (!toggle) return;
   const category = item.dataset.category;
   const draft = budgetDrafts[budgetEditingYear] || {};
-  const pace = resolveRowPace(draft, category, budgetPaceSettings);
+  const cadence = budgetEditingCadence;
+  const pace = resolveRowPace(draft, category, cadence, budgetPaceSettings, budgetPaceDefaults);
   const state = paceControlState(
-    { kind: 'spending' }, draft[targetDraftKey(category, 'monthly')], pace);
+    { kind: 'spending' }, cadence, draft[targetDraftKey(category, cadence)], pace);
   const percent = item.querySelector('.bt-pace-percent');
   const dollars = item.querySelector('.bt-pace-dollars');
 
@@ -433,7 +435,8 @@ function _syncBudgetPaceControls(item) {
 function _onBudgetPaceToggle(toggle) {
   const draft = budgetDrafts[budgetEditingYear] || (budgetDrafts[budgetEditingYear] = {});
   const item = toggle.closest('.bt-form-item');
-  setRowPace(draft, toggle.dataset.category, budgetPaceSettings, { on: toggle.checked });
+  setRowPace(draft, toggle.dataset.category, budgetEditingCadence, budgetPaceSettings,
+    budgetPaceDefaults, { on: toggle.checked });
   _clearBudgetRowRefusal(item);
   _syncBudgetPaceControls(item);
   _updateBudgetSaveBar();
@@ -443,11 +446,12 @@ function _onBudgetPaceBandInput(input) {
   const draft = budgetDrafts[budgetEditingYear] || (budgetDrafts[budgetEditingYear] = {});
   const item = input.closest('.bt-form-item');
   const category = input.dataset.category;
-  const monthlyText = draft[targetDraftKey(category, 'monthly')];
+  const cadence = budgetEditingCadence;
+  const amountText = draft[targetDraftKey(category, cadence)];
   const bandText = input.classList.contains('bt-pace-dollars')
-    ? bandPercentFromDollars(monthlyText, input.value)
+    ? bandPercentFromDollars(amountText, input.value)
     : input.value;
-  setRowPace(draft, category, budgetPaceSettings, { bandText });
+  setRowPace(draft, category, cadence, budgetPaceSettings, budgetPaceDefaults, { bandText });
   _clearBudgetRowRefusal(item);
   _syncBudgetPaceControls(item);
   _updateBudgetSaveBar();
@@ -504,7 +508,8 @@ async function _onBudgetSave() {
   if (budgetSaving) return;
   const fiscalYear = budgetEditingYear;
   const rows = flattenTargetsFormRows(_budgetFormSections());
-  const targets = buildTargetsPayload(rows, budgetDrafts[fiscalYear] || {}, budgetPaceSettings);
+  const targets = buildTargetsPayload(
+    rows, budgetDrafts[fiscalYear] || {}, budgetPaceSettings, budgetPaceDefaults);
 
   budgetSaving = true;
   _updateBudgetSaveBar();
@@ -551,13 +556,16 @@ async function _refreshBudgetPaceSettings(savedYear) {
   try {
     const reloaded = await fetchBudgetTargets();
     budgetPaceSettings = reloaded.pace_settings || {};
+    budgetPaceDefaults = reloaded.pace_defaults || budgetPaceDefaults;
   } catch (_reloadError) {
     const merged = { ...budgetPaceSettings };
     for (const target of savedYear.targets || []) {
-      if (target.cadence !== 'monthly') continue;
       merged[target.category] = {
-        track_pace: target.track_pace,
-        pace_band_percent: target.pace_band_percent,
+        ...merged[target.category],
+        [target.cadence]: {
+          track_pace: target.track_pace,
+          pace_band_percent: target.pace_band_percent,
+        },
       };
     }
     budgetPaceSettings = merged;

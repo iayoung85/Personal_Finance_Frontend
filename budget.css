@@ -489,7 +489,7 @@ input::placeholder {
   opacity: 0.6;
 }
 
-/* Pace controls sit between the Monthly amount and its Set alert button */
+/* Pace controls sit between the amount (either cadence) and its Set alert button */
 .bt-form-field-paced {
   flex-wrap: wrap;
 }

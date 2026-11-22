@@ -272,7 +272,7 @@ test('a period with no target is a dash labelled No target, and an empty section
 
 const PACED = { pace: 'under', pace_amount: 420, pace_difference: -180, pace_band_percent: 5 };
 
-test('the pace mark is drawn on this month spending bars only, and the key follows it', () => {
+test('the pace mark is drawn on current spending bars only, and the monthly key follows it', () => {
   const html = buildBudgetReportHtml(reportWith(
     [
       {
@@ -281,7 +281,7 @@ test('the pace mark is drawn on this month spending bars only, and the key follo
       },
       { primary: 'Savings', kind: 'savings', own: null, lines: [line('Savings: Emergency', entry(1000, 500))] },
     ],
-    [{ primary: 'Food', kind: 'spending', own: null, lines: [line('Food: Dining', entry(6000, 2000, PACED), entry(6000, 5800, PACED))] }],
+    [],
   ));
   assert.equal((html.match(/class="bt-pace-box"/g) || []).length, 1);
   // The tick stays in the middle of the box, so a box cut off at an end still shows its centre.
@@ -426,4 +426,77 @@ test('the drawn cell is red only for a full overage', () => {
   assert.match(html('slight'), /bt-cell-pace-over/);
   assert.doesNotMatch(html('slight'), /bt-cell-over/);
   assert.match(html('over'), /bt-cell-over/);
+});
+
+// ── Pace on annual lines ────────────────────────────────────
+
+const ANNUAL_PACED = { pace: 'under', pace_amount: 345, pace_difference: -100, pace_band_percent: 5 };
+
+function annualReport(entryCurrent, entryPrevious = null) {
+  return reportWith([], [{
+    primary: 'Food', kind: 'spending', own: null,
+    lines: [line('Food: Dining', entryCurrent, entryPrevious)],
+  }]);
+}
+
+test('an annual line with pace gets the box and tick at the share of the fiscal year gone', () => {
+  const html = buildBudgetReportHtml(annualReport(entry(6000, 2000, ANNUAL_PACED)));
+  // 21 of 365 days is 5.75% of the track; the box runs 5 points either side of it.
+  assert.match(html, /class="bt-pace-box" style="left:0\.75%;width:10\.00%"><\/span><span class="bt-tick" style="left:5\.75%"/);
+});
+
+test('the annual key says through the year, and the monthly key keeps through the month', () => {
+  const both = buildBudgetReportHtml(reportWith(
+    [{ primary: 'Food', kind: 'spending', own: null, lines: [line('Food: Dining', entry(600, 240, PACED))] }],
+    [{ primary: 'Food', kind: 'spending', own: null, lines: [line('Food: Dining', entry(6000, 2000, ANNUAL_PACED))] }],
+  ));
+  assert.equal((both.match(/class="bt-key"/g) || []).length, 2);
+  assert.equal((both.match(/The tick is even spending through the month; the box around it is the line&#39;s on-pace range\./g) || []).length, 1);
+  assert.equal((both.match(/The tick is even spending through the year; the box around it is the line&#39;s on-pace range\./g) || []).length, 1);
+  assert.equal((both.match(/Turn pace off for a line, or change its range, in <a /g) || []).length, 2);
+
+  const annualOnly = buildBudgetReportHtml(annualReport(entry(6000, 2000, ANNUAL_PACED)));
+  assert.equal((annualOnly.match(/class="bt-key"/g) || []).length, 1);
+  assert.match(annualOnly, /through the year/);
+  assert.doesNotMatch(annualOnly, /through the month/);
+});
+
+test('an annual line on its previous period, or with no pace amount, gets no mark and no key', () => {
+  const previousOnly = buildBudgetReportHtml(annualReport(entry(6000, 2000), entry(6000, 5800, ANNUAL_PACED)));
+  assert.doesNotMatch(previousOnly, /bt-pace-box|class="bt-tick"|class="bt-key"/);
+
+  const off = buildBudgetReportHtml(annualReport(entry(6000, 2000), entry(6000, 5800)));
+  assert.doesNotMatch(off, /bt-pace-box|class="bt-tick"|class="bt-key"/);
+  assert.doesNotMatch(off, /pace/i);
+});
+
+test('an annual line with pace shows the pace words and the over-pace colour', () => {
+  const under = buildBudgetReportHtml(annualReport(entry(6000, 2000, ANNUAL_PACED)));
+  assert.match(under, /under pace by \$100/);
+  const over = buildBudgetReportHtml(annualReport(entry(6000, 2000, {
+    pace: 'over', pace_amount: 345, pace_difference: 1655, pace_band_percent: 5,
+  })));
+  assert.match(over, /over pace by \$1,655/);
+  assert.match(over, /bt-cell-pace-over/);
+  assert.match(over, /bt-tone-pace-over/);
+});
+
+test('an annual line over its target keeps its box and says no pace word', () => {
+  const html = buildBudgetReportHtml(annualReport(entry(6000, 7000, {
+    pace: null, pace_amount: 345, pace_difference: 6655, pace_band_percent: 5,
+  })));
+  assert.match(html, /class="bt-pace-box"/);
+  assert.match(html, /over by \$1,000/);
+  assert.doesNotMatch(html, /over pace|under pace|on pace/);
+});
+
+test('the annual key condition follows the annual header and its current lines', () => {
+  const header = { label: 'FY2027', days_elapsed: 21, days_total: 365 };
+  const section = (current, previous) => ({
+    current: header,
+    groups: [{ primary: 'Food', kind: 'spending', own: null, lines: [line('Food: Dining', current, previous)] }],
+  });
+  assert.equal(sectionHasPaceMark(section(entry(6000, 2000, ANNUAL_PACED))), true);
+  assert.equal(sectionHasPaceMark(section(entry(6000, 2000))), false);
+  assert.equal(sectionHasPaceMark(section(null, entry(6000, 2000, ANNUAL_PACED))), false);
 });

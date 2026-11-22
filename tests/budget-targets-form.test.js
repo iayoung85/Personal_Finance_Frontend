@@ -67,10 +67,11 @@ test('the payload sends every filled field in row order, monthly first, blanks l
     [form.targetDraftKey('Food And Drink', 'monthly')]: '',
     [form.targetDraftKey('Savings', 'annual')]: '12000',
   };
-  // A monthly spending target carries its pace settings, here the defaults.
+  // A spending target of either cadence carries its pace settings, here the
+  // defaults: monthly on, annual off. Savings carries none.
   assert.deepEqual(plain(form.buildTargetsPayload(rows, draft)), [
     { category: 'Food And Drink: Dining', cadence: 'monthly', amount: '600', track_pace: true, pace_band_percent: 5 },
-    { category: 'Food And Drink: Dining', cadence: 'annual', amount: '6000' },
+    { category: 'Food And Drink: Dining', cadence: 'annual', amount: '6000', track_pace: false, pace_band_percent: 5 },
     { category: 'Savings', cadence: 'annual', amount: '12000' },
   ]);
 });
@@ -234,99 +235,180 @@ test('typing dollars sets the percent to dollars over the monthly amount, to 4 p
   assert.equal(form.bandPercentFromDollars('450', ''), '');
 });
 
-test('a changed monthly amount keeps the percent and recomputes the dollars', () => {
+test('a changed amount keeps the percent and recomputes the dollars, at either cadence', () => {
   const pace = { on: true, bandText: '29.347' };
-  assert.equal(form.paceControlState({ kind: 'spending' }, '1200', pace).dollarsText, '352.16');
-  assert.equal(form.paceControlState({ kind: 'spending' }, '1300', pace).dollarsText, '381.51');
+  assert.equal(form.paceControlState({ kind: 'spending' }, 'monthly', '1200', pace).dollarsText, '352.16');
+  assert.equal(form.paceControlState({ kind: 'spending' }, 'monthly', '1300', pace).dollarsText, '381.51');
+  assert.equal(form.paceControlState({ kind: 'spending' }, 'annual', '12000', pace).dollarsText, '3521.64');
 });
 
-test('an empty monthly amount disables all three controls with the reason, and savings has none', () => {
-  const state = plain(form.paceControlState({ kind: 'spending' }, '', { on: true, bandText: '5' }));
-  assert.equal(state.toggleDisabled, true);
-  assert.equal(state.bandDisabled, true);
-  assert.equal(state.toggleTitle, 'Enter a monthly amount first');
-  assert.equal(state.percentTitle, 'Enter a monthly amount first');
-  assert.equal(state.dollarsTitle, 'Enter a monthly amount first');
-  assert.equal(state.dollarsText, '');
-  assert.equal(form.paceControlState({ kind: 'savings' }, '500', { on: true, bandText: '5' }), null);
+test('an empty amount disables all three controls with the cadence\'s reason, and savings has none', () => {
+  const pace = { on: true, bandText: '5' };
+  const monthly = plain(form.paceControlState({ kind: 'spending' }, 'monthly', '', pace));
+  assert.equal(monthly.toggleDisabled, true);
+  assert.equal(monthly.bandDisabled, true);
+  assert.equal(monthly.toggleTitle, 'Enter a monthly amount first');
+  assert.equal(monthly.percentTitle, 'Enter a monthly amount first');
+  assert.equal(monthly.dollarsTitle, 'Enter a monthly amount first');
+  assert.equal(monthly.dollarsText, '');
+  const annual = plain(form.paceControlState({ kind: 'spending' }, 'annual', '', pace));
+  assert.equal(annual.toggleDisabled, true);
+  assert.equal(annual.bandDisabled, true);
+  assert.equal(annual.toggleTitle, 'Enter an annual amount first');
+  assert.equal(annual.percentTitle, 'Enter an annual amount first');
+  assert.equal(annual.dollarsTitle, 'Enter an annual amount first');
+  assert.equal(form.paceControlState({ kind: 'savings' }, 'monthly', '500', pace), null);
+  assert.equal(form.paceControlState({ kind: 'savings' }, 'annual', '500', pace), null);
 });
 
-test('with Pace unchecked the band fields are disabled and the checkbox is not', () => {
-  const state = plain(form.paceControlState({ kind: 'spending' }, '450', { on: false, bandText: '5' }));
-  assert.equal(state.toggleDisabled, false);
-  assert.equal(state.toggleTitle, 'Show pace on this line');
-  assert.equal(state.bandDisabled, true);
-  const on = plain(form.paceControlState({ kind: 'spending' }, '450', { on: true, bandText: '5' }));
-  assert.equal(on.bandDisabled, false);
+test('with Pace unchecked the band fields are disabled and the checkbox is not, at either cadence', () => {
+  for (const cadence of ['monthly', 'annual']) {
+    const state = plain(form.paceControlState({ kind: 'spending' }, cadence, '450', { on: false, bandText: '5' }));
+    assert.equal(state.toggleDisabled, false);
+    assert.equal(state.toggleTitle, 'Show pace on this line');
+    assert.equal(state.bandDisabled, true);
+    const on = plain(form.paceControlState({ kind: 'spending' }, cadence, '450', { on: true, bandText: '5' }));
+    assert.equal(on.bandDisabled, false);
+  }
 });
 
-test('a row starts from its own year, else the remembered settings, else on and 5', () => {
-  const remembered = { 'Travel: Flights': { track_pace: false, pace_band_percent: 12.5 } };
-  const own = {
-    [form.paceDraftKey('paceOn', 'Travel: Flights')]: 'true',
-    [form.paceDraftKey('paceBand', 'Travel: Flights')]: '8',
+test('the band percent title names the amount it is a percent of', () => {
+  const pace = { on: true, bandText: '5' };
+  assert.match(form.paceControlState({ kind: 'spending' }, 'monthly', '450', pace).percentTitle, /monthly amount/);
+  assert.match(form.paceControlState({ kind: 'spending' }, 'annual', '450', pace).percentTitle, /annual amount/);
+});
+
+const DEFAULTS = {
+  monthly: { track_pace: true, pace_band_percent: 5 },
+  annual: { track_pace: false, pace_band_percent: 5 },
+};
+
+test('a row starts from its own year, else the remembered settings, else the cadence defaults', () => {
+  const remembered = {
+    'Travel: Flights': { monthly: { track_pace: false, pace_band_percent: 12.5 } },
   };
-  assert.deepEqual(plain(form.resolveRowPace(own, 'Travel: Flights', remembered)), { on: true, bandText: '8' });
-  assert.deepEqual(plain(form.resolveRowPace({}, 'Travel: Flights', remembered)), { on: false, bandText: '12.5' });
-  assert.deepEqual(plain(form.resolveRowPace({}, 'Travel: Hotels', remembered)), { on: true, bandText: '5' });
-  assert.deepEqual(plain(form.resolveRowPace({}, 'Travel: Hotels', undefined)), { on: true, bandText: '5' });
+  const own = {
+    [form.paceDraftKey('paceOn', 'Travel: Flights', 'monthly')]: 'true',
+    [form.paceDraftKey('paceBand', 'Travel: Flights', 'monthly')]: '8',
+  };
+  const resolve = (draft, category, cadence) =>
+    plain(form.resolveRowPace(draft, category, cadence, remembered, DEFAULTS));
+  assert.deepEqual(resolve(own, 'Travel: Flights', 'monthly'), { on: true, bandText: '8' });
+  assert.deepEqual(resolve({}, 'Travel: Flights', 'monthly'), { on: false, bandText: '12.5' });
+  assert.deepEqual(resolve({}, 'Travel: Hotels', 'monthly'), { on: true, bandText: '5' });
+  // The monthly memory says nothing about the annual target of the same category.
+  assert.deepEqual(resolve({}, 'Travel: Flights', 'annual'), { on: false, bandText: '5' });
 });
 
-test('saved targets put their pace settings in the draft, monthly only', () => {
+test('the defaults come from pace_defaults, and fall back to monthly on and annual off, both 5', () => {
+  const sent = { monthly: { track_pace: false, pace_band_percent: 9 }, annual: { track_pace: true, pace_band_percent: 12 } };
+  assert.deepEqual(plain(form.resolveRowPace({}, 'Travel', 'monthly', {}, sent)), { on: false, bandText: '9' });
+  assert.deepEqual(plain(form.resolveRowPace({}, 'Travel', 'annual', {}, sent)), { on: true, bandText: '12' });
+  for (const missing of [undefined, {}, { monthly: {} }]) {
+    assert.deepEqual(plain(form.resolveRowPace({}, 'Travel', 'monthly', {}, missing)), { on: true, bandText: '5' });
+    assert.deepEqual(plain(form.resolveRowPace({}, 'Travel', 'annual', {}, missing)), { on: false, bandText: '5' });
+  }
+  assert.deepEqual(plain(form.resolveRowPace({}, 'Travel', 'annual', undefined, undefined)), { on: false, bandText: '5' });
+});
+
+test('the draft\'s own setting wins over the memory, and a missing half falls through on its own', () => {
+  const remembered = { Travel: { annual: { track_pace: true, pace_band_percent: 20 } } };
+  const onlyOn = { [form.paceDraftKey('paceOn', 'Travel', 'annual')]: 'false' };
+  assert.deepEqual(plain(form.resolveRowPace(onlyOn, 'Travel', 'annual', remembered, DEFAULTS)), { on: false, bandText: '20' });
+});
+
+test('saved targets put their pace settings in the draft, one pair per cadence', () => {
   const draft = plain(form.draftFromYearTargets([
     { category: 'Childcare', cadence: 'monthly', amount: 1200, track_pace: true, pace_band_percent: 29.347 },
-    { category: 'Childcare', cadence: 'annual', amount: 9000, track_pace: true, pace_band_percent: 5 },
+    { category: 'Childcare', cadence: 'annual', amount: 9000, track_pace: false, pace_band_percent: 10 },
   ]));
   assert.deepEqual(draft, {
     'monthly|Childcare': '1200',
-    'paceOn|Childcare': 'true',
-    'paceBand|Childcare': '29.347',
+    'paceOn|monthly|Childcare': 'true',
+    'paceBand|monthly|Childcare': '29.347',
     'annual|Childcare': '9000',
+    'paceOn|annual|Childcare': 'false',
+    'paceBand|annual|Childcare': '10',
   });
 });
 
-test('the payload sends both settings on every monthly spending target, from the draft or the memory', () => {
+test('a category\'s monthly and annual settings are independent in the draft', () => {
+  const draft = {};
+  form.setRowPace(draft, 'Travel: Flights', 'annual', {}, DEFAULTS, { on: true, bandText: '15' });
+  assert.deepEqual(plain(draft), {
+    'paceOn|annual|Travel: Flights': 'true',
+    'paceBand|annual|Travel: Flights': '15',
+  });
+  assert.deepEqual(plain(form.resolveRowPace(draft, 'Travel: Flights', 'monthly', {}, DEFAULTS)), { on: true, bandText: '5' });
+  form.setRowPace(draft, 'Travel: Flights', 'monthly', {}, DEFAULTS, { on: false });
+  assert.deepEqual(plain(form.resolveRowPace(draft, 'Travel: Flights', 'annual', {}, DEFAULTS)), { on: true, bandText: '15' });
+  assert.deepEqual(plain(form.resolveRowPace(draft, 'Travel: Flights', 'monthly', {}, DEFAULTS)), { on: false, bandText: '5' });
+});
+
+test('the payload sends both settings on every monthly and annual spending target, and none on savings', () => {
   const rows = form.flattenTargetsFormRows(form.buildTargetsFormSections(CATEGORIES));
-  const remembered = { 'Travel: Flights': { track_pace: false, pace_band_percent: 12.5 } };
+  const remembered = {
+    'Travel: Flights': {
+      monthly: { track_pace: false, pace_band_percent: 12.5 },
+      annual: { track_pace: true, pace_band_percent: 7 },
+    },
+  };
   const draft = {
     'monthly|Food And Drink: Dining': '600',
-    'paceOn|Food And Drink: Dining': 'false',
-    'paceBand|Food And Drink: Dining': '29.347',
-    'monthly|Travel: Flights': '300',
-    'monthly|Savings': '500',
+    'paceOn|monthly|Food And Drink: Dining': 'false',
+    'paceBand|monthly|Food And Drink: Dining': '29.347',
     'annual|Food And Drink: Dining': '7000',
+    'paceOn|annual|Food And Drink: Dining': 'true',
+    'paceBand|annual|Food And Drink: Dining': '10',
+    'monthly|Travel: Flights': '300',
+    'annual|Travel: Flights': '4000',
+    'monthly|Savings': '500',
+    'annual|Savings': '6000',
   };
-  assert.deepEqual(plain(form.buildTargetsPayload(rows, draft, remembered)), [
+  assert.deepEqual(plain(form.buildTargetsPayload(rows, draft, remembered, DEFAULTS)), [
     { category: 'Food And Drink: Dining', cadence: 'monthly', amount: '600', track_pace: false, pace_band_percent: 29.347 },
-    { category: 'Food And Drink: Dining', cadence: 'annual', amount: '7000' },
+    { category: 'Food And Drink: Dining', cadence: 'annual', amount: '7000', track_pace: true, pace_band_percent: 10 },
     { category: 'Travel: Flights', cadence: 'monthly', amount: '300', track_pace: false, pace_band_percent: 12.5 },
+    { category: 'Travel: Flights', cadence: 'annual', amount: '4000', track_pace: true, pace_band_percent: 7 },
     { category: 'Savings', cadence: 'monthly', amount: '500' },
+    { category: 'Savings', cadence: 'annual', amount: '6000' },
   ]);
 });
 
 test('a band that is not a number is sent as typed so the API refuses it on that row', () => {
   const rows = form.flattenTargetsFormRows(form.buildTargetsFormSections(CATEGORIES));
   const draft = {
-    'monthly|Travel': '300', 'paceOn|Travel': 'true', 'paceBand|Travel': '',
-    'monthly|Travel: Flights': '100', 'paceOn|Travel: Flights': 'true', 'paceBand|Travel: Flights': 'abc',
+    'monthly|Travel': '300', 'paceOn|monthly|Travel': 'true', 'paceBand|monthly|Travel': '',
+    'annual|Travel': '3000', 'paceOn|annual|Travel': 'true', 'paceBand|annual|Travel': 'xyz',
+    'monthly|Travel: Flights': '100', 'paceOn|monthly|Travel: Flights': 'true', 'paceBand|monthly|Travel: Flights': 'abc',
   };
   const payload = plain(form.buildTargetsPayload(rows, draft));
   assert.equal(payload[0].pace_band_percent, '');
-  assert.equal(payload[1].pace_band_percent, 'abc');
+  assert.equal(payload[1].pace_band_percent, 'xyz');
+  assert.equal(payload[2].pace_band_percent, 'abc');
 });
 
-test('settings kept while an amount is cleared come back when it is retyped', () => {
-  const draft = {};
-  form.setRowPace(draft, 'Travel: Flights', {}, { on: false, bandText: '9' });
-  draft['monthly|Travel: Flights'] = '';
-  draft['monthly|Travel: Flights'] = '300';
-  assert.deepEqual(plain(form.resolveRowPace(draft, 'Travel: Flights', {})), { on: false, bandText: '9' });
+test('settings kept while an amount is cleared come back when it is retyped, at either cadence', () => {
+  for (const cadence of ['monthly', 'annual']) {
+    const draft = {};
+    form.setRowPace(draft, 'Travel: Flights', cadence, {}, DEFAULTS, { on: cadence === 'annual' ? true : false, bandText: '9' });
+    draft[`${cadence}|Travel: Flights`] = '';
+    draft[`${cadence}|Travel: Flights`] = '300';
+    assert.deepEqual(
+      plain(form.resolveRowPace(draft, 'Travel: Flights', cadence, {}, DEFAULTS)),
+      { on: cadence === 'annual', bandText: '9' },
+    );
+  }
 });
 
 test('setRowPace writes both settings so a later memory change does not move the row', () => {
   const draft = {};
-  form.setRowPace(draft, 'Travel: Flights', { 'Travel: Flights': { track_pace: true, pace_band_percent: 7 } }, { on: false });
-  assert.deepEqual(plain(draft), { 'paceOn|Travel: Flights': 'false', 'paceBand|Travel: Flights': '7' });
+  const remembered = { 'Travel: Flights': { monthly: { track_pace: true, pace_band_percent: 7 } } };
+  form.setRowPace(draft, 'Travel: Flights', 'monthly', remembered, DEFAULTS, { on: false });
+  assert.deepEqual(plain(draft), {
+    'paceOn|monthly|Travel: Flights': 'false',
+    'paceBand|monthly|Travel: Flights': '7',
+  });
 });
 
 test('a pace change is an unsaved change, and Undo to the saved draft is not', () => {
@@ -334,26 +416,48 @@ test('a pace change is an unsaved change, and Undo to the saved draft is not', (
     { category: 'Travel', cadence: 'monthly', amount: 300, track_pace: true, pace_band_percent: 5 },
   ]);
   assert.equal(form.isTargetsDraftChanged(plain(saved), saved), false);
-  const toggled = { ...plain(saved), 'paceOn|Travel': 'false' };
+  const toggled = { ...plain(saved), 'paceOn|monthly|Travel': 'false' };
   assert.equal(form.isTargetsDraftChanged(toggled, saved), true);
-  const wider = { ...plain(saved), 'paceBand|Travel': '10' };
+  const wider = { ...plain(saved), 'paceBand|monthly|Travel': '10' };
   assert.equal(form.isTargetsDraftChanged(wider, saved), true);
   // "5.0" is the same band as "5".
-  assert.equal(form.isTargetsDraftChanged({ ...plain(saved), 'paceBand|Travel': '5.0' }, saved), false);
+  assert.equal(form.isTargetsDraftChanged({ ...plain(saved), 'paceBand|monthly|Travel': '5.0' }, saved), false);
 });
 
-test('pace settings on a row with no monthly amount are not a change and not a value', () => {
-  const draft = { 'paceOn|Travel': 'false', 'paceBand|Travel': '9' };
+test('a change to the annual settings is a change, and leaves the monthly ones as saved', () => {
+  const saved = form.draftFromYearTargets([
+    { category: 'Travel', cadence: 'monthly', amount: 300, track_pace: true, pace_band_percent: 5 },
+    { category: 'Travel', cadence: 'annual', amount: 3600, track_pace: false, pace_band_percent: 5 },
+  ]);
+  assert.equal(form.isTargetsDraftChanged(plain(saved), saved), false);
+  const annualOn = { ...plain(saved), 'paceOn|annual|Travel': 'true' };
+  assert.equal(form.isTargetsDraftChanged(annualOn, saved), true);
+  const annualBand = { ...plain(saved), 'paceBand|annual|Travel': '8' };
+  assert.equal(form.isTargetsDraftChanged(annualBand, saved), true);
+});
+
+test('pace settings on a row with no amount at their cadence are not a change and not a value', () => {
+  const draft = {
+    'paceOn|monthly|Travel': 'false', 'paceBand|monthly|Travel': '9',
+    'paceOn|annual|Travel': 'true', 'paceBand|annual|Travel': '9',
+  };
   assert.equal(form.isTargetsDraftChanged(draft, {}), false);
   assert.equal(form.targetsDraftHasValues(draft), false);
+  // An amount at one cadence makes only that cadence's settings count.
+  const monthlyOnly = { ...draft, 'monthly|Travel': '300' };
+  assert.equal(form.isTargetsDraftChanged(monthlyOnly, { 'monthly|Travel': '300' }), true);
+  const annualSettingsOnly = { 'monthly|Travel': '300', 'paceOn|annual|Travel': 'true' };
+  assert.equal(form.isTargetsDraftChanged(annualSettingsOnly, { 'monthly|Travel': '300' }), false);
   assert.equal(form.targetsDraftHasValues({ ...draft, 'monthly|Travel': '300' }), true);
 });
 
-test('copy from last year brings last year\'s two settings with the amounts', () => {
+test('copy from last year brings both cadences\' settings with the amounts', () => {
   const copied = plain(form.draftFromYearTargets([
     { category: 'Travel', cadence: 'monthly', amount: 300, track_pace: false, pace_band_percent: 20 },
+    { category: 'Travel', cadence: 'annual', amount: 3600, track_pace: true, pace_band_percent: 15 },
   ]));
-  assert.deepEqual(plain(form.resolveRowPace(copied, 'Travel', {})), { on: false, bandText: '20' });
+  assert.deepEqual(plain(form.resolveRowPace(copied, 'Travel', 'monthly', {}, DEFAULTS)), { on: false, bandText: '20' });
+  assert.deepEqual(plain(form.resolveRowPace(copied, 'Travel', 'annual', {}, DEFAULTS)), { on: true, bandText: '15' });
   assert.equal(form.isTargetsDraftChanged(copied, {}), true);
 });
 
@@ -376,4 +480,14 @@ test('the two pace refusals land on the row they name and say they are about pac
   }, sent));
   assert.equal(flag.category, 'Travel: Flights');
   assert.equal(flag.paceReason, 'invalid_track_pace');
+});
+
+test('an annual pace refusal names the annual cadence so the editor opens that view', () => {
+  const sent = [{ category: 'Travel', cadence: 'annual', amount: '3600' }];
+  const refused = plain(form.placeTargetsRefusal({
+    error: 'The on-pace band on "Travel" must be a percent from 0 to 100.',
+    reason: 'invalid_pace_band', index: 0, category: 'Travel', cadence: 'annual',
+  }, sent));
+  assert.equal(refused.cadence, 'annual');
+  assert.equal(refused.paceReason, 'invalid_pace_band');
 });

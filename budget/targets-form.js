@@ -10,11 +10,13 @@
 // as a valid amount, so the text is sent as typed, less "$" and
 // thousands commas.
 //
-// A monthly spending row's pace settings sit in the same draft under
-// their own keys ("paceOn|Category", "paceBand|Category"), so a year's
-// switch, Undo and the unsaved check treat them like the amounts. The
-// dollar form of the band is never stored: it is the percent of the
-// monthly amount, worked out when drawn.
+// A spending row's pace settings sit in the same draft under their own
+// keys, one pair per cadence ("paceOn|monthly|Category",
+// "paceBand|annual|Category"), so a year's switch, Undo and the unsaved
+// check treat them like the amounts, and a category's monthly and
+// annual targets never share a setting. The dollar form of the band is
+// never stored: it is the percent of that cadence's amount, worked out
+// when drawn.
 // ============================================================
 
 const BUDGET_CADENCES = ['monthly', 'annual'];
@@ -24,11 +26,21 @@ const BUDGET_CADENCE_LABELS = {
   annual: 'Annual',
 };
 
-const PACE_DEFAULT_ON = true;
-const PACE_DEFAULT_BAND_TEXT = '5';
+// Only for a response that carries no pace_defaults; the API's own
+// defaults win whenever it sends them.
+const PACE_FALLBACK_DEFAULTS = {
+  monthly: { track_pace: true, pace_band_percent: 5 },
+  annual: { track_pace: false, pace_band_percent: 5 },
+};
 const PACE_TOGGLE_TITLE = 'Show pace on this line';
-const PACE_NEEDS_MONTHLY_TITLE = 'Enter a monthly amount first';
-const PACE_BAND_PERCENT_TITLE = 'On-pace band, as a percent of the monthly amount';
+const PACE_NEEDS_AMOUNT_TITLES = {
+  monthly: 'Enter a monthly amount first',
+  annual: 'Enter an annual amount first',
+};
+const PACE_BAND_PERCENT_TITLES = {
+  monthly: 'On-pace band, as a percent of the monthly amount',
+  annual: 'On-pace band, as a percent of the annual amount',
+};
 const PACE_BAND_DOLLARS_TITLE = 'On-pace band, in dollars';
 const PACE_BAND_OFF_TITLE = 'Turn Pace on to set the band';
 const PACE_REFUSAL_REASONS = ['invalid_pace_band', 'invalid_track_pace'];
@@ -64,18 +76,26 @@ function formatTargetFieldValue(amount) {
 }
 
 /**
- * The draft key for one of a row's pace settings.
+ * The draft key for one of a row's pace settings at one cadence.
  *
  * @param {'paceOn'|'paceBand'} field
  * @param {string} category
+ * @param {string} cadence - 'monthly' or 'annual'
  * @returns {string}
  */
-function paceDraftKey(field, category) {
-  return `${field}|${category}`;
+function paceDraftKey(field, category, cadence) {
+  return `${field}|${cadence}|${category}`;
 }
 
 function _isPaceDraftKey(key) {
   return key.startsWith('paceOn|') || key.startsWith('paceBand|');
+}
+
+// The cadence and category a pace draft key was built from.
+function _splitPaceDraftKey(key) {
+  const firstBar = key.indexOf('|');
+  const secondBar = key.indexOf('|', firstBar + 1);
+  return { cadence: key.slice(firstBar + 1, secondBar), category: key.slice(secondBar + 1) };
 }
 
 /**
@@ -101,12 +121,11 @@ function draftFromYearTargets(targets) {
   const draft = {};
   for (const target of targets || []) {
     draft[targetDraftKey(target.category, target.cadence)] = formatTargetFieldValue(target.amount);
-    if (target.cadence !== 'monthly') continue;
     if (typeof target.track_pace === 'boolean') {
-      draft[paceDraftKey('paceOn', target.category)] = String(target.track_pace);
+      draft[paceDraftKey('paceOn', target.category, target.cadence)] = String(target.track_pace);
     }
     const band = formatPaceBandPercent(target.pace_band_percent);
-    if (band !== '') draft[paceDraftKey('paceBand', target.category)] = band;
+    if (band !== '') draft[paceDraftKey('paceBand', target.category, target.cadence)] = band;
   }
   return draft;
 }
@@ -172,26 +191,28 @@ function flattenTargetsFormRows(sections) {
  * The PUT body's targets for one year: every non-blank field, in the
  * order the rows are drawn, monthly before annual.
  *
- * Every monthly spending target also carries its two pace settings,
- * from the draft or else from what the API remembers for the category.
+ * Every spending target, monthly or annual, also carries its two pace
+ * settings, from the draft or else from what the API remembers for the
+ * category at that cadence, else the cadence's default.
  * A band that is not a number is sent as typed, so the API refuses it
  * and the refusal lands on the row.
  *
  * @param {Array<Object>} rows - from flattenTargetsFormRows
  * @param {Object<string, string>} draft
- * @param {Object<string, {track_pace: boolean, pace_band_percent: number}>} [remembered]
+ * @param {Object} [remembered] - the API's pace_settings
+ * @param {Object} [defaults] - the API's pace_defaults
  * @returns {Array<{category: string, cadence: string, amount: string,
  *   track_pace?: boolean, pace_band_percent?: number|string}>}
  */
-function buildTargetsPayload(rows, draft, remembered) {
+function buildTargetsPayload(rows, draft, remembered, defaults) {
   const targets = [];
   for (const row of rows) {
     for (const cadence of BUDGET_CADENCES) {
       const text = normalizeTargetInput(draft[targetDraftKey(row.category, cadence)]);
       if (!text) continue;
       const target = { category: row.category, cadence, amount: text };
-      if (cadence === 'monthly' && row.kind === 'spending') {
-        const pace = resolveRowPace(draft, row.category, remembered);
+      if (row.kind === 'spending') {
+        const pace = resolveRowPace(draft, row.category, cadence, remembered, defaults);
         const band = normalizeTargetInput(pace.bandText);
         target.track_pace = pace.on;
         target.pace_band_percent = band !== '' && Number.isFinite(Number(band)) ? Number(band) : band;
@@ -202,24 +223,43 @@ function buildTargetsPayload(rows, draft, remembered) {
   return targets;
 }
 
+// A cadence's starting settings: the API's pace_defaults, else the
+// fallback, field by field so a partial response still gives a full answer.
+function _paceDefaultsFor(cadence, defaults) {
+  const fallback = PACE_FALLBACK_DEFAULTS[cadence] || PACE_FALLBACK_DEFAULTS.monthly;
+  const sent = (defaults && defaults[cadence]) || {};
+  const sentBand = formatPaceBandPercent(sent.pace_band_percent);
+  return {
+    on: typeof sent.track_pace === 'boolean' ? sent.track_pace : fallback.track_pace,
+    bandText: sentBand !== '' ? sentBand : formatPaceBandPercent(fallback.pace_band_percent),
+  };
+}
+
 /**
- * A row's pace settings as the form holds them: the draft's own, else
- * the category's remembered ones, else on and 5.
+ * A row's pace settings at one cadence as the form holds them: the
+ * draft's own (the year's saved row, or what was typed), else the
+ * category's remembered ones for that cadence, else the cadence's
+ * defaults.
  *
  * @param {Object<string, string>} draft - the year being edited
  * @param {string} category
- * @param {Object} [remembered] - the API's pace_settings
+ * @param {string} cadence - 'monthly' or 'annual'
+ * @param {Object} [remembered] - the API's pace_settings, {category: {cadence: {...}}}
+ * @param {Object} [defaults] - the API's pace_defaults, {cadence: {...}}
  * @returns {{on: boolean, bandText: string}}
  */
-function resolveRowPace(draft, category, remembered) {
-  const onText = (draft || {})[paceDraftKey('paceOn', category)];
-  const bandText = (draft || {})[paceDraftKey('paceBand', category)];
-  const memory = remembered && remembered[category];
-  let on = PACE_DEFAULT_ON;
+function resolveRowPace(draft, category, cadence, remembered, defaults) {
+  const onText = (draft || {})[paceDraftKey('paceOn', category, cadence)];
+  const bandText = (draft || {})[paceDraftKey('paceBand', category, cadence)];
+  const categoryMemory = remembered && remembered[category];
+  const memory = categoryMemory && categoryMemory[cadence];
+  const start = _paceDefaultsFor(cadence, defaults);
+
+  let on = start.on;
   if (onText !== undefined) on = onText === 'true';
   else if (memory && typeof memory.track_pace === 'boolean') on = memory.track_pace;
 
-  let band = PACE_DEFAULT_BAND_TEXT;
+  let band = start.bandText;
   if (bandText !== undefined) band = bandText;
   else if (memory && formatPaceBandPercent(memory.pace_band_percent) !== '') {
     band = formatPaceBandPercent(memory.pace_band_percent);
@@ -228,21 +268,23 @@ function resolveRowPace(draft, category, remembered) {
 }
 
 /**
- * Write one change to a row's pace settings into the draft. Both keys
- * are written, so the row keeps what it showed even if the remembered
- * settings change later.
+ * Write one change to a row's pace settings at one cadence into the
+ * draft. Both keys are written, so the row keeps what it showed even if
+ * the remembered settings change later.
  *
  * @param {Object<string, string>} draft - changed in place
  * @param {string} category
+ * @param {string} cadence
  * @param {Object} [remembered]
+ * @param {Object} [defaults]
  * @param {{on?: boolean, bandText?: string}} change
  */
-function setRowPace(draft, category, remembered, change) {
-  const current = resolveRowPace(draft, category, remembered);
+function setRowPace(draft, category, cadence, remembered, defaults, change) {
+  const current = resolveRowPace(draft, category, cadence, remembered, defaults);
   const on = change.on === undefined ? current.on : change.on;
   const bandText = change.bandText === undefined ? current.bandText : change.bandText;
-  draft[paceDraftKey('paceOn', category)] = String(on);
-  draft[paceDraftKey('paceBand', category)] = bandText;
+  draft[paceDraftKey('paceOn', category, cadence)] = String(on);
+  draft[paceDraftKey('paceBand', category, cadence)] = bandText;
 }
 
 function _positiveAmount(text) {
@@ -253,9 +295,9 @@ function _positiveAmount(text) {
 }
 
 /**
- * The band in dollars: the monthly amount times the percent, to the cent.
+ * The band in dollars: the cadence's amount times the percent, to the cent.
  *
- * @param {string} monthlyText - the Monthly field
+ * @param {string} monthlyText - the amount field of the cadence being edited
  * @param {string} percentText - the band's percent field
  * @returns {string} '' when either is not a usable number
  */
@@ -269,10 +311,10 @@ function bandDollarsFromPercent(monthlyText, percentText) {
 }
 
 /**
- * The band as a percent: dollars over the monthly amount times 100, to
+ * The band as a percent: dollars over the cadence's amount times 100, to
  * 4 places, the precision the API stores.
  *
- * @param {string} monthlyText
+ * @param {string} monthlyText - the amount field of the cadence being edited
  * @param {string} dollarsText
  * @returns {string} '' when either is not a usable number
  */
@@ -289,21 +331,22 @@ function bandPercentFromDollars(monthlyText, dollarsText) {
  * Savings rows have none.
  *
  * @param {{kind: string}} row
- * @param {string} monthlyText - the Monthly field now
+ * @param {string} cadence - 'monthly' or 'annual'
+ * @param {string} amountText - that cadence's field now
  * @param {{on: boolean, bandText: string}} pace - from resolveRowPace
  * @returns {null|{toggleDisabled: boolean, toggleTitle: string, bandDisabled: boolean,
  *   percentTitle: string, dollarsTitle: string, dollarsText: string}}
  */
-function paceControlState(row, monthlyText, pace) {
+function paceControlState(row, cadence, amountText, pace) {
   if (row.kind !== 'spending') return null;
-  const hasMonthly = normalizeTargetInput(monthlyText) !== '';
-  if (!hasMonthly) {
+  const needsAmountTitle = PACE_NEEDS_AMOUNT_TITLES[cadence] || PACE_NEEDS_AMOUNT_TITLES.monthly;
+  if (normalizeTargetInput(amountText) === '') {
     return {
       toggleDisabled: true,
-      toggleTitle: PACE_NEEDS_MONTHLY_TITLE,
+      toggleTitle: needsAmountTitle,
       bandDisabled: true,
-      percentTitle: PACE_NEEDS_MONTHLY_TITLE,
-      dollarsTitle: PACE_NEEDS_MONTHLY_TITLE,
+      percentTitle: needsAmountTitle,
+      dollarsTitle: needsAmountTitle,
       dollarsText: '',
     };
   }
@@ -312,9 +355,11 @@ function paceControlState(row, monthlyText, pace) {
     toggleDisabled: false,
     toggleTitle: PACE_TOGGLE_TITLE,
     bandDisabled,
-    percentTitle: bandDisabled ? PACE_BAND_OFF_TITLE : PACE_BAND_PERCENT_TITLE,
+    percentTitle: bandDisabled
+      ? PACE_BAND_OFF_TITLE
+      : (PACE_BAND_PERCENT_TITLES[cadence] || PACE_BAND_PERCENT_TITLES.monthly),
     dollarsTitle: bandDisabled ? PACE_BAND_OFF_TITLE : PACE_BAND_DOLLARS_TITLE,
-    dollarsText: bandDollarsFromPercent(monthlyText, pace.bandText),
+    dollarsText: bandDollarsFromPercent(amountText, pace.bandText),
   };
 }
 
@@ -337,13 +382,13 @@ function isTargetsDraftChanged(draft, savedDraft) {
   return false;
 }
 
-// A pace setting on a row with no monthly amount is never sent, so it
-// is not a change; a band is compared as a number, since "5" and "5.0"
+// A pace setting on a row with no amount at its cadence is never sent, so
+// it is not a change; a band is compared as a number, since "5" and "5.0"
 // are the same band.
 function _comparableDraftValue(draft, key) {
   if (!_isPaceDraftKey(key)) return normalizeTargetInput(draft[key]);
-  const category = key.slice(key.indexOf('|') + 1);
-  if (normalizeTargetInput(draft[targetDraftKey(category, 'monthly')]) === '') return '';
+  const { category, cadence } = _splitPaceDraftKey(key);
+  if (normalizeTargetInput(draft[targetDraftKey(category, cadence)]) === '') return '';
   const text = normalizeTargetInput(draft[key]);
   if (!key.startsWith('paceBand|')) return text;
   const formatted = formatPaceBandPercent(text);
