@@ -14,7 +14,7 @@ function loadReport() {
   const sandbox = { module: { exports: {} }, Intl };
   vm.runInNewContext(
     `${source}\nmodule.exports = { formatBudgetMoney, formatBudgetDate, budgetTickPercent, `
-      + 'buildBudgetBar, buildBudgetSectionRows, isBudgetReportEmpty, buildBudgetReportHtml };',
+      + 'budgetPaceMark, sectionHasPaceMark, buildBudgetBar, buildBudgetSectionRows, isBudgetReportEmpty, buildBudgetReportHtml };',
     sandbox,
     { filename: sourcePath },
   );
@@ -25,6 +25,8 @@ const {
   formatBudgetMoney,
   formatBudgetDate,
   budgetTickPercent,
+  budgetPaceMark,
+  sectionHasPaceMark,
   buildBudgetBar,
   buildBudgetSectionRows,
   isBudgetReportEmpty,
@@ -268,21 +270,110 @@ test('a period with no target is a dash labelled No target, and an empty section
   assert.doesNotMatch(html, /No monthly targets/);
 });
 
-test('the tick and the key are drawn on this month spending bars only', () => {
+const PACED = { pace: 'under', pace_amount: 420, pace_difference: -180, pace_band_percent: 5 };
+
+test('the pace mark is drawn on this month spending bars only, and the key follows it', () => {
   const html = buildBudgetReportHtml(reportWith(
     [
       {
         primary: 'Food', kind: 'spending', own: null,
-        lines: [line('Food: Dining', entry(600, 240, { pace: 'under', pace_amount: 420, pace_difference: -180 }), entry(600, 500))],
+        lines: [line('Food: Dining', entry(600, 240, PACED), entry(600, 500, PACED))],
       },
       { primary: 'Savings', kind: 'savings', own: null, lines: [line('Savings: Emergency', entry(1000, 500))] },
     ],
-    [{ primary: 'Food', kind: 'spending', own: null, lines: [line('Food: Dining', entry(6000, 2000), entry(6000, 5800))] }],
+    [{ primary: 'Food', kind: 'spending', own: null, lines: [line('Food: Dining', entry(6000, 2000, PACED), entry(6000, 5800, PACED))] }],
   ));
-  assert.equal((html.match(/class="bt-tick"/g) || []).length, 1);
-  assert.match(html, /class="bt-tick" style="left:70\.00%"/);
-  assert.match(html, /The tick marks today&#39;s pace/);
+  assert.equal((html.match(/class="bt-pace-box"/g) || []).length, 1);
+  assert.equal((html.match(/class="bt-tick"/g) || []).length, 0);
+  assert.match(html, /class="bt-pace-box" style="left:65\.00%;width:10\.00%"/);
+  assert.equal((html.match(/class="bt-key"/g) || []).length, 1);
+  assert.match(html, /The box is today&#39;s on-pace range: even spending through the month, give or take the line&#39;s band\./);
   assert.match(html, /As of Nov 21, 2026/);
+});
+
+test('a line with track pace off has no mark, and with no marked line there is no key', () => {
+  const off = entry(600, 240);
+  const html = buildBudgetReportHtml(reportWith([{
+    primary: 'Food', kind: 'spending', own: null,
+    lines: [line('Food: Dining', off, entry(600, 500))],
+  }]));
+  assert.doesNotMatch(html, /bt-pace-box|class="bt-tick"/);
+  assert.doesNotMatch(html, /class="bt-key"/);
+  assert.doesNotMatch(html, /pace/i);
+});
+
+test('one marked line among unmarked ones draws one box and the key', () => {
+  const html = buildBudgetReportHtml(reportWith([{
+    primary: 'Food', kind: 'spending', own: null,
+    lines: [
+      line('Food: Dining', entry(600, 240)),
+      line('Food: Groceries', entry(700, 307.22, PACED)),
+    ],
+  }]));
+  assert.equal((html.match(/class="bt-pace-box"/g) || []).length, 1);
+  assert.equal((html.match(/class="bt-key"/g) || []).length, 1);
+});
+
+test('a zero band draws the thin tick where the box would centre', () => {
+  const html = buildBudgetReportHtml(reportWith([{
+    primary: 'Food', kind: 'spending', own: null,
+    lines: [line('Food: Dining', entry(600, 240, { ...PACED, pace_band_percent: 0 }))],
+  }]));
+  assert.match(html, /class="bt-tick" style="left:70\.00%"/);
+  assert.doesNotMatch(html, /bt-pace-box/);
+  // The key describes a box, so it is still drawn: there is a mark to explain.
+  assert.match(html, /class="bt-key"/);
+});
+
+test('an over-target line keeps its box where it was', () => {
+  const html = buildBudgetReportHtml(reportWith([{
+    primary: 'Food', kind: 'spending', own: null,
+    lines: [line('Food: Dining', entry(450, 884.31, { pace: null, pace_amount: 315, pace_difference: 569.31, pace_band_percent: 5 }))],
+  }]));
+  assert.match(html, /class="bt-pace-box" style="left:65\.00%;width:10\.00%"/);
+});
+
+// ── The pace box ────────────────────────────────────────────
+
+test('the box runs from the even mark less the band to the even mark plus the band', () => {
+  assert.deepEqual(plain(budgetPaceMark(70, 5)), { startPercent: 65, endPercent: 75, isBox: true });
+  assert.deepEqual(plain(budgetPaceMark(50, 29.347)), { startPercent: 20.653, endPercent: 79.347, isBox: true });
+});
+
+test('a wide band is cut off at either end of the track', () => {
+  assert.deepEqual(plain(budgetPaceMark(10, 29.347)), { startPercent: 0, endPercent: 39.347, isBox: true });
+  assert.deepEqual(plain(budgetPaceMark(90, 29.347)), { startPercent: 60.653, endPercent: 100, isBox: true });
+  assert.deepEqual(plain(budgetPaceMark(50, 100)), { startPercent: 0, endPercent: 100, isBox: true });
+});
+
+test('a zero or missing band is a single position, not a box', () => {
+  assert.deepEqual(plain(budgetPaceMark(70, 0)), { startPercent: 70, endPercent: 70, isBox: false });
+  assert.deepEqual(plain(budgetPaceMark(70, undefined)), { startPercent: 70, endPercent: 70, isBox: false });
+});
+
+test('a bar gets a mark only when the API sent pace for the line', () => {
+  const withPace = plain(buildBudgetBar(entry(600, 240, PACED), { ...SPENDING, tickPercent: 70 }));
+  assert.equal(withPace.tickPercent, 70);
+  assert.deepEqual(withPace.paceMark, { startPercent: 65, endPercent: 75, isBox: true });
+
+  const off = plain(buildBudgetBar(entry(600, 240), { ...SPENDING, tickPercent: 70 }));
+  assert.equal(off.tickPercent, null);
+  assert.equal(off.paceMark, null);
+  assert.equal(off.text, '$240 of $600, $360 left');
+
+  const noHeader = plain(buildBudgetBar(entry(600, 240, PACED), SPENDING));
+  assert.equal(noHeader.paceMark, null);
+});
+
+test('the key condition: some current spending line with pace, under a header with days', () => {
+  const marked = { current: NOVEMBER, groups: [{ primary: 'Food', kind: 'spending', own: null, lines: [line('Food: Dining', entry(600, 240, PACED))] }] };
+  assert.equal(sectionHasPaceMark(marked), true);
+  const unmarked = { current: NOVEMBER, groups: [{ primary: 'Food', kind: 'spending', own: null, lines: [line('Food: Dining', entry(600, 240))] }] };
+  assert.equal(sectionHasPaceMark(unmarked), false);
+  // Last month's pace never draws a mark.
+  const previousOnly = { current: NOVEMBER, groups: [{ primary: 'Food', kind: 'spending', own: null, lines: [line('Food: Dining', null, entry(600, 240, PACED))] }] };
+  assert.equal(sectionHasPaceMark(previousOnly), false);
+  assert.equal(sectionHasPaceMark({ current: null, groups: marked.groups }), false);
 });
 
 test('category text is escaped', () => {

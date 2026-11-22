@@ -66,15 +66,16 @@
   background: var(--border-subtle);
 }
 
-.bt-key-tick {
+.bt-key-box {
   position: absolute;
-  left: 60%;
-  top: -4px;
-  bottom: -4px;
-  width: 2px;
-  margin-left: -1px;
-  border-radius: 1px;
-  background: var(--text-bright);
+  left: 35%;
+  width: 40%;
+  top: -3px;
+  bottom: -3px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--text-bright);
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--bg-surface), inset 0 0 0 1px var(--bg-surface);
 }
 
 /* ── Grid ─────────────────────────────────────────────────── */
@@ -263,6 +264,20 @@
 
 .bt-tone-savings .bt-fill {
   background: var(--color-success);
+}
+
+/* An unfilled box, a little taller than the track so the fill shows
+   through it. The surface-colored halo on both sides of its border keeps
+   it readable over blue, orange and red fills and the grey track alike. */
+.bt-pace-box {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--text-bright);
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--bg-surface), inset 0 0 0 1px var(--bg-surface);
+  pointer-events: none;
 }
 
 .bt-tick {

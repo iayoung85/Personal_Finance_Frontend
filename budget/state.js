@@ -16,6 +16,9 @@ let budgetTargetsData = null;
 let budgetTargetsLoading = false;
 // The fiscal year the editor shows.
 let budgetEditingYear = null;
+// {category: {track_pace, pace_band_percent}}: the API's remembered pace
+// settings, what a row with no target in the year being edited starts from.
+let budgetPaceSettings = {};
 // {fiscalYear: {key: text}}: each year's fields as the user left them,
 // so switching years does not lose what was typed.
 let budgetDrafts = {};

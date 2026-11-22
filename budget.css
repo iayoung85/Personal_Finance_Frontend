@@ -364,7 +364,7 @@ input::placeholder {
 
 .bt-form-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(230px, 300px) minmax(230px, 300px);
+  grid-template-columns: minmax(150px, 1fr) minmax(430px, 480px) minmax(230px, 300px);
   column-gap: 20px;
   align-items: center;
   padding: 7px 14px;
@@ -489,6 +489,76 @@ input::placeholder {
   opacity: 0.6;
 }
 
+/* Pace controls sit between the Monthly amount and its Set alert button */
+.bt-form-field-paced {
+  flex-wrap: wrap;
+}
+
+.bt-form-field-paced .bt-input-wrap {
+  flex: 0 1 110px;
+}
+
+.bt-pace {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.bt-pace-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.bt-pace-toggle-label:has(.bt-pace-toggle:disabled) {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.bt-pace-toggle {
+  margin: 0;
+}
+
+.bt-pace-band {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.bt-pace-sign {
+  white-space: nowrap;
+}
+
+.bt-pace-band input[type="text"] {
+  padding: 4px 6px;
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bt-pace-band .bt-pace-percent {
+  width: 52px;
+}
+
+.bt-pace-band .bt-pace-dollars {
+  width: 68px;
+}
+
+.bt-pace-band input[type="text"]:disabled {
+  opacity: 0.5;
+}
+
+.bt-pace-invalid input[type="text"] {
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 2px var(--color-danger-bg);
+}
+
 .bt-row-error {
   margin: 0 14px 8px;
   padding: 7px 10px;
@@ -564,7 +634,18 @@ input::placeholder {
   }
 }
 
+/* Narrow desktop: the pace controls wrap under the amount */
+@media (min-width: 761px) and (max-width: 900px) {
+  .bt-form-row {
+    grid-template-columns: minmax(130px, 1fr) minmax(250px, 1.4fr) minmax(200px, 250px);
+  }
+}
+
 @media (max-width: 760px) {
+  .bt-form-field-paced .bt-input-wrap {
+    flex: 1 1 110px;
+  }
+
   .bt-form-row-head {
     display: none;
   }

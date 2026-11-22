@@ -24,6 +24,7 @@ async function loadBudgetTargets(force = false) {
   if (!budgetTargetsData) body.innerHTML = '<div class="bt-loading">Loading your targets…</div>';
   try {
     budgetTargetsData = await fetchBudgetTargets();
+    budgetPaceSettings = budgetTargetsData.pace_settings || {};
     budgetDrafts = {};
     budgetRefusals = {};
     for (const year of budgetTargetsData.years || []) {
@@ -171,7 +172,9 @@ function _budgetFormItemHtml(row, draft, refusal) {
   html += `<div class="bt-form-name"><span class="bt-form-label" title="${escapeBudgetHtml(row.category)}">`
     + `${escapeBudgetHtml(row.name)}</span>${hint}</div>`;
   for (const cadence of BUDGET_CADENCES) {
-    html += _budgetFieldHtml(row, cadence, draft, isRefused && refusal.cadence === cadence);
+    const isAtCadence = isRefused && refusal.cadence === cadence;
+    const isPaceRefusal = isAtCadence && Boolean(refusal.paceReason);
+    html += _budgetFieldHtml(row, cadence, draft, isAtCadence && !isPaceRefusal, isPaceRefusal);
   }
   html += '</div>';
   html += `<div class="bt-row-error" role="alert"${isRefused ? '' : ' hidden'}>`
@@ -180,13 +183,14 @@ function _budgetFormItemHtml(row, draft, refusal) {
   return html;
 }
 
-function _budgetFieldHtml(row, cadence, draft, isInvalid) {
+function _budgetFieldHtml(row, cadence, draft, isInvalid, isPaceInvalid) {
   const key = targetDraftKey(row.category, cadence);
   const value = draft[key] || '';
   const label = BUDGET_CADENCE_LABELS[cadence];
   const availability = setAlertAvailability(row, cadence, value);
   const inputId = `bt-input-${cadence}-${_budgetIdFragment(row.category)}`;
-  return `<div class="bt-form-field" data-cadence="${cadence}">`
+  const hasPace = cadence === 'monthly' && row.kind === 'spending';
+  return `<div class="bt-form-field${hasPace ? ' bt-form-field-paced' : ''}" data-cadence="${cadence}">`
     + `<label class="bt-field-label" for="${inputId}">${label}</label>`
     + `<span class="bt-input-wrap${isInvalid ? ' bt-input-invalid' : ''}">`
     + '<span class="bt-input-prefix" aria-hidden="true">$</span>'
@@ -195,8 +199,38 @@ function _budgetFieldHtml(row, cadence, draft, isInvalid) {
     + `data-cadence="${cadence}" value="${escapeBudgetHtml(value)}" placeholder="—" `
     + `aria-label="${escapeBudgetHtml(`${label} target for ${row.category}`)}"${isInvalid ? ' aria-invalid="true"' : ''}>`
     + '</span>'
+    + (hasPace ? _budgetPaceHtml(row, draft, isPaceInvalid) : '')
     + _budgetAlertButtonHtml(row, cadence, availability)
     + '</div>';
+}
+
+function _budgetPaceHtml(row, draft, isInvalid) {
+  const category = escapeBudgetHtml(row.category);
+  const pace = resolveRowPace(draft, row.category, budgetPaceSettings);
+  const state = paceControlState(row, draft[targetDraftKey(row.category, 'monthly')], pace);
+  const bandDisabled = state.bandDisabled ? ' disabled' : '';
+  const invalid = isInvalid ? ' aria-invalid="true"' : '';
+  // Out of the Tab order and not .bt-target-input, so Tab and the arrow keys
+  // keep running over the amount fields only.
+  return `<span class="bt-pace" data-category="${category}">`
+    + `<label class="bt-pace-toggle-label" title="${escapeBudgetHtml(state.toggleTitle)}">`
+    + `<input type="checkbox" class="bt-pace-toggle" tabindex="-1" data-category="${category}" `
+    + `title="${escapeBudgetHtml(state.toggleTitle)}"${pace.on ? ' checked' : ''}`
+    + `${state.toggleDisabled ? ' disabled' : ''}${isInvalid ? ' aria-invalid="true"' : ''}>`
+    + '<span>Pace</span></label>'
+    + `<span class="bt-pace-band${isInvalid ? ' bt-pace-invalid' : ''}">`
+    + '<span class="bt-pace-sign" aria-hidden="true">±</span>'
+    + '<input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" tabindex="-1" '
+    + `class="bt-pace-percent" data-category="${category}" value="${escapeBudgetHtml(pace.bandText)}" `
+    + `title="${escapeBudgetHtml(state.percentTitle)}" `
+    + `aria-label="${escapeBudgetHtml(`On-pace band, percent, for ${row.category}`)}"${bandDisabled}${invalid}>`
+    + '<span class="bt-pace-sign" aria-hidden="true">% =</span>'
+    + '<span class="bt-pace-sign" aria-hidden="true">$</span>'
+    + '<input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" tabindex="-1" '
+    + `class="bt-pace-dollars" data-category="${category}" value="${escapeBudgetHtml(state.dollarsText)}" `
+    + `title="${escapeBudgetHtml(state.dollarsTitle)}" `
+    + `aria-label="${escapeBudgetHtml(`On-pace band, dollars, for ${row.category}`)}"${bandDisabled}${invalid}>`
+    + '</span></span>';
 }
 
 function _budgetAlertButtonHtml(row, cadence, availability) {
@@ -315,16 +349,7 @@ function _onBudgetFieldInput(input) {
   draft[input.dataset.key] = input.value;
 
   const item = input.closest('.bt-form-item');
-  const refusal = budgetRefusals[budgetEditingYear];
-  if (refusal && item && refusal.category === item.dataset.category) {
-    delete budgetRefusals[budgetEditingYear];
-    item.classList.remove('bt-form-item-refused');
-    item.querySelectorAll('.bt-input-invalid').forEach(wrap => wrap.classList.remove('bt-input-invalid'));
-    item.querySelectorAll('[aria-invalid]').forEach(field => field.removeAttribute('aria-invalid'));
-    const errorLine = item.querySelector('.bt-row-error');
-    errorLine.hidden = true;
-    errorLine.textContent = '';
-  }
+  _clearBudgetRowRefusal(item);
 
   const row = {
     category: input.dataset.category,
@@ -337,6 +362,73 @@ function _onBudgetFieldInput(input) {
   button.title = availability.reason;
   button.setAttribute('aria-label', `Set alert: ${availability.reason}`);
 
+  // The percent holds and the dollars follow the new monthly amount.
+  if (input.dataset.cadence === 'monthly') _syncBudgetPaceControls(item);
+  _updateBudgetSaveBar();
+}
+
+/** Take a refusal off its row once the user edits that row. */
+function _clearBudgetRowRefusal(item) {
+  const refusal = budgetRefusals[budgetEditingYear];
+  if (!refusal || !item || refusal.category !== item.dataset.category) return;
+  delete budgetRefusals[budgetEditingYear];
+  item.classList.remove('bt-form-item-refused');
+  item.querySelectorAll('.bt-input-invalid, .bt-pace-invalid').forEach(wrap => {
+    wrap.classList.remove('bt-input-invalid', 'bt-pace-invalid');
+  });
+  item.querySelectorAll('[aria-invalid]').forEach(field => field.removeAttribute('aria-invalid'));
+  const errorLine = item.querySelector('.bt-row-error');
+  errorLine.hidden = true;
+  errorLine.textContent = '';
+}
+
+/**
+ * Bring a row's pace controls in line with its draft: enabled or not, the
+ * titles, and the dollars. The field being typed in keeps its own text.
+ */
+function _syncBudgetPaceControls(item) {
+  const toggle = item ? item.querySelector('.bt-pace-toggle') : null;
+  if (!toggle) return;
+  const category = item.dataset.category;
+  const draft = budgetDrafts[budgetEditingYear] || {};
+  const pace = resolveRowPace(draft, category, budgetPaceSettings);
+  const state = paceControlState(
+    { kind: 'spending' }, draft[targetDraftKey(category, 'monthly')], pace);
+  const percent = item.querySelector('.bt-pace-percent');
+  const dollars = item.querySelector('.bt-pace-dollars');
+
+  toggle.disabled = state.toggleDisabled;
+  toggle.checked = pace.on;
+  toggle.title = state.toggleTitle;
+  toggle.closest('label').title = state.toggleTitle;
+  percent.disabled = state.bandDisabled;
+  percent.title = state.percentTitle;
+  dollars.disabled = state.bandDisabled;
+  dollars.title = state.dollarsTitle;
+  if (document.activeElement !== percent) percent.value = pace.bandText;
+  if (document.activeElement !== dollars) dollars.value = state.dollarsText;
+}
+
+function _onBudgetPaceToggle(toggle) {
+  const draft = budgetDrafts[budgetEditingYear] || (budgetDrafts[budgetEditingYear] = {});
+  const item = toggle.closest('.bt-form-item');
+  setRowPace(draft, toggle.dataset.category, budgetPaceSettings, { on: toggle.checked });
+  _clearBudgetRowRefusal(item);
+  _syncBudgetPaceControls(item);
+  _updateBudgetSaveBar();
+}
+
+function _onBudgetPaceBandInput(input) {
+  const draft = budgetDrafts[budgetEditingYear] || (budgetDrafts[budgetEditingYear] = {});
+  const item = input.closest('.bt-form-item');
+  const category = input.dataset.category;
+  const monthlyText = draft[targetDraftKey(category, 'monthly')];
+  const bandText = input.classList.contains('bt-pace-dollars')
+    ? bandPercentFromDollars(monthlyText, input.value)
+    : input.value;
+  setRowPace(draft, category, budgetPaceSettings, { bandText });
+  _clearBudgetRowRefusal(item);
+  _syncBudgetPaceControls(item);
   _updateBudgetSaveBar();
 }
 
@@ -391,7 +483,7 @@ async function _onBudgetSave() {
   if (budgetSaving) return;
   const fiscalYear = budgetEditingYear;
   const rows = flattenTargetsFormRows(_budgetFormSections());
-  const targets = buildTargetsPayload(rows, budgetDrafts[fiscalYear] || {});
+  const targets = buildTargetsPayload(rows, budgetDrafts[fiscalYear] || {}, budgetPaceSettings);
 
   budgetSaving = true;
   _updateBudgetSaveBar();
@@ -412,6 +504,7 @@ async function _onBudgetSave() {
     budgetDrafts[fiscalYear] = draftFromYearTargets(result.body.targets);
     delete budgetRefusals[fiscalYear];
     budgetReportStale = true;
+    await _refreshBudgetPaceSettings(result.body);
     if (fiscalYear === budgetEditingYear) renderBudgetTargets();
     showBudgetStatus(`Saved ${result.body.label || `FY${fiscalYear}`} targets.`, 'success');
     return;
@@ -425,6 +518,31 @@ async function _onBudgetSave() {
   _revealBudgetRefusal(budgetRefusals[fiscalYear]);
 }
 
+/**
+ * Re-read the remembered pace settings after a save, since the save's
+ * response does not carry them and the most recent row for a category
+ * may now be a different year's. If the read fails, the saved year's
+ * settings stand in for the categories it holds.
+ *
+ * @param {Object} savedYear - the PUT response
+ */
+async function _refreshBudgetPaceSettings(savedYear) {
+  try {
+    const reloaded = await fetchBudgetTargets();
+    budgetPaceSettings = reloaded.pace_settings || {};
+  } catch (_reloadError) {
+    const merged = { ...budgetPaceSettings };
+    for (const target of savedYear.targets || []) {
+      if (target.cadence !== 'monthly') continue;
+      merged[target.category] = {
+        track_pace: target.track_pace,
+        pace_band_percent: target.pace_band_percent,
+      };
+    }
+    budgetPaceSettings = merged;
+  }
+}
+
 function _revealBudgetRefusal(refusal) {
   if (!refusal.category) {
     document.getElementById('bt-form-banner').scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -434,7 +552,10 @@ function _revealBudgetRefusal(refusal) {
   if (!item) return;
   item.scrollIntoView({ block: 'center', behavior: 'smooth' });
   const cadence = refusal.cadence || BUDGET_CADENCES[0];
-  const field = item.querySelector(`.bt-target-input[data-cadence="${cadence}"]`);
+  const paceSelector = refusal.paceReason === 'invalid_track_pace' ? '.bt-pace-toggle' : '.bt-pace-percent';
+  const field = refusal.paceReason
+    ? item.querySelector(paceSelector)
+    : item.querySelector(`.bt-target-input[data-cadence="${cadence}"]`);
   if (field) field.focus({ preventScroll: true });
 }
 
@@ -472,7 +593,14 @@ function _wireBudgetTargets() {
 
   const panel = document.getElementById('targets');
   panel.addEventListener('input', event => {
-    if (event.target.classList.contains('bt-target-input')) _onBudgetFieldInput(event.target);
+    const target = event.target;
+    if (target.classList.contains('bt-target-input')) _onBudgetFieldInput(target);
+    else if (target.classList.contains('bt-pace-percent') || target.classList.contains('bt-pace-dollars')) {
+      _onBudgetPaceBandInput(target);
+    }
+  });
+  panel.addEventListener('change', event => {
+    if (event.target.classList.contains('bt-pace-toggle')) _onBudgetPaceToggle(event.target);
   });
   panel.addEventListener('keydown', event => {
     if (event.target.classList.contains('bt-target-input')) _onBudgetFieldKeydown(event);

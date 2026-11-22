@@ -23,8 +23,8 @@ const BUDGET_TONE_PACE_OVER = 'pace-over';
 const BUDGET_TONE_OVER = 'over';
 const BUDGET_TONE_SAVINGS = 'savings';
 
-const BUDGET_TICK_KEY_TEXT =
-  "The tick marks today's pace: where spending would be if it were spread evenly over the month.";
+const BUDGET_PACE_KEY_TEXT =
+  "The box is today's on-pace range: even spending through the month, give or take the line's band.";
 
 const _BUDGET_MONTH_ABBREVIATIONS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -92,10 +92,56 @@ function budgetTickPercent(periodHeader) {
   return _clampPercent((elapsed / total) * 100);
 }
 
+/**
+ * The on-pace mark's two edges on the track, in percent: the even mark
+ * less the line's band to the even mark plus the band, cut off at the
+ * ends of the track. A band of zero has no width to show, so it is a
+ * single position, drawn as the thin tick.
+ *
+ * @param {number} evenPercent - from budgetTickPercent
+ * @param {number} bandPercent - the line's pace_band_percent
+ * @returns {{startPercent: number, endPercent: number, isBox: boolean}}
+ */
+function budgetPaceMark(evenPercent, bandPercent) {
+  const even = _clampPercent(evenPercent);
+  const band = Number(bandPercent);
+  if (!Number.isFinite(band) || band <= 0) {
+    return { startPercent: even, endPercent: even, isBox: false };
+  }
+  // Four places is the band's own precision; it also keeps float noise out of the edges.
+  return {
+    startPercent: _roundPercent(_clampPercent(even - band)),
+    endPercent: _roundPercent(_clampPercent(even + band)),
+    isBox: true,
+  };
+}
+
+function _roundPercent(percent) {
+  return Number(percent.toFixed(4));
+}
+
+function _hasPaceAmount(entry) {
+  return typeof entry.pace_amount === 'number' && Number.isFinite(entry.pace_amount);
+}
+
 function _clampPercent(percent) {
   if (!Number.isFinite(percent) || percent < 0) return 0;
   if (percent > 100) return 100;
   return percent;
+}
+
+/**
+ * Whether any line in the monthly section is drawn with a pace mark, so
+ * the key explaining it is shown only when there is something to explain.
+ *
+ * @param {{current?: Object, groups: Array}} section
+ * @returns {boolean}
+ */
+function sectionHasPaceMark(section) {
+  if (budgetTickPercent(section && section.current) === null) return false;
+  return buildBudgetSectionRows(section).some(row =>
+    row.type === 'line' && row.kind === BUDGET_KIND_SPENDING
+    && row.current && _hasPaceAmount(row.current));
 }
 
 function _paceWords(entry) {
@@ -112,15 +158,19 @@ function _paceWords(entry) {
  *
  * Spending fills target-spent over target and never past the track; over
  * target it is full and red, with no pace word. Over pace fills orange.
- * Savings fills green toward the goal and is full at it. The tick is
- * drawn only when the caller passes tickPercent (this month's spending).
+ * Savings fills green toward the goal and is full at it. The pace mark
+ * is drawn only when the caller passes tickPercent (this month's
+ * spending, the even mark) and the API sent pace for the line: a line
+ * with track pace off has no pace_amount and no mark.
  *
  * @param {{target: number, actual: number, remaining: number,
- *          pace?: string|null, pace_difference?: number}} entry
+ *          pace?: string|null, pace_amount?: number, pace_difference?: number,
+ *          pace_band_percent?: number}} entry
  * @param {Object} options
  * @param {string} options.kind - 'spending' or 'savings'
  * @param {number|null} [options.tickPercent]
  * @returns {{tone: string, fillPercent: number, tickPercent: number|null,
+ *            paceMark: {startPercent: number, endPercent: number, isBox: boolean}|null,
  *            isOver: boolean, isMet: boolean, summary: string,
  *            detail: string, text: string}}
  */
@@ -144,6 +194,7 @@ function buildBudgetBar(entry, options) {
       tone: BUDGET_TONE_SAVINGS,
       fillPercent: isMet ? 100 : _clampPercent(share),
       tickPercent: null,
+      paceMark: null,
       isOver: false,
       isMet,
       summary,
@@ -154,9 +205,9 @@ function buildBudgetBar(entry, options) {
 
   const isOver = remaining < 0;
   const summary = `${money(actual)} of ${money(target)}`;
-  const tickPercent = options.tickPercent === undefined || options.tickPercent === null
-    ? null
-    : _clampPercent(options.tickPercent);
+  const hasEvenMark = options.tickPercent !== undefined && options.tickPercent !== null;
+  const tickPercent = hasEvenMark && _hasPaceAmount(entry) ? _clampPercent(options.tickPercent) : null;
+  const paceMark = tickPercent === null ? null : budgetPaceMark(tickPercent, entry.pace_band_percent);
 
   if (isOver) {
     const detail = `over by ${formatBudgetGap(remaining)}`;
@@ -164,6 +215,7 @@ function buildBudgetBar(entry, options) {
       tone: BUDGET_TONE_OVER,
       fillPercent: 100,
       tickPercent,
+      paceMark,
       isOver: true,
       isMet: false,
       summary,
@@ -180,6 +232,7 @@ function buildBudgetBar(entry, options) {
     tone: entry.pace === BUDGET_PACE_OVER ? BUDGET_TONE_PACE_OVER : BUDGET_TONE_NORMAL,
     fillPercent: _clampPercent(share),
     tickPercent,
+    paceMark,
     isOver: false,
     isMet: false,
     summary,
@@ -308,10 +361,15 @@ function _periodHeadNote(header, cadence, isCurrent) {
   return 'so far';
 }
 
+function _paceMarkHtml(mark) {
+  if (!mark) return '';
+  if (!mark.isBox) return `<span class="bt-tick" style="left:${mark.startPercent.toFixed(2)}%"></span>`;
+  const width = mark.endPercent - mark.startPercent;
+  return `<span class="bt-pace-box" style="left:${mark.startPercent.toFixed(2)}%;width:${width.toFixed(2)}%"></span>`;
+}
+
 function _barHtml(bar) {
-  const tick = bar.tickPercent === null
-    ? ''
-    : `<span class="bt-tick" style="left:${bar.tickPercent.toFixed(2)}%"></span>`;
+  const tick = _paceMarkHtml(bar.paceMark);
   return `<div class="bt-bar bt-tone-${bar.tone}" aria-hidden="true">`
     + `<span class="bt-fill" style="width:${bar.fillPercent.toFixed(2)}%"></span>${tick}</div>`;
 }
@@ -397,10 +455,10 @@ function _sectionHtml(section, cadence, options) {
     return `${html}</section>`;
   }
 
-  if (cadence === 'monthly') {
+  if (cadence === 'monthly' && sectionHasPaceMark(section)) {
     html += '<p class="bt-key"><span class="bt-key-swatch" aria-hidden="true">'
-      + '<span class="bt-key-tick"></span></span>'
-      + `${escapeBudgetHtml(BUDGET_TICK_KEY_TEXT)}</p>`;
+      + '<span class="bt-key-box"></span></span>'
+      + `${escapeBudgetHtml(BUDGET_PACE_KEY_TEXT)}</p>`;
   }
 
   html += `<div class="bt-grid" role="table" aria-label="${title} targets">`;
