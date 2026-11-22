@@ -15,8 +15,8 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="IAY Financial (dev)"/>
   <Description DefaultValue="Paste the account balance and category summary reports into the budget workbook, and list what its lookups will miss on PF_CHECK."/>
-  <IconUrl DefaultValue="http://localhost:5500/IAY%20favicon.png"/>
-  <HighResolutionIconUrl DefaultValue="http://localhost:5500/IAY%20favicon.png"/>
+  <IconUrl DefaultValue="http://localhost:5500/excel/icons/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="http://localhost:5500/excel/icons/icon-64.png"/>
   <SupportUrl DefaultValue="http://localhost:5500/"/>
   <Hosts>
     <Host Name="Workbook"/>
@@ -73,9 +73,9 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="IAYF.Icon.16" DefaultValue="http://localhost:5500/IAY%20favicon.png"/>
-        <bt:Image id="IAYF.Icon.32" DefaultValue="http://localhost:5500/IAY%20favicon.png"/>
-        <bt:Image id="IAYF.Icon.80" DefaultValue="http://localhost:5500/IAY%20favicon.png"/>
+        <bt:Image id="IAYF.Icon.16" DefaultValue="http://localhost:5500/excel/icons/icon-16.png"/>
+        <bt:Image id="IAYF.Icon.32" DefaultValue="http://localhost:5500/excel/icons/icon-32.png"/>
+        <bt:Image id="IAYF.Icon.80" DefaultValue="http://localhost:5500/excel/icons/icon-80.png"/>
       </bt:Images>
       <bt:Urls>
         <bt:Url id="IAYF.Taskpane.Url" DefaultValue="http://localhost:5500/excel/index.html"/>

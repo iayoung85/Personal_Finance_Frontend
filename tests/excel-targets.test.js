@@ -17,7 +17,7 @@ const K = loadFiles(
   [
     'targetsSheetFromYear', 'parseTargetsSheet', 'parseTargetAmountCell', 'diffTargets', 'findingsFromTargetsDiff',
     'sameTargetSets', 'checkTargetsSheet', 'describeTargetsCheck', 'planTargetsSend', 'findingsFromTargetsRefusal',
-    'isTargetsRefusal', 'buildTargetsCheckSheetRows', 'centsToAmountText', 'formatTargetCents', 'targetsYearText',
+    'isTargetsRefusal', 'findingsFromSentTargets', 'buildTargetsCheckSheetRows', 'centsToAmountText', 'formatTargetCents', 'targetsYearText',
   ].join(', '),
 );
 
@@ -162,7 +162,7 @@ test('text amounts may carry a dollar sign, commas and spaces, as the web fields
 
 test('float noise from a formula does not change the cents', () => {
   assert.equal(K.parseTargetAmountCell(0.1 + 0.2).cents, 30);
-  assert.equal(K.parseTargetAmountCell(0.1 + 0.2).rounded, true);
+  assert.equal(K.parseTargetAmountCell(0.1 + 0.2).rounded, false);
 });
 
 test('digits past the cent round half up, as the app rounds, and are noted', () => {
@@ -177,6 +177,25 @@ test('digits past the cent round half up, as the app rounds, and are noted', () 
   const notes = check(values).findings.filter(finding => finding.problem === 'Amount rounded to the cent');
   assert.equal(notes.length, 1);
   assert.match(notes[0].detail, /\$12\.35/);
+});
+
+test('float noise from a formula or a long decimal makes no rounding note', () => {
+  for (const value of [0.1 + 0.2, 100.28999999999999, 3.3000000000000003, 0.07 * 100 / 100, 9999999999.99, '0.30000000000000004']) {
+    const parsed = K.parseTargetAmountCell(value);
+    assert.equal(parsed.state, 'ok', String(value));
+    assert.equal(parsed.rounded, false, String(value));
+  }
+  assert.equal(K.parseTargetAmountCell(100.28999999999999).cents, 10029);
+  assert.equal(K.parseTargetAmountCell(0.1 + 0.2).cents, 30);
+
+  const values = sheetValues([{ category: 'Food: Dining', column: 'monthly', value: 0.1 + 0.2 }]);
+  assert.deepEqual(plain(check(values).findings.map(finding => finding.problem)), ['Target to add']);
+});
+
+test('a real third decimal still gets the rounding note', () => {
+  for (const value of [12.345, 0.001 + 5, '12.344', 1.005]) {
+    assert.equal(K.parseTargetAmountCell(value).rounded, true, String(value));
+  }
 });
 
 test('a blank cell is no target', () => {
@@ -366,6 +385,21 @@ test('the diff is against the app\'s targets for the sheet\'s year', () => {
   const result = K.checkTargetsSheet({ values, targetsResponse: response(), pickedFiscalYear: 2025 });
   assert.equal(result.diff.added.length, 3);
   assert.equal(result.label, 'FY2025');
+});
+
+test('after a send each row says what was done, with no advice and no sheet rows', () => {
+  const values = sheetValues([
+    { category: 'Food: Dining', column: 'monthly', value: 90 },
+    { category: 'Food: Groceries', column: 'monthly', value: 450 },
+    { category: 'Home: Rent', column: 'annual', value: '' },
+  ]);
+  const findings = K.findingsFromSentTargets(check(values).diff);
+  assert.deepEqual(plain(findings.map(finding => [finding.problem, finding.key, finding.name, finding.detail, finding.action])), [
+    ['Target added', 'Food: Dining', 'monthly', 'Added a monthly target of $90.00.', ''],
+    ['Target changed', 'Food: Groceries', 'monthly', 'Changed the monthly target from $412.50 to $450.00.', ''],
+    ['Target removed', 'Home: Rent', 'annual', 'Removed the annual target of $12.10.', ''],
+  ]);
+  assert.ok(findings.every(finding => finding.level === 'info' && !/row \d+/i.test(finding.detail)));
 });
 
 test('findings from a diff carry the sheet name and a sheet row', () => {

@@ -15,8 +15,8 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="IAY Financial"/>
   <Description DefaultValue="Paste the account balance and category summary reports into the budget workbook, and list what its lookups will miss on PF_CHECK."/>
-  <IconUrl DefaultValue="https://bank.isaacyoung.com/IAY%20favicon.png"/>
-  <HighResolutionIconUrl DefaultValue="https://bank.isaacyoung.com/IAY%20favicon.png"/>
+  <IconUrl DefaultValue="https://bank.isaacyoung.com/excel/icons/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://bank.isaacyoung.com/excel/icons/icon-64.png"/>
   <SupportUrl DefaultValue="https://bank.isaacyoung.com/"/>
   <Hosts>
     <Host Name="Workbook"/>
@@ -73,9 +73,9 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="IAYF.Icon.16" DefaultValue="https://bank.isaacyoung.com/IAY%20favicon.png"/>
-        <bt:Image id="IAYF.Icon.32" DefaultValue="https://bank.isaacyoung.com/IAY%20favicon.png"/>
-        <bt:Image id="IAYF.Icon.80" DefaultValue="https://bank.isaacyoung.com/IAY%20favicon.png"/>
+        <bt:Image id="IAYF.Icon.16" DefaultValue="https://bank.isaacyoung.com/excel/icons/icon-16.png"/>
+        <bt:Image id="IAYF.Icon.32" DefaultValue="https://bank.isaacyoung.com/excel/icons/icon-32.png"/>
+        <bt:Image id="IAYF.Icon.80" DefaultValue="https://bank.isaacyoung.com/excel/icons/icon-80.png"/>
       </bt:Images>
       <bt:Urls>
         <bt:Url id="IAYF.Taskpane.Url" DefaultValue="https://bank.isaacyoung.com/excel/index.html"/>

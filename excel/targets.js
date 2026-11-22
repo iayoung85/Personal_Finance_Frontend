@@ -76,6 +76,16 @@ function _centsFromDecimalText(decimalText) {
   return { cents, rounded: /[1-9]/.test(fraction.slice(2)) };
 }
 
+/**
+ * Whether a value sits within binary floating point noise of a whole cent, so
+ * a formula's 0.30000000000000004 is not mistaken for a real third decimal.
+ */
+function _isFloatNoiseOfWholeCent(decimalText) {
+  const cents = Number(decimalText) * 100;
+  const tolerance = Math.max(1e-6, Math.abs(cents) * 1e-14);
+  return Math.abs(cents - Math.round(cents)) < tolerance;
+}
+
 function _badAmount(problem, value) {
   const shown = typeof value === 'string' ? value.trim() : String(value);
   const detail = shown.length > 40 ? `${shown.slice(0, 40)}…` : shown;
@@ -119,7 +129,7 @@ function parseTargetAmountCell(value) {
   const { cents, rounded } = _centsFromDecimalText(decimalText);
   if (cents <= 0) return _badAmount(notAboveZero, value);
   if (cents > _TARGET_MAX_CENTS) return _badAmount(tooLarge, value);
-  return { state: 'ok', cents, rounded, typed: decimalText };
+  return { state: 'ok', cents, rounded: rounded && !_isFloatNoiseOfWholeCent(decimalText), typed: decimalText };
 }
 
 function _amountAction(problem) {
@@ -410,6 +420,30 @@ function findingsFromTargetsDiff(diff) {
     findings.push(_targetsFinding(EXCEL_LEVEL_INFO, 'Target to remove', target.category, target.cadence,
       `The app has ${formatTargetCents(target.cents)}, but ${why}.`,
       'Send deletes it. Put the amount back on the sheet to keep it.'));
+  }
+  return findings;
+}
+
+/**
+ * The diff as PF_CHECK rows after a send went through: what was done, in the
+ * past tense. Sheet rows are left out because the sheet was rewritten.
+ *
+ * @param {{added: Array<Object>, changed: Array<Object>, removed: Array<Object>}} diff
+ * @returns {Array<Object>}
+ */
+function findingsFromSentTargets(diff) {
+  const findings = [];
+  for (const target of diff.added) {
+    findings.push(_targetsFinding(EXCEL_LEVEL_INFO, 'Target added', target.category, target.cadence,
+      `Added a ${target.cadence} target of ${formatTargetCents(target.cents)}.`, ''));
+  }
+  for (const target of diff.changed) {
+    findings.push(_targetsFinding(EXCEL_LEVEL_INFO, 'Target changed', target.category, target.cadence,
+      `Changed the ${target.cadence} target from ${formatTargetCents(target.fromCents)} to ${formatTargetCents(target.cents)}.`, ''));
+  }
+  for (const target of diff.removed) {
+    findings.push(_targetsFinding(EXCEL_LEVEL_INFO, 'Target removed', target.category, target.cadence,
+      `Removed the ${target.cadence} target of ${formatTargetCents(target.cents)}.`, ''));
   }
   return findings;
 }

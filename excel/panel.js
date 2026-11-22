@@ -16,7 +16,11 @@ const _excelPanelState = {
   busy: false,
   awaitingCode: false,
   // The last targets check that found something to send and nothing to fix.
+  // It is only good while its diff is the one on PF_CHECK, so anything else
+  // that writes that sheet clears it.
   targetsCheck: null,
+  // Whether the fiscal-year picker has been filled from the app.
+  targetYearsReady: false,
 };
 
 const _EXCEL_NOT_IN_EXCEL = 'Open this panel from Excel to read or write the workbook.';
@@ -110,12 +114,14 @@ async function excelEnterPanel(isDev) {
   _excelFillMonthSelect(_excelElement('xl-start-month'), options, range.startMonth);
   _excelFillMonthSelect(_excelElement('xl-end-month'), options, range.endMonth);
 
-  await _excelLoadTargetYears();
-
+  _excelPanelState.targetYearsReady = false;
+  _excelElement('xl-targets-year').replaceChildren(new Option('Loading…', ''));
   _excelElement('xl-signin').classList.add('hidden');
   _excelElement('xl-main').classList.remove('hidden');
   _excelElement('xl-signout').classList.toggle('hidden', isDev);
   _excelSetBusy(false);
+  // Not awaited: a slow answer must not hold the Reports card back.
+  _excelLoadTargetYears();
 
   if (!_excelPanelState.inExcel) {
     excelSetStatus(_EXCEL_NOT_IN_EXCEL, 'warning');
@@ -134,13 +140,18 @@ async function excelEnterPanel(isDev) {
 function _excelSetBusy(busy) {
   _excelPanelState.busy = busy;
   const workbookButtonsOff = busy || !_excelPanelState.inExcel;
-  for (const id of ['xl-check', 'xl-paste-both', 'xl-paste-selection', 'xl-targets-pull', 'xl-targets-check']) {
+  const targetsOff = workbookButtonsOff || !_excelPanelState.targetYearsReady;
+  for (const id of ['xl-check', 'xl-paste-both', 'xl-paste-selection']) {
     _excelElement(id).disabled = workbookButtonsOff;
   }
-  _excelElement('xl-targets-send').disabled = workbookButtonsOff || !_excelPanelState.targetsCheck;
-  for (const id of ['xl-start-month', 'xl-end-month', 'xl-selection-report', 'xl-targets-year']) {
+  for (const id of ['xl-targets-pull', 'xl-targets-check']) {
+    _excelElement(id).disabled = targetsOff;
+  }
+  _excelElement('xl-targets-send').disabled = targetsOff || !_excelPanelState.targetsCheck;
+  for (const id of ['xl-start-month', 'xl-end-month', 'xl-selection-report']) {
     _excelElement(id).disabled = busy;
   }
+  _excelElement('xl-targets-year').disabled = busy || !_excelPanelState.targetYearsReady;
 }
 
 /**
@@ -186,6 +197,8 @@ async function _excelFetchBothGrids(range) {
 
 function _excelCheckOrPaste(paste) {
   return _excelRunAction(async () => {
+    // This run rewrites PF_CHECK, so the targets diff on it is gone.
+    _excelPanelState.targetsCheck = null;
     const range = _excelPickedRange();
     if (!range) return;
     excelSetStatus('Fetching both reports…', 'busy');
@@ -225,13 +238,23 @@ function _excelFillTargetYears(data) {
   selectEl.value = stillOffered ? previous : String(firstEditable === undefined ? '' : firstEditable);
 }
 
+/**
+ * Fill the year picker from the app and turn the Targets buttons on. A failure
+ * is said once on the status line and leaves the Targets card off; the Reports
+ * card does not depend on it.
+ */
 async function _excelLoadTargetYears() {
   try {
     _excelFillTargetYears(await fetchExcelTargets());
+    _excelPanelState.targetYearsReady = true;
   } catch (loadError) {
-    // Pull targets asks again, so a failure here is not worth the status line.
     console.warn('[excel] Could not load the editable fiscal years:', loadError);
+    _excelElement('xl-targets-year').replaceChildren(new Option('Not loaded', ''));
+    if (!_excelPanelState.busy) {
+      excelSetStatus(`Targets are off: ${_excelErrorText(loadError)} Reopen the panel to try again.`, 'warning');
+    }
   }
+  _excelSetBusy(_excelPanelState.busy);
 }
 
 function _excelPickedTargetYear() {
@@ -309,15 +332,27 @@ function _excelSendTargets() {
     }
     if (!answer.ok) throw new Error(answer.body.error || `Server error (${answer.status})`);
 
-    await writeTargetsWorkbook({
-      targetsSheet: targetsSheetFromYear(answer.body, data.categories),
-      checkRows: buildTargetsCheckSheetRows({
-        checkedAt: new Date(),
-        yearText,
-        outcome: 'Targets sent',
-        findings: findingsFromTargetsDiff(plan.check.diff),
-      }),
-    });
+    // The year is already replaced in the app, so a failure to write the
+    // sheets must not read as a failed send.
+    try {
+      await writeTargetsWorkbook({
+        targetsSheet: targetsSheetFromYear(answer.body, data.categories),
+        checkRows: buildTargetsCheckSheetRows({
+          checkedAt: new Date(),
+          yearText,
+          outcome: 'Targets sent',
+          findings: findingsFromSentTargets(plan.check.diff),
+        }),
+      });
+    } catch (writeError) {
+      console.error('[excel]', writeError);
+      excelSetStatus(
+        `The app saved ${plan.body.targets.length} targets for ${yearText}, but ${EXCEL_SHEET_NAMES.targets} could not be rewritten `
+        + `(${_excelErrorText(writeError)}). Press Pull targets to see what the app holds.`,
+        'warning',
+      );
+      return;
+    }
     excelSetStatus(
       `Sent ${plan.body.targets.length} targets for ${yearText}. ${EXCEL_SHEET_NAMES.targets} now shows what the app holds.`,
       'success',
