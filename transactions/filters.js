@@ -286,6 +286,11 @@ function _refreshFiscalChips() {
 function refreshFiscalDateFilter() {
   _refreshFiscalChips();
   const storedFilter = _activeDateFilterName();
+  // A year chip spans its fiscal year, so its dates move with the setting too.
+  if (storedFilter && storedFilter.startsWith('year_')) {
+    _restoreSavedToggleFilter(storedFilter);
+    return;
+  }
   if (storedFilter !== 'fiscal_ytd' && storedFilter !== 'last_fiscal_year') return;
 
   // The fresh month may be January, which hides the fiscal chips; the
@@ -297,11 +302,17 @@ function refreshFiscalDateFilter() {
   _restoreSavedToggleFilter(resolvedFilter);
 }
 
+/**
+ * A year chip's whole fiscal year, so the year chips tile the history with
+ * Last FY and FYTD and leave no months between them. With a January start
+ * this is the calendar year.
+ *
+ * @param {number} year - the fiscal year, named after the year it ends in
+ */
 function _applyYear(year) {
-  const start = new Date(year, 0, 1);
-  const end = new Date(year, 11, 31);
-  document.getElementById('start-date').value = _formatDateLocal(start);
-  document.getElementById('end-date').value = _formatDateLocal(end);
+  const range = fiscalYearRange(year, getFiscalStartMonth());
+  document.getElementById('start-date').value = _formatDateLocal(range.start);
+  document.getElementById('end-date').value = _formatDateLocal(range.end);
 }
 
 function _applyMonth(year, month) {
@@ -751,18 +762,27 @@ function _monthChips(now) {
 }
 
 /**
- * The calendar-year chips: every year from the earliest transaction up to
- * two years ago (this year is YTD, last year is Last Year).
+ * The year chips: every fiscal year from the one holding the earliest
+ * transaction up to the one before the last finished fiscal year (the
+ * current one and the last one have their own chips). With a January start
+ * these are calendar years, ending two years ago.
  *
- * @param {number|null} earliestYear - year of the earliest real transaction
- * @param {number} currentYear
- * @returns {number[]} years, oldest first
+ * @param {string|null} earliestDateStr - YYYY-MM-DD of the earliest real transaction
+ * @param {Date} now
+ * @param {number} fiscalStartMonth - month 1-12
+ * @returns {number[]} fiscal years, oldest first
  */
-function _yearChipYears(earliestYear, currentYear) {
-  if (earliestYear === null || earliestYear === undefined) return [];
+function _yearChipYears(earliestDateStr, now, fiscalStartMonth) {
+  if (!earliestDateStr) return [];
+  // Build the date from its parts: parsing an ISO date gives UTC midnight,
+  // which is the previous day west of Greenwich.
+  const [year, month, day] = earliestDateStr.slice(0, 10).split('-').map(Number);
+  const earliestDate = new Date(year, month - 1, day);
+  const firstYear = currentFiscalYearRange(earliestDate, fiscalStartMonth).fiscalYear;
+  const lastYear = lastFiscalYearRange(now, fiscalStartMonth).fiscalYear - 1;
   const years = [];
-  for (let year = earliestYear; year <= currentYear - 2; year++) {
-    years.push(year);
+  for (let fiscalYear = firstYear; fiscalYear <= lastYear; fiscalYear++) {
+    years.push(fiscalYear);
   }
   return years;
 }
@@ -772,22 +792,30 @@ function _yearChipYears(earliestYear, currentYear) {
  * the fiscal setting adds, and what the transaction history adds.
  *
  * The year chips make the row long for a deep history. So the fiscal chips
- * do not make that row longer still, each one takes the slot of the oldest
- * month chip. A history too short to have year chips keeps all six months.
+ * do not make that row longer still, once there are year chips the fiscal
+ * row is exactly as long as the calendar row: the two fiscal chips, and any
+ * year chip more than the calendar row would have, take the slots of the
+ * oldest month chips. A history too short to have year chips keeps all six
+ * months.
  *
  * @param {Date} now
- * @param {number|null} earliestYear - year of the earliest real transaction
+ * @param {string|null} earliestDateStr - YYYY-MM-DD of the earliest real transaction
  * @param {number} fiscalStartMonth - month 1-12
  * @returns {{alwaysShownIds: string[], fiscalIds: string[],
  *   months: Array<{year: number, month: number, label: string}>,
  *   years: number[], total: number}}
  */
-function _dateChipPlan(now, earliestYear, fiscalStartMonth) {
+function _dateChipPlan(now, earliestDateStr, fiscalStartMonth) {
   const fiscalIds = hasDistinctFiscalYear(fiscalStartMonth) ? FISCAL_DATE_CHIP_IDS.slice() : [];
-  const years = _yearChipYears(earliestYear, now.getFullYear());
+  const years = _yearChipYears(earliestDateStr, now, fiscalStartMonth);
+  const calendarYearCount = _yearChipYears(earliestDateStr, now, CALENDAR_YEAR_START_MONTH).length;
   const allMonths = _monthChips(now);
   const historyIsLong = years.length > 0;
-  const months = historyIsLong ? allMonths.slice(fiscalIds.length) : allMonths;
+  let months = allMonths;
+  if (historyIsLong) {
+    const slotsTaken = fiscalIds.length + years.length - calendarYearCount;
+    months = allMonths.slice(Math.max(0, Math.min(allMonths.length, slotsTaken)));
+  }
   return {
     alwaysShownIds: ALWAYS_SHOWN_DATE_CHIP_IDS.slice(),
     fiscalIds,
@@ -798,25 +826,22 @@ function _dateChipPlan(now, earliestYear, fiscalStartMonth) {
 }
 
 /**
- * Year of the earliest real transaction loaded, or null when there is none.
+ * Date of the earliest real transaction loaded, or null when there is none.
  * System rows (investment trending, opening balances, reconciliation) are
  * skipped: they can predate real data.
  *
- * @returns {number|null}
+ * @returns {string|null} YYYY-MM-DD
  */
-function _earliestTransactionYear() {
-  const earliestDateStr = (transactions || []).reduce((min, txn) => {
+function _earliestTransactionDateStr() {
+  return (transactions || []).reduce((min, txn) => {
     if (isSystemType(getTransactionType(txn))) return min;
     return (!min || txn.date < min) ? txn.date : min;
   }, null);
-  // Read the year from the text: parsing an ISO date gives UTC midnight,
-  // which is the previous year for a January 1 row west of Greenwich.
-  return earliestDateStr ? parseInt(earliestDateStr.slice(0, 4), 10) : null;
 }
 
 /** The chip plan for the loaded transactions and the saved fiscal setting. */
 function _currentDateChipPlan() {
-  return _dateChipPlan(new Date(), _earliestTransactionYear(), getFiscalStartMonth());
+  return _dateChipPlan(new Date(), _earliestTransactionDateStr(), getFiscalStartMonth());
 }
 
 /**
@@ -852,20 +877,40 @@ function renderDynamicPeriodButtons() {
 }
 
 /**
- * Render the calendar-year chips for the loaded history.
+ * A year chip's text and tooltip: "FY2024" with its dates when the fiscal
+ * year is not the calendar year, the bare year otherwise.
+ *
+ * @param {number} year - the fiscal year
+ * @param {number} fiscalStartMonth - month 1-12
+ * @returns {{label: string, title: string}}
+ */
+function _yearChipText(year, fiscalStartMonth) {
+  if (!hasDistinctFiscalYear(fiscalStartMonth)) {
+    return { label: String(year), title: '' };
+  }
+  const label = fiscalYearLabel(year);
+  const range = fiscalYearRange(year, fiscalStartMonth);
+  return { label, title: `${label}: ${formatFiscalRangeShort(range)}` };
+}
+
+/**
+ * Render the year chips for the loaded history.
  */
 function _renderDynamicYearButtons() {
   const container = document.getElementById('date-year-buttons');
   if (!container) return;
 
   const plan = _currentDateChipPlan();
+  const fiscalStartMonth = getFiscalStartMonth();
 
   let html = '';
   plan.years.forEach(year => {
+    const text = _yearChipText(year, fiscalStartMonth);
     html += `<button id="btn-year-${year}" `
           + `class="btn-date-toggle btn-date-year" `
+          + `title="${text.title}" `
           + `onclick="toggleYearFilter(${year})">`
-          + `${year}</button>`;
+          + `${text.label}</button>`;
   });
 
   container.innerHTML = html;

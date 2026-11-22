@@ -85,6 +85,20 @@ function lastFiscalYearRange(now, fiscalStartMonth) {
   return _fiscalYearStartingIn(current.start.getFullYear() - 1, current.start.getMonth());
 }
 
+/**
+ * First and last day of a named fiscal year. With a January start this is
+ * the calendar year of that number.
+ *
+ * @param {number} fiscalYear - the calendar year the fiscal year ends in
+ * @param {number} fiscalStartMonth - month 1-12
+ * @returns {{start: Date, end: Date, fiscalYear: number}}
+ */
+function fiscalYearRange(fiscalYear, fiscalStartMonth) {
+  const startMonthIndex = normalizeFiscalStartMonth(fiscalStartMonth) - 1;
+  const startYear = startMonthIndex === 0 ? fiscalYear : fiscalYear - 1;
+  return _fiscalYearStartingIn(startYear, startMonthIndex);
+}
+
 function _fiscalYearStartingIn(startYear, startMonthIndex) {
   const start = new Date(startYear, startMonthIndex, 1);
   // Day 0 of the start month one year on is the last day of the month before it.

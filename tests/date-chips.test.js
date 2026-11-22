@@ -16,7 +16,8 @@ function loadFilters() {
   vm.runInNewContext(
     `${fiscalSource}\n${filtersSource}\nmodule.exports = { _dateChipPlan, _monthChips, `
       + '_yearChipYears, _resolveDateFilterName, _mapConfigRangeToFilter, _fiscalChips, '
-      + '_shouldRestoreSavedDateFilter, DATE_FILTER_STALE_AFTER_MS, '
+      + '_shouldRestoreSavedDateFilter, DATE_FILTER_STALE_AFTER_MS, _yearChipText, '
+      + 'fiscalYearRange, lastFiscalYearRange, '
       + 'ALWAYS_SHOWN_DATE_CHIP_IDS, FISCAL_DATE_CHIP_IDS };',
     sandbox,
     { filename: filtersPath },
@@ -33,6 +34,9 @@ const {
   _fiscalChips,
   _shouldRestoreSavedDateFilter,
   DATE_FILTER_STALE_AFTER_MS,
+  _yearChipText,
+  fiscalYearRange,
+  lastFiscalYearRange,
   ALWAYS_SHOWN_DATE_CHIP_IDS,
   FISCAL_DATE_CHIP_IDS,
 } = loadFilters();
@@ -40,6 +44,8 @@ const {
 const JANUARY = 1;
 const NOVEMBER = 11;
 const NOW = new Date(2026, 10, 12);
+// Before a November start, so the last finished fiscal year is FY2025.
+const OCTOBER_NOW = new Date(2026, 9, 12);
 
 /** The static chips in the page's date row: id and whether it starts hidden. */
 function staticDateChips() {
@@ -63,7 +69,7 @@ test('the plan names exactly the static chips the page has', () => {
 });
 
 test('a January fiscal year shows no fiscal chips and every year chip', () => {
-  const plan = _dateChipPlan(NOW, 2019, JANUARY);
+  const plan = _dateChipPlan(NOW, '2019-01-01', JANUARY);
 
   assert.equal(plan.fiscalIds.length, 0);
   assert.equal(plan.months.length, 6);
@@ -74,15 +80,19 @@ test('a January fiscal year shows no fiscal chips and every year chip', () => {
 test('with a long history the fiscal chips do not make the row longer', () => {
   const dates = [NOW, new Date(2026, 0, 1), new Date(2026, 9, 31), new Date(2027, 5, 15)];
   for (const now of dates) {
+    const earliestDates = [];
     for (const earliestYear of [2012, 2019, now.getFullYear() - 3]) {
-      const calendarTotal = _dateChipPlan(now, earliestYear, JANUARY).total;
+      earliestDates.push(`${earliestYear}-01-01`, `${earliestYear}-06-15`, `${earliestYear}-12-31`);
+    }
+    for (const earliestDate of earliestDates) {
+      const calendarTotal = _dateChipPlan(now, earliestDate, JANUARY).total;
       for (let fiscalMonth = 2; fiscalMonth <= 12; fiscalMonth++) {
-        const plan = _dateChipPlan(now, earliestYear, fiscalMonth);
+        const plan = _dateChipPlan(now, earliestDate, fiscalMonth);
         assert.equal(plan.fiscalIds.length, 2);
         assert.equal(
           plan.total,
           calendarTotal,
-          `start month ${fiscalMonth}, history from ${earliestYear}, on ${now.toDateString()}`,
+          `start month ${fiscalMonth}, history from ${earliestDate}, on ${now.toDateString()}`,
         );
       }
     }
@@ -90,26 +100,33 @@ test('with a long history the fiscal chips do not make the row longer', () => {
 });
 
 test('the fiscal chips take the slots of the two oldest month chips', () => {
-  const plan = _dateChipPlan(NOW, 2019, NOVEMBER);
+  const plan = _dateChipPlan(OCTOBER_NOW, '2019-01-01', NOVEMBER);
 
   assert.deepEqual(Array.from(plan.fiscalIds), ['btn-date-fiscal-ytd', 'btn-date-last-fiscal-year']);
-  assert.deepEqual(Array.from(plan.months, chip => chip.label), ['Jun', 'Jul', 'Aug', 'Sep']);
+  assert.deepEqual(Array.from(plan.months, chip => chip.label), ['May', 'Jun', 'Jul', 'Aug']);
   assert.deepEqual(Array.from(plan.years), [2019, 2020, 2021, 2022, 2023, 2024]);
 });
 
+test('a fiscal year chip more than the calendar row has takes another month slot', () => {
+  const plan = _dateChipPlan(NOW, '2019-01-01', NOVEMBER);
+
+  assert.deepEqual(Array.from(plan.months, chip => chip.label), ['Jul', 'Aug', 'Sep']);
+  assert.deepEqual(Array.from(plan.years), [2019, 2020, 2021, 2022, 2023, 2024, 2025]);
+});
+
 test('one year chip is history enough for the cap to apply', () => {
-  const plan = _dateChipPlan(NOW, 2024, NOVEMBER);
+  const plan = _dateChipPlan(OCTOBER_NOW, '2024-01-01', NOVEMBER);
 
   assert.deepEqual(Array.from(plan.years), [2024]);
   assert.equal(plan.months.length, 4);
-  assert.equal(plan.total, _dateChipPlan(NOW, 2024, JANUARY).total);
+  assert.equal(plan.total, _dateChipPlan(OCTOBER_NOW, '2024-01-01', JANUARY).total);
 });
 
 test('a short history keeps all six month chips beside the fiscal chips', () => {
   // No year chips, so the row is short and may grow by the two fiscal chips.
-  for (const earliestYear of [2025, 2026, null]) {
-    const calendarPlan = _dateChipPlan(NOW, earliestYear, JANUARY);
-    const fiscalPlan = _dateChipPlan(NOW, earliestYear, NOVEMBER);
+  for (const earliestDate of ['2025-11-01', '2026-03-01', null]) {
+    const calendarPlan = _dateChipPlan(NOW, earliestDate, JANUARY);
+    const fiscalPlan = _dateChipPlan(NOW, earliestDate, NOVEMBER);
     assert.deepEqual(Array.from(fiscalPlan.years), []);
     assert.equal(fiscalPlan.months.length, 6);
     assert.equal(fiscalPlan.total, calendarPlan.total + 2);
@@ -128,10 +145,53 @@ test('the fiscal chips read FYTD and the finished fiscal year', () => {
   );
 });
 
-test('year chips stop two years back', () => {
-  assert.deepEqual(Array.from(_yearChipYears(2020, 2026)), [2020, 2021, 2022, 2023, 2024]);
-  assert.deepEqual(Array.from(_yearChipYears(2025, 2026)), []);
-  assert.deepEqual(Array.from(_yearChipYears(null, 2026)), []);
+test('calendar year chips stop two years back', () => {
+  const years = earliest => Array.from(_yearChipYears(earliest, NOW, JANUARY));
+  assert.deepEqual(years('2020-06-01'), [2020, 2021, 2022, 2023, 2024]);
+  assert.deepEqual(years('2025-01-01'), []);
+  assert.deepEqual(years(null), []);
+});
+
+test('fiscal year chips run from the earliest row\'s fiscal year to the one before Last FY', () => {
+  const years = (earliest, now) => Array.from(_yearChipYears(earliest, now, NOVEMBER));
+  assert.deepEqual(years('2020-06-01', NOW), [2020, 2021, 2022, 2023, 2024, 2025]);
+  assert.deepEqual(years('2019-10-31', NOW), [2019, 2020, 2021, 2022, 2023, 2024, 2025]);
+  assert.deepEqual(years('2019-11-01', NOW), [2020, 2021, 2022, 2023, 2024, 2025]);
+  assert.deepEqual(years('2020-06-01', OCTOBER_NOW), [2020, 2021, 2022, 2023, 2024]);
+  assert.deepEqual(years('2025-11-01', NOW), []);
+});
+
+test('year chips, Last FY and FYTD leave no month between them', () => {
+  const dayAfter = date => new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime();
+  for (const now of [NOW, OCTOBER_NOW, new Date(2026, 0, 1)]) {
+    for (let fiscalMonth = 1; fiscalMonth <= 12; fiscalMonth++) {
+      const ranges = Array.from(_yearChipYears('2018-05-20', now, fiscalMonth))
+        .map(year => fiscalYearRange(year, fiscalMonth));
+      ranges.push(lastFiscalYearRange(now, fiscalMonth));
+      for (let index = 1; index < ranges.length; index++) {
+        assert.equal(
+          ranges[index].start.getTime(),
+          dayAfter(ranges[index - 1].end),
+          `start month ${fiscalMonth}, chip ${index}, on ${now.toDateString()}`,
+        );
+      }
+    }
+  }
+});
+
+test('a fiscal year range spans the start month through the month before it', () => {
+  const novemberRange = fiscalYearRange(2027, NOVEMBER);
+  assert.equal(novemberRange.start.getTime(), new Date(2026, 10, 1).getTime());
+  assert.equal(novemberRange.end.getTime(), new Date(2027, 9, 31).getTime());
+  const calendarRange = fiscalYearRange(2024, JANUARY);
+  assert.equal(calendarRange.start.getTime(), new Date(2024, 0, 1).getTime());
+  assert.equal(calendarRange.end.getTime(), new Date(2024, 11, 31).getTime());
+});
+
+test('year chips read FY with dates only when the fiscal year is distinct', () => {
+  assert.equal(_yearChipText(2024, JANUARY).label, '2024');
+  assert.equal(_yearChipText(2024, NOVEMBER).label, 'FY2024');
+  assert.equal(_yearChipText(2024, NOVEMBER).title, 'FY2024: Nov 1, 2023 – Oct 31, 2024');
 });
 
 test('month chips are the six months before last month', () => {
