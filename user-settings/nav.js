@@ -13,7 +13,7 @@
  */
 function setupSettingsMenu() {
   const hash = window.location.hash.replace('#', '') || 'profile';
-  const validSections = ['profile', 'password', 'twofa', 'app-config'];
+  const validSections = ['profile', 'password', 'twofa', 'app-config', 'excel-addin'];
 
   // Why: fallback to profile if hash is invalid or empty
   const section = validSections.includes(hash) ? hash : 'profile';
@@ -44,6 +44,9 @@ function loadSectionContent(section) {
       break;
     case 'app-config':
       loadAppConfigSettings();
+      break;
+    case 'excel-addin':
+      loadExcelAddinSettings();
       break;
   }
 }

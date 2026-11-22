@@ -66,6 +66,7 @@ const NAV_SIDEBAR_FOOTER_ITEMS = [
       { id: 'settings-password',   label: 'Change Password',    section: 'password' },
       { id: 'settings-twofa',      label: 'Two-Factor Auth',    section: 'twofa' },
       { id: 'settings-app-config', label: 'App Configuration',  section: 'app-config' },
+      { id: 'settings-excel',      label: 'Excel Add-in',       section: 'excel-addin' },
     ]
   },
   { id: 'reset-all', label: 'Reset All Data', icon: '🔄', action: 'reset-all' },
