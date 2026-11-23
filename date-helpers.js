@@ -104,6 +104,46 @@ function todayISO() {
 }
 
 /**
+ * Read a timestamp from the API as the moment it names.
+ *
+ * The API writes its timestamps in UTC with no zone on the end. A browser
+ * reads a zoneless date-time as local time, which puts the moment hours
+ * away from when it happened, and in the future for anyone west of UTC.
+ * A timestamp that already carries a zone is read as written.
+ *
+ * @param {string} rawTimestamp - e.g. '2026-11-23T04:19:30.787241'.
+ * @returns {Date|null} The moment, or null when the input is empty or unreadable.
+ */
+function parseApiTimestamp(rawTimestamp) {
+  if (!rawTimestamp) return null;
+  const hasZone = /(Z|[+-]\d{2}:?\d{2})$/i.test(rawTimestamp);
+  const moment = new Date(hasZone ? rawTimestamp : `${rawTimestamp}Z`);
+  return Number.isNaN(moment.getTime()) ? null : moment;
+}
+
+/**
+ * Say how many calendar days ago a moment was, as the user's clock counts days.
+ *
+ * Counts midnights crossed, not 24-hour spans, so 10pm last night reads
+ * 'Yesterday' at 8am. A moment later than now reads 'Today'.
+ *
+ * @param {Date} moment - The moment being described.
+ * @param {Date} now - The current moment.
+ * @returns {string} 'Today', 'Yesterday', '3 days ago', '2w ago', or the date.
+ */
+function formatRelativeDay(moment, now) {
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const momentDay = Date.UTC(moment.getFullYear(), moment.getMonth(), moment.getDate());
+  const nowDay = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const daysAgo = Math.round((nowDay - momentDay) / MS_PER_DAY);
+  if (daysAgo <= 0) return 'Today';
+  if (daysAgo === 1) return 'Yesterday';
+  if (daysAgo < 7) return `${daysAgo} days ago`;
+  if (daysAgo < 30) return `${Math.floor(daysAgo / 7)}w ago`;
+  return formatDate(moment);
+}
+
+/**
  * First day of the trailing-year window that ends on `today`.
  *
  * Starts the day after today's date one year back, so every day of the

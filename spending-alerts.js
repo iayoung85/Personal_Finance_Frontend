@@ -264,11 +264,11 @@ function buildAlertRow(alert) {
 
   // Last triggered
   let lastHtml;
-  if (alert.last_notified_at) {
-    const d = new Date(alert.last_notified_at);
-    const age = Date.now() - d.getTime();
+  const lastNotified = parseApiTimestamp(alert.last_notified_at);
+  if (lastNotified) {
+    const age = Date.now() - lastNotified.getTime();
     const cls = age < 7 * 24 * 60 * 60 * 1000 ? 'recent' : '';
-    lastHtml = `<span class="sa-last-triggered ${cls}" title="${escHtml(alert.last_notified_at)}">${formatRelativeDate(d)}</span>`;
+    lastHtml = `<span class="sa-last-triggered ${cls}" title="${escHtml(lastNotified.toLocaleString())}">${formatRelativeDay(lastNotified, new Date())}</span>`;
   } else {
     lastHtml = `<span class="sa-last-triggered never">Never</span>`;
   }
@@ -324,17 +324,6 @@ function escHtml(str) {
 
 function fmtAmount(n) {
   return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function formatRelativeDate(date) {
-  const now = new Date();
-  const diff = now - date;
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  if (days < 7)  return `${days} days ago`;
-  if (days < 30) return `${Math.floor(days / 7)}w ago`;
-  return date.toLocaleDateString();
 }
 
 // ── Sort Handler ──────────────────────────────────────────────
