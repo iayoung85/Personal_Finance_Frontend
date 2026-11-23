@@ -300,7 +300,7 @@ function _renderBulkEditModal(preflight) {
   const fieldsContainer   = modal.querySelector('.bulk-edit-fields');
   const blockersContainer = modal.querySelector('.bulk-edit-blockers');
 
-  _renderLegalFieldRows(fieldsContainer, preflight.legal_fields || []);
+  _renderLegalFieldRows(fieldsContainer, preflight.legal_fields || [], preflight.transfer_bills_only);
   _renderBlockersFooter(blockersContainer, preflight.blockers || {});
 
   modal.querySelector('.modal-close').addEventListener('click', _closeBulkEditModal);
@@ -316,7 +316,7 @@ function _closeBulkEditModal() {
   _bulkBillPicker = null;
 }
 
-function _renderLegalFieldRows(container, legalFields) {
+function _renderLegalFieldRows(container, legalFields, transferBillsOnly) {
   if (legalFields.length === 0) {
     container.innerHTML = '<div class="bulk-edit-empty">No fields are legal for this selection.</div>';
     return;
@@ -327,7 +327,7 @@ function _renderLegalFieldRows(container, legalFields) {
   }
 
   const billSlot = container.querySelector('#bulk-field-input-bill_id');
-  if (billSlot) _mountBulkBillPicker(billSlot);
+  if (billSlot) _mountBulkBillPicker(billSlot, transferBillsOnly);
 
   // Wire up category autocomplete (must run after DOM insertion).
   const catInput = container.querySelector('#bulk-field-input-user_category');
@@ -451,18 +451,36 @@ function _buildBulkEditInputForField(fieldKey) {
  * typing a value is the point of ticking any other field.
  *
  * @param {HTMLElement} slot
+ * @param {boolean} [transferBillsOnly] - The preflight's answer that every
+ *   selected row is one side of a linked transfer. Read from the preflight, not
+ *   from the rows, so a re-render from an apply refusal follows the same rule.
  */
-function _mountBulkBillPicker(slot) {
+function _mountBulkBillPicker(slot, transferBillsOnly) {
   const selectedRows = transactions.filter(txn => bulkEditState.selectedIds.has(txn.transaction_id));
   // The modal is not in the document yet, so look inside the row.
   const fieldRow = slot.closest('.bulk-edit-field-row');
   const checkbox = fieldRow ? fieldRow.querySelector('.bulk-edit-field-checkbox') : null;
   _bulkBillPicker = mountBillPicker(slot, {
     rows: selectedRows,
+    transferBillsOnly: transferBillsOnly === true,
     onChange: (bill) => {
       if (bill && checkbox) checkbox.checked = true;
     },
   });
+}
+
+/**
+ * The reason every row of one blocker shares, or '' when the rows differ.
+ * One shared reason is shown beside the field instead of being left to a
+ * tooltip or a list that repeats it for each row.
+ *
+ * @param {Array<{reason: string}>} offenders
+ * @returns {string}
+ */
+function bulkEditSharedBlockerReason(offenders) {
+  const reasons = new Set((offenders || []).map(offender => offender.reason || ''));
+  if (reasons.size !== 1) return '';
+  return Array.from(reasons)[0];
 }
 
 function _renderBlockersFooter(container, blockers) {
@@ -478,6 +496,7 @@ function _renderBlockersFooter(container, blockers) {
     const fieldLabel = BULK_EDIT_FIELD_LABELS[fieldKey] || fieldKey;
     const offenders  = blockers[fieldKey] || [];
     const topThree   = offenders.slice(0, 3);
+    const sharedReason = bulkEditSharedBlockerReason(offenders);
     const summary    = topThree.map(o => `${o.transaction_id}: ${o.reason}`).join('\n');
 
     html += `
@@ -488,6 +507,7 @@ function _renderBlockersFooter(container, blockers) {
           ? `<button type="button" class="bulk-edit-blocker-expand" data-field="${fieldKey}">View all</button>`
           : ''}
       </div>
+      ${sharedReason ? `<div class="bulk-edit-blocker-reason">${escapeHtml(sharedReason)}</div>` : ''}
       <div class="bulk-edit-blocker-detail hidden" data-field="${fieldKey}">
         <ul>
           ${offenders.map(o => `<li><code>${escapeHtml(o.transaction_id)}</code>: ${escapeHtml(o.reason)}</li>`).join('')}

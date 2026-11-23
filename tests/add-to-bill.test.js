@@ -12,7 +12,7 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
 const pickerBox = { module: { exports: {} }, console };
 vm.runInNewContext(
   `${read('transactions/bill-picker.js')}\n`
-    + 'module.exports = { billPickerOptionLine, billPickerSortBills, billPickerFilterLines, billPickerDetailRows, billPickerComparison, billPickerIsOneLinkedRow, BILL_PICKER_LINKED_ROW_REASON };',
+    + 'module.exports = { billPickerOptionLine, billPickerSortBills, billPickerFilterLines, billPickerDetailRows, billPickerComparison, billPickerIsOneLinkedRow, billPickerLineContext, BILL_PICKER_LINKED_ROW_REASON };',
   pickerBox,
   { filename: 'bill-picker.js' },
 );
@@ -76,10 +76,10 @@ const SWEEP = {
   transfer_account_id: 'acct_sav',
   transfer_account_name: 'Chase - Savings (5678)',
 };
-const LINKED = { linkedRow: true };
+const LINKED = { transferBillsOnly: true };
 
 test('a transfer bill is a selectable line that names both accounts', () => {
-  for (const context of [undefined, { linkedRow: false }, LINKED]) {
+  for (const context of [undefined, { transferBillsOnly: false }, LINKED]) {
     const line = plain(picker.billPickerOptionLine(SWEEP, context));
     assert.equal(line.disabled, false);
     assert.equal(line.disabledReason, '');
@@ -105,6 +105,15 @@ test('a paused bill that is not a transfer bill is greyed for a linked row, stil
   assert.equal(line.isPaused, true);
 });
 
+test('the API\'s answer for the selection overrides what the rows say', () => {
+  const lone = { transaction_id: 'a' };
+  const linked = { transaction_id: 'b', transfer_pair_id: 'xfr_1' };
+  assert.deepEqual(plain(picker.billPickerLineContext([lone, lone], true)), { transferBillsOnly: true });
+  assert.deepEqual(plain(picker.billPickerLineContext([linked], false)), { transferBillsOnly: false });
+  assert.deepEqual(plain(picker.billPickerLineContext([linked], undefined)), { transferBillsOnly: true });
+  assert.deepEqual(plain(picker.billPickerLineContext([linked, lone], undefined)), { transferBillsOnly: false });
+});
+
 test('nothing is greyed when the picker is not open on one linked row', () => {
   const lone = { transaction_id: 'a' };
   const linked = { transaction_id: 'b', transfer_pair_id: 'xfr_1' };
@@ -115,7 +124,7 @@ test('nothing is greyed when the picker is not open on one linked row', () => {
   assert.equal(picker.billPickerIsOneLinkedRow([]), false);
   assert.equal(picker.billPickerIsOneLinkedRow(undefined), false);
 
-  const line = plain(picker.billPickerOptionLine(NETFLIX, { linkedRow: picker.billPickerIsOneLinkedRow([linked, lone]) }));
+  const line = plain(picker.billPickerOptionLine(NETFLIX, { transferBillsOnly: picker.billPickerIsOneLinkedRow([linked, lone]) }));
   assert.equal(line.disabled, false);
 });
 

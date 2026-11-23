@@ -6227,6 +6227,12 @@ th.th-date {
   font-style: italic;
 }
 
+.bulk-edit-blocker-reason {
+  margin: 0 0 6px 120px;
+  font-size: 11px;
+  color: var(--text-muted, #999);
+}
+
 .bulk-edit-blocker-expand {
   font-size: 11px;
   padding: 2px 8px;

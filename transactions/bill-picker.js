@@ -76,24 +76,38 @@ function billPickerIsOneLinkedRow(rows) {
   return Array.isArray(rows) && rows.length === 1 && !!(rows[0] && rows[0].transfer_pair_id);
 }
 
+/**
+ * What decides whether bills that are not transfer bills are greyed out. A
+ * caller that holds the API's own answer for the whole selection (bulk edit's
+ * preflight) passes it; otherwise the rows decide, which is right for one row.
+ *
+ * @param {Object[]} rows - The rows being added.
+ * @param {boolean|null|undefined} transferBillsOnly - The API's answer, if known.
+ * @returns {{transferBillsOnly: boolean}}
+ */
+function billPickerLineContext(rows, transferBillsOnly) {
+  if (typeof transferBillsOnly === 'boolean') return { transferBillsOnly };
+  return { transferBillsOnly: billPickerIsOneLinkedRow(rows) };
+}
+
 // ── Pure parts: the dropdown line, details, comparison ───────
 
 /**
  * What the dropdown shows for one bill: name, amount, schedule and account,
- * a Paused tag, and for a transfer bill both accounts. When the picker is
- * open on one linked row, a bill that is not a transfer bill is a disabled
+ * a Paused tag, and for a transfer bill both accounts. When every row being
+ * added is one side of a linked transfer, a bill that is not a transfer bill is a disabled
  * line with the reason.
  *
  * @param {Object} bill - A bill as `GET /api/bills` lists it.
- * @param {{linkedRow?: boolean}} [context] - `linkedRow` is true when the rows
- *   being added are one linked transfer row.
+ * @param {{transferBillsOnly?: boolean}} [context] - `transferBillsOnly` is true when every
+ *   row being added is one side of a linked transfer.
  * @returns {{billId: string, name: string, amount: string, schedule: string,
  *   account: string, isPaused: boolean, isTransfer: boolean, disabled: boolean,
  *   disabledReason: string, text: string}}
  */
 function billPickerOptionLine(bill, context) {
   const isTransfer = billPickerIsTransferBill(bill);
-  const isBlocked = !!(context && context.linkedRow) && !isTransfer;
+  const isBlocked = !!(context && context.transferBillsOnly) && !isTransfer;
   const isPaused = bill.is_active === false;
   const name = bill.description || 'Untitled bill';
   const amount = billPickerMoney(bill.amount);
@@ -127,11 +141,11 @@ function billPickerOptionLine(bill, context) {
  * cannot be chosen; by name within each group.
  *
  * @param {Object[]} bills
- * @param {{linkedRow?: boolean}} [context] - As for billPickerOptionLine.
+ * @param {{transferBillsOnly?: boolean}} [context] - As for billPickerOptionLine.
  * @returns {Object[]} A new array.
  */
 function billPickerSortBills(bills, context) {
-  const isLinkedRow = !!(context && context.linkedRow);
+  const isLinkedRow = !!(context && context.transferBillsOnly);
   const groupOf = (bill) => {
     if (isLinkedRow && !billPickerIsTransferBill(bill)) return 2;
     if (bill.is_active === false) return 1;
@@ -324,15 +338,17 @@ function _billPickerEl(tagName, className, text) {
  *
  * @param {HTMLElement} container
  * @param {{rows: Object[], onChange?: function(Object|null): void,
- *   accountNameFor?: function(string): string}} options - `rows` are the
- *   transactions being added, as the page holds them.
+ *   accountNameFor?: function(string): string, transferBillsOnly?: boolean}} options -
+ *   `rows` are the transactions being added, as the page holds them.
+ *   `transferBillsOnly` is the API's answer that every row is one side of a
+ *   linked transfer; left out, one linked row decides it.
  * @returns {{getSelectedBillId: function(): string, getSelectedBill: function(): (Object|null), focus: function(): void}}
  */
 function mountBillPicker(container, options) {
   const rows = (options && options.rows) || [];
   const onChange = (options && options.onChange) || (() => {});
   const accountNameFor = (options && options.accountNameFor) || billPickerAccountName;
-  const lineContext = { linkedRow: billPickerIsOneLinkedRow(rows) };
+  const lineContext = billPickerLineContext(rows, options && options.transferBillsOnly);
 
   const state = {
     bills: [],
