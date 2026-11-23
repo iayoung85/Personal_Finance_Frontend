@@ -12,7 +12,7 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
 const pickerBox = { module: { exports: {} }, console };
 vm.runInNewContext(
   `${read('transactions/bill-picker.js')}\n`
-    + 'module.exports = { billPickerOptionLine, billPickerSortBills, billPickerFilterLines, billPickerDetailRows, billPickerComparison, BILL_PICKER_TRANSFER_REASON };',
+    + 'module.exports = { billPickerOptionLine, billPickerSortBills, billPickerFilterLines, billPickerDetailRows, billPickerComparison, billPickerIsOneLinkedRow, BILL_PICKER_LINKED_ROW_REASON };',
   pickerBox,
   { filename: 'bill-picker.js' },
 );
@@ -26,7 +26,7 @@ const menuStubs = `
 const menuBox = { module: { exports: {} }, console };
 vm.runInNewContext(
   `${menuStubs}\n${read('transactions/transaction-types.js')}\n${read('transactions/context-menu.js')}\n`
-    + 'module.exports = { _buildMenuItems, ADD_TO_BILL_TRANSFER_REASON, WAITING_MATCH_LOCK_REASON };',
+    + 'module.exports = { _buildMenuItems, WAITING_MATCH_LOCK_REASON };',
   menuBox,
   { filename: 'context-menu.js' },
 );
@@ -68,28 +68,74 @@ test('a paused bill is listed and tagged, not disabled', () => {
   assert.match(line.text, /\(Paused\)$/);
 });
 
-test('a transfer bill is listed disabled with the reason, naming both accounts', () => {
-  const line = plain(picker.billPickerOptionLine({
-    ...NETFLIX,
-    description: 'Savings sweep',
-    amount: -200,
-    transfer_account_id: 'acct_sav',
-    transfer_account_name: 'Chase - Savings (5678)',
-  }));
-  assert.equal(line.disabled, true);
-  assert.equal(line.disabledReason, picker.BILL_PICKER_TRANSFER_REASON);
-  assert.equal(line.disabledReason, 'Past transactions cannot be added to a transfer bill.');
-  assert.equal(line.account, 'Chase - Checking (1234) → Chase - Savings (5678)');
+const SWEEP = {
+  ...NETFLIX,
+  bill_id: 'bill_sweep',
+  description: 'Savings sweep',
+  amount: -200,
+  transfer_account_id: 'acct_sav',
+  transfer_account_name: 'Chase - Savings (5678)',
+};
+const LINKED = { linkedRow: true };
+
+test('a transfer bill is a selectable line that names both accounts', () => {
+  for (const context of [undefined, { linkedRow: false }, LINKED]) {
+    const line = plain(picker.billPickerOptionLine(SWEEP, context));
+    assert.equal(line.disabled, false);
+    assert.equal(line.disabledReason, '');
+    assert.equal(line.isTransfer, true);
+    assert.equal(line.account, 'Chase - Checking (1234) → Chase - Savings (5678)');
+  }
 });
 
-test('bills that can be chosen come first, then paused, then transfer bills', () => {
-  const sorted = picker.billPickerSortBills([
+test('opened on one linked row, a bill that is not a transfer bill is greyed with the API reason', () => {
+  const line = plain(picker.billPickerOptionLine(NETFLIX, LINKED));
+  assert.equal(line.disabled, true);
+  assert.equal(line.disabledReason, picker.BILL_PICKER_LINKED_ROW_REASON);
+  assert.equal(
+    line.disabledReason,
+    'This transaction is one side of a linked transfer, so it can only be added to a transfer bill. Pick a transfer bill, or unlink the transfer first.',
+  );
+  assert.equal(line.isTransfer, false);
+});
+
+test('a paused bill that is not a transfer bill is greyed for a linked row, still listed', () => {
+  const line = plain(picker.billPickerOptionLine({ ...NETFLIX, is_active: false }, LINKED));
+  assert.equal(line.disabled, true);
+  assert.equal(line.isPaused, true);
+});
+
+test('nothing is greyed when the picker is not open on one linked row', () => {
+  const lone = { transaction_id: 'a' };
+  const linked = { transaction_id: 'b', transfer_pair_id: 'xfr_1' };
+  assert.equal(picker.billPickerIsOneLinkedRow([linked]), true);
+  assert.equal(picker.billPickerIsOneLinkedRow([lone]), false);
+  assert.equal(picker.billPickerIsOneLinkedRow([linked, lone]), false);
+  assert.equal(picker.billPickerIsOneLinkedRow([linked, { ...linked, transaction_id: 'c' }]), false);
+  assert.equal(picker.billPickerIsOneLinkedRow([]), false);
+  assert.equal(picker.billPickerIsOneLinkedRow(undefined), false);
+
+  const line = plain(picker.billPickerOptionLine(NETFLIX, { linkedRow: picker.billPickerIsOneLinkedRow([linked, lone]) }));
+  assert.equal(line.disabled, false);
+});
+
+test('bills that can be chosen come first, then paused ones, by name', () => {
+  const bills = [
     { ...NETFLIX, bill_id: 't', description: 'Alpha transfer', transfer_account_id: 'x' },
     { ...NETFLIX, bill_id: 'p', description: 'Aardvark paused', is_active: false },
     { ...NETFLIX, bill_id: 'z', description: 'Zoo' },
     { ...NETFLIX, bill_id: 'a', description: 'Apple' },
-  ]).map((bill) => bill.bill_id);
-  assert.deepEqual(sorted, ['a', 'z', 'p', 't']);
+  ];
+  assert.deepEqual(picker.billPickerSortBills(bills).map((bill) => bill.bill_id), ['t', 'a', 'z', 'p']);
+});
+
+test('for one linked row the greyed bills sort last', () => {
+  const bills = [
+    { ...NETFLIX, bill_id: 'a', description: 'Apple' },
+    { ...NETFLIX, bill_id: 'tp', description: 'Zed transfer paused', transfer_account_id: 'x', is_active: false },
+    { ...NETFLIX, bill_id: 't', description: 'Yak transfer', transfer_account_id: 'x' },
+  ];
+  assert.deepEqual(picker.billPickerSortBills(bills, LINKED).map((bill) => bill.bill_id), ['t', 'tp', 'a']);
 });
 
 test('the search matches every word anywhere on the line', () => {
@@ -170,6 +216,18 @@ test('an account the page does not know falls back to the API name and a plain p
   assert.deepEqual(result.warnings, ['This transaction is in another account, but the bill is in Chase - Checking (1234).']);
 });
 
+test('either account of a transfer bill is its own, and the receiving side is held to the size only', () => {
+  const paying = row({ amount: -200, account_id: 'acct_chk' });
+  const receiving = row({ amount: 200, account_id: 'acct_sav' });
+  for (const heldRow of [paying, receiving]) {
+    assert.deepEqual(plain(picker.billPickerComparison(SWEEP, [heldRow], nameFor)).warnings, []);
+  }
+  const wrongSize = plain(picker.billPickerComparison(SWEEP, [row({ amount: 150, account_id: 'acct_sav' })], nameFor));
+  assert.deepEqual(wrongSize.warnings, ["The amount differs from the bill's: $150.00 against -$200.00."]);
+  const elsewhere = plain(picker.billPickerComparison(SWEEP, [row({ amount: -200, account_id: 'acct_amex' })], nameFor));
+  assert.equal(elsewhere.warnings.length, 1);
+});
+
 // ── Which rows get which menu entry ───────────────────────────
 
 function menuItems(ctxExtra) {
@@ -196,10 +254,13 @@ test('Add to existing bill sits beside This is a Bill', () => {
   assert.equal(actions.indexOf('add-to-bill'), actions.indexOf('this-is-a-bill') + 1);
 });
 
-test('one side of a linked transfer shows the entry disabled with the reason', () => {
-  const item = entry(menuItems({ transferPairId: 'pair_1' }), 'add-to-bill');
-  assert.ok(item.disabled);
-  assert.equal(item.disabledReason, menu.ADD_TO_BILL_TRANSFER_REASON);
+test('one side of a linked transfer gets Add to existing bill, not disabled', () => {
+  for (const kind of [{ source: 'plaid', status: 'cleared' }, { source: 'plaid', status: 'converted' }, { source: 'manual', status: 'cleared' }]) {
+    const item = entry(menuItems({ ...kind, transferPairId: 'pair_1' }), 'add-to-bill');
+    assert.ok(item, `${kind.source}:${kind.status} on a linked row offers the entry`);
+    assert.ok(!item.disabled);
+    assert.ok(!item.disabledReason);
+  }
 });
 
 test('a side of a waiting match shows the entry disabled with the match lock', () => {
@@ -239,6 +300,18 @@ test('Remove from bill shows only on a row added to its bill by hand', () => {
   assert.ok(!entry(menuItems({}), 'remove-from-bill'), 'a row with no bill has no entry');
   assert.ok(entry(menuItems({ source: 'manual', billId: 'bill_1', isBill: true, billAttachedByHand: true }), 'remove-from-bill'));
   assert.ok(entry(menuItems({ isSplit: true, billId: 'bill_1', isBill: true, billAttachedByHand: true }), 'remove-from-bill'), 'a split parent added by hand');
+});
+
+test('Remove from bill shows on either side of a hand-added linked pair', () => {
+  const pair = { billId: 'bill_1', isBill: true, billAttachedByHand: true, transferPairId: 'pair_1' };
+  const paying = menuItems({ ...pair, accountId: 'a1', amount: -200 });
+  const receiving = menuItems({ ...pair, accountId: 'a2', amount: 200, source: 'manual' });
+  for (const items of [paying, receiving]) {
+    assert.ok(entry(items, 'remove-from-bill'));
+    assert.ok(!entry(items, 'add-to-bill'));
+  }
+  const bills = { billId: 'bill_1', isBill: true, transferPairId: 'pair_1' };
+  assert.ok(!entry(menuItems(bills), 'remove-from-bill'), 'a pair that came with its bill has no entry');
 });
 
 test('Remove from bill is locked while the row waits on a match', () => {

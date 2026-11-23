@@ -10,8 +10,8 @@
 // out what the API says about a bill next to the rows the user picked.
 // ============================================================
 
-/** The API's own refusal for a transfer bill, shown on its greyed-out line. */
-const BILL_PICKER_TRANSFER_REASON = 'Past transactions cannot be added to a transfer bill.';
+/** The API's refusal for a linked transfer row offered a bill that is not a transfer bill. */
+const BILL_PICKER_LINKED_ROW_REASON = 'This transaction is one side of a linked transfer, so it can only be added to a transfer bill. Pick a transfer bill, or unlink the transfer first.';
 
 const BILL_PICKER_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -64,19 +64,36 @@ function billPickerIsTransferBill(bill) {
   return !!(bill && bill.transfer_account_id);
 }
 
+/**
+ * Whether the picker was opened for exactly one row that is one side of a
+ * linked transfer. Only then is a bill that is not a transfer bill known to
+ * be refused; for several rows the API answers per row.
+ *
+ * @param {Object[]} rows - The rows being added.
+ * @returns {boolean}
+ */
+function billPickerIsOneLinkedRow(rows) {
+  return Array.isArray(rows) && rows.length === 1 && !!(rows[0] && rows[0].transfer_pair_id);
+}
+
 // ── Pure parts: the dropdown line, details, comparison ───────
 
 /**
  * What the dropdown shows for one bill: name, amount, schedule and account,
- * a Paused tag, and for a transfer bill a disabled line with the reason.
+ * a Paused tag, and for a transfer bill both accounts. When the picker is
+ * open on one linked row, a bill that is not a transfer bill is a disabled
+ * line with the reason.
  *
  * @param {Object} bill - A bill as `GET /api/bills` lists it.
+ * @param {{linkedRow?: boolean}} [context] - `linkedRow` is true when the rows
+ *   being added are one linked transfer row.
  * @returns {{billId: string, name: string, amount: string, schedule: string,
- *   account: string, isPaused: boolean, disabled: boolean,
+ *   account: string, isPaused: boolean, isTransfer: boolean, disabled: boolean,
  *   disabledReason: string, text: string}}
  */
-function billPickerOptionLine(bill) {
+function billPickerOptionLine(bill, context) {
   const isTransfer = billPickerIsTransferBill(bill);
+  const isBlocked = !!(context && context.linkedRow) && !isTransfer;
   const isPaused = bill.is_active === false;
   const name = bill.description || 'Untitled bill';
   const amount = billPickerMoney(bill.amount);
@@ -97,22 +114,26 @@ function billPickerOptionLine(bill) {
     schedule,
     account,
     isPaused,
-    disabled: isTransfer,
-    disabledReason: isTransfer ? BILL_PICKER_TRANSFER_REASON : '',
+    isTransfer,
+    disabled: isBlocked,
+    disabledReason: isBlocked ? BILL_PICKER_LINKED_ROW_REASON : '',
     text,
   };
 }
 
 /**
  * The dropdown's order: bills that can be chosen first, then paused ones,
- * then the transfer bills that cannot; by name within each group.
+ * then, for one linked row, the bills that are not transfer bills and so
+ * cannot be chosen; by name within each group.
  *
  * @param {Object[]} bills
+ * @param {{linkedRow?: boolean}} [context] - As for billPickerOptionLine.
  * @returns {Object[]} A new array.
  */
-function billPickerSortBills(bills) {
+function billPickerSortBills(bills, context) {
+  const isLinkedRow = !!(context && context.linkedRow);
   const groupOf = (bill) => {
-    if (billPickerIsTransferBill(bill)) return 2;
+    if (isLinkedRow && !billPickerIsTransferBill(bill)) return 2;
     if (bill.is_active === false) return 1;
     return 0;
   };
@@ -216,8 +237,13 @@ function billPickerComparison(bill, rows, accountNameFor) {
   const warnings = [];
   const billCents = _billPickerCents(bill.amount);
   const billSign = Math.sign(billCents);
+  // A transfer bill's amount is the paying account's. The receiving account's
+  // side of the same payment moves the same money the other way, so for that
+  // side only the size is compared, not the sign.
+  const isReceivingSide = (row) => billPickerIsTransferBill(bill) && row.account_id === bill.transfer_account_id;
 
   const oppositeRows = heldRows.filter((row) => {
+    if (isReceivingSide(row)) return false;
     const rowSign = Math.sign(_billPickerCents(row.amount));
     return billSign !== 0 && rowSign !== 0 && rowSign !== billSign;
   });
@@ -233,6 +259,7 @@ function billPickerComparison(bill, rows, accountNameFor) {
 
   const otherAmountRows = heldRows.filter((row) => {
     if (oppositeRows.includes(row)) return false;
+    if (isReceivingSide(row)) return Math.abs(_billPickerCents(row.amount)) !== Math.abs(billCents);
     return _billPickerCents(row.amount) !== billCents;
   });
   if (otherAmountRows.length > 0) {
@@ -243,7 +270,11 @@ function billPickerComparison(bill, rows, accountNameFor) {
     }
   }
 
-  const otherAccountRows = heldRows.filter((row) => row.account_id !== bill.account_id);
+  // Either account of a transfer bill is the bill's own.
+  const otherAccountRows = heldRows.filter((row) => {
+    if (row.account_id === bill.account_id) return false;
+    return !(billPickerIsTransferBill(bill) && row.account_id === bill.transfer_account_id);
+  });
   if (otherAccountRows.length > 0) {
     const billAccountName = nameFor(bill.account_id) || bill.account_name || 'its own account';
     const otherNames = [];
@@ -301,6 +332,7 @@ function mountBillPicker(container, options) {
   const rows = (options && options.rows) || [];
   const onChange = (options && options.onChange) || (() => {});
   const accountNameFor = (options && options.accountNameFor) || billPickerAccountName;
+  const lineContext = { linkedRow: billPickerIsOneLinkedRow(rows) };
 
   const state = {
     bills: [],
@@ -356,7 +388,7 @@ function mountBillPicker(container, options) {
     trigger.disabled = state.bills.length === 0;
     const bill = selectedBill();
     if (bill) {
-      triggerText.textContent = billPickerOptionLine(bill).text;
+      triggerText.textContent = billPickerOptionLine(bill, lineContext).text;
     } else {
       triggerText.textContent = state.bills.length === 0 ? 'No bills yet' : 'Choose a bill';
       triggerText.classList.add('is-placeholder');
@@ -389,7 +421,7 @@ function mountBillPicker(container, options) {
       const top = _billPickerEl('div', 'bill-picker-option-top');
       top.appendChild(_billPickerEl('span', 'bill-picker-option-name', line.name));
       if (line.isPaused) top.appendChild(_billPickerEl('span', 'bill-picker-tag bill-picker-tag-paused', 'Paused'));
-      if (line.disabled) top.appendChild(_billPickerEl('span', 'bill-picker-tag bill-picker-tag-transfer', 'Transfer'));
+      if (line.isTransfer) top.appendChild(_billPickerEl('span', 'bill-picker-tag bill-picker-tag-transfer', 'Transfer'));
       top.appendChild(_billPickerEl('span', 'bill-picker-option-amount', line.amount));
       item.appendChild(top);
 
@@ -588,8 +620,8 @@ function mountBillPicker(container, options) {
 
   fetchBills()
     .then((bills) => {
-      state.bills = billPickerSortBills(bills);
-      state.lines = state.bills.map(billPickerOptionLine);
+      state.bills = billPickerSortBills(bills, lineContext);
+      state.lines = state.bills.map((bill) => billPickerOptionLine(bill, lineContext));
       state.loaded = true;
       renderTrigger();
     })

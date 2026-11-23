@@ -1278,6 +1278,7 @@ function _expandDateFiltersForTransaction(txnDate, options = {}) {
 function fallbackAccountIdsForRow(cachedRow) {
   if (!cachedRow || !cachedRow.account_id) return null;
   if (isTransferCategory(cachedRow.user_category || '')) return null;
+  if (cachedRow.transfer_pair_id) return null;
   return [cachedRow.account_id];
 }
 

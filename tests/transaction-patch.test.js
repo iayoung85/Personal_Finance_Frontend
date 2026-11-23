@@ -128,6 +128,35 @@ test('the input rows and the response are not mutated', () => {
   assert.deepEqual(plain(response), responseBefore);
 });
 
+test('both sides of a pair are patched from one response, the partner from another account too', () => {
+  const rows = [
+    { transaction_id: 'p1', account_id: 'a', amount: -200, transfer_pair_id: 'xfr_1', bill_id: null },
+    { transaction_id: 'p2', account_id: 'b', amount: 200, transfer_pair_id: 'xfr_1', bill_id: null },
+    { transaction_id: 't9', account_id: 'a', amount: -5, bill_id: null },
+  ];
+  const attached = {
+    removed_transaction_ids: [],
+    affected_transactions: [
+      { ...rows[0], bill_id: 'bill_1', bill_attached_by_hand: true },
+      { ...rows[1], bill_id: 'bill_1', bill_attached_by_hand: true },
+    ],
+  };
+  const afterAttach = patchTransactionsFromResponse(rows, attached);
+  assert.deepEqual(plain(afterAttach.rows.map((row) => row.bill_id)), ['bill_1', 'bill_1', null]);
+  assert.deepEqual(ids(afterAttach.upsertedRows), ['p1', 'p2']);
+
+  const removed = {
+    removed_transaction_ids: [],
+    affected_transactions: [
+      { ...rows[0], bill_id: null, bill_attached_by_hand: false },
+      { ...rows[1], bill_id: null, bill_attached_by_hand: false },
+    ],
+  };
+  const afterRemove = patchTransactionsFromResponse(afterAttach.rows, removed);
+  assert.deepEqual(plain(afterRemove.rows.map((row) => row.bill_id)), [null, null, null]);
+  assert.deepEqual(plain(afterRemove.rows.map((row) => row.bill_attached_by_hand)), [false, false, null]);
+});
+
 test('the saved row is the affected row with the response\'s transaction_id', () => {
   const saved = { transaction_id: 'real-1', account_id: 'a' };
   const partner = { transaction_id: 'p1', account_id: 'b' };

@@ -345,9 +345,6 @@ function _editScheduleItem() {
   };
 }
 
-/** The API's refusal for a row that is one side of a linked transfer. */
-const ADD_TO_BILL_TRANSFER_REASON = 'This transaction is one side of a linked transfer, so it cannot be added to a bill. Unlink the transfer first.';
-
 /** Today as YYYY-MM-DD in the user's own time zone, as row dates are. */
 function _localIsoToday() {
   const now = new Date();
@@ -361,12 +358,12 @@ function _localIsoToday() {
  * meaning. The API decides which rows may be added; this mirrors its rule
  * only to choose what the menu shows: a posted bank row, a converted bank
  * row or a cleared manual row, dated today or earlier, with no bill link,
- * and not a split piece. A split parent qualifies. One side of a linked
- * transfer gets the entry disabled, with the API's reason.
+ * and not a split piece. A split parent qualifies, and so does one side of a
+ * linked transfer: the picker then shows which bills it may join.
  *
  * @param {Object} txnData - Context data for the right-clicked row.
  * @param {string} txnType - The row's TXN_TYPE value.
- * @returns {{label: string, action: string, separator: boolean, disabled?: boolean, disabledReason?: string}|null}
+ * @returns {{label: string, action: string, separator: boolean}|null}
  */
 function _addToBillItem(txnData, txnType) {
   if (!txnData || txnData.isSplitChild || txnData.billId) return null;
@@ -377,12 +374,7 @@ function _addToBillItem(txnData, txnType) {
   // Both are ISO dates, which sort as text.
   if (txnData.txnDate && txnData.txnDate > _localIsoToday()) return null;
 
-  const item = { label: '📎 Add to existing bill', action: 'add-to-bill', separator: false };
-  if (txnData.transferPairId) {
-    item.disabled = true;
-    item.disabledReason = ADD_TO_BILL_TRANSFER_REASON;
-  }
-  return item;
+  return { label: '📎 Add to existing bill', action: 'add-to-bill', separator: false };
 }
 
 /**

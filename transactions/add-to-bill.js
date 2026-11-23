@@ -185,17 +185,28 @@ async function _sendAddToBill(bill, txn, showError) {
 }
 
 /**
+ * The question asked before a row leaves its bill. The API takes both sides
+ * of a linked transfer off together, so the question says so.
+ *
+ * @param {boolean} isLinkedRow - Whether the row is one side of a linked transfer.
+ * @returns {string}
+ */
+function removeFromBillConfirmText(isLinkedRow) {
+  const subject = isLinkedRow ? 'Remove both sides of this transfer from its bill?' : 'Remove this transaction from its bill?';
+  return `${subject}\n\nOnly the bill link is removed. The name, category and memo stay as they are.`;
+}
+
+/**
  * "Remove from bill": take a row that was added to its bill by hand off it
  * again. Its name, category and memo are left as they are.
  *
  * @param {Object} txnData - Context data for the right-clicked row.
  */
 async function removeFromBillFromMenu(txnData) {
-  const confirmText = 'Remove this transaction from its bill?\n\n'
-    + 'Only the bill link is removed. The name, category and memo stay as they are.';
+  const cachedRow = transactions.find((txn) => txn.transaction_id === txnData.txnId);
+  const confirmText = removeFromBillConfirmText(!!(cachedRow && cachedRow.transfer_pair_id));
   if (!confirm(confirmText)) return;
 
-  const cachedRow = transactions.find((txn) => txn.transaction_id === txnData.txnId);
   let answer;
   try {
     answer = await removeTransactionFromBill(txnData.txnId);
