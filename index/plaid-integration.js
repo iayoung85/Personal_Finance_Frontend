@@ -65,7 +65,7 @@ const IndexPlaidIntegration = (() => {
         },
         onExit: (exitError) => {
           if (exitError != null) {
-            IndexUtils.showMessage('dashboard-message', 'Connection cancelled or failed', 'error');
+            IndexUtils.showMessage('dashboard-message', 'Connection canceled or failed', 'error');
           }
         },
       });

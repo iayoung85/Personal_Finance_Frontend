@@ -390,7 +390,7 @@ const IndexConnectionsList = (() => {
         },
         onExit: (exitError) => {
           if (exitError != null) {
-            IndexUtils.showMessage('dashboard-message', 'Refresh cancelled or failed', 'error');
+            IndexUtils.showMessage('dashboard-message', 'Refresh canceled or failed', 'error');
           }
         },
       });
@@ -549,7 +549,7 @@ const IndexConnectionsList = (() => {
         },
         onExit: (exitError) => {
           if (exitError != null) {
-            IndexUtils.showMessage('dashboard-message', 'Relink cancelled or failed', 'error');
+            IndexUtils.showMessage('dashboard-message', 'Relink canceled or failed', 'error');
           }
         },
       });
@@ -664,7 +664,7 @@ const IndexConnectionsList = (() => {
     const choicePromptText = `How would you like to disconnect ${bankName}?\n\n${options.join('\n')}\n\nEnter the number of your choice:`;
 
     const choice = prompt(choicePromptText);
-    if (!choice) return; // User cancelled
+    if (!choice) return; // User canceled
 
     const choiceNumber = parseInt(choice.trim(), 10);
     let mode = null;

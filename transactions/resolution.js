@@ -456,7 +456,7 @@ function enterForceMatchPickMode(orphanTxnId) {
       The orphan will be rewritten to match the selected transaction's amount and account.
     `,
     clickHandler: _forceMatchRowClickHandler,
-    cancelMessage: 'Force match cancelled',
+    cancelMessage: 'Force match canceled',
   });
   _forceMatchOrphanId = orphanTxnId;
 }
@@ -718,7 +718,7 @@ function enterMatchToTransactionPickMode(sourceTxnId) {
       <strong>Match to Transaction:</strong> Click the bank transaction that ${escapeHtml(_matchRowLabel(sourceTxn))} belongs to.
     `,
     clickHandler: _matchToTransactionRowClickHandler,
-    cancelMessage: 'Match cancelled',
+    cancelMessage: 'Match canceled',
   });
   _matchSourceId = sourceTxnId;
 }

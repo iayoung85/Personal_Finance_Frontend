@@ -231,7 +231,7 @@ test('Escape ends the mode with an info status; other keys do not', () => {
 
   page.api._pickModeEscapeHandler({ key: 'Escape' });
   assert.equal(page.api.isPickModeActive(), false);
-  assert.deepEqual(page.statuses.at(-1), { message: 'Match cancelled', kind: 'info' });
+  assert.deepEqual(page.statuses.at(-1), { message: 'Match canceled', kind: 'info' });
 });
 
 test('Cancel on the banner ends the mode', () => {
@@ -275,5 +275,5 @@ test('starting a force match ends Match to Transaction, and the reverse', async 
 
   // Escape reports the mode that is on, not the one that was replaced.
   page.api._pickModeEscapeHandler({ key: 'Escape' });
-  assert.equal(page.statuses.at(-1).message, 'Match cancelled');
+  assert.equal(page.statuses.at(-1).message, 'Match canceled');
 });
