@@ -3471,10 +3471,22 @@ tr.bank-suspect-row td:first-child {
 
 /* Transfer-aware date range (9i): "older → newer" display for cross-account transfers */
 .transfer-date-range {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
   white-space: nowrap;
+  line-height: 1.25;
+}
+
+/* The sent date keeps the column's own size so it lines up with every other row's date. */
+.transfer-date-sent {
+  color: var(--accent-link);
+}
+
+.transfer-date-received {
   font-size: 0.85em;
   color: var(--accent-link);
-  letter-spacing: -0.2px;
+  opacity: 0.8;
 }
 
 .transfer-unlink-btn {

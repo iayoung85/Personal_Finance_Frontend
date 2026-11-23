@@ -1166,12 +1166,12 @@ function renderTransactionTable() {
       && txn.transfer_partner_date
       && txn.transfer_partner_date !== txn.date;
     if (hasTransferPartnerDate) {
-      const partnerDateStr = formatDate(txn.transfer_partner_date);
-      const ownTime = new Date(txn.date).getTime();
-      const partnerTime = new Date(txn.transfer_partner_date).getTime();
-      const olderStr = ownTime <= partnerTime ? ownDateStr : partnerDateStr;
-      const newerStr = ownTime <= partnerTime ? partnerDateStr : ownDateStr;
-      dateStr = `<span class="transfer-date-range" title="Sent ${olderStr}, received ${newerStr}">${olderStr} → ${newerStr}</span>`;
+      // Two lines, since one line of two full dates never fit the column.
+      const rangeLabels = transferDateRangeLabels(txn.date, txn.transfer_partner_date);
+      dateStr = `<span class="transfer-date-range" title="Sent ${rangeLabels.sentLabel}, received ${rangeLabels.receivedFullLabel}">`
+        + `<span class="transfer-date-sent">${rangeLabels.sentLabel}</span>`
+        + `<span class="transfer-date-received">→ ${rangeLabels.receivedLabel}</span>`
+        + '</span>';
     }
 
     // ── Amount cell ──

@@ -79,6 +79,60 @@ function formatDate(rawDate) {
 }
 
 /**
+ * Format a date for display without its year, in the order the user's
+ * preferred format puts month and day.
+ *
+ * For a second date shown beside a first one in the same year, where
+ * repeating the year only costs width.
+ *
+ * @param {string|Date} rawDate - ISO date string ('2026-03-04') or Date.
+ * @returns {string} e.g. '03-04', '03/04', '04/03' or 'Mar 4'; '—' if input is falsy.
+ */
+function formatDateWithoutYear(rawDate) {
+  if (!rawDate) return '—';
+
+  const date = rawDate instanceof Date
+    ? rawDate
+    : new Date(rawDate + (typeof rawDate === 'string' && !rawDate.includes('T') ? 'T00:00:00' : ''));
+
+  if (Number.isNaN(date.getTime())) return String(rawDate);
+
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  switch (_getDateFormatPreference()) {
+    case 'MM/DD/YYYY':  return `${month}/${day}`;
+    case 'DD/MM/YYYY':  return `${day}/${month}`;
+    case 'MMM D, YYYY': return `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}`;
+    default:            return `${month}-${day}`;
+  }
+}
+
+/**
+ * Work out the two lines a transfer's date cell shows when its sides
+ * landed on different days: the earlier date in full, and the later one
+ * beneath it, without its year when both fall in the same year.
+ *
+ * @param {string} ownDate - This row's ISO date ('2026-03-04').
+ * @param {string} partnerDate - The other side's ISO date.
+ * @returns {{sentLabel: string, receivedLabel: string, receivedFullLabel: string}}
+ *   `receivedFullLabel` always carries the year, for the hover text.
+ */
+function transferDateRangeLabels(ownDate, partnerDate) {
+  // ISO dates sort as text, so no Date parsing is needed to order them.
+  const sentDate = ownDate <= partnerDate ? ownDate : partnerDate;
+  const receivedDate = ownDate <= partnerDate ? partnerDate : ownDate;
+  const sameYear = String(sentDate).slice(0, 4) === String(receivedDate).slice(0, 4);
+  const receivedFullLabel = formatDate(receivedDate);
+  return {
+    sentLabel: formatDate(sentDate),
+    receivedLabel: sameYear ? formatDateWithoutYear(receivedDate) : receivedFullLabel,
+    receivedFullLabel,
+  };
+}
+
+/**
  * Convert a Date to an ISO YYYY-MM-DD string (always, regardless
  * of the user's display preference). Used for API payloads, value
  * attributes on inputs, and internal comparisons.
