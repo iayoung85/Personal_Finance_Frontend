@@ -198,7 +198,7 @@
   font-size: 11px;
   color: var(--text-muted);
 }
-.mode-badge.every-purchase {
+.mode-badge.daily-resend {
   color: var(--color-warning);
 }
 

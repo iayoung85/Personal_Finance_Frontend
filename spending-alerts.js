@@ -250,8 +250,8 @@ function buildAlertRow(alert) {
   const periodBadge = `<span class="period-badge ${alert.period}">${escHtml(alert.period)}</span>`;
 
   // Mode
-  const modeLabel = alert.notification_mode === 'every_purchase'
-    ? `<span class="mode-badge every-purchase" title="Email fires after every sync over threshold">Every purchase</span>`
+  const modeLabel = alert.notification_mode === 'daily_resend'
+    ? `<span class="mode-badge daily-resend" title="At most one email a day while over the threshold, and only when new transactions have landed">Daily while over</span>`
     : `<span class="mode-badge" title="One email per period when threshold is first crossed">Once / period</span>`;
 
   // Recipients — show first two, "+N more" tooltip for the rest
