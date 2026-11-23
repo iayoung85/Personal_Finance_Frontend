@@ -135,6 +135,10 @@ function _buildContextTxnData(row) {
       ? row.dataset.isHidden === 'true'
       : !!(fallbackTxn.is_hidden || parentTxn?.is_hidden),
     amountModified: !!(fallbackTxn.amount_modified || parentTxn?.amount_modified),
+    // Read from the row itself, never the parent: a split piece neither
+    // carries a transfer link nor is added to a bill by hand.
+    transferPairId: fallbackTxn.transfer_pair_id || '',
+    billAttachedByHand: !!fallbackTxn.bill_attached_by_hand,
     txnDate: row.dataset.txnDate || fallbackTxn.date || parentTxn?.date || '',
     localTransaction,
     parentTransaction: parentTxn,
@@ -291,6 +295,8 @@ const WAITING_MATCH_LOCKED_ACTIONS = new Set([
   'reset-plaid-amount',
   'match-to-adjacent',
   'force-match',
+  'add-to-bill',
+  'remove-from-bill',
 ]);
 
 /**
@@ -337,6 +343,72 @@ function _editScheduleItem() {
     action: 'edit-schedule',
     separator: false,
   };
+}
+
+/** The API's refusal for a row that is one side of a linked transfer. */
+const ADD_TO_BILL_TRANSFER_REASON = 'This transaction is one side of a linked transfer, so it cannot be added to a bill. Unlink the transfer first.';
+
+/** Today as YYYY-MM-DD in the user's own time zone, as row dates are. */
+function _localIsoToday() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * The "Add to existing bill" entry for a row, or null where adding has no
+ * meaning. The API decides which rows may be added; this mirrors its rule
+ * only to choose what the menu shows: a posted bank row, a converted bank
+ * row or a cleared manual row, dated today or earlier, with no bill link,
+ * and not a split piece. A split parent qualifies. One side of a linked
+ * transfer gets the entry disabled, with the API's reason.
+ *
+ * @param {Object} txnData - Context data for the right-clicked row.
+ * @param {string} txnType - The row's TXN_TYPE value.
+ * @returns {{label: string, action: string, separator: boolean, disabled?: boolean, disabledReason?: string}|null}
+ */
+function _addToBillItem(txnData, txnType) {
+  if (!txnData || txnData.isSplitChild || txnData.billId) return null;
+  const isAttachableType = txnType === TXN_TYPE.PLAID_CLEARED
+    || txnType === TXN_TYPE.PLAID_CONVERTED
+    || txnType === TXN_TYPE.MANUAL_CLEARED;
+  if (!isAttachableType) return null;
+  // Both are ISO dates, which sort as text.
+  if (txnData.txnDate && txnData.txnDate > _localIsoToday()) return null;
+
+  const item = { label: '📎 Add to existing bill', action: 'add-to-bill', separator: false };
+  if (txnData.transferPairId) {
+    item.disabled = true;
+    item.disabledReason = ADD_TO_BILL_TRANSFER_REASON;
+  }
+  return item;
+}
+
+/**
+ * The "Remove from bill" entry, offered only on a row whose bill link was
+ * added by hand: a link that came from a match goes back through Reset to
+ * Plaid instead.
+ *
+ * @param {Object} txnData - Context data for the right-clicked row.
+ * @returns {{label: string, action: string, separator: boolean}|null}
+ */
+function _removeFromBillItem(txnData) {
+  if (!txnData || txnData.isSplitChild) return null;
+  if (!txnData.billId || !txnData.billAttachedByHand) return null;
+  return { label: '✕ Remove from bill', action: 'remove-from-bill', separator: false };
+}
+
+/**
+ * Push the given menu items, skipping the nulls.
+ *
+ * @param {Array<Object>} items
+ * @param {...(Object|null)} candidates
+ */
+function _pushMenuItems(items, ...candidates) {
+  candidates.forEach((candidate) => {
+    if (candidate) items.push(candidate);
+  });
 }
 
 /** Statuses of a bank row (source plaid) the API resets to the bank's data. */
@@ -478,6 +550,14 @@ function _buildMenuItemsForRow(txnData) {
         separator: false,
       });
     }
+    // A split parent can join a bill: the link sits on the parent, as it
+    // does when a bill's split template makes the pieces.
+    if (!txnData.isSplitChild) {
+      const billLinkItems = [];
+      _pushMenuItems(billLinkItems, _addToBillItem(txnData, getTransactionType(txnData)), _removeFromBillItem(txnData));
+      if (_isWaitingMatchMenuRow(txnData)) _lockWaitingMatchItems(billLinkItems);
+      splitItems.push(...billLinkItems);
+    }
     // A split bank row keeps its menu to Reset to Plaid, which removes the split.
     if (_canResetToPlaid(txnData)) {
       splitItems.push(_resetToPlaidItem());
@@ -616,9 +696,11 @@ function _buildMenuItemsForRow(txnData) {
         separator: false,
       });
     }
+    _pushMenuItems(items, _addToBillItem(txnData, txnType));
     if (hasLiveBill) {
       items.push(_editScheduleItem());
     }
+    _pushMenuItems(items, _removeFromBillItem(txnData));
     items.push({
       label: '⇄ Make Transfer',
       action: 'make-transfer',
@@ -691,6 +773,7 @@ function _buildMenuItemsForRow(txnData) {
   if (hasLiveBill) {
     items.push(_editScheduleItem());
   }
+  _pushMenuItems(items, _removeFromBillItem(txnData));
 
   // "Hide" / "Unhide" — plaid cleared and plaid pending in linked accounts
   if (isPlaid) {
@@ -735,6 +818,7 @@ function _buildMenuItemsForRow(txnData) {
       separator: false,
     });
   }
+  _pushMenuItems(items, _addToBillItem(txnData, txnType));
 
   // "Make Transfer" — plaid, manual, plaid-converted, pending, MANUAL_FUTURE, missing
   // (NOT split, opening balance, orphaned, matched, BILL_FUTURE)
@@ -866,6 +950,12 @@ function _dispatchContextAction(action, txnData) {
       break;
     case 'this-is-a-bill':
       _handleContextThisIsABill(txnData);
+      break;
+    case 'add-to-bill':
+      openAddToBillModal(txnData);
+      break;
+    case 'remove-from-bill':
+      removeFromBillFromMenu(txnData);
       break;
     case 'make-transfer':
       _handleContextMakeTransfer(txnData);

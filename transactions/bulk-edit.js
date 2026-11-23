@@ -15,6 +15,7 @@ const BULK_EDIT_FIELD_LABELS = Object.freeze({
   description:   'Description',
   amount:        'Amount',
   is_hidden:     'Hidden',
+  bill_id:       'Add to bill',
 });
 
 const BULK_EDIT_INPUT_TYPE = Object.freeze({
@@ -23,7 +24,11 @@ const BULK_EDIT_INPUT_TYPE = Object.freeze({
   description:   'text',
   amount:        'number',
   is_hidden:     'toggle',
+  bill_id:       'bill',
 });
+
+// The bill picker mounted in the open modal's "Add to bill" row, if any.
+let _bulkBillPicker = null;
 
 // ── Selectability ────────────────────────────────────────────────
 
@@ -268,7 +273,9 @@ function _renderBulkEditModal(preflight) {
   });
 
   const modal = document.createElement('div');
-  modal.className = 'modal modal-bulk-edit';
+  // The bill details need more room than a one-line field.
+  const offersBill = (preflight.legal_fields || []).includes('bill_id');
+  modal.className = offersBill ? 'modal modal-bulk-edit modal-bulk-edit-wide' : 'modal modal-bulk-edit';
   overlay.appendChild(modal);
 
   modal.innerHTML = `
@@ -306,6 +313,7 @@ function _renderBulkEditModal(preflight) {
 function _closeBulkEditModal() {
   const existing = document.getElementById('bulk-edit-modal');
   if (existing) existing.remove();
+  _bulkBillPicker = null;
 }
 
 function _renderLegalFieldRows(container, legalFields) {
@@ -317,6 +325,9 @@ function _renderLegalFieldRows(container, legalFields) {
     const fieldKey = legalFields[idx];
     container.appendChild(_buildFieldRow(fieldKey));
   }
+
+  const billSlot = container.querySelector('#bulk-field-input-bill_id');
+  if (billSlot) _mountBulkBillPicker(billSlot);
 
   // Wire up category autocomplete (must run after DOM insertion).
   const catInput = container.querySelector('#bulk-field-input-user_category');
@@ -366,7 +377,9 @@ function _renderLegalFieldRows(container, legalFields) {
 function _buildFieldRow(fieldKey) {
   const label = BULK_EDIT_FIELD_LABELS[fieldKey] || fieldKey;
   const row = document.createElement('div');
-  row.className = 'bulk-edit-field-row';
+  row.className = BULK_EDIT_INPUT_TYPE[fieldKey] === 'bill'
+    ? 'bulk-edit-field-row bulk-edit-field-row-stacked'
+    : 'bulk-edit-field-row';
   row.dataset.field = fieldKey;
 
   row.innerHTML = `
@@ -388,6 +401,13 @@ function _buildFieldRow(fieldKey) {
 // and broke the inline date editor (placeholder "New date" leaking through).
 function _buildBulkEditInputForField(fieldKey) {
   const inputType = BULK_EDIT_INPUT_TYPE[fieldKey];
+  if (inputType === 'bill') {
+    // The picker mounts here once the row is in the modal.
+    const slot = document.createElement('div');
+    slot.id = `bulk-field-input-${fieldKey}`;
+    slot.className = 'bulk-edit-bill-slot';
+    return slot;
+  }
   if (inputType === 'category') {
     const wrap = document.createElement('div');
     wrap.className = 'bulk-edit-category-wrap';
@@ -423,6 +443,26 @@ function _buildBulkEditInputForField(fieldKey) {
   textEl.className = 'modal-input';
   textEl.placeholder = `New ${(BULK_EDIT_FIELD_LABELS[fieldKey] || fieldKey).toLowerCase()}`;
   return textEl;
+}
+
+/**
+ * Mount the bill picker in the "Add to bill" row, comparing the bill with
+ * the selected rows the page holds. Choosing a bill ticks the row, the way
+ * typing a value is the point of ticking any other field.
+ *
+ * @param {HTMLElement} slot
+ */
+function _mountBulkBillPicker(slot) {
+  const selectedRows = transactions.filter(txn => bulkEditState.selectedIds.has(txn.transaction_id));
+  // The modal is not in the document yet, so look inside the row.
+  const fieldRow = slot.closest('.bulk-edit-field-row');
+  const checkbox = fieldRow ? fieldRow.querySelector('.bulk-edit-field-checkbox') : null;
+  _bulkBillPicker = mountBillPicker(slot, {
+    rows: selectedRows,
+    onChange: (bill) => {
+      if (bill && checkbox) checkbox.checked = true;
+    },
+  });
 }
 
 function _renderBlockersFooter(container, blockers) {
@@ -472,6 +512,10 @@ async function _onBulkEditApplyClick() {
   if (bulkEditState.applying) return;
 
   const blankRequired = _findBlankRequiredField();
+  if (blankRequired === 'bill_id') {
+    showStatus('Choose a bill to add the transactions to (or uncheck Add to bill)', 'warning');
+    return;
+  }
   if (blankRequired) {
     showStatus(`Enter a value for ${BULK_EDIT_FIELD_LABELS[blankRequired] || blankRequired} (or uncheck it)`, 'warning');
     return;
@@ -528,6 +572,11 @@ async function _onBulkEditApplyClick() {
     // projects from the new balance.
     await applyAffectedAccounts(result.body);
     const staleClassAccounts = _patchCacheFromApplyResults(result.body, changes);
+    // The bill fields come from the rows the API sends back, not from the
+    // picked bill, so the badge shows exactly what was stored.
+    if (changes.bill_id && !applyChangedTransactions(result.body)) {
+      await refreshAccountTransactions(null);
+    }
     if (staleClassAccounts.length > 0) {
       await _refreshAccountsForStaleAnalyticsClass(staleClassAccounts);
     }
@@ -557,7 +606,7 @@ async function _onBulkEditApplyClick() {
 }
 
 function _findBlankRequiredField() {
-  const REQUIRED_TEXT_FIELDS = ['user_category', 'description'];
+  const REQUIRED_TEXT_FIELDS = ['user_category', 'description', 'bill_id'];
   const checkboxes = document.querySelectorAll('.bulk-edit-field-checkbox');
   for (let idx = 0; idx < checkboxes.length; idx++) {
     const checkbox = checkboxes[idx];
@@ -580,7 +629,7 @@ function _collectChangesFromModal() {
     // Drop trimmed-empty strings for required text fields so the user gets
     // an actionable client-side error instead of a backend 400 round-trip.
     if (typeof value === 'string' && value.trim() === ''
-        && (field === 'user_category' || field === 'description')) {
+        && (field === 'user_category' || field === 'description' || field === 'bill_id')) {
       return;
     }
     changes[field] = value;
@@ -590,6 +639,9 @@ function _collectChangesFromModal() {
 
 function _readFieldValue(fieldKey) {
   const inputType = BULK_EDIT_INPUT_TYPE[fieldKey];
+  if (inputType === 'bill') {
+    return _bulkBillPicker ? _bulkBillPicker.getSelectedBillId() : '';
+  }
   if (inputType === 'toggle') {
     const el = document.getElementById(`bulk-field-input-${fieldKey}`);
     return !!(el && el.checked);

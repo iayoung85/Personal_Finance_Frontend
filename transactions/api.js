@@ -1201,3 +1201,51 @@ async function refreshSelectedLedgerAfterAffected(responseData) {
   _evictBalanceHistoryCacheEntries([selectedAccountId]);
   await fetchBalanceHistory(selectedAccountId);
 }
+
+// ===== Bill links added by hand =====
+
+/**
+ * Send a request whose answer the caller reads either way: a refusal carries
+ * the API's sentence for the user in `body.error`.
+ *
+ * @param {string} url
+ * @param {Object} [jsonBody] - Sent as JSON when given.
+ * @returns {Promise<{ok: boolean, status: number, body: Object}>}
+ */
+async function _postForAnswer(url, jsonBody) {
+  const options = { method: 'POST' };
+  if (jsonBody !== undefined) {
+    options.headers = { 'Content-Type': 'application/json' };
+    options.body = JSON.stringify(jsonBody);
+  }
+  const response = await authenticatedFetch(url, options);
+  const body = await response.json().catch(() => ({}));
+  return { ok: response.ok, status: response.status, body: body || {} };
+}
+
+/**
+ * Add past transactions to an existing bill. Each row is answered on its
+ * own in `body.results`; a bad or transfer bill refuses the whole request.
+ *
+ * @param {string} billId
+ * @param {string[]} transactionIds
+ * @returns {Promise<{ok: boolean, status: number, body: Object}>}
+ */
+async function attachTransactionsToBill(billId, transactionIds) {
+  return _postForAnswer(`${BACKEND_URL}/api/transactions/attach-to-bill`, {
+    bill_id: billId,
+    transaction_ids: transactionIds,
+  });
+}
+
+/**
+ * Take a row that was added to its bill by hand off that bill again.
+ *
+ * @param {string} transactionId
+ * @returns {Promise<{ok: boolean, status: number, body: Object}>}
+ */
+async function removeTransactionFromBill(transactionId) {
+  return _postForAnswer(
+    `${BACKEND_URL}/api/transactions/${encodeURIComponent(transactionId)}/remove-from-bill`,
+  );
+}

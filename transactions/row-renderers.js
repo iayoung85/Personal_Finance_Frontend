@@ -451,7 +451,13 @@ function _paidBillBadge(txn) {
   const scheduledDate = escapeHtml(txn.bill_scheduled_date || '');
   const scheduleSummary = escapeHtml(txn.schedule_summary || '');
   let hoverTitle = 'Paid bill occurrence';
-  if (scheduledDate) hoverTitle += ` scheduled ${scheduledDate}`;
+  if (txn.bill_attached_by_hand) {
+    // A row added by hand never stood for a scheduled occurrence; its
+    // scheduled date is only its own date.
+    hoverTitle = 'Added to this bill by hand';
+  } else if (scheduledDate) {
+    hoverTitle += ` scheduled ${scheduledDate}`;
+  }
   if (scheduleSummary) hoverTitle += ` — ${scheduleSummary}`;
   return `<span class="source-badge bill-provenance" data-tooltip="${hoverTitle}" title="${hoverTitle}">📋</span> `;
 }

@@ -6266,3 +6266,438 @@ th.th-date {
   padding: 0 4px;
   border-radius: 2px;
 }
+
+/* Bulk modify with "Add to bill": room for the bill's details, and a body
+   that scrolls instead of growing past the window. */
+.modal-bulk-edit-wide {
+  width: min(720px, 94vw);
+}
+
+.modal-bulk-edit-wide .modal-body {
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+}
+
+.bulk-edit-field-row.bulk-edit-field-row-stacked {
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 8px;
+}
+
+/* ── Bill picker (add past rows to a bill) ───────────────────── */
+
+.bill-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bill-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+
+.bill-picker-trigger:hover:not(:disabled) {
+  background: var(--bg-input);
+  border-color: var(--accent-link);
+}
+
+.bill-picker-trigger:focus-visible,
+.bill-picker.is-open .bill-picker-trigger {
+  outline: none;
+  border-color: var(--accent-link);
+  box-shadow: 0 0 0 2px var(--accent-focus);
+}
+
+.bill-picker-trigger:disabled {
+  background: var(--bg-input);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.bill-picker-trigger-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bill-picker-trigger-text.is-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.bill-picker-caret {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  transition: transform 0.15s;
+}
+
+.bill-picker.is-open .bill-picker-caret {
+  transform: rotate(180deg);
+}
+
+.bill-picker-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--bg-surface-elevated);
+  box-shadow: var(--shadow-sm);
+}
+
+.bill-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.bill-picker-option {
+  padding: 7px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+
+.bill-picker-option + .bill-picker-option {
+  margin-top: 2px;
+}
+
+.bill-picker-option:hover,
+.bill-picker-option.is-active {
+  background: var(--bg-hover);
+}
+
+.bill-picker-option.is-selected {
+  background: var(--bg-selected);
+  border-left-color: var(--accent-link);
+}
+
+.bill-picker-option.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.bill-picker-option.is-disabled:hover {
+  background: transparent;
+}
+
+.bill-picker-option-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.bill-picker-option-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bill-picker-option-amount {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.bill-picker-option-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.bill-picker-option-reason {
+  margin-top: 2px;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.bill-picker-empty,
+.bill-picker-muted {
+  padding: 6px 8px;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.bill-picker-error {
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: 4px;
+}
+
+.bill-picker-tag {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.bill-picker-tag-paused {
+  background: var(--badge-warning-bg);
+  color: var(--badge-warning-text);
+}
+
+.bill-picker-tag-transfer {
+  background: var(--badge-purple-bg);
+  color: var(--badge-purple-text);
+}
+
+.bill-picker-tag-active {
+  background: var(--badge-success-bg);
+  color: var(--badge-success-text);
+}
+
+.bill-picker-tag-hand {
+  margin-left: 6px;
+  background: var(--badge-info-bg);
+  color: var(--badge-info-text);
+}
+
+/* The chosen bill's details */
+.bill-picker-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--bg-inset);
+}
+
+.bill-picker-details-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bill-picker-details-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-heading);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bill-picker-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 14px;
+  row-gap: 4px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.bill-picker-facts dt {
+  color: var(--text-secondary);
+}
+
+.bill-picker-facts dd {
+  margin: 0;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bill-picker-section-title {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.bill-picker-history,
+.bill-picker-compare {
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.bill-picker-payments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bill-picker-payment {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) minmax(0, 0.8fr) max-content;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.bill-picker-payment-date,
+.bill-picker-payment-account {
+  color: var(--text-secondary);
+}
+
+.bill-picker-payment-name,
+.bill-picker-payment-account {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bill-picker-payment-amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bill-picker-compare-line {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.bill-picker-compare-line + .bill-picker-compare-line {
+  margin-top: 2px;
+}
+
+.bill-picker-compare-ok {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-success);
+}
+
+.bill-picker-warnings {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bill-picker-warning {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-left: 3px solid var(--color-warning);
+  border-radius: 3px;
+}
+
+/* ── "Add to existing bill" modal ───────────────────────────── */
+
+.modal-add-to-bill {
+  width: min(600px, 94vw);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-add-to-bill .modal-header h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.add-to-bill-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.add-to-bill-row {
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--bg-surface-elevated);
+}
+
+.add-to-bill-row-main {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.add-to-bill-row-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.add-to-bill-row-amount {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.add-to-bill-row-amount.is-negative {
+  color: var(--color-negative);
+}
+
+.add-to-bill-row-amount.is-positive {
+  color: var(--color-positive);
+}
+
+.add-to-bill-row-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.add-to-bill-label {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.add-to-bill-error {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: 4px;
+}
+
+@media (max-width: 640px) {
+  .bill-picker-payment {
+    grid-template-columns: 80px minmax(0, 1fr) max-content;
+  }
+
+  .bill-picker-payment-account {
+    display: none;
+  }
+}
