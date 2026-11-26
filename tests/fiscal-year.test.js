@@ -12,7 +12,7 @@ function loadHelpers(appConfig = {}) {
   vm.runInNewContext(
     `${source}\nmodule.exports = { normalizeFiscalStartMonth, getFiscalStartMonth, `
       + 'hasDistinctFiscalYear, currentFiscalYearRange, lastFiscalYearRange, '
-      + 'formatFiscalRangeShort, describeFiscalYear };',
+      + 'formatFiscalRangeShort, describeFiscalYear, describeFiscalStartChange };',
     sandbox,
     { filename: sourcePath },
   );
@@ -26,6 +26,7 @@ const {
   lastFiscalYearRange,
   formatFiscalRangeShort,
   describeFiscalYear,
+  describeFiscalStartChange,
 } = loadHelpers();
 
 const NOVEMBER = 11;
@@ -125,4 +126,43 @@ test('the Settings text states the exact dates of the fiscal year', () => {
 test('the chip tooltip gives a short range', () => {
   const range = currentFiscalYearRange(new Date(2026, 10, 12), NOVEMBER);
   assert.equal(formatFiscalRangeShort(range), 'Nov 1, 2026 – Oct 31, 2027');
+});
+
+test('November to February keeps the current year\'s name and moves its dates', () => {
+  assert.equal(
+    describeFiscalStartChange(11, 2, new Date(2026, 10, 26)),
+    [
+      'Change the fiscal year to start in February?',
+      '',
+      'The current fiscal year would be FY2027, February 1, 2026 through January 31, 2027.',
+      '',
+      'Budget targets stay with their fiscal year\'s name, so they will apply to different months: '
+        + 'FY2027\'s targets would cover those dates instead of November 1, 2026 through October 31, 2027.',
+      '',
+      'Nothing is deleted. Changing the month back restores today\'s view.',
+    ].join('\n'),
+  );
+});
+
+test('November to January renames the current year and says the old one leaves', () => {
+  assert.equal(
+    describeFiscalStartChange(11, 1, new Date(2026, 10, 26)),
+    [
+      'Change the fiscal year to start in January?',
+      '',
+      'The current fiscal year would be FY2026, January 1, 2026 through December 31, 2026.',
+      '',
+      'Budget targets stay with their fiscal year\'s name, so they will apply to different months: '
+        + 'FY2026\'s targets would cover those dates instead of November 1, 2025 through October 31, 2026.',
+      'The current year would be FY2026 instead of FY2027, so FY2027\'s targets '
+        + 'would leave the Budget and its targets editor until that year begins.',
+      '',
+      'Nothing is deleted. Changing the month back restores today\'s view.',
+    ].join('\n'),
+  );
+});
+
+test('a change that makes the current year a later name says the old one becomes last year\'s', () => {
+  const text = describeFiscalStartChange(1, 11, new Date(2026, 10, 26));
+  assert.match(text, /The current year would be FY2027 instead of FY2026, so FY2026's targets would become last year's\./);
 });

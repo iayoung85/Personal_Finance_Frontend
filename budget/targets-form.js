@@ -406,6 +406,105 @@ function targetsDraftHasValues(draft) {
     !_isPaceDraftKey(key) && normalizeTargetInput(draft[key]) !== '');
 }
 
+// What each Clear button empties. "all" is both cadences.
+const TARGETS_CLEAR_SCOPES = ['monthly', 'annual', 'all'];
+
+const TARGETS_CLEAR_LABELS = {
+  monthly: 'Clear monthly',
+  annual: 'Clear annual',
+  all: 'Clear all',
+};
+
+function _clearScopeCadences(scope) {
+  return scope === 'all' ? BUDGET_CADENCES : [scope];
+}
+
+function _isAmountKeyOfCadences(key, cadences) {
+  return !_isPaceDraftKey(key) && cadences.some(cadence => key.startsWith(`${cadence}|`));
+}
+
+// "FY2027's monthly targets", "all of FY2027's targets".
+function _clearScopePhrase(yearLabel, scope) {
+  return scope === 'all' ? `all of ${yearLabel}'s targets` : `${yearLabel}'s ${scope} targets`;
+}
+
+/**
+ * Whether a scope holds any amount in a draft.
+ *
+ * @param {Object<string, string>} draft
+ * @param {'monthly'|'annual'|'all'} scope
+ * @returns {boolean}
+ */
+function targetsDraftHasScopeValues(draft, scope) {
+  const cadences = _clearScopeCadences(scope);
+  return Object.keys(draft || {}).some(key =>
+    _isAmountKeyOfCadences(key, cadences) && normalizeTargetInput(draft[key]) !== '');
+}
+
+/**
+ * The draft with every amount in a scope emptied. A row's pace settings
+ * are left as they are, the same as when one amount is emptied by hand:
+ * a setting on a row with no amount is never sent and never counts as a
+ * change.
+ *
+ * @param {Object<string, string>} draft - not changed
+ * @param {'monthly'|'annual'|'all'} scope
+ * @returns {Object<string, string>} a new draft
+ */
+function clearTargetsDraft(draft, scope) {
+  const cadences = _clearScopeCadences(scope);
+  const cleared = {};
+  for (const key of Object.keys(draft || {})) {
+    if (!_isAmountKeyOfCadences(key, cadences)) cleared[key] = draft[key];
+  }
+  return cleared;
+}
+
+/**
+ * A Clear button's state: usable only when its scope holds an amount,
+ * with the reason it is not, or what it will do, as the title.
+ *
+ * @param {Object<string, string>} draft - the year being edited
+ * @param {'monthly'|'annual'|'all'} scope
+ * @param {string} yearLabel - e.g. "FY2027"
+ * @returns {{label: string, disabled: boolean, title: string}}
+ */
+function clearTargetsButtonState(draft, scope, yearLabel) {
+  const label = TARGETS_CLEAR_LABELS[scope];
+  if (!targetsDraftHasScopeValues(draft, scope)) {
+    const noun = scope === 'all' ? 'targets' : `${scope} targets`;
+    return { label, disabled: true, title: `${yearLabel} has no ${noun}.` };
+  }
+  return {
+    label,
+    disabled: false,
+    title: `Empty ${_clearScopePhrase(yearLabel, scope)} in this form. Nothing is saved until you press Save.`,
+  };
+}
+
+/**
+ * The question asked before a clear.
+ *
+ * @param {string} yearLabel
+ * @param {'monthly'|'annual'|'all'} scope
+ * @returns {string}
+ */
+function clearTargetsConfirmText(yearLabel, scope) {
+  return `Clear ${_clearScopePhrase(yearLabel, scope)}?\n\nNothing is saved until you press Save.`;
+}
+
+/**
+ * The status line after a clear.
+ *
+ * @param {string} yearLabel
+ * @param {'monthly'|'annual'|'all'} scope
+ * @returns {string}
+ */
+function clearTargetsStatusText(yearLabel, scope) {
+  const phrase = _clearScopePhrase(yearLabel, scope);
+  return `Cleared ${phrase}. Nothing is saved until you press Save.`;
+}
+
 /**
  * Where a save refusal belongs.
  *

@@ -290,14 +290,22 @@ function _defaultRangeOptionsHtml(selectedRange, fiscalStartMonth) {
 }
 
 /**
- * Saves a new fiscal start month, then restates the fiscal year in words
- * and refreshes the default-range choices that depend on it. A refused
- * save puts the select back, so the text never describes an unsaved month.
+ * Asks, then saves a new fiscal start month, and restates the fiscal year
+ * in words and refreshes the default-range choices that depend on it.
+ * Cancel and a refused save both put the select back, so the text never
+ * describes an unsaved month.
  *
  * @param {HTMLSelectElement} selectEl - the fiscal start month select
  */
 async function handleFiscalStartMonthChange(selectEl) {
   const requestedMonth = parseInt(selectEl.value, 10);
+  const currentMonth = normalizeFiscalStartMonth(getAppConfig().fiscalYearStartMonth);
+  if (requestedMonth === currentMonth) return;
+
+  if (!window.confirm(describeFiscalStartChange(currentMonth, requestedMonth, new Date()))) {
+    selectEl.value = String(currentMonth);
+    return;
+  }
   await handleAppConfigChange('fiscalYearStartMonth', requestedMonth);
 
   const savedConfig = getAppConfig();
@@ -328,7 +336,7 @@ function _renderViewDefaultsCard(config) {
           ${fiscalMonthOptions_html}
         </select>
         <p id="fiscal-year-description" class="text-muted stub-note">${describeFiscalYear(fiscalStartMonth, new Date())}</p>
-        <p class="text-muted stub-note">Used by reports and by the Current FY and Last FY date filters on the Transactions page. With January, fiscal years are calendar years and those two filters are hidden.</p>
+        <p class="text-muted stub-note">Used by reports, the Budget, and the Current FY and Last FY date filters on the Transactions page. With January, fiscal years are calendar years and those two filters are hidden.</p>
       </div>
       <div class="form-group">
         <label for="defaultDateRange">Default Date Range</label>

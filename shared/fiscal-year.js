@@ -162,3 +162,47 @@ function describeFiscalYear(fiscalStartMonth, now) {
     + `The last one (${fiscalYearLabel(last.fiscalYear)}) was `
     + `${_formatFiscalDayLong(last.start)} through ${_formatFiscalDayLong(last.end)}.`;
 }
+
+/**
+ * The question asked before a new fiscal start month is saved. Targets
+ * are stored under a fiscal year's name, not its dates, so a new month
+ * moves every target onto different months without deleting any; the
+ * question says so, with the dates the current year would have.
+ *
+ * @param {number} currentMonth - the saved start month, 1-12
+ * @param {number} newMonth - the month being picked, 1-12
+ * @param {Date} now
+ * @returns {string}
+ */
+function describeFiscalStartChange(currentMonth, newMonth, now) {
+  const oldMonth = normalizeFiscalStartMonth(currentMonth);
+  const month = normalizeFiscalStartMonth(newMonth);
+  const oldCurrent = currentFiscalYearRange(now, oldMonth);
+  const newCurrent = currentFiscalYearRange(now, month);
+  const oldName = fiscalYearLabel(oldCurrent.fiscalYear);
+  const newName = fiscalYearLabel(newCurrent.fiscalYear);
+  const sameNameBefore = fiscalYearRange(newCurrent.fiscalYear, oldMonth);
+
+  const lines = [
+    `Change the fiscal year to start in ${FISCAL_MONTH_NAMES[month - 1]}?`,
+    '',
+    `The current fiscal year would be ${newName}, `
+      + `${_formatFiscalDayLong(newCurrent.start)} through ${_formatFiscalDayLong(newCurrent.end)}.`,
+    '',
+    'Budget targets stay with their fiscal year\'s name, so they will apply to different months: '
+      + `${newName}'s targets would cover those dates instead of `
+      + `${_formatFiscalDayLong(sameNameBefore.start)} through ${_formatFiscalDayLong(sameNameBefore.end)}.`,
+  ];
+
+  if (newCurrent.fiscalYear < oldCurrent.fiscalYear) {
+    lines.push(
+      `The current year would be ${newName} instead of ${oldName}, so ${oldName}'s targets `
+      + 'would leave the Budget and its targets editor until that year begins.',
+    );
+  } else if (newCurrent.fiscalYear > oldCurrent.fiscalYear) {
+    lines.push(`The current year would be ${newName} instead of ${oldName}, so ${oldName}'s targets would become last year's.`);
+  }
+
+  lines.push('', 'Nothing is deleted. Changing the month back restores today\'s view.');
+  return lines.join('\n');
+}

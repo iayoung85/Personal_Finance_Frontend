@@ -125,6 +125,21 @@ function _renderBudgetYearSwitch() {
   }
 }
 
+// The clear buttons follow the form, not the saved year, so a typed
+// amount can be cleared and a just-cleared scope disables its button.
+// Drawn from the save bar's refresh because every edit passes through it.
+function _renderBudgetClearButtons() {
+  const entry = _budgetYearEntry(budgetEditingYear);
+  const yearLabel = entry ? entry.label : `FY${budgetEditingYear}`;
+  const draft = budgetDrafts[budgetEditingYear] || {};
+  for (const button of document.querySelectorAll('[data-clear-scope]')) {
+    const state = clearTargetsButtonState(draft, button.dataset.clearScope, yearLabel);
+    button.textContent = state.label;
+    button.disabled = state.disabled;
+    button.title = state.title;
+  }
+}
+
 function _renderBudgetFormBody() {
   const body = document.getElementById('bt-form-body');
   const sections = _budgetFormSections();
@@ -295,6 +310,7 @@ function _budgetFormItem(category) {
 }
 
 function _updateBudgetSaveBar() {
+  _renderBudgetClearButtons();
   const changed = _budgetYearChanged(budgetEditingYear);
   const entry = _budgetYearEntry(budgetEditingYear);
   const label = entry ? entry.label : `FY${budgetEditingYear}`;
@@ -498,6 +514,20 @@ function _onBudgetCopyFromLastYear() {
   showBudgetStatus(`Filled in from ${previousEntry.label}. Nothing is saved until you press Save.`, 'info');
 }
 
+function _onBudgetClear(scope) {
+  if (budgetSaving || !TARGETS_CLEAR_SCOPES.includes(scope)) return;
+  const draft = budgetDrafts[budgetEditingYear] || {};
+  if (!targetsDraftHasScopeValues(draft, scope)) return;
+  const entry = _budgetYearEntry(budgetEditingYear);
+  const yearLabel = entry ? entry.label : `FY${budgetEditingYear}`;
+
+  if (!window.confirm(clearTargetsConfirmText(yearLabel, scope))) return;
+  budgetDrafts[budgetEditingYear] = clearTargetsDraft(draft, scope);
+  delete budgetRefusals[budgetEditingYear];
+  renderBudgetTargets();
+  showBudgetStatus(clearTargetsStatusText(yearLabel, scope), 'info');
+}
+
 function _onBudgetUndo() {
   budgetDrafts[budgetEditingYear] = _budgetSavedDraft(budgetEditingYear);
   delete budgetRefusals[budgetEditingYear];
@@ -655,6 +685,9 @@ function _wireBudgetTargets() {
   });
 
   document.getElementById('bt-copy-btn').addEventListener('click', _onBudgetCopyFromLastYear);
+  document.querySelectorAll('[data-clear-scope]').forEach(button => {
+    button.addEventListener('click', () => _onBudgetClear(button.dataset.clearScope));
+  });
   document.getElementById('bt-undo-btn').addEventListener('click', _onBudgetUndo);
   document.getElementById('bt-save-btn').addEventListener('click', _onBudgetSave);
   document.getElementById('bt-search-input').addEventListener('input', event => {

@@ -18,7 +18,8 @@ function loadForm() {
       + 'isTargetsDraftChanged, targetsDraftHasValues, placeTargetsRefusal, setAlertAvailability, '
       + 'fiscalStartMonthOfYear, targetFieldMoveForKey, nextTargetFieldPosition, paceDraftKey, '
       + 'formatPaceBandPercent, resolveRowPace, setRowPace, bandDollarsFromPercent, '
-      + 'bandPercentFromDollars, paceControlState };',
+      + 'bandPercentFromDollars, paceControlState, targetsDraftHasScopeValues, clearTargetsDraft, '
+      + 'clearTargetsButtonState, clearTargetsConfirmText, clearTargetsStatusText };',
     sandbox,
     { filename: sourcePath },
   );
@@ -490,4 +491,81 @@ test('an annual pace refusal names the annual cadence so the editor opens that v
   }, sent));
   assert.equal(refused.cadence, 'annual');
   assert.equal(refused.paceReason, 'invalid_pace_band');
+});
+
+const CLEAR_DRAFT = {
+  'monthly|Food And Drink': '900',
+  'monthly|Travel': '',
+  'annual|Travel: Flights': '1200',
+  'paceOn|monthly|Food And Drink': 'true',
+  'paceBand|monthly|Food And Drink': '5',
+};
+
+test('clearing monthly leaves the annual amounts', () => {
+  const cleared = plain(form.clearTargetsDraft(CLEAR_DRAFT, 'monthly'));
+  assert.equal(form.targetsDraftHasScopeValues(cleared, 'monthly'), false);
+  assert.equal(cleared['annual|Travel: Flights'], '1200');
+});
+
+test('clearing annual leaves the monthly amounts', () => {
+  const cleared = plain(form.clearTargetsDraft(CLEAR_DRAFT, 'annual'));
+  assert.equal(form.targetsDraftHasScopeValues(cleared, 'annual'), false);
+  assert.equal(cleared['monthly|Food And Drink'], '900');
+});
+
+test('clearing all empties both cadences', () => {
+  const cleared = plain(form.clearTargetsDraft(CLEAR_DRAFT, 'all'));
+  assert.equal(form.targetsDraftHasScopeValues(cleared, 'all'), false);
+  assert.equal(form.targetsDraftHasValues(cleared), false);
+});
+
+test('clearing does not change the draft it was given', () => {
+  const before = plain(CLEAR_DRAFT);
+  form.clearTargetsDraft(CLEAR_DRAFT, 'all');
+  assert.deepEqual(plain(CLEAR_DRAFT), before);
+});
+
+test('a cleared row sends no target, whatever its pace settings were', () => {
+  const rows = form.flattenTargetsFormRows(form.buildTargetsFormSections(CATEGORIES));
+  const cleared = form.clearTargetsDraft(CLEAR_DRAFT, 'monthly');
+  const payload = plain(form.buildTargetsPayload(rows, cleared, {}, {}));
+  assert.deepEqual(payload.map(target => [target.category, target.cadence]), [
+    ['Travel: Flights', 'annual'],
+  ]);
+});
+
+test('a scope with nothing to clear is detected, blank fields included', () => {
+  assert.equal(form.targetsDraftHasScopeValues(CLEAR_DRAFT, 'monthly'), true);
+  assert.equal(form.targetsDraftHasScopeValues(CLEAR_DRAFT, 'annual'), true);
+  assert.equal(form.targetsDraftHasScopeValues({ 'monthly|Travel': '  ' }, 'monthly'), false);
+  assert.equal(form.targetsDraftHasScopeValues({ 'annual|Travel': '50' }, 'monthly'), false);
+  assert.equal(form.targetsDraftHasScopeValues({ 'paceOn|monthly|Travel': 'true' }, 'all'), false);
+  assert.equal(form.targetsDraftHasScopeValues({}, 'all'), false);
+});
+
+test('a clear button is disabled with its reason when its scope is empty', () => {
+  const annualOnly = { 'annual|Travel: Flights': '1200' };
+  assert.deepEqual(plain(form.clearTargetsButtonState(annualOnly, 'monthly', 'FY2027')), {
+    label: 'Clear monthly',
+    disabled: true,
+    title: 'FY2027 has no monthly targets.',
+  });
+  assert.equal(form.clearTargetsButtonState(annualOnly, 'annual', 'FY2027').disabled, false);
+  assert.equal(form.clearTargetsButtonState(annualOnly, 'all', 'FY2027').disabled, false);
+  assert.equal(form.clearTargetsButtonState({}, 'all', 'FY2027').title, 'FY2027 has no targets.');
+});
+
+test('the clear wording names the year and the scope', () => {
+  assert.equal(
+    form.clearTargetsConfirmText('FY2027', 'monthly'),
+    "Clear FY2027's monthly targets?\n\nNothing is saved until you press Save.",
+  );
+  assert.equal(
+    form.clearTargetsConfirmText('FY2026', 'all'),
+    "Clear all of FY2026's targets?\n\nNothing is saved until you press Save.",
+  );
+  assert.equal(
+    form.clearTargetsStatusText('FY2027', 'annual'),
+    "Cleared FY2027's annual targets. Nothing is saved until you press Save.",
+  );
 });
