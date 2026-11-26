@@ -36,7 +36,6 @@ const studentLoanFields = {
   pfc_detailed: 'LOAN_PAYMENTS_STUDENT_LOAN_PAYMENT',
   amount: -234.64,
   date: '2026-11-11',
-  day_of_month: 11,
   account_id: 'acc_chk',
 };
 
@@ -49,8 +48,6 @@ function criteria(extra = {}) {
     plaid_name_patterns: [],
     merchant_name_patterns: [],
     pfc_detailed_categories: [],
-    day_of_month_set: [],
-    sign_enforced: true,
     transfer_account_id: null,
     ...extra,
   };
@@ -111,11 +108,11 @@ test('the 11-11 case: only the Plaid name fails, and the hint names the row valu
   assert.deepEqual(view.notes, []);
 
   assert.deepEqual(view.lines.map(line => line.label), [
-    'Account', 'Direction', 'Amount', 'Date window', 'Day of month',
+    'Account', 'Direction', 'Amount', 'Date window',
     'Plaid name patterns', 'Merchant name patterns', 'PFC categories',
   ]);
   assert.deepEqual(view.lines.map(line => line.verdictLabel), [
-    'Pass', 'Pass', 'Pass', 'Pass', 'Not set', 'Fail', 'Not set', 'Not set',
+    'Pass', 'Pass', 'Pass', 'Pass', 'Fail', 'Not set', 'Not set',
   ]);
 
   const name = lineFor(view, 'plaid_name');
@@ -135,8 +132,7 @@ test('the 11-11 case: only the Plaid name fails, and the hint names the row valu
   assert.equal(lineFor(view, 'date_window').rowValue, 'Nov 11, 2026');
   assert.equal(lineFor(view, 'date_window').copyValue, '2026-11-11');
   assert.equal(lineFor(view, 'date_window').billSetting, 'Nov 11, 2026 ± 3 days');
-  assert.equal(lineFor(view, 'day_of_month').rowValue, '11th');
-  assert.equal(lineFor(view, 'day_of_month').billSetting, null);
+  assert.equal(lineFor(view, 'day_of_month'), undefined);
   assert.equal(lineFor(view, 'merchant_name').rowValue, 'US Department of Education');
   assert.equal(lineFor(view, 'pfc').rowValue, 'LOAN_PAYMENTS_STUDENT_LOAN_PAYMENT');
   view.lines
@@ -201,16 +197,12 @@ test('other failures are worded from the gate reason', () => {
       fail('sign', 'sign_mismatch'),
       fail('amount', 'amount_exact_fail(-86.00 != -234.64)'),
       fail('date_window', 'date_outside_window(5d)'),
-      fail('day_of_month', 'day_of_month_fail(11)'),
     ],
-    { bill: bill({}, { day_of_month_set: [1, 15] }) },
   );
   const view = build(payload);
   assert.equal(lineFor(view, 'sign').hint, 'The row\'s money moves the other way from the bill\'s.');
   assert.equal(lineFor(view, 'amount').hint, 'The amount must match the bill exactly.');
   assert.equal(lineFor(view, 'date_window').hint, '5 days from the bill date, outside the window.');
-  assert.equal(lineFor(view, 'day_of_month').hint, 'Not one of the bill\'s days.');
-  assert.equal(lineFor(view, 'day_of_month').billSetting, '1st or 15th');
 });
 
 test('a range bill shows its band and words a miss as below or above', () => {
@@ -230,14 +222,26 @@ test('a range bill shows its band and words a miss as below or above', () => {
   assert.equal(lineFor(above, 'amount').hint, 'Above the bill\'s range.');
 });
 
+test("the Direction row shows the bill's direction whenever the bill amount is a number", () => {
+  const out = build(judged([pass('account', 'account_ok')], { bill: bill({ amount: -234.64 }) }));
+  assert.equal(lineFor(out, 'sign').billSetting, 'Money out');
+  const incoming = build(judged([pass('account', 'account_ok')], { bill: bill({ amount: 1200 }) }));
+  assert.equal(lineFor(incoming, 'sign').billSetting, 'Money in');
+  const zero = build(judged([pass('account', 'account_ok')], { bill: bill({ amount: 0 }) }));
+  assert.equal(lineFor(zero, 'sign').billSetting, 'Money in');
+  const noAmount = build(judged([pass('account', 'account_ok')], { bill: bill({ amount: null }) }));
+  assert.equal(lineFor(noAmount, 'sign').billSetting, null);
+  assert.equal(lineFor(noAmount, 'sign').verdict, 'not_set');
+});
+
 // ── The three meanings of no verdict ───────────────────────────
 
 test('no verdict on a criterion the bill leaves empty reads as not set', () => {
   const view = build(judged(
     [pass('account', 'account_ok'), pass('amount', 'amount_exact_ok')],
-    { bill: bill({}, { sign_enforced: false, date_tolerance_days: null }) },
+    { bill: bill({}, { date_tolerance_days: null }) },
   ));
-  ['sign', 'date_window', 'day_of_month', 'plaid_name', 'merchant_name', 'pfc'].forEach(criterion => {
+  ['date_window', 'plaid_name', 'merchant_name', 'pfc'].forEach(criterion => {
     const line = lineFor(view, criterion);
     assert.equal(line.verdict, 'not_set', criterion);
     assert.equal(line.verdictLabel, 'Not set', criterion);
@@ -280,17 +284,15 @@ test('no verdict on the receiving side of a transfer reads as not judged, transf
     {
       bill: bill(
         { transfer_receiving_side: true },
-        { plaid_name_patterns: ['TRANSFER'], day_of_month_set: [1], transfer_account_id: 'acc_sav' },
+        { plaid_name_patterns: ['TRANSFER'], transfer_account_id: 'acc_sav' },
       ),
     },
   ));
   assert.equal(view.headline, 'Meets every criterion');
   assert.deepEqual(view.notes, ['Judged as the receiving side of a transfer bill.']);
-  ['day_of_month', 'plaid_name'].forEach(criterion => {
-    const line = lineFor(view, criterion);
-    assert.equal(line.verdict, 'not_judged', criterion);
-    assert.equal(line.hint, 'Not checked on the receiving side of a transfer.', criterion);
-  });
+  const nameLine = lineFor(view, 'plaid_name');
+  assert.equal(nameLine.verdict, 'not_judged');
+  assert.equal(nameLine.hint, 'Not checked on the receiving side of a transfer.');
   assert.equal(lineFor(view, 'merchant_name').verdict, 'not_set');
 });
 
@@ -320,7 +322,7 @@ test('fields_only shows what a new bill would match on, with no verdicts', () =>
   assert.deepEqual(view.columns, { row: true, bill: false, verdict: false });
   assert.equal(view.footnote, null);
   assert.deepEqual(view.lines.map(line => line.label), [
-    'Account', 'Amount', 'Date', 'Day of month',
+    'Account', 'Amount', 'Date',
     'Plaid name patterns', 'Merchant name patterns', 'PFC categories',
   ]);
   view.lines.forEach(line => {

@@ -21,6 +21,8 @@
 //   _clampDay               — date-helpers.js
 //   apiCreateBill           — bills/api.js
 //   apiUpdateBill           — bills/api.js
+//   fetchPlaidTaxonomy      — bills/api.js
+//   createPlaidCategoryPicker, plaidPickerCodesChanged — shared/plaid-category-picker.js
 //   fetchCategoriesWithCache — shared/categories-autocomplete.js
 //   wireUpCategoryAutocomplete — shared/categories-autocomplete.js
 //   highlightCategoryMatch  — shared/categories-autocomplete.js
@@ -45,6 +47,10 @@ let _billModalHeldCategory = '';
 let _billModalOnSave = null;
 let _billModalEditData = null;
 let _billModalSplitRowSeq = 0;
+// Plaid's category list and the picker built over it. The list is fetched on
+// the first open and kept for the page; null means not loaded yet.
+let _billModalPlaidTaxonomy = null;
+let _billModalPfcPicker = null;
 
 const _BILL_DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const _BILL_DAY_ABBREV = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -220,7 +226,7 @@ function _billModalEnsureDOM() {
                   <input type="text" id="bill-match-amount-max" inputmode="decimal" placeholder="0.00">
                 </div>
               </div>
-              <small>Plaid amount magnitude must fall within this band. Sign is enforced separately.</small>
+              <small>Plaid amount magnitude must fall within this band. Direction must match.</small>
               <div id="bill-range-splits-warning" class="bill-range-splits-warning" style="display:none;">
                 Range-mode matching disables auto-splits. Remove the split allocations below, or switch back to Exact mode.
               </div>
@@ -238,14 +244,6 @@ function _billModalEnsureDOM() {
             </div>
 
             <div class="bill-field">
-              <label>
-                <input type="checkbox" id="bill-match-sign-enforced" checked>
-                Enforce sign
-              </label>
-              <small>Plaid amount sign must match the bill amount sign (debit bill → negative Plaid amount; credit bill → positive).</small>
-            </div>
-
-            <div class="bill-field">
               <label for="bill-match-plaid-name-patterns">Plaid name patterns</label>
               <input type="text" id="bill-match-plaid-name-patterns" placeholder="e.g., NETFLIX.COM, NETFLIX 866-716-0414">
               <small>Comma-separated, case-insensitive substrings tested against Plaid's transaction <code>name</code>. Any match passes. Leave blank to disable.</small>
@@ -258,19 +256,12 @@ function _billModalEnsureDOM() {
             </div>
 
             <div class="bill-field">
-              <label for="bill-match-pfc-categories">PFC detailed categories</label>
-              <input type="text" id="bill-match-pfc-categories" placeholder="e.g., INCOME_WAGES, RENT_AND_UTILITIES_GAS_AND_ELECTRICITY">
+              <label for="bill-match-pfc-search">PFC detailed categories</label>
+              <div id="bill-match-pfc-picker"></div>
               <small>
-                Comma-separated Plaid <code>personal_finance_category.detailed</code> codes in <strong>ALL_CAPS_SNAKE_CASE</strong>.
-                The most reliable workflow: inspect the raw Plaid data for past instances of this bill and copy/paste the <code>detailed</code> value here as-is.
-                Any code in this list will pass.
+                Pick from Plaid's category list; choose as many as you like. Any category you pick will pass.
+                To find the one Plaid uses for this bill, inspect a past transaction of it: its category is shown there.
               </small>
-            </div>
-
-            <div class="bill-field">
-              <label for="bill-match-day-of-month">Day-of-month allowlist</label>
-              <input type="text" id="bill-match-day-of-month" placeholder="e.g., 1, 15">
-              <small>Comma-separated days (1–31). The Plaid date must fall on one of these days. Useful for bills that post 1st-or-15th but never anywhere else. Leave blank to disable.</small>
             </div>
           </div>
         </div>
@@ -356,6 +347,10 @@ function _billModalEnsureDOM() {
     document.getElementById('bill-match-date-tolerance').disabled = event.target.checked;
     _billModalUpdateCriteriaBadge();
   });
+  _billModalPfcPicker = createPlaidCategoryPicker(
+    document.getElementById('bill-match-pfc-picker'),
+    { inputId: 'bill-match-pfc-search', onChange: _billModalUpdateCriteriaBadge }
+  );
   // Live badge update on any criteria input edit.
   document.querySelectorAll(
     '#bill-criteria-body input, #bill-criteria-body select'
@@ -402,6 +397,7 @@ async function openBillModal(billId, options = {}) {
     _billModalHiddenCategories = getHiddenCategories();
   }
   _billModalHeldCategory = '';
+  await _billModalLoadPlaidTaxonomy();
 
   const titleEl = document.getElementById('bill-modal-title');
   const submitBtn = document.getElementById('bill-submit-btn');
@@ -447,6 +443,22 @@ async function openBillModal(billId, options = {}) {
   }
 }
 
+/**
+ * Fetches Plaid's category list once per page and hands it to the picker. A
+ * failed fetch leaves the picker unsearchable (stored codes still show and
+ * can be removed) and is tried again on the next open.
+ */
+async function _billModalLoadPlaidTaxonomy() {
+  if (_billModalPlaidTaxonomy === null) {
+    try {
+      _billModalPlaidTaxonomy = await fetchPlaidTaxonomy();
+    } catch (error) {
+      console.warn('Could not load the Plaid category list:', error);
+    }
+  }
+  _billModalPfcPicker.setTaxonomy(_billModalPlaidTaxonomy);
+}
+
 function closeBillModal() {
   const overlay = document.getElementById('bill-modal-overlay');
   if (overlay) overlay.classList.add('hidden');
@@ -485,7 +497,7 @@ function _billModalApplyPrefill(prefill) {
     document.getElementById('bill-match-merchant-name-patterns').value = prefill.merchant_name;
   }
   if (prefill.pfc_detailed) {
-    document.getElementById('bill-match-pfc-categories').value = prefill.pfc_detailed;
+    _billModalPfcPicker.setSelected([prefill.pfc_detailed]);
   }
 
   _billModalUpdateCriteriaBadge();
@@ -536,11 +548,9 @@ function _billModalResetCriteriaForm() {
   document.getElementById('bill-match-date-tolerance').value = '2';
   document.getElementById('bill-match-date-tolerance').disabled = false;
   document.getElementById('bill-match-date-disable').checked = false;
-  document.getElementById('bill-match-sign-enforced').checked = true;
   document.getElementById('bill-match-plaid-name-patterns').value = '';
   document.getElementById('bill-match-merchant-name-patterns').value = '';
-  document.getElementById('bill-match-pfc-categories').value = '';
-  document.getElementById('bill-match-day-of-month').value = '';
+  _billModalPfcPicker.setSelected([]);
   _billModalOnAmountModeChange();
   _billModalUpdateCriteriaBadge();
 }
@@ -604,16 +614,11 @@ function _billModalPopulateCriteriaFromBill(bill) {
   toleranceInput.value = toleranceNull ? '' : String(bill.match_date_tolerance_days);
   toleranceInput.disabled = toleranceNull;
 
-  document.getElementById('bill-match-sign-enforced').checked = bill.match_sign_enforced !== false;
-
   document.getElementById('bill-match-plaid-name-patterns').value =
     Array.isArray(bill.match_plaid_name_patterns) ? bill.match_plaid_name_patterns.join(', ') : '';
   document.getElementById('bill-match-merchant-name-patterns').value =
     Array.isArray(bill.match_merchant_name_patterns) ? bill.match_merchant_name_patterns.join(', ') : '';
-  document.getElementById('bill-match-pfc-categories').value =
-    Array.isArray(bill.match_pfc_detailed_categories) ? bill.match_pfc_detailed_categories.join(', ') : '';
-  document.getElementById('bill-match-day-of-month').value =
-    Array.isArray(bill.match_day_of_month_set) ? bill.match_day_of_month_set.join(', ') : '';
+  _billModalPfcPicker.setSelected(bill.match_pfc_detailed_categories);
 
   _billModalOnAmountModeChange();
   const badgeCount = _billModalUpdateCriteriaBadge();
@@ -1289,8 +1294,6 @@ function _billModalReadFormData() {
     match_plaid_name_patterns: criteria.match_plaid_name_patterns,
     match_merchant_name_patterns: criteria.match_merchant_name_patterns,
     match_pfc_detailed_categories: criteria.match_pfc_detailed_categories,
-    match_day_of_month_set: criteria.match_day_of_month_set,
-    match_sign_enforced: criteria.match_sign_enforced,
     start_date: startDate,
     interval,
     day_of_month: dayOfMonth,
@@ -1529,9 +1532,11 @@ function _buildBillUpdatePayload(billId, formData, signedAmount, transferAccount
   _setBillEditPayloadField(payload, 'match_date_tolerance_days', formData.match_date_tolerance_days, originalBill.match_date_tolerance_days);
   _setBillEditPayloadField(payload, 'match_plaid_name_patterns', formData.match_plaid_name_patterns, originalBill.match_plaid_name_patterns);
   _setBillEditPayloadField(payload, 'match_merchant_name_patterns', formData.match_merchant_name_patterns, originalBill.match_merchant_name_patterns);
-  _setBillEditPayloadField(payload, 'match_pfc_detailed_categories', formData.match_pfc_detailed_categories, originalBill.match_pfc_detailed_categories);
-  _setBillEditPayloadField(payload, 'match_day_of_month_set', formData.match_day_of_month_set, originalBill.match_day_of_month_set);
-  _setBillEditPayloadField(payload, 'match_sign_enforced', formData.match_sign_enforced, originalBill.match_sign_enforced);
+  // A stored code outside Plaid's list would be refused on save, so the field
+  // goes back only when the user changed the selection.
+  if (plaidPickerCodesChanged(formData.match_pfc_detailed_categories, originalBill.match_pfc_detailed_categories)) {
+    payload.match_pfc_detailed_categories = plaidPickerNormalizeCodes(formData.match_pfc_detailed_categories);
+  }
 
   Object.assign(payload, _bmScheduleChanges(formData, originalBill));
 
@@ -1653,9 +1658,7 @@ async function _billModalSave() {
       match_date_tolerance_days: formData.match_date_tolerance_days,
       match_plaid_name_patterns: formData.match_plaid_name_patterns,
       match_merchant_name_patterns: formData.match_merchant_name_patterns,
-      match_pfc_detailed_categories: formData.match_pfc_detailed_categories,
-      match_day_of_month_set: formData.match_day_of_month_set,
-      match_sign_enforced: formData.match_sign_enforced
+      match_pfc_detailed_categories: formData.match_pfc_detailed_categories
     };
   }
 
@@ -1754,14 +1757,7 @@ function _billModalReadCriteria() {
 
   const plaidNames = _parseCommaList(document.getElementById('bill-match-plaid-name-patterns').value);
   const merchantNames = _parseCommaList(document.getElementById('bill-match-merchant-name-patterns').value);
-  // PFC codes are uppercased so the user can paste them in any case and they
-  // still hit Plaid's canonical ALL_CAPS_SNAKE_CASE form.
-  const pfcCodes = _parseCommaList(document.getElementById('bill-match-pfc-categories').value)
-    .map(code => code.toUpperCase());
-  const dayOfMonthRaw = _parseCommaList(document.getElementById('bill-match-day-of-month').value);
-  const dayOfMonth = dayOfMonthRaw
-    .map(value => parseInt(value, 10))
-    .filter(value => Number.isInteger(value) && value >= 1 && value <= 31);
+  const pfcCodes = _billModalPfcPicker ? _billModalPfcPicker.getSelected() : [];
 
   return {
     match_amount_mode: mode,
@@ -1771,8 +1767,6 @@ function _billModalReadCriteria() {
     match_plaid_name_patterns: plaidNames,
     match_merchant_name_patterns: merchantNames,
     match_pfc_detailed_categories: pfcCodes,
-    match_day_of_month_set: dayOfMonth,
-    match_sign_enforced: document.getElementById('bill-match-sign-enforced').checked,
   };
 }
 
@@ -1786,8 +1780,6 @@ function _billModalUpdateCriteriaBadge() {
   if (criteria.match_plaid_name_patterns.length > 0) count++;
   if (criteria.match_merchant_name_patterns.length > 0) count++;
   if (criteria.match_pfc_detailed_categories.length > 0) count++;
-  if (criteria.match_day_of_month_set.length > 0) count++;
-  if (criteria.match_sign_enforced !== true) count++;
 
   const badge = document.getElementById('bill-criteria-badge');
   if (!badge) return count;

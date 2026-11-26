@@ -56,6 +56,20 @@ async function fetchAccounts() {
   return flatAccounts;
 }
 
+/**
+ * Plaid's detailed categories, sorted by primary then detailed, as the API
+ * sends them: `[{primary, detailed}]`.
+ */
+async function fetchPlaidTaxonomy() {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/plaid-taxonomy`);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to fetch Plaid categories');
+  }
+  const data = await response.json();
+  return data.categories || [];
+}
+
 async function apiCreateBill(billData) {
   const response = await authenticatedFetch(`${BACKEND_URL}/api/bills/`, {
     method: 'POST',

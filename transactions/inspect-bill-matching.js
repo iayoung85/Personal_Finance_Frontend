@@ -14,7 +14,6 @@ const BILL_MATCHING_CRITERIA = Object.freeze([
   { key: 'sign', label: 'Direction' },
   { key: 'amount', label: 'Amount' },
   { key: 'date_window', label: 'Date window' },
-  { key: 'day_of_month', label: 'Day of month' },
   { key: 'plaid_name', label: 'Plaid name patterns' },
   { key: 'merchant_name', label: 'Merchant name patterns' },
   { key: 'pfc', label: 'PFC categories' },
@@ -287,8 +286,6 @@ function _bmRowValue(key, fields, describeAccount) {
       return _bmIsNumber(fields.amount) ? _bmSignedMoney(fields.amount) : null;
     case 'date_window':
       return fields.date ? _bmDate(fields.date) : null;
-    case 'day_of_month':
-      return _bmIsNumber(fields.day_of_month) ? _bmOrdinal(fields.day_of_month) : null;
     case 'plaid_name':
       return fields.plaid_name || null;
     case 'merchant_name':
@@ -313,8 +310,6 @@ function _bmCopyValue(key, fields) {
       return _bmIsNumber(fields.amount) ? Number(fields.amount).toFixed(2) : null;
     case 'date_window':
       return fields.date || null;
-    case 'day_of_month':
-      return _bmIsNumber(fields.day_of_month) ? String(fields.day_of_month) : null;
     case 'plaid_name':
       return fields.plaid_name || null;
     case 'merchant_name':
@@ -333,7 +328,7 @@ function _bmBillSetting(key, bill, describeAccount) {
     case 'account':
       return bill.account_id ? (describeAccount(bill.account_id) || bill.account_id) : null;
     case 'sign':
-      return criteria.sign_enforced && _bmIsNumber(bill.amount) ? _bmDirection(bill.amount) : null;
+      return _bmIsNumber(bill.amount) ? _bmDirection(bill.amount) : null;
     case 'amount':
       if (criteria.amount_mode === 'range') return _bmRangeText(criteria.amount_min, criteria.amount_max);
       return _bmIsNumber(bill.amount) ? _bmSignedMoney(bill.amount) : null;
@@ -343,10 +338,6 @@ function _bmBillSetting(key, bill, describeAccount) {
       const on = bill.occurrence_date ? _bmDate(bill.occurrence_date) : 'the bill date';
       if (Number(days) === 0) return `${on}, exactly`;
       return `${on} ± ${days} day${Number(days) === 1 ? '' : 's'}`;
-    }
-    case 'day_of_month': {
-      const days = Array.isArray(criteria.day_of_month_set) ? criteria.day_of_month_set : [];
-      return days.length ? _bmOrList(days.map(day => _bmOrdinal(day))) : null;
     }
     case 'plaid_name':
       return _bmListText(criteria.plaid_name_patterns);
@@ -405,8 +396,6 @@ function _bmFailHint(key, reason, fields) {
         ? `${days} day${days === 1 ? '' : 's'} from the bill date, outside the window.`
         : 'Outside the date window.';
     }
-    case 'day_of_month':
-      return stem === 'date_missing_for_dom' ? 'No date to compare.' : "Not one of the bill's days.";
     default:
       return null;
   }
@@ -449,22 +438,6 @@ function _bmDate(isoDate) {
   const month = BILL_MATCHING_MONTHS[Number(match[2]) - 1];
   if (!month) return String(isoDate);
   return `${month} ${Number(match[3])}, ${match[1]}`;
-}
-
-function _bmOrdinal(day) {
-  const number = Number(day);
-  const lastTwo = Math.abs(number) % 100;
-  if (lastTwo >= 11 && lastTwo <= 13) return `${number}th`;
-  const last = Math.abs(number) % 10;
-  if (last === 1) return `${number}st`;
-  if (last === 2) return `${number}nd`;
-  if (last === 3) return `${number}rd`;
-  return `${number}th`;
-}
-
-function _bmOrList(values) {
-  if (values.length <= 1) return values.join('');
-  return `${values.slice(0, -1).join(', ')} or ${values[values.length - 1]}`;
 }
 
 function _bmListText(values) {
