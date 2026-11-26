@@ -1324,31 +1324,6 @@ async function loadAvailableCategories(forceNetwork = false) {
   }
 }
 
-/**
- * DEAD CODE. Trigger backend recategorization of all transactions.
- * Updates the transactions table with computed user_category values.
- */
-async function recategorizeTransactions() {
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/categorization/transactions/recategorize`, {
-      method: 'POST'
-    });
-
-    if (!response.ok) {
-      const data = await response.json();
-      console.error('Recategorization failed:', data.error);
-      throw new Error(data.error || 'Recategorization failed');
-    }
-
-    const data = await response.json();
-    console.log('Recategorization complete:', data);
-    return data;
-  } catch (error) {
-    console.error('Error recategorizing transactions:', error);
-    throw error;
-  }
-}
-
 // ───── Dev Utility ─────
 
 /**

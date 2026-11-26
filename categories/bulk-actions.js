@@ -1,6 +1,5 @@
 // ============================================================
-// categories/bulk-actions.js — Audit log, Recategorize, and
-// Override bulk ops
+// categories/bulk-actions.js — Audit log and Override bulk ops
 // ============================================================
 
 // ── Migration Log ──────────────────────────────────────────
@@ -54,61 +53,6 @@ async function refreshMigrationLog() {
     renderMigrationLog();
   } catch (error) {
     showStatus(`Failed to refresh audit log: ${error.message}`, 'error');
-  }
-}
-
-// ── Recategorize All Transactions ──────────────────────────
-
-async function recategorizeAllTransactions() {
-  // Step 1: Check for broken rules first
-  const validation = await checkBrokenRules(false);
-
-  if (validation && validation.has_broken_rules) {
-    showStatus(
-      `Cannot recategorize: ${validation.broken_rules_count} broken rule${validation.broken_rules_count > 1 ? 's' : ''} exist. Please fix them first.`,
-      'error'
-    );
-    showBrokenRulesModal(validation.broken_rules);
-    return;
-  }
-
-  // Step 2: Confirm with user
-  if (!confirm(
-    'Recategorize all historical transactions?\n\n' +
-    'this is a nuclear option and will change your entire spending history if tracked via monthly category summaries. This will re-run the categorization pipeline (mappings → rules → overrides) on all transactions. This may take a moment. Are you sure you want to proceed?'
-  )) {
-    return;
-  }
-
-  // Step 3: Show progress
-  showStatus('Recategorizing transactions...', 'info');
-
-  try {
-    const response = await authenticatedFetch(
-      `${BACKEND_URL}/api/categorization/transactions/recategorize`,
-      { method: 'POST' }
-    );
-    const data = await response.json();
-
-    if (!response.ok) {
-      if (data.broken_rules) {
-        showBrokenRulesModal(data.broken_rules);
-      } else {
-        showStatus(data.error || 'Failed to recategorize', 'error');
-      }
-      return;
-    }
-
-    markTransactionCacheStale();
-    showStatus(
-      `Recategorization complete: ${data.transactions_updated} transaction${data.transactions_updated !== 1 ? 's' : ''} updated` +
-      (data.decryption_errors > 0 ? ` (${data.decryption_errors} errors)` : ''),
-      'success'
-    );
-
-    setTimeout(() => clearStatus(), 5000);
-  } catch (error) {
-    showStatus(`Recategorization failed: ${error.message}`, 'error');
   }
 }
 

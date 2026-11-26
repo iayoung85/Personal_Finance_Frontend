@@ -728,7 +728,7 @@ function showBrokenRulesModal(brokenRules) {
     title: `⚠️ ${brokenRules.length} Broken Rule${brokenRules.length > 1 ? 's' : ''} Found`,
     body: `
       <div style="margin-bottom: 16px; color: var(--color-warning); font-size: 14px;">
-        These rules reference categories that no longer exist. Please fix them before recategorizing transactions.
+        These rules reference categories that are no longer in your list. Point each one at a category that is.
       </div>
       ${rulesList}
     `,

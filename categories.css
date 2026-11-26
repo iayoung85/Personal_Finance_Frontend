@@ -839,11 +839,6 @@ tr:hover {
   color: white;
 }
 
-.btn-recategorize {
-  background: var(--color-success-muted);
-  color: white;
-}
-
 .btn-delete-overrides {
   background: var(--color-danger-muted);
   color: white;
