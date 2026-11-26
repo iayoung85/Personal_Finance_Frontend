@@ -32,6 +32,20 @@ h1 {
   margin-bottom: 8px;
 }
 
+/* With the nav open, keep the page's own 10px edge beside it. */
+body[data-nav-mode="persistent"] {
+  padding-left: 230px;
+}
+
+/* With the nav closed, the fixed hamburger (12px to 50px from the top) needs
+   a header row to sit in, or it covers the accounts sidebar's corner. The
+   header starts 22px down (body 10 + container 12), so 30px clears it. */
+body[data-nav-mode="collapsed"] .page-header {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+}
+
 .sidebar-toggle {
   display: none; /* Hidden by default on desktop */
   background: var(--accent-primary);

@@ -2,8 +2,10 @@
    nav-sidebar.css — Shared Navigation Sidebar
    ============================================================
    Persistent left sidebar on dashboard/settings pages.
-   Hamburger-toggled overlay on focus pages (transactions,
-   investments).
+   Transactions and Investments switch between the two by
+   window width (data-nav-open-from, set in nav-sidebar.js):
+   open when the page's content still fits beside it, a
+   hamburger-toggled overlay below that.
    ============================================================ */
 
 /* ── Sidebar Container ─────────────────────────────────────── */
@@ -164,6 +166,69 @@
   transform: rotate(90deg);
 }
 
+/* ── Count badges ──────────────────────────────────────────── */
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  box-sizing: border-box;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.nav-sidebar-link .count-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* The badge takes the free space, so the chevron sits right beside it. */
+.nav-sidebar-link .count-badge + .nav-chevron {
+  margin-left: 8px;
+}
+
+/* Something to answer: warm, so it reads as a request. */
+.count-badge-alert {
+  background: var(--badge-warning-bg);
+  color: var(--badge-warning-text);
+  border: 1px solid var(--color-warning-border);
+}
+
+/* A count that is also a link, laid over the right end of its row. */
+.has-count-link {
+  position: relative;
+}
+
+.has-count-link > .nav-sidebar-link {
+  padding-right: 64px;
+}
+
+.count-badge-link {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+  background: var(--bg-selected);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.count-badge-link:hover,
+.count-badge-link:focus-visible {
+  background: var(--bg-hover);
+  color: var(--accent-link);
+  border-color: var(--accent-link);
+  outline: none;
+}
+
 /* ── Footer (bottom-pinned items: Settings, Logout) ────────── */
 .nav-sidebar-footer {
   border-top: 1px solid var(--border-subtle);
@@ -232,6 +297,19 @@ body[data-nav-mode="collapsed"] .nav-sidebar-overlay.visible {
 
 .nav-hamburger:hover {
   background: var(--bg-hover);
+}
+
+/* A count waits in the closed nav. The ring keeps the dot off the border. */
+.nav-hamburger.has-alert::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--bg-surface);
 }
 
 /* Three-dash icon via pseudo-elements */

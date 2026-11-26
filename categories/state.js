@@ -38,6 +38,17 @@ const pinnedNotesOpen = new Set();
 // Account list for account-scoped rules — [{account_id, display_name}]
 let ruleAccountOptions = [];
 
+// Plaid codes the user has not mapped, from the GET's unanswered_plaid_categories:
+// [{code, primary, name, transactions}]. Never read from the cached taxonomy,
+// which can predate a code the app learned since.
+let unansweredPlaidCategories = [];
+// What the user chose for an unanswered code and has not saved yet:
+// {code: {choice: 'label', label} | {choice: 'keep'}}. A code with no entry is
+// left out of every save, so it stays unanswered.
+let plaidCategoryAnswers = {};
+// True while the notice's own save runs, so a second click cannot send twice.
+let plaidNoticeSaving = false;
+
 // Primary mapping state — derived from detailed mappings
 let primaryCategoryMappings = {};
 

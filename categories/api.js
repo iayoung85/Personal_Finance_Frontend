@@ -101,7 +101,8 @@ function _saveCatPageCache() {
       categoryListHash,
       rules,
       migrationLog,
-      primaryCategories
+      primaryCategories,
+      unansweredPlaidCategories
     };
     localStorage.setItem(CAT_PAGE_CACHE_KEY, JSON.stringify(cacheData));
     localStorage.setItem(CAT_PAGE_CACHE_TS_KEY, String(Date.now()));
@@ -154,8 +155,11 @@ async function loadCategorizationData(forceNetwork = false) {
         try {
           const cached = JSON.parse(localStorage.getItem(CAT_PAGE_CACHE_KEY) || 'null');
           const cachedTax = _loadCachedTaxonomy();
-          // A copy saved before primary_categories or labels existed counts as a miss.
-          if (cached && cached.categoryMappings && cachedTax && 'primaryCategories' in cached && 'categoryLabels' in cached) {
+          // A copy saved before primary_categories, labels or the unanswered
+          // list existed counts as a miss. The last matters most: such a copy
+          // holds Plaid's name for every code, and saving it would answer them.
+          if (cached && cached.categoryMappings && cachedTax && 'primaryCategories' in cached && 'categoryLabels' in cached
+              && Array.isArray(cached.unansweredPlaidCategories)) {
             categoryMappings = cached.categoryMappings;
             customCategories = cached.customCategories || [];
             // A copy saved before locked_labels existed has none.
@@ -172,6 +176,7 @@ async function loadCategorizationData(forceNetwork = false) {
             rules = cached.rules || [];
             migrationLog = cached.migrationLog || [];
             primaryCategories = cached.primaryCategories;
+            unansweredPlaidCategories = readUnansweredPlaidCategories({ unanswered_plaid_categories: cached.unansweredPlaidCategories });
             plaidTaxonomy = cachedTax;
             categoryLoadFailed = false;
             categoriesLoaded = true;
@@ -224,6 +229,7 @@ async function loadCategorizationData(forceNetwork = false) {
     primaryCategories = responses[0].ok && Array.isArray(categoriesData.primary_categories)
       ? categoriesData.primary_categories
       : null;
+    unansweredPlaidCategories = responses[0].ok ? readUnansweredPlaidCategories(categoriesData) : [];
     categoryLoadFailed = !responses[0].ok;
     categoriesLoaded = responses[0].ok;
     rules = responses[1].ok ? (rulesData.rules || []) : [];
@@ -267,14 +273,6 @@ async function loadCategorizationData(forceNetwork = false) {
     // read from /available, which leaves hidden labels out.
     availableCategories = _deriveAvailableCategories();
 
-    // Ensure all Plaid categories are in categoryMappings
-    plaidTaxonomy.forEach(cat => {
-      if (!(cat.detailed in categoryMappings)) {
-        const displayNames = getCategoryDisplayNames(cat);
-        categoryMappings[cat.detailed] = displayNames.full || formatPlaidCategory(cat.detailed);
-      }
-    });
-
     // A failed list must not be saved, or the next visit would show it as empty.
     if (!categoryLoadFailed) _saveCatPageCache();
 
@@ -283,6 +281,7 @@ async function loadCategorizationData(forceNetwork = false) {
     expireSharedCategoryPickerCache();
 
     renderAllCategoryViews();
+    if (!categoryLoadFailed) _updateNavCountsFromList();
     if (categoryLoadFailed) showStatus('Could not load your categories.', 'error');
     return categoriesLoaded;
   } catch (loadError) {
@@ -305,6 +304,7 @@ function refreshCategorizationData() {
  * Extracted so both cache-hit and network-fetch paths call the same set of renders.
  */
 function renderAllCategoryViews() {
+  renderPlaidCategoryNotice();
   renderMappingsList();
   derivePrimaryMappingsFromDetailedMappings();
   renderPrimaryMappingsList();
@@ -315,6 +315,23 @@ function renderAllCategoryViews() {
   renderMigrationLog();
   renderDetailedMappingFilterOptions();
   updateCategoryHashDisplay();
+}
+
+/**
+ * Give the nav the counts this page just read, so an answer clears the
+ * Categories count without a reload. Only a network load calls this: the
+ * nav's own call on page load is newer than a cached copy.
+ */
+function _updateNavCountsFromList() {
+  if (typeof updateNavCounts !== 'function') return;
+  const counts = { unansweredCount: unansweredPlaidCategories.length };
+  const catchAllEntry = catchAllEntryIn(categoryLabels);
+  // The nav's catch-all count is that label's uses, so the list can stand in for it.
+  if (catchAllEntry && catchAllState.label === catchAllEntry.label) {
+    counts.catchAllLabel = catchAllEntry.label;
+    counts.catchAllTransactions = Number(catchAllEntry.uses) || 0;
+  }
+  updateNavCounts(counts);
 }
 
 /**

@@ -4,7 +4,14 @@
 // Injects a consistent navigation sidebar into every page.
 // Behaviour is controlled by a data-nav-mode attribute on
 // <body>: "persistent" (always visible) or "collapsed"
-// (hamburger-toggled overlay).
+// (hamburger-toggled overlay). A page that also sets
+// data-nav-open-from="<px>" is persistent on a window at least
+// that wide and collapsed below it; the page picks the width at
+// which the nav still leaves its own content room.
+//
+// The nav also shows two counts from the API: Plaid categories
+// the user has not mapped (on Categories) and rows in the
+// catch-all label (on Transactions).
 //
 // Pages with sub-navigation (e.g. User Settings) declare
 // child items that expand/collapse beneath the parent link.
@@ -207,6 +214,227 @@ function _getActiveSection(pageId) {
 }
 
 
+// ── Counts ──────────────────────────────────────────────────
+
+// Wider numbers would crowd the label in a 220px nav.
+const NAV_COUNT_CAP = 999;
+
+/**
+ * The text a count badge shows.
+ * @param {number} count
+ * @returns {string} Empty for zero, a negative, or not a number: no badge then.
+ */
+function countBadgeText(count) {
+  const value = Number(count);
+  if (!Number.isFinite(value) || value < 1) return '';
+  const whole = Math.floor(value);
+  return whole > NAV_COUNT_CAP ? `${NAV_COUNT_CAP}+` : String(whole);
+}
+
+function _navEscape(text) {
+  return String(text == null ? '' : text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * A count badge, or nothing when the count shows none.
+ * @param {number} count
+ * @param {{title?: string, href?: string, className?: string}} [options] With
+ *   href the badge is a link of its own.
+ * @returns {string} HTML.
+ */
+function buildCountBadge(count, options = {}) {
+  const text = countBadgeText(count);
+  if (!text) return '';
+  const classes = ['count-badge', options.className].filter(Boolean).join(' ');
+  const title = options.title ? ` title="${_navEscape(options.title)}" aria-label="${_navEscape(options.title)}"` : '';
+  if (options.href) {
+    return `<a class="${classes}" href="${_navEscape(options.href)}"${title}>${text}</a>`;
+  }
+  return `<span class="${classes}"${title}>${text}</span>`;
+}
+
+/**
+ * Read the nav-counts response. Anything missing or malformed counts as zero.
+ * @param {Object} data
+ * @returns {{unansweredCount: number, catchAllLabel: string, catchAllTransactions: number}}
+ */
+function readNavCounts(data) {
+  const body = data || {};
+  const wholeCount = value => {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
+  };
+  return {
+    unansweredCount: wholeCount(body.unanswered_count),
+    catchAllLabel: typeof body.catch_all_label === 'string' ? body.catch_all_label : '',
+    catchAllTransactions: wholeCount(body.catch_all_transactions),
+  };
+}
+
+/**
+ * The Transactions page filtered to the catch-all label.
+ * @param {string} catchAllLabel
+ * @returns {string}
+ */
+function catchAllTransactionsHref(catchAllLabel) {
+  return `transactions.html?category=${encodeURIComponent(catchAllLabel)}`;
+}
+
+/**
+ * Whether the hamburger should carry its dot.
+ * @param {{unansweredCount: number, catchAllLabel: string, catchAllTransactions: number}|null} counts
+ * @returns {boolean} True when either count would show a badge.
+ */
+function navCountsNeedAttention(counts) {
+  if (!counts) return false;
+  const showsCatchAll = Boolean(counts.catchAllLabel) && countBadgeText(counts.catchAllTransactions) !== '';
+  return countBadgeText(counts.unansweredCount) !== '' || showsCatchAll;
+}
+
+let _navCounts = null;
+// Set once a page hands the nav fresher counts than the load-time call, so
+// that call cannot land late and put back a count the user just cleared.
+let _navCountsFromPage = false;
+
+/**
+ * Let a page that has just read the same numbers update the counts, so a
+ * change made there shows without a reload.
+ * @param {{unansweredCount?: number, catchAllLabel?: string, catchAllTransactions?: number}} partial
+ */
+function updateNavCounts(partial) {
+  _navCountsFromPage = true;
+  _navCounts = { ...readNavCounts({}), ...(_navCounts || {}), ...(partial || {}) };
+  _renderNavCounts();
+}
+
+function _renderNavCounts() {
+  const sidebar = document.getElementById('nav-sidebar');
+  if (!sidebar || !_navCounts) return;
+  const counts = _navCounts;
+
+  sidebar.querySelectorAll('.count-badge').forEach(badge => badge.remove());
+  sidebar.querySelectorAll('.has-count-link').forEach(item => item.classList.remove('has-count-link'));
+
+  const categoriesLink = sidebar.querySelector('.nav-sidebar-link[data-nav-id="categories"]');
+  if (categoriesLink) {
+    const noun = counts.unansweredCount === 1 ? 'category' : 'categories';
+    const badge = buildCountBadge(counts.unansweredCount, {
+      title: `${counts.unansweredCount} new Plaid ${noun} to map`,
+      className: 'count-badge-alert',
+    });
+    const chevron = categoriesLink.querySelector('.nav-chevron');
+    if (badge && chevron) chevron.insertAdjacentHTML('beforebegin', badge);
+    else if (badge) categoriesLink.insertAdjacentHTML('beforeend', badge);
+  }
+
+  const transactionsLink = sidebar.querySelector('.nav-sidebar-link[data-nav-id="transactions"]');
+  if (transactionsLink && counts.catchAllLabel) {
+    const noun = counts.catchAllTransactions === 1 ? 'transaction' : 'transactions';
+    // A link of its own beside the row's link, since links cannot nest.
+    const badge = buildCountBadge(counts.catchAllTransactions, {
+      title: `${counts.catchAllTransactions} ${noun} in ${counts.catchAllLabel}. Show them.`,
+      href: catchAllTransactionsHref(counts.catchAllLabel),
+      className: 'count-badge-link',
+    });
+    if (badge) {
+      transactionsLink.parentElement.classList.add('has-count-link');
+      transactionsLink.insertAdjacentHTML('afterend', badge);
+    }
+  }
+
+  const hamburger = document.getElementById('nav-hamburger');
+  if (hamburger) {
+    const needsAttention = navCountsNeedAttention(counts);
+    hamburger.classList.toggle('has-alert', needsAttention);
+    hamburger.setAttribute('aria-label', needsAttention ? 'Toggle navigation (has new counts)' : 'Toggle navigation');
+  }
+}
+
+/**
+ * Read the counts once per page load. A failure shows no counts and says
+ * nothing: they are a pointer, not something a page needs to work. The nav
+ * belongs to no page, so it makes this one call itself rather than through
+ * a page's api.js, with the same session renewal those use.
+ */
+async function _loadNavCounts() {
+  try {
+    if (window.BACKEND_URL_PROMISE) await window.BACKEND_URL_PROMISE;
+    const backendUrl = window.BACKEND_URL;
+    const accessToken = localStorage.getItem('authToken');
+    if (!backendUrl || !accessToken) return;
+
+    const url = `${backendUrl}/api/categorization/nav-counts`;
+    const request = sentToken => fetch(url, { headers: { 'Authorization': `Bearer ${sentToken}` } });
+    let response = await request(accessToken);
+    if (response.status === 401 && typeof renewSessionAfter401 === 'function') {
+      const renewedToken = await renewSessionAfter401(accessToken);
+      if (!renewedToken) return;
+      response = await request(renewedToken);
+    }
+    if (!response.ok) return;
+    const data = await response.json();
+    if (_navCountsFromPage) return;
+    _navCounts = readNavCounts(data);
+    _renderNavCounts();
+  } catch (_ignored) { /* no counts this load */ }
+}
+
+
+// ── Mode by Window Width ────────────────────────────────────
+
+/**
+ * Read a page's data-nav-open-from width.
+ * @param {string|null} value
+ * @returns {number} 0 when the page sets none or it is not a positive number.
+ */
+function navOpenFromWidth(value) {
+  const width = parseInt(value, 10);
+  return Number.isFinite(width) && width > 0 ? width : 0;
+}
+
+/**
+ * Which mode a page with an open-from width takes on a window this wide.
+ * @param {number} openFromWidth From navOpenFromWidth.
+ * @param {number} viewportWidth
+ * @returns {'persistent'|'collapsed'}
+ */
+function navModeForWidth(openFromWidth, viewportWidth) {
+  return viewportWidth >= openFromWidth ? 'persistent' : 'collapsed';
+}
+
+function _applyNavMode(mode) {
+  const body = document.body;
+  if (body.getAttribute('data-nav-mode') === mode) return;
+  body.setAttribute('data-nav-mode', mode);
+  // An overlay left open would sit over the page once the nav is part of it.
+  if (mode === 'persistent') _closeNavSidebar();
+}
+
+/**
+ * Switch a page with an open-from width between the two modes as the window
+ * crosses it. Runs as soon as this script loads, ahead of the page's own
+ * scripts, so they lay out against the mode the window calls for.
+ */
+function _startNavModeByWidth() {
+  const body = document.body;
+  if (!body || typeof body.getAttribute !== 'function') return;
+  const openFrom = navOpenFromWidth(body.getAttribute('data-nav-open-from'));
+  if (!openFrom || typeof window.matchMedia !== 'function') return;
+
+  const wideEnough = window.matchMedia(`(min-width: ${openFrom}px)`);
+  const apply = () => _applyNavMode(navModeForWidth(openFrom, window.innerWidth));
+  apply();
+  wideEnough.addEventListener('change', apply);
+}
+
+_startNavModeByWidth();
+
+
 // ── Inject Sidebar Into DOM ─────────────────────────────────
 
 function initNavSidebar() {
@@ -260,6 +488,16 @@ function initNavSidebar() {
 
   // Attach event listeners
   _attachNavSidebarEvents();
+
+  // A page may already have handed over counts; otherwise ask the API. The
+  // dashboard builds the nav again after a sign-in, possibly for another
+  // user, so counts from before are dropped rather than shown.
+  if (_navCountsFromPage) {
+    _renderNavCounts();
+  } else {
+    _navCounts = null;
+    _loadNavCounts();
+  }
 
   // Why: when the user clicked a nav link on the previous page we
   // flagged the sidebar to stay visible so the transition doesn't

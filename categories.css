@@ -479,6 +479,252 @@ tr:hover {
   color: var(--text-secondary);
 }
 
+/* A Plaid category the user has not mapped: its name across the top, then
+   the two answers side by side, then what happens until they choose. */
+.mapping-row.is-new {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "key key"
+    "value keep"
+    "note note";
+  row-gap: 6px;
+  background: var(--bg-inset);
+  box-shadow: inset 3px 0 0 var(--color-warning);
+}
+
+.mapping-row.is-new .mapping-key {
+  grid-area: key;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.mapping-row.is-new .mapping-value {
+  grid-area: value;
+}
+
+.mapping-new-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--badge-warning-bg);
+  color: var(--badge-warning-text);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  vertical-align: 1px;
+}
+
+.mapping-keep {
+  grid-area: keep;
+  max-width: 220px;
+  padding: 6px 10px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mapping-keep.is-chosen,
+.mapping-keep.is-chosen:hover {
+  background: var(--accent-primary);
+  color: #fff;
+}
+
+.mapping-new-note {
+  grid-area: note;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+/* ── Unmapped Plaid categories notice ──────────────────────── */
+.plaid-notice {
+  position: relative;
+  padding: 22px 24px 6px 28px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.plaid-notice[hidden] {
+  display: none;
+}
+
+/* The warm edge is what tells it apart from the panels below at a glance. */
+.plaid-notice::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  background: var(--color-warning);
+}
+
+.plaid-notice-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.plaid-notice-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--badge-warning-bg);
+  border: 1px solid var(--color-warning-border);
+}
+
+.plaid-notice-icon::before {
+  content: '!';
+  color: var(--badge-warning-text);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.plaid-notice-heading {
+  min-width: 0;
+}
+
+.plaid-notice-heading h2 {
+  margin: 4px 0 6px;
+  font-size: 18px;
+  color: var(--text-heading);
+}
+
+.plaid-notice-heading p {
+  margin: 0;
+  max-width: 76ch;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.plaid-notice-heading p + p {
+  margin-top: 4px;
+}
+
+.plaid-notice-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.plaid-notice-item {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(0, 1.7fr);
+  align-items: center;
+  gap: 12px 24px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.plaid-notice-info {
+  min-width: 0;
+}
+
+.plaid-notice-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.plaid-notice-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.plaid-notice-meta {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.plaid-notice-link {
+  margin-left: 8px;
+  color: var(--accent-link);
+}
+
+/* The two answers carry the same weight: same tile, same button style. */
+.plaid-notice-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  min-width: 0;
+}
+
+.plaid-notice-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.plaid-notice-choice-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.plaid-notice-choice-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plaid-notice-select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.plaid-notice-keep {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 900px) {
+  .plaid-notice-item {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .plaid-notice {
+    padding: 18px 16px 4px 20px;
+  }
+
+  .plaid-notice-choices {
+    grid-template-columns: 1fr;
+  }
+}
+
 .mapping-add {
   display: flex;
   gap: 8px;

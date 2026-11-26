@@ -11,12 +11,18 @@ function renderMappingsList(filterText = '') {
   const filter = (filterText || '').toLowerCase().trim();
   const entries = Object.entries(categoryMappings || {}).sort((a, b) => a[0].localeCompare(b[0]));
 
-  if (entries.length === 0) {
+  if (entries.length === 0 && unansweredPlaidCategories.length === 0) {
     container.innerHTML = '<div class="empty-state">No mappings yet.</div>';
     return;
   }
 
-  const rows = entries
+  // New categories lead the list so they are seen before the mapped ones.
+  const newRows = unansweredPlaidCategories
+    .filter(entry => _unansweredMatchesFilters(entry, filter))
+    .map(entry => _buildUnansweredMappingRow(entry))
+    .join('');
+
+  const mappedRows = entries
     .filter(([plaidCat, userLabel]) => {
       if (!filter) return true;
       return plaidCat.toLowerCase().includes(filter) || (userLabel || '').toLowerCase().includes(filter);
@@ -52,6 +58,7 @@ function renderMappingsList(filterText = '') {
     })
     .join('');
 
+  const rows = newRows + mappedRows;
   container.innerHTML = rows || '<div class="empty-state">No mappings match your filter.</div>';
 
   // A locked key shows its reason on a tap, a click, or keyboard focus.
@@ -74,6 +81,102 @@ function renderMappingsList(filterText = '') {
       } else {
         categoryMappings[plaidCat] = value;
       }
+    });
+  });
+
+  _attachUnansweredRowEvents(container);
+}
+
+// ── New (unanswered) Plaid categories in the list ───────────
+
+/**
+ * Whether an unanswered category passes the list's text and primary filters.
+ * @param {{code: string, primary: string, name: string}} entry
+ * @param {string} filter Lowercased filter text.
+ */
+function _unansweredMatchesFilters(entry, filter) {
+  if (filter) {
+    const pendingLabel = plaidAnswerLabel(plaidCategoryAnswers[entry.code], catchAllState.label).toLowerCase();
+    const matchesText = entry.code.toLowerCase().includes(filter)
+      || entry.name.toLowerCase().includes(filter)
+      || pendingLabel.includes(filter);
+    if (!matchesText) return false;
+  }
+  if (selectedDetailedPrimaryFilter === '__all__') return true;
+  return formatPlaidCategory(entry.primary || '') === selectedDetailedPrimaryFilter;
+}
+
+/**
+ * The label choices for an unanswered category: Plaid's name for it, then
+ * every listed label but the catch-all, which has its own "Keep in" choice.
+ * @param {{name: string}} entry
+ * @param {string} selected The pending label, or '' for none.
+ * @returns {string} Option HTML, led by an empty "Choose a label" option.
+ */
+function buildUnansweredLabelOptions(entry, selected) {
+  const catchAllLabel = catchAllState.label;
+  const listed = new Set(availableCategories || []);
+  listed.delete(catchAllLabel);
+  listed.delete(entry.name);
+  const sorted = Array.from(listed).sort((a, b) => a.localeCompare(b));
+  const option = (value, text) => (
+    `<option value="${escapeHtml(value)}" ${value === selected ? 'selected' : ''}>${escapeHtml(text)}</option>`
+  );
+  return `<option value="" ${selected ? '' : 'selected'}>Choose a label…</option>`
+    + (entry.name !== catchAllLabel ? option(entry.name, `Use Plaid's name (${entry.name})`) : '')
+    + sorted.map(label => option(label, label)).join('');
+}
+
+function _buildUnansweredMappingRow(entry) {
+  const answer = plaidCategoryAnswers[entry.code];
+  const pendingLabel = answer && answer.choice === PLAID_ANSWER_LABEL ? answer.label : '';
+  const keepChosen = Boolean(answer && answer.choice === PLAID_ANSWER_KEEP);
+  const catchAllLabel = catchAllState.label;
+  const code = escapeHtml(entry.code);
+  const keepText = `Keep in ${catchAllLabel}`;
+  const note = answer
+    ? 'Chosen. Save Mappings to apply it.'
+    : `${describeRowsInCatchAll(entry.transactions, catchAllLabel)}. Pick a label or keep it there.`;
+  return `
+        <div class="mapping-row is-new" data-plaid-category="${code}">
+          <div class="mapping-key" title="${code}"><span class="mapping-new-tag">New</span>${escapeHtml(entry.name)}</div>
+          <select class="mapping-value" data-plaid-new="${code}" aria-label="Label for ${escapeHtml(entry.name)}">${buildUnansweredLabelOptions(entry, pendingLabel)}</select>
+          <button type="button" class="secondary mapping-keep${keepChosen ? ' is-chosen' : ''}" data-plaid-keep="${code}"
+                  aria-pressed="${keepChosen}" title="${escapeHtml(keepText)}" ${catchAllLabel ? '' : 'disabled'}>${escapeHtml(keepText)}</button>
+          <div class="mapping-new-note">${escapeHtml(note)}</div>
+        </div>
+      `;
+}
+
+/**
+ * Record a choice for an unanswered category without saving it, and redraw
+ * what shows it.
+ * @param {string} code
+ * @param {{choice: string, label?: string}|null} answer Null takes the choice back.
+ */
+function setPlaidCategoryAnswer(code, answer) {
+  if (answer) {
+    plaidCategoryAnswers[code] = answer;
+  } else {
+    delete plaidCategoryAnswers[code];
+  }
+  renderMappingsList(document.getElementById('mapping-filter').value);
+  renderPlaidCategoryNotice();
+}
+
+function _attachUnansweredRowEvents(container) {
+  container.querySelectorAll('select[data-plaid-new]').forEach(select => {
+    select.addEventListener('change', () => {
+      const code = select.getAttribute('data-plaid-new');
+      const label = (select.value || '').trim();
+      setPlaidCategoryAnswer(code, label ? { choice: PLAID_ANSWER_LABEL, label } : null);
+    });
+  });
+  container.querySelectorAll('button[data-plaid-keep]').forEach(button => {
+    button.addEventListener('click', () => {
+      const code = button.getAttribute('data-plaid-keep');
+      const alreadyKept = (plaidCategoryAnswers[code] || {}).choice === PLAID_ANSWER_KEEP;
+      setPlaidCategoryAnswer(code, alreadyKept ? null : { choice: PLAID_ANSWER_KEEP });
     });
   });
 }
@@ -185,8 +288,13 @@ function renderDetailedMappingFilterOptions() {
   const select = document.getElementById('detailed-mapping-primary-filter');
   if (!select) return;
 
-  const primaries = getPlaidPrimaryDisplayList();
-  const options = ['__all__', ...primaries];
+  // A new category's primary may be missing from a taxonomy cached before it was learned.
+  const primaries = new Set(getPlaidPrimaryDisplayList());
+  unansweredPlaidCategories.forEach(entry => {
+    const display = formatPlaidCategory(entry.primary || '');
+    if (display) primaries.add(display);
+  });
+  const options = ['__all__', ...Array.from(primaries).sort((a, b) => a.localeCompare(b))];
 
   if (!options.includes(selectedDetailedPrimaryFilter)) {
     selectedDetailedPrimaryFilter = '__all__';
@@ -209,6 +317,8 @@ function renderDetailedMappingFilterOptions() {
 
 function clearMapping(plaidCategory) {
   if (findLockedKey(plaidCategory, lockedLabels)) return;
+  // Writing a key the user has not mapped would answer it on the next save.
+  if (!Object.prototype.hasOwnProperty.call(categoryMappings, plaidCategory)) return;
   const row = document.querySelector(`.mapping-row[data-plaid-category="${plaidCategory}"]`);
   if (row) {
     const select = row.querySelector('.mapping-value');
@@ -251,8 +361,8 @@ async function _finishMappingsSave(message) {
 }
 
 async function saveCategoryMappings() {
-  // After a failed load the editor holds Plaid's default name for every key,
-  // not the user's mappings; saving that would replace the real ones.
+  // After a failed load the editor holds none of the user's mappings, and
+  // saving that would replace the real ones.
   if (categoryLoadFailed) {
     showStatus('Your categories could not be loaded, so mappings cannot be saved. Reload the page and try again.', 'error');
     return;
@@ -267,18 +377,20 @@ async function saveCategoryMappings() {
         editedMappings[key] = trimmedValue;
       }
     });
+    // A code the user has not mapped is sent only when they chose for it.
+    const sentAnswers = plaidAnswersToSend(plaidCategoryAnswers, unansweredPlaidCategories, catchAllState.label);
     // The page never edits a locked key, but the primary pickers rewrite every
     // key under a Plaid primary, so those values are put back before sending.
-    const newMappings = withLockedMappingsKept(editedMappings, lockedLabels);
+    const newMappings = withLockedMappingsKept(withPlaidCategoryAnswers(editedMappings, sentAnswers), lockedLabels);
 
     // The primary pickers can rewrite this key too, so the check is here at
     // save and not when one select changes.
     const roleMove = catchAllRemapMove(newMappings, catchAllState);
     if (roleMove) {
-      _confirmCatchAllRemap(roleMove, () => _sendCategoryMappings(newMappings));
+      _confirmCatchAllRemap(roleMove, () => _sendCategoryMappings(newMappings, sentAnswers));
       return;
     }
-    await _sendCategoryMappings(newMappings);
+    await _sendCategoryMappings(newMappings, sentAnswers);
   } catch (networkError) {
     showStatus(`Failed to save mappings: ${networkError.message}`, 'error');
   }
@@ -309,13 +421,28 @@ function _confirmCatchAllRemap(roleMove, onConfirm) {
   });
 }
 
-async function _sendCategoryMappings(newMappings) {
+/**
+ * The result message of a save that went through, and the sent answers taken
+ * off the pending list: the reload that follows no longer lists their codes.
+ */
+function _mappingsSavedMessage(data, sentAnswers) {
+  const message = summarizeMappingsSave(data, sentAnswers, unansweredPlaidCategories);
+  Object.keys(sentAnswers || {}).forEach(code => { delete plaidCategoryAnswers[code]; });
+  return message;
+}
+
+/**
+ * @param {Object} newMappings
+ * @param {Object} sentAnswers From plaidAnswersToSend: the unanswered codes
+ *   newMappings answers, for the result message.
+ */
+async function _sendCategoryMappings(newMappings, sentAnswers) {
   try {
     const { response, data } = await _putCategoryMappings({ category_mappings: newMappings });
     if (!response.ok) {
       const questions = readMappingQuestions(data);
       if (response.status === 400 && (questions.labels.length > 0 || questions.keys.length > 0)) {
-        openMappingAnswersModal(newMappings, questions);
+        openMappingAnswersModal(newMappings, questions, sentAnswers);
         return;
       }
       showStatus(data.error || 'Failed to save mappings', 'error');
@@ -324,7 +451,7 @@ async function _sendCategoryMappings(newMappings) {
 
     // A rename in effect moves a label's records without a question, so the
     // result says what moved.
-    await _finishMappingsSave(summarizeAnswerResult(data));
+    await _finishMappingsSave(_mappingsSavedMessage(data, sentAnswers));
   } catch (networkError) {
     showStatus(`Failed to save mappings: ${networkError.message}`, 'error');
   }
@@ -415,7 +542,7 @@ function _pastRowsQuestionHTML(item, index) {
  * Ask what to do with the labels and past rows the edit would strand, then
  * resend the same mappings with the answers.
  */
-function openMappingAnswersModal(newMappings, questions) {
+function openMappingAnswersModal(newMappings, questions, sentAnswers) {
   const targets = _mergeTargetLabels(newMappings, questions);
   const body = `<p>${escapeHtml(describeMappingQuestions(questions))} Choose what happens to each.</p>`
     + '<div id="mapping-answers-error" class="answer-error"></div>'
@@ -429,7 +556,7 @@ function openMappingAnswersModal(newMappings, questions) {
     body,
     actions: [
       { label: 'Cancel', onClick: closeModal },
-      { label: 'Save', className: 'answer-save-btn', onClick: () => submitMappingAnswers(newMappings, questions) },
+      { label: 'Save', className: 'answer-save-btn', onClick: () => submitMappingAnswers(newMappings, questions, sentAnswers) },
     ],
   });
 
@@ -459,7 +586,7 @@ function _readMappingAnswers(questions) {
   return { labelAnswers, pastRowAnswers };
 }
 
-async function submitMappingAnswers(newMappings, questions) {
+async function submitMappingAnswers(newMappings, questions, sentAnswers) {
   const { labelAnswers, pastRowAnswers } = _readMappingAnswers(questions);
   if (!allQuestionsAnswered(questions, labelAnswers, pastRowAnswers)) return;
 
@@ -476,7 +603,7 @@ async function submitMappingAnswers(newMappings, questions) {
       return;
     }
     closeModal();
-    await _finishMappingsSave(summarizeAnswerResult(data));
+    await _finishMappingsSave(_mappingsSavedMessage(data, sentAnswers));
   } catch (networkError) {
     errorBox.textContent = `Failed to save mappings: ${networkError.message}`;
     saveButton.disabled = false;
@@ -518,6 +645,8 @@ function applyPrimaryMapping(plaidPrimaryDisplay, targetPrimaryDisplay) {
       const displayNames = getCategoryDisplayNames(cat);
       const detailed = displayNames.trimmed || '';
       if (findLockedKey(cat.detailed, lockedLabels)) return;
+      // A code the user has not mapped stays unanswered until they choose for it.
+      if (!Object.prototype.hasOwnProperty.call(categoryMappings, cat.detailed)) return;
       const newLabel = detailed ? `${targetPrimary}: ${detailed}` : targetPrimary;
       categoryMappings[cat.detailed] = newLabel;
     });
