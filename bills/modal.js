@@ -55,6 +55,25 @@ let _billModalPfcPicker = null;
 const _BILL_DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const _BILL_DAY_ABBREV = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
+// The matching explanation shown behind the "?" beside "Matching criteria".
+// The day counts (4 days ahead, two weeks back) come from the API's matcher:
+// PROACTIVE_LOOKAHEAD_DAYS and the 14-day lookback in
+// my_personal_finance/src/modules/transactions/services/reconciliation/system_matching.py.
+// Change this text together with those values.
+const BILL_MATCH_HELP = {
+  title: 'How bill matching works',
+  paragraphs: [
+    'Each occurrence of a bill shows in the ledger on its scheduled date. If that date passes and no payment has been found, the occurrence shows as missing.',
+    'After every bank sync, the app looks for the bank transaction that paid each occurrence. It checks occurrences due in the next 4 days (further ahead if the bill\'s date window is wider) and any that are still missing, against bank transactions from the last two weeks.',
+    'Two checks always apply: the bank transaction is in the bill\'s account, and it moves money in the same direction as the bill, out for a payment or in for a deposit. It must also pass every check set in this section: its amount is exact or inside the range, its date is inside the date window when that is on, its bank name contains one of the names listed, the merchant name from the bank contains one of those listed, and its Plaid category is one of those chosen. A check left empty is skipped.',
+    'When more than one bank transaction passes, the one closest to the scheduled date is taken. Each bank transaction can pay only one occurrence.',
+    'A match shows in the ledger for you to approve. Nothing on the bank transaction changes until you do.',
+    'Matching runs only in accounts that are connected to a bank.',
+  ],
+  // Advice, not a rule of the matcher, so it is shown apart from the list.
+  tip: 'Tip: the easiest start is a bank transaction that already paid the bill. Choose "This is a Bill" on it and its bank name, merchant, and Plaid category are filled in for you. For a bill that already exists, use Inspect on such a transaction to see the same three values. If the bank has not posted a payment yet, leave those three empty and rely on the amount and the date window, then add them after the first payment to cut down on wrong matches.',
+};
+
 // Polyfill for pages that don't define formatCurrency (e.g. transactions.html)
 if (typeof formatCurrency === 'undefined') {
   window.formatCurrency = function(amount) {
@@ -197,8 +216,20 @@ function _billModalEnsureDOM() {
           <div class="bill-criteria-header" id="bill-criteria-toggle" role="button" tabindex="0">
             <span class="bill-criteria-caret" id="bill-criteria-caret">▶</span>
             <h4>Matching criteria</h4>
+            <button type="button" class="bill-criteria-help-btn" id="bill-criteria-help-btn"
+                    aria-label="How matching works" aria-expanded="false"
+                    aria-controls="bill-criteria-help">?</button>
             <span class="bill-criteria-badge" id="bill-criteria-badge" style="display:none;"></span>
             <span class="bill-criteria-hint">click to expand</span>
+          </div>
+          <div class="bill-criteria-help" id="bill-criteria-help" role="region"
+               aria-labelledby="bill-criteria-help-title" style="display:none;">
+            <div class="bill-criteria-help-head">
+              <strong id="bill-criteria-help-title"></strong>
+              <button type="button" class="bill-criteria-help-close" id="bill-criteria-help-close">Close</button>
+            </div>
+            <ol class="bill-criteria-help-list" id="bill-criteria-help-list"></ol>
+            <p class="bill-criteria-help-tip" id="bill-criteria-help-tip"></p>
           </div>
           <div class="bill-criteria-body" id="bill-criteria-body" style="display:none;">
             <div class="bill-criteria-intro">
@@ -336,6 +367,7 @@ function _billModalEnsureDOM() {
       _billModalToggleCriteria();
     }
   });
+  _billModalWireMatchHelp();
   document.querySelectorAll('input[name="bill-match-amount-mode"]').forEach(radio => {
     radio.addEventListener('change', () => {
       _billModalOnAmountModeChange();
@@ -412,6 +444,7 @@ async function openBillModal(billId, options = {}) {
 
   // Reset error banner
   document.getElementById('bill-error-banner').style.display = 'none';
+  _billModalSetMatchHelpOpen(false);
 
   // Populate account dropdown
   _billModalPopulateAccountDropdown();
@@ -460,6 +493,7 @@ async function _billModalLoadPlaidTaxonomy() {
 }
 
 function closeBillModal() {
+  _billModalSetMatchHelpOpen(false);
   const overlay = document.getElementById('bill-modal-overlay');
   if (overlay) overlay.classList.add('hidden');
   _billModalEditingId = null;
@@ -1707,6 +1741,65 @@ function _billModalSetCriteriaExpanded(expanded) {
   body.style.display = expanded ? 'block' : 'none';
   if (caret) caret.textContent = expanded ? '▼' : '▶';
   if (hint) hint.textContent = expanded ? 'click to collapse' : 'click to expand';
+}
+
+// ── Matching explanation ("?") ───────────────────────────────
+
+/**
+ * Fills the explanation panel from BILL_MATCH_HELP and wires the "?" button.
+ * The button sits inside the header that toggles the section, so its click
+ * and key events are stopped before they reach the header's handlers.
+ */
+function _billModalWireMatchHelp() {
+  document.getElementById('bill-criteria-help-title').textContent = BILL_MATCH_HELP.title;
+  document.getElementById('bill-criteria-help-tip').textContent = BILL_MATCH_HELP.tip;
+  const list = document.getElementById('bill-criteria-help-list');
+  BILL_MATCH_HELP.paragraphs.forEach(text => {
+    const item = document.createElement('li');
+    item.textContent = text;
+    list.appendChild(item);
+  });
+
+  const helpBtn = document.getElementById('bill-criteria-help-btn');
+  helpBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    _billModalSetMatchHelpOpen(!_billModalMatchHelpIsOpen());
+  });
+  helpBtn.addEventListener('keydown', (event) => {
+    // Enter and Space activate the button natively; the header must not
+    // also treat them as its own toggle.
+    if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+  });
+  document.getElementById('bill-criteria-help-close').addEventListener('click', () => {
+    _billModalSetMatchHelpOpen(false);
+    helpBtn.focus();
+  });
+}
+
+function _billModalMatchHelpIsOpen() {
+  const panel = document.getElementById('bill-criteria-help');
+  return !!panel && panel.style.display !== 'none';
+}
+
+/** Escape closes the explanation only; the form stays open. */
+function _billModalOnMatchHelpKeydown(event) {
+  if (event.key !== 'Escape') return;
+  event.preventDefault();
+  event.stopPropagation();
+  _billModalSetMatchHelpOpen(false);
+  const helpBtn = document.getElementById('bill-criteria-help-btn');
+  if (helpBtn) helpBtn.focus();
+}
+
+function _billModalSetMatchHelpOpen(open) {
+  const panel = document.getElementById('bill-criteria-help');
+  const helpBtn = document.getElementById('bill-criteria-help-btn');
+  if (!panel || !helpBtn) return;
+  panel.style.display = open ? 'block' : 'none';
+  helpBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  // Capture phase so Escape is claimed before any page-level handler sees it.
+  document.removeEventListener('keydown', _billModalOnMatchHelpKeydown, true);
+  if (open) document.addEventListener('keydown', _billModalOnMatchHelpKeydown, true);
 }
 
 function _billModalOnAmountModeChange() {
